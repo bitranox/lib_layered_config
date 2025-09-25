@@ -1,0 +1,219 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Test against Python 3.10 and the latest 3.x available on Actions runners
+        python: ["3.10", "3.x"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install make on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install -y make
+          echo "C:\\ProgramData\\chocolatey\\bin" >> $env:GITHUB_PATH
+      - name: Install dev deps
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Run full test suite (lint, types, tests, coverage, codecov)
+        shell: bash
+        run: make test
+      - name: Build wheel/sdist
+        shell: bash
+        run: python -m build
+      - name: Verify wheel install in clean env
+        shell: bash
+        run: |
+          python -m venv .venv_wheel
+          . .venv_wheel/bin/activate 2>/dev/null || . .venv_wheel/Scripts/activate 2>/dev/null
+          pip install dist/*.whl
+          lib_layered_config --version || python -m lib_layered_config --version
+
+  pipx-uv:
+    name: pipx/uv verification (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - name: pipx install from wheel
+        run: |
+          python -m pip install pipx
+          pipx install dist/*.whl
+          lib_layered_config --version
+      - name: uv tool install
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.local/share/uv/bin:$PATH"
+          uv tool install .
+          lib_layered_config --version
+
+  # nix and conda packaging builds are disabled for now to keep CI green.
+  nix:
+    name: Nix build (flake)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix (flakes)
+        uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Build with Nix flake
+        working-directory: packaging/nix
+        run: |
+          nix build .#default -L
+          echo "Built path: $(readlink -f result || true)"
+
+  conda:
+    name: Conda build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          python-version: "3.12"
+      - name: Build conda recipe (local source, no test)
+        shell: bash -l {0}
+        env:
+          CONDA_USE_LOCAL: "1"
+        run: |
+          conda config --add channels conda-forge
+          conda config --add channels defaults
+          conda install -y conda-build
+          conda build packaging/conda/recipe --no-test -c conda-forge -c defaults
+
+  notebooks:
+    name: Execute notebooks (ubuntu, Python 3.10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install notebook runner deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install nbclient nbformat ipykernel jupyter_client
+          python -m ipykernel install --user --name python3 --display-name "Python 3"
+      - name: Execute Quickstart notebook
+        env:
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+          PIP_NO_INPUT: "1"
+        run: |
+          python - << 'PY'
+          import json, sys
+          from pathlib import Path
+          import nbformat
+          try:
+              from nbformat.validator import normalize  # type: ignore
+          except Exception:
+              normalize = None  # type: ignore
+          from nbclient import NotebookClient
+
+          nb_path = Path('notebooks/Quickstart.ipynb')
+          if not nb_path.exists():
+              raise SystemExit(f"Notebook not found: {nb_path}")
+
+          with nb_path.open('r', encoding='utf-8') as f:
+              nb = nbformat.read(f, as_version=4)
+          # Normalize to ensure required fields like cell ids are present (supports older nbformat return types)
+          if normalize is not None:
+              nb_norm = normalize(nb)  # may return notebook or a tuple
+              # pick the first element that looks like a notebook
+              cand = nb_norm
+              if isinstance(nb_norm, tuple):
+                  for item in nb_norm:
+                      if hasattr(item, 'cells') and hasattr(item, 'metadata'):
+                          cand = item
+                          break
+              nb = cand
+          # Final guard for robustness
+          if isinstance(nb, tuple) or not (hasattr(nb, 'cells') and hasattr(nb, 'metadata')):
+              raise SystemExit(f"Unexpected notebook object type after normalize: {type(nb)}")
+
+          client = NotebookClient(nb, timeout=900, kernel_name='python3', allow_errors=False)
+          client.execute()
+
+          # Optionally write executed notebook artifact (not committed)
+          out_path = Path('notebooks/Quickstart-executed.ipynb')
+          with out_path.open('w', encoding='utf-8') as f:
+              nbformat.write(nb, f)
+          print(f"Executed notebook written to: {out_path}")
+          PY
+
+  packaging-consistency:
+    name: Packaging files in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Verify packaging matches pyproject
+        run: |
+          python - << 'PY'
+          import re, sys
+          from pathlib import Path
+
+          py = Path('pyproject.toml').read_text(encoding='utf-8')
+          m_ver = re.search(r'^version\s*=\s*"([^"]+)"', py, re.M)
+          m_req = re.search(r'^requires-python\s*=\s*"([^"]+)"', py, re.M)
+          if not (m_ver and m_req):
+            print('pyproject missing version or requires-python'); sys.exit(1)
+          version = m_ver.group(1)
+          requires = m_req.group(1)
+          m_min = re.search(r'>=\s*(3\.[0-9]+)', requires)
+          if not m_min:
+            print('requires-python must be like ">=3.X"'); sys.exit(1)
+          min_py = m_min.group(1)
+          min_digits = min_py.replace('.', '')
+
+          # Conda
+          conda = Path('packaging/conda/recipe/meta.yaml').read_text(encoding='utf-8')
+          if not re.search(r'\{\%\s*set\s+version\s*=\s*"' + re.escape(version) + r'"\s*\%\}', conda):
+            print('conda/meta.yaml: version mismatch'); sys.exit(1)
+          if len(re.findall(r'python\s*>?=\s*' + re.escape(min_py), conda)) < 2:
+            print('conda/meta.yaml: python constraint not aligned (host/run)'); sys.exit(1)
+
+          # Brew
+          brew = Path('packaging/brew/Formula/lib-layered-config.rb').read_text(encoding='utf-8')
+          if f"refs/tags/v{version}.tar.gz" not in brew:
+            print('brew formula: url tag mismatch'); sys.exit(1)
+          if f'"python@{min_py}"' not in brew:
+            print('brew formula: python dependency not aligned'); sys.exit(1)
+
+          # Nix
+          nix = Path('packaging/nix/flake.nix').read_text(encoding='utf-8')
+          if not re.search(r'pname\s*=\s*"lib_layered_config";\s*[^}]*?version\s*=\s*"' + re.escape(version) + r'";', nix, re.S):
+            print('nix flake: version mismatch'); sys.exit(1)
+          if not re.search(r'pypkgs\s*=\s*pkgs\.python' + re.escape(min_digits) + r'Packages', nix):
+            print('nix flake: python package set not aligned'); sys.exit(1)
+          if not re.search(r'pkgs\.python' + re.escape(min_digits) + r'\b', nix):
+            print('nix flake: devShell python not aligned'); sys.exit(1)
+          print('Packaging files are consistent with pyproject.')
+          PY

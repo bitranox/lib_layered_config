@@ -1,0 +1,48 @@
+{% set name = "lib_layered_config" %}
+{% set version = "0.0.1" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+{% if environ.get('CONDA_USE_LOCAL', '0') == '1' %}
+source:
+  # Build from local checkout (CI/dev). Set CONDA_USE_LOCAL=1.
+  path: ../../..
+{% else %}
+source:
+  # For released tags; replace sha256 before submitting to conda-forge
+  url: https://github.com/bitranox/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
+  sha256: <fill-me>
+{% endif %}
+
+build:
+  noarch: python
+  # Use conda-provided build backend and avoid network isolation issues
+  script: "{{ PYTHON }} -m pip install --no-deps --no-build-isolation -vv ."
+
+requirements:
+  host:
+    - python >=3.10
+    - pip
+    - hatchling >=1.25
+  run:
+    - python >=3.10
+    - click >=8.1
+    - lib_cli_exit_tools >=1.1.1
+    - rich >=13.7
+
+test:
+  commands:
+    - python -c "import lib_layered_config as m; print(m.__all__)"
+    - lib_layered_config --version
+
+about:
+  home: https://github.com/bitranox/lib_layered_config
+  license: MIT
+  license_family: MIT
+  summary: "Rich-powered logging helpers for colorful terminal output"
+
+extra:
+  recipe-maintainers:
+    - <your-github-id>
