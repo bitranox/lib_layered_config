@@ -780,7 +780,8 @@ snippets. The tool should mirror the template repository methodology and reuse
 ### Solution Overview
 - Rich Click-powered command group (`lib_layered_config` / `lib-layered-config`).
 - Global `--traceback` flag integrated with `lib_cli_exit_tools` configuration.
-- Subcommands: `info`, `env-prefix`, `read` (with provenance toggle), and `fail` (intentional error for testing).
+- Subcommands: `info`, `env-prefix`, `deploy`, `generate-examples`, `read`, and `fail`.
+- Helpers (`_deploy_layers`, `_generate_example_tree`, `_render_read_command`) keep command bodies tiny and declarative.
 - `main()` wrapper delegates to `lib_cli_exit_tools.run_cli` to standardise exit codes.
 
 ### Architecture Integration
@@ -790,8 +791,10 @@ snippets. The tool should mirror the template repository methodology and reuse
 
 ### Core Components
 - `cli`: root click group.
-- `cli_read_config`: wraps `read_config` / `read_config_raw` with optional provenance output.
+- `cli_info`: prints package metadata via `_describe_distribution()`.
 - `cli_env_prefix`: exposes `default_env_prefix`.
+- `cli_deploy_config` / `cli_generate_examples`: orchestration facades that rely on `_deploy_layers` and `_generate_example_tree`.
+- `cli_read_config`: wraps `read_config` / `read_config_raw` with optional provenance output via `_render_read_command`.
 - `main`: console entry point registering with `console_scripts`.
 
 ### Implementation Details

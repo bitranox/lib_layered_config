@@ -378,21 +378,30 @@ def _load_files(
     """
 
     ordered_paths = _order_paths(paths, prefer)
-    collected: list[LayerEntry] = []
+    entries: list[LayerEntry] = []
     for path in ordered_paths:
-        loader = _FILE_LOADERS.get(Path(path).suffix.lower())
-        if loader is None:
-            continue
-        try:
-            data = loader.load(path)
-        except NotFound:
-            continue
-        except InvalidFormat as exc:
-            _log_layer_error(layer, path, exc)
-            raise LayerLoadError(f"Failed to load {layer} layer file {path}: {exc}") from exc
-        if data:
-            collected.append((layer, data, path))
-    return collected
+        entry = _load_entry(layer, path)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def _load_entry(layer: str, path: str) -> LayerEntry | None:
+    """Return a layer entry for *path* when a loader is available."""
+
+    loader = _FILE_LOADERS.get(Path(path).suffix.lower())
+    if loader is None:
+        return None
+    try:
+        data = loader.load(path)
+    except NotFound:
+        return None
+    except InvalidFormat as exc:
+        _log_layer_error(layer, path, exc)
+        raise LayerLoadError(f"Failed to load {layer} layer file {path}: {exc}") from exc
+    if not data:
+        return None
+    return layer, data, path
 
 
 def _order_paths(paths: Iterable[str], prefer: Sequence[str] | None) -> list[str]:

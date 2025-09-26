@@ -35,7 +35,7 @@ import json
 import sys
 from importlib import metadata
 from pathlib import Path
-from typing import Final, Optional, Sequence
+from typing import Final, Iterable, Optional, Sequence
 
 import lib_cli_exit_tools
 import rich_click as click
@@ -52,6 +52,13 @@ _TRACEBACK_VERBOSE_LIMIT: Final[int] = 10_000
 
 TARGET_CHOICES: Final[tuple[str, ...]] = ("app", "host", "user")
 EXAMPLE_PLATFORM_CHOICES: Final[tuple[str, ...]] = ("posix", "windows")
+
+
+def _bind_traceback_settings(enabled: bool) -> None:
+    """Mirror traceback preference into ``lib_cli_exit_tools`` config."""
+
+    lib_cli_exit_tools.config.traceback = enabled
+    lib_cli_exit_tools.config.traceback_force_color = enabled
 
 
 def _resolve_version() -> str:
@@ -72,6 +79,38 @@ def _resolve_version() -> str:
         return metadata.version("lib_layered_config")
     except metadata.PackageNotFoundError:
         return "0.0.0"
+
+
+def _describe_distribution() -> Iterable[str]:
+    """Yield human-readable metadata lines for the distribution."""
+
+    meta = _load_distribution_metadata()
+    if meta is None:
+        yield "lib_layered_config (metadata unavailable)"
+        return
+    yield f"Info for {meta.get('Name', 'lib_layered_config')}:"
+    yield f"  Version         : {meta.get('Version', _resolve_version())}"
+    yield f"  Requires-Python : {meta.get('Requires-Python', '>=3.10')}"
+    summary = meta.get("Summary")
+    if summary:
+        yield f"  Summary         : {summary}"
+    yield from _project_url_lines(meta)
+
+
+def _load_distribution_metadata() -> metadata.PackageMetadata | None:
+    """Return package metadata when installed, otherwise ``None``."""
+
+    try:
+        return metadata.metadata("lib_layered_config")
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def _project_url_lines(meta: metadata.PackageMetadata) -> Iterable[str]:
+    """Yield formatted project URL entries for display."""
+
+    for entry in meta.get_all("Project-URL") or []:
+        yield f"  {entry}"
 
 
 @click.group(
@@ -111,27 +150,15 @@ def cli(ctx: click.Context, traceback: bool) -> None:
 
     ctx.ensure_object(dict)
     ctx.obj["traceback"] = traceback
-    lib_cli_exit_tools.config.traceback = traceback
-    lib_cli_exit_tools.config.traceback_force_color = traceback
+    _bind_traceback_settings(traceback)
 
 
 @cli.command("info", context_settings=CLICK_CONTEXT_SETTINGS)
 def cli_info() -> None:
-    """Print basic distribution metadata so users can confirm installation."""
+    """Print distribution metadata so users can confirm installation."""
 
-    try:
-        meta = metadata.metadata("lib_layered_config")
-    except metadata.PackageNotFoundError:
-        click.echo("lib_layered_config (metadata unavailable)")
-        return
-    click.echo(f"Info for {meta.get('Name', 'lib_layered_config')}:")
-    click.echo(f"  Version         : {meta.get('Version', _resolve_version())}")
-    click.echo(f"  Requires-Python : {meta.get('Requires-Python', '>=3.10')}")
-    summary = meta.get("Summary")
-    if summary:
-        click.echo(f"  Summary         : {summary}")
-    for entry in meta.get_all("Project-URL") or []:
-        click.echo(f"  {entry}")
+    for line in _describe_distribution():
+        click.echo(line)
 
 
 @cli.command("env-prefix", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -203,18 +230,16 @@ def cli_deploy_config(
     Pass ``--force`` to override existing files in place.
     """
 
-    normalized_targets = _normalize_targets(targets)
-    normalized_platform = _normalize_platform(platform)
-    created = _deploy_config(
-        source,
+    created = _deploy_layers(
+        source=source,
         vendor=vendor,
         app=app,
-        targets=normalized_targets,
         slug=slug,
-        platform=normalized_platform,
+        targets=targets,
+        platform=platform,
         force=force,
     )
-    click.echo(json.dumps([str(path) for path in created], indent=2))
+    click.echo(_format_paths(created))
 
 
 @cli.command("generate-examples", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -248,16 +273,15 @@ def cli_generate_examples(
 ) -> None:
     """Generate canonical example configuration files under *destination*."""
 
-    normalized_platform = _normalize_examples_platform(platform)
-    created = _generate_examples(
-        destination,
+    created = _generate_example_tree(
+        destination=destination,
         slug=slug,
         vendor=vendor,
         app=app,
+        platform=platform,
         force=force,
-        platform=normalized_platform,
     )
-    click.echo(json.dumps([str(path) for path in created], indent=2))
+    click.echo(_format_paths(created))
 
 
 @cli.command("fail", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -312,8 +336,85 @@ def cli_read_config(
     ``--provenance`` is supplied the output includes merge metadata for each key.
     """
 
+    output = _render_read_command(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        prefer=prefer,
+        start_dir=start_dir,
+        indent=indent,
+        provenance=provenance,
+    )
+    click.echo(output)
+
+
+def _deploy_layers(
+    *,
+    source: Path,
+    vendor: str,
+    app: str,
+    slug: str,
+    targets: Sequence[str],
+    platform: Optional[str],
+    force: bool,
+) -> list[Path]:
+    """Return destination paths produced by :func:`deploy_config`."""
+
+    normalized_targets = _normalize_targets(targets)
+    normalized_platform = _normalize_platform(platform)
+    return _deploy_config(
+        source,
+        vendor=vendor,
+        app=app,
+        targets=normalized_targets,
+        slug=slug,
+        platform=normalized_platform,
+        force=force,
+    )
+
+
+def _generate_example_tree(
+    *,
+    destination: Path,
+    slug: str,
+    vendor: str,
+    app: str,
+    platform: Optional[str],
+    force: bool,
+) -> list[Path]:
+    """Return paths written by :func:`generate_examples`."""
+
+    normalized_platform = _normalize_examples_platform(platform)
+    return _generate_examples(
+        destination,
+        slug=slug,
+        vendor=vendor,
+        app=app,
+        force=force,
+        platform=normalized_platform,
+    )
+
+
+def _format_paths(paths: Iterable[Path]) -> str:
+    """Return JSON lines representing *paths*."""
+
+    return json.dumps([str(path) for path in paths], indent=2)
+
+
+def _render_read_command(
+    *,
+    vendor: str,
+    app: str,
+    slug: str,
+    prefer: Sequence[str],
+    start_dir: Optional[Path],
+    indent: Optional[int],
+    provenance: bool,
+) -> str:
+    """Return the CLI output for the read command."""
+
     prefer_order = _normalize_prefer(prefer)
-    start_dir_str = str(start_dir) if start_dir is not None else None
+    start_dir_str = _stringify_path(start_dir)
     if provenance:
         data, meta = read_config_raw(
             vendor=vendor,
@@ -323,8 +424,7 @@ def cli_read_config(
             start_dir=start_dir_str,
         )
         payload = {"config": data, "provenance": meta}
-        click.echo(json.dumps(payload, indent=indent, separators=(",", ":")))
-        return
+        return json.dumps(payload, indent=indent, separators=(",", ":"))
 
     config = read_config(
         vendor=vendor,
@@ -333,7 +433,7 @@ def cli_read_config(
         prefer=prefer_order,
         start_dir=start_dir_str,
     )
-    click.echo(config.to_json(indent=indent))
+    return config.to_json(indent=indent)
 
 
 def _normalize_prefer(values: Sequence[str]) -> Optional[Sequence[str]]:
@@ -342,6 +442,14 @@ def _normalize_prefer(values: Sequence[str]) -> Optional[Sequence[str]]:
     if not values:
         return None
     return tuple(value.lower().lstrip(".") for value in values)
+
+
+def _stringify_path(value: Optional[Path]) -> Optional[str]:
+    """Return ``str(value)`` when provided, otherwise ``None``."""
+
+    if value is None:
+        return None
+    return str(value)
 
 
 def _normalize_targets(values: Sequence[str]) -> tuple[str, ...]:

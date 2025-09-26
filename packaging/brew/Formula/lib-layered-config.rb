@@ -21,7 +21,7 @@ yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
 
   resource "tomli" do
     url "https://files.pythonhosted.org/packages/18/87/302344fed471e44a87289cf4967697d07e532f2421fdaf868a303cbae4ff/tomli-2.2.1.tar.gz"
-    sha256 "cd45e1dc79c835ce60f7404ec8119f2eb06d38b1deba146f07ced3bbc44505ff"
+yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
   end
 
   def install
