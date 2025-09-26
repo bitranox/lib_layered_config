@@ -124,6 +124,7 @@ jobs:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
           PIP_NO_INPUT: "1"
         run: |
+          export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
           python - << 'PY'
           import json, sys
           from pathlib import Path
