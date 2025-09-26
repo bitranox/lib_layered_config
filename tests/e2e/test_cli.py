@@ -105,6 +105,92 @@ enabled = true
     assert meta["path"].endswith("config.toml")
 
 
+def test_cli_deploy_command(tmp_path: Path) -> None:
+    base, env = _cli_environment(tmp_path)
+    xdg_root = tmp_path / "xdg"
+    env.setdefault("XDG_CONFIG_HOME", str(xdg_root))
+    source = tmp_path / "source.toml"
+    _write_toml(
+        source,
+        '[service]\nendpoint = "https://api.example.com"\n',
+    )
+
+    runner = CliRunner()
+    command = [
+        "deploy",
+        "--source",
+        str(source),
+        "--vendor",
+        VENDOR,
+        "--app",
+        APP,
+        "--slug",
+        SLUG,
+        "--target",
+        "app",
+        "--target",
+        "user",
+    ]
+    first = runner.invoke(cli.cli, command, env=env)
+    assert first.exit_code == 0
+    created = [Path(item) for item in json.loads(first.output)]
+    assert len(created) == 2
+    for path in created:
+        assert path.exists()
+        assert "api.example.com" in path.read_text(encoding="utf-8")
+
+    second = runner.invoke(cli.cli, command, env=env)
+    assert second.exit_code == 0
+    assert json.loads(second.output) == []
+
+    app_path = next(path for path in created if str(path).startswith(str(base)))
+    app_path.write_text("[existing]\nvalue=1\n", encoding="utf-8")
+
+    forced = runner.invoke(cli.cli, command + ["--force"], env=env)
+    assert forced.exit_code == 0
+    rewritten = {Path(item) for item in json.loads(forced.output)}
+    assert app_path in rewritten
+    assert "api.example.com" in app_path.read_text(encoding="utf-8")
+
+
+def test_cli_generate_examples_command(tmp_path: Path) -> None:
+    destination = tmp_path / "examples"
+    runner = CliRunner()
+    command = [
+        "generate-examples",
+        "--destination",
+        str(destination),
+        "--slug",
+        SLUG,
+        "--vendor",
+        VENDOR,
+        "--app",
+        APP,
+        "--platform",
+        "posix",
+    ]
+
+    first = runner.invoke(cli.cli, command)
+    assert first.exit_code == 0
+    created = [Path(item) for item in json.loads(first.output)]
+    assert len(created) >= 1
+    for path in created:
+        assert path.exists()
+
+    second = runner.invoke(cli.cli, command)
+    assert second.exit_code == 0
+    assert json.loads(second.output) == []
+
+    target = created[0]
+    target.write_text("overwrite", encoding="utf-8")
+
+    forced = runner.invoke(cli.cli, command + ["--force"])
+    assert forced.exit_code == 0
+    rewritten = {Path(item) for item in json.loads(forced.output)}
+    assert target in rewritten
+    assert "overwrite" not in target.read_text(encoding="utf-8")
+
+
 def test_cli_env_prefix_command() -> None:
     runner = CliRunner()
     result = runner.invoke(cli.cli, ["env-prefix", "config-kit"])

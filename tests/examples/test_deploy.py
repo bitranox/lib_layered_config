@@ -111,6 +111,26 @@ def test_deploy_config_skips_existing(tmp_path: Path, monkeypatch, source_config
     assert existing.read_text(encoding="utf-8") == "[existing]\nvalue=1\n"
 
 
+def test_deploy_config_force_overwrites(tmp_path: Path, monkeypatch, source_config: Path) -> None:
+    roots = _prepare_env(tmp_path, monkeypatch)
+    existing = roots["app"] / "config.toml"
+    existing.parent.mkdir(parents=True, exist_ok=True)
+    existing.write_text("[existing]\nvalue=1\n", encoding="utf-8")
+
+    deployed = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        force=True,
+    )
+
+    assert deployed == [existing]
+    content = existing.read_text(encoding="utf-8")
+    assert "https://api.example.com" in content
+
+
 def test_deploy_config_invalid_target(source_config: Path) -> None:
     with pytest.raises(ValueError):
         deploy_config(source_config, vendor=VENDOR, app=APP, targets=["invalid"])

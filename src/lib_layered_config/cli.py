@@ -17,6 +17,8 @@ Contents
 * :func:`cli_env_prefix` – helper exposing :func:`lib_layered_config.core.default_env_prefix`.
 * :func:`cli_read_config` – calls :func:`lib_layered_config.core.read_config` and
   formats the result as JSON (optionally with provenance).
+* :func:`cli_deploy_config` – copies configuration artifacts into layered directories.
+* :func:`cli_generate_examples` – scaffolds example configuration trees.
 * :func:`main` – entry point used by ``console_scripts`` registration.
 
 System Role
@@ -40,11 +42,16 @@ import rich_click as click
 
 from .core import default_env_prefix as _default_env_prefix
 from .core import read_config, read_config_raw
+from .examples import deploy_config as _deploy_config
+from .examples import generate_examples as _generate_examples
 from .testing import i_should_fail
 
 CLICK_CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 _TRACEBACK_SUMMARY_LIMIT: Final[int] = 500
 _TRACEBACK_VERBOSE_LIMIT: Final[int] = 10_000
+
+TARGET_CHOICES: Final[tuple[str, ...]] = ("app", "host", "user")
+EXAMPLE_PLATFORM_CHOICES: Final[tuple[str, ...]] = ("posix", "windows")
 
 
 def _resolve_version() -> str:
@@ -119,7 +126,7 @@ def cli_info() -> None:
         return
     click.echo(f"Info for {meta.get('Name', 'lib_layered_config')}:")
     click.echo(f"  Version         : {meta.get('Version', _resolve_version())}")
-    click.echo(f"  Requires-Python : {meta.get('Requires-Python', '>=3.12')}")
+    click.echo(f"  Requires-Python : {meta.get('Requires-Python', '>=3.10')}")
     summary = meta.get("Summary")
     if summary:
         click.echo(f"  Summary         : {summary}")
@@ -142,6 +149,115 @@ def cli_env_prefix(slug: str) -> None:
     """
 
     click.echo(_default_env_prefix(slug))
+
+
+@cli.command("deploy", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.option(
+    "--source",
+    "source",
+    type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
+    required=True,
+    help="Path to the configuration file that should be copied",
+)
+@click.option("--vendor", required=True, help="Vendor namespace (e.g. organisation name)")
+@click.option("--app", required=True, help="Application name used for host/user directories")
+@click.option("--slug", required=True, help="Slug identifying the configuration set")
+@click.option(
+    "--target",
+    "targets",
+    multiple=True,
+    required=True,
+    type=click.Choice(TARGET_CHOICES, case_sensitive=False),
+    help="Layer targets to deploy to (repeatable)",
+)
+@click.option(
+    "--platform",
+    default=None,
+    help="Override auto-detected platform (e.g. linux, darwin, windows)",
+)
+@click.option(
+    "--force/--no-force",
+    default=False,
+    help="Overwrite existing files at the destination if set",
+    show_default=True,
+)
+def cli_deploy_config(
+    source: Path,
+    vendor: str,
+    app: str,
+    slug: str,
+    targets: Sequence[str],
+    platform: Optional[str],
+    force: bool,
+) -> None:
+    """Copy *source* into the requested configuration layers.
+
+    Why
+    ----
+    Provide a CLI entrypoint for :func:`lib_layered_config.examples.deploy.deploy_config`
+    so operators can scaffold layered directories without writing Python.
+
+    What
+    -----
+    Emits a JSON array listing the files that were created or overwritten.
+    Pass ``--force`` to override existing files in place.
+    """
+
+    normalized_targets = _normalize_targets(targets)
+    normalized_platform = _normalize_platform(platform)
+    created = _deploy_config(
+        source,
+        vendor=vendor,
+        app=app,
+        targets=normalized_targets,
+        slug=slug,
+        platform=normalized_platform,
+        force=force,
+    )
+    click.echo(json.dumps([str(path) for path in created], indent=2))
+
+
+@cli.command("generate-examples", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.option(
+    "--destination",
+    type=click.Path(path_type=Path, file_okay=False, dir_okay=True, resolve_path=True),
+    required=True,
+    help="Directory that will receive the example tree",
+)
+@click.option("--slug", required=True, help="Slug identifying the configuration set")
+@click.option("--vendor", required=True, help="Vendor namespace used in examples")
+@click.option("--app", required=True, help="Application name used in examples")
+@click.option(
+    "--platform",
+    default=None,
+    help="Override platform layout (posix/windows)",
+)
+@click.option(
+    "--force/--no-force",
+    default=False,
+    help="Overwrite existing example files if set",
+    show_default=True,
+)
+def cli_generate_examples(
+    destination: Path,
+    slug: str,
+    vendor: str,
+    app: str,
+    platform: Optional[str],
+    force: bool,
+) -> None:
+    """Generate canonical example configuration files under *destination*."""
+
+    normalized_platform = _normalize_examples_platform(platform)
+    created = _generate_examples(
+        destination,
+        slug=slug,
+        vendor=vendor,
+        app=app,
+        force=force,
+        platform=normalized_platform,
+    )
+    click.echo(json.dumps([str(path) for path in created], indent=2))
 
 
 @cli.command("fail", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -226,6 +342,68 @@ def _normalize_prefer(values: Sequence[str]) -> Optional[Sequence[str]]:
     if not values:
         return None
     return tuple(value.lower().lstrip(".") for value in values)
+
+
+def _normalize_targets(values: Sequence[str]) -> tuple[str, ...]:
+    """Return CLI target choices normalised to lowercase while preserving order."""
+
+    return tuple(value.lower() for value in values)
+
+
+def _normalize_examples_platform(platform: Optional[str]) -> Optional[str]:
+    """Return a generate_examples-compatible platform identifier or ``None``."""
+
+    if platform is None:
+        return None
+    alias = platform.strip().lower()
+    if not alias:
+        return None
+    mapping = {
+        "posix": "posix",
+        "linux": "posix",
+        "darwin": "posix",
+        "mac": "posix",
+        "macos": "posix",
+        "windows": "windows",
+        "win": "windows",
+        "win32": "windows",
+        "wine": "windows",
+    }
+    try:
+        return mapping[alias]
+    except KeyError as exc:
+        raise click.BadParameter(
+            "Platform must be one of: posix, linux, darwin, mac, macos, windows, win, win32, wine.",
+            param_hint="--platform",
+        ) from exc
+
+
+def _normalize_platform(platform: Optional[str]) -> Optional[str]:
+    """Return a resolver-friendly platform identifier or ``None``."""
+
+    if platform is None:
+        return None
+    alias = platform.strip().lower()
+    if not alias:
+        return None
+    mapping = {
+        "linux": "linux",
+        "posix": "linux",
+        "darwin": "darwin",
+        "mac": "darwin",
+        "macos": "darwin",
+        "win": "win32",
+        "win32": "win32",
+        "windows": "win32",
+        "wine": "win32",
+    }
+    try:
+        return mapping[alias]
+    except KeyError as exc:
+        raise click.BadParameter(
+            "Platform must be one of: linux, posix, darwin, mac, macos, win, win32, windows, wine.",
+            param_hint="--platform",
+        ) from exc
 
 
 def main(argv: Optional[Sequence[str]] = None, *, restore_traceback: bool = True) -> int:

@@ -74,6 +74,8 @@ Later layers override earlier ones **per key** while preserving unrelated settin
 | 4          | `dotenv`| First `.env` encountered (upward search + OS) |
 | 5          | `env`   | Process environment (prefix + `__` nesting)   |
 
+Environment example: with slug `config-kit`, setting `CONFIG_KIT_SERVICE__TIMEOUT=45` produces `{"service": {"timeout": 45}}` in the merged configuration (thanks to the prefix and double underscore nesting semantics).
+
 ## Default paths
 
 ### Linux (XDG)
@@ -115,27 +117,29 @@ from lib_layered_config import (
     read_config_raw,
     default_env_prefix,
     deploy_config,
+    generate_examples,
+    i_should_fail,
 )
 ```
 
 ### `read_config(*, vendor, app, slug, prefer=None, start_dir=None) -> Config`
-**Why**: Load all configured layers (application, host, user, dotenv, environment) and hand back an immutable `Config` so callers can read settings without knowing how precedence works.
+**Why**
+    Load every configured layer (application defaults, host overrides, user profiles, `.env`, environment variables) and expose the merged view via an immutable `Config` value object.
 
 **Parameters**
-- `vendor` *(str)* – organisation or vendor namespace used by path resolvers (`/etc/<vendor>/…`, `%APPDATA%\<vendor>\…`).
-- `app` *(str)* – application name combined with the vendor to build host and user directories.
-- `slug` *(str)* – identifier for the configuration family (also feeds environment prefixes).
-- `prefer` *(Sequence[str] | None)* – optional ordered list of suffixes (e.g. `("toml", "json")`) used to prioritise files inside `config.d` directories.
-- `start_dir` *(str | None)* – directory the dotenv loader should start its upward search from; defaults to the current working directory.
+- `vendor` *(str)* – organisation or vendor namespace. Drives platform-specific directories such as `/etc/<vendor>/…` or `%APPDATA%\<vendor>\…`.
+- `app` *(str)* – application name combined with the vendor to derive host and user layer directories.
+- `slug` *(str)* – identifier for the configuration family (also feeds the environment variable prefix and the XDG/macOS folder names).
+- `prefer` *(Sequence[str] | None)* – optional ordered list of suffixes (without dots) used to prioritise files inside `config.d` directories (`("toml", "json")` makes TOML win over JSON when both exist).
+- `start_dir` *(str | None)* – directory from which the `.env` upward search begins. Defaults to the current working directory; handy for project-relative runners.
 
-**Returns**: `Config` – immutable mapping with provenance metadata attached.
-
-**Side Effects**: Emits observability events via `lib_layered_config.observability`.
+**Returns**
+- `Config` – immutable mapping with provenance metadata attached to each dotted key.
 
 **Example**
 ```python
->>> from pathlib import Path
 >>> from tempfile import TemporaryDirectory
+>>> from pathlib import Path
 >>> import os
 >>> tmp = TemporaryDirectory()
 >>> etc_root = Path(tmp.name) / 'etc'
@@ -159,16 +163,19 @@ endpoint = "https://api.example.com"
 ```
 
 ### `read_config_raw(*, vendor, app, slug, prefer=None, start_dir=None) -> tuple[dict[str, object], dict[str, dict[str, object]]]`
-**Why**: Some tools need the raw `dict` and provenance map (for JSON APIs, dashboards, or templating) instead of the `Config` wrapper.
+**Why**
+    Automation sometimes needs the primitive `dict` structures (for JSON APIs, templating, or UI rendering) instead of the `Config` wrapper.
 
-**Parameters**: Same as `read_config`.
+**Parameters**
+    Same as `read_config`.
 
-**Returns**: `(merged_data, provenance)` where `merged_data` mirrors the final configuration and `provenance` maps dotted keys to `{"layer", "path", "key"}` records.
+**Returns**
+- `tuple[dict[str, object], dict[str, dict[str, object]]]` – `(merged_data, provenance)` where `provenance` maps dotted keys to `{"layer", "path", "key"}` records.
 
 **Example**
 ```python
->>> from pathlib import Path
 >>> from tempfile import TemporaryDirectory
+>>> from pathlib import Path
 >>> import os
 >>> tmp = TemporaryDirectory()
 >>> etc_root = Path(tmp.name) / 'etc'
@@ -193,11 +200,14 @@ True
 ```
 
 ### `default_env_prefix(slug: str) -> str`
-**Why**: Translates a slug into the canonical uppercase environment prefix (`demo-service` → `DEMO_SERVICE`) so automation scripts can check the right variables.
+**Why**
+    Compute the canonical environment-variable prefix for a configuration slug so scripts can discover `FOO__BAR` style variables.
 
-**Parameters**: `slug` *(str)* – configuration slug (kebab or snake case).
+**Parameters**
+- `slug` *(str)* – configuration family identifier (kebab or snake case).
 
-**Returns**: Uppercase prefix ending with no underscore.
+**Returns**
+- `str` – uppercase namespace with dashes converted to underscores.
 
 **Example**
 ```python
@@ -205,26 +215,31 @@ True
 'CONFIG_KIT'
 ```
 
-### `deploy_config(source, *, vendor, app, targets, slug=None) -> list[pathlib.Path]`
-**Why**: Provision configuration artifacts into the canonical layer directories (system app, host overrides, user profiles) without overwriting operator-managed files.
+### `deploy_config(source, *, vendor, app, targets, slug=None, platform=None, force=False) -> list[pathlib.Path]`
+**Why**
+    Copy an existing configuration artefact into the canonical layer directories so operators can bootstrap installations without touching platform-specific paths manually.
 
 **Parameters**
-- `source` *(str | Path)* – existing configuration file to copy.
-- `vendor` / `app` *(str)* – same identifiers used by `read_config`; drive target locations.
-- `targets` *(Sequence[str])* – any combination of `"app"`, `"host"`, `"user"`; order determines copy attempts.
+- `source` *(str | Path)* – path to the configuration file that should be copied.
+- `vendor` / `app` *(str)* – same identifiers you pass to `read_config`; they determine the deployment directories on each OS.
+- `targets` *(Sequence[str])* – ordered list containing any combination of `"app"`, `"host"`, and `"user"`; the function attempts to deploy in the provided order.
 - `slug` *(str | None)* – optional slug for directory naming; defaults to `app` when omitted.
+- `platform` *(str | None)* – force a particular resolver platform (`"linux"`, `"darwin"`, `"win32"`); defaults to the running interpreter platform.
+- `force` *(bool)* – overwrite existing files when `True`; otherwise existing files are preserved and omitted from the result.
 
-**Returns**: list of destination paths that were created. Existing files are left untouched.
+**Returns**
+- `list[pathlib.Path]` – destinations that were created or overwritten during this call (order mirrors `targets`).
 
 **Example**
 ```python
 >>> from tempfile import TemporaryDirectory
 >>> from pathlib import Path
->>> from lib_layered_config.examples import deploy_config
 >>> import os
 >>> tmp = TemporaryDirectory()
 >>> source = Path(tmp.name) / 'base.toml'
->>> _ = source.write_text('[service]\nendpoint = "https://api.example.com"\n', encoding='utf-8')
+>>> _ = source.write_text('[service]
+endpoint = "https://api.example.com"
+', encoding='utf-8')
 >>> os.environ['LIB_LAYERED_CONFIG_ETC'] = str(Path(tmp.name) / 'etc')
 >>> os.environ['XDG_CONFIG_HOME'] = str(Path(tmp.name) / 'xdg')
 >>> paths = deploy_config(source, vendor='Acme', app='Demo', targets=['app', 'user'], slug='demo')
@@ -233,10 +248,36 @@ True
 >>> tmp.cleanup()
 ```
 
-### `i_should_fail() -> None`
-**Why**: Provide a deterministic failure hook for integration tests and CLI demonstrations.
+### `generate_examples(destination, *, slug, vendor, app, force=False, platform=None) -> list[pathlib.Path]`
+**Why**
+    Scaffold commented example files for every layer (system, host, user, dotenv) so documentation and demos stay in sync with the library’s conventions.
 
-**Behaviour**: Always raises `RuntimeError` with the message `"i should fail"`.
+**Parameters**
+- `destination` *(str | Path)* – directory root that will receive the example tree; created if missing.
+- `slug` / `vendor` / `app` *(str)* – identifiers injected into file contents and directory names to make the examples read naturally.
+- `force` *(bool)* – overwrite existing example files when `True`; by default the function skips files that already exist to avoid clobbering edits.
+- `platform` *(str | None)* – override the platform layout. Accepts `"posix"` (covers Linux/macOS variants) or `"windows"`; `None` chooses based on the current interpreter.
+
+**Returns**
+- `list[pathlib.Path]` – absolute paths written (or overwritten when `force=True`).
+
+**Example**
+```python
+>>> from tempfile import TemporaryDirectory
+>>> from pathlib import Path
+>>> tmp = TemporaryDirectory()
+>>> generated = generate_examples(tmp.name, slug='demo', vendor='Acme', app='ConfigKit', platform='posix')
+>>> sorted(p.relative_to(tmp.name).as_posix() for p in generated)[0]
+'.env.example'
+>>> tmp.cleanup()
+```
+
+### `i_should_fail() -> None`
+**Why**
+    Provide a deterministic failure hook for CLI demos and integration tests verifying error handling.
+
+**Behaviour**
+- Always raises `RuntimeError` with the message `"i should fail"`.
 
 **Example**
 ```python
@@ -250,13 +291,14 @@ True
 ```
 
 ### `Config` value object
-**Why**: Acts as the immutable façade returned by `read_config`, preserving provenance while behaving like a mapping.
+**Why**
+    Represent the merged configuration as an immutable, provenance-aware mapping.
 
-**Key Methods**
-- `Config.get(key, default=None)` – dotted-path lookup (`cfg.get("service.timeout")`).
-- `Config.origin(key)` – return provenance metadata for a dotted key or `None`.
-- `Config.to_json(indent=None)` – serialise configuration for logs or debugging.
-- `Config.with_overrides(mapping)` – return a shallow copy with specific top-level overrides (useful in tests).
+**Key methods**
+- `Config.get(key, default=None)` – dotted-path lookup (e.g. `cfg.get("service.timeout")`).
+- `Config.origin(key)` – provenance metadata for a dotted key.
+- `Config.to_json(indent=None)` – serialise to JSON for logging or debugging.
+- `Config.with_overrides(mapping)` – return a new `Config` with top-level overrides applied (useful for tests).
 
 **Example**
 ```python
@@ -269,24 +311,25 @@ True
 '{"service":{"timeout":30}}'
 ```
 
-For shell usage, the CLI replicates these capabilities:
-
-```bash
-lib_layered_config read --vendor Acme --app Demo --slug demo --provenance --indent 2
-```
-
 ## CLI usage
 
-The package installs two entry points (``lib_layered_config`` and ``lib-layered-config``).
-All commands share the global option ``--traceback`` which toggles full Python stack traces
-when something goes wrong. The core subcommands are:
+The package installs two entry points (``lib_layered_config`` and ``lib-layered-config``). All
+commands accept the global flag ``--traceback/--no-traceback`` which controls whether full Python
+tracebacks are rendered on errors (default: summary only). Unless noted, all subcommands emit JSON to
+stdout and non-zero exit codes on failure.
 
-- ``info`` – print installed metadata, version, and project URLs.
-- ``env-prefix <slug>`` – return the canonical environment prefix for a slug (e.g. ``config-kit`` → ``CONFIG_KIT``).
-- ``read`` – execute the layered configuration pipeline and emit JSON (optionally with provenance).
-- ``fail`` – raise a deliberate ``RuntimeError('i should fail')`` to test error handling and traceback output.
+### `info`
+**Purpose**
+    Print distribution metadata so operators can confirm the installed version and related project URLs.
 
-### Inspect metadata
+**Options**
+    None beyond the global ``--traceback`` toggle.
+
+**Output**
+    Human-readable metadata including name, version, required Python range, summary, and any
+    ``Project-URL`` entries declared in the package metadata.
+
+**Example**
 ```bash
 $ lib_layered_config info
 Info for lib_layered_config:
@@ -295,19 +338,38 @@ Info for lib_layered_config:
   Summary         : Cross-platform layered configuration loader for Python
 ```
 
-### Compute an environment prefix
+### `env-prefix <slug>`
+**Purpose**
+    Compute the canonical environment variable prefix for a configuration slug so shell scripts and
+    infrastructure tooling can discover namespaced variables (e.g. ``CONFIG_KIT_SERVICE__PORT``).
+
+**Arguments**
+- ``slug`` *(required positional)* – configuration family identifier (kebab or snake case).
+
+**Example**
 ```bash
 $ lib_layered_config env-prefix config-kit
 CONFIG_KIT
 ```
 
-### Trigger a failure to inspect tracebacks
-```bash
-$ lib_layered_config fail
-Error: i should fail
-```
+### `read`
+**Purpose**
+    Execute the layered configuration pipeline (application → host → user → dotenv → environment) and
+    print the merged configuration as JSON. Optionally includes provenance metadata for each key.
 
-### Read configuration with precedence controls
+**Options**
+- ``--vendor`` *(required)* – vendor namespace used to resolve OS-specific directories.
+- ``--app`` *(required)* – application name combined with the vendor to locate host/user directories.
+- ``--slug`` *(required)* – configuration family identifier; also influences environment prefixes.
+- ``--prefer`` *(repeatable)* – ordered suffix list (no leading dots) prioritising files inside
+  ``config.d`` directories (e.g. ``--prefer toml --prefer json``).
+- ``--start-dir`` *(path, optional)* – directory where the dotenv loader begins its upward search;
+  defaults to the current working directory.
+- ``--indent`` *(int, optional)* – pretty-print JSON with the specified indentation.
+- ``--provenance/--no-provenance`` *(flag, default: ``--no-provenance``)* – when enabled, include a
+  ``{"config": ..., "provenance": ...}`` envelope describing the source layer/path for each key.
+
+**Example**
 ```bash
 $ lib_layered_config read \
     --vendor Acme \
@@ -332,15 +394,80 @@ $ lib_layered_config read \
 }
 ```
 
-Pass ``--start-dir PATH`` when you want the dotenv loader to begin from a specific
-project directory instead of the current working directory. Repeat ``--prefer`` to
-prioritise multiple suffixes inside ``config.d`` (e.g. TOML over JSON). For large
-results, combine ``--indent`` with shell tools like ``jq`` to focus on specific keys.
+Pass ``--start-dir PATH`` to anchor the dotenv search at a project directory, and repeat ``--prefer``
+to control precedence among sibling files in ``config.d`` directories.
 
-## Example config generators (coming soon)
+### `deploy`
+**Purpose**
+    Copy an existing configuration artefact into one or more canonical layer directories (system app,
+    host overrides, user profile) using the same resolver logic as ``read_config``.
 
-Utility functions in `lib_layered_config.examples` (to be implemented in follow-up milestones) will scaffold commented example files for each layer.
+**Options**
+- ``--source`` *(required path)* – file to deploy.
+- ``--vendor`` / ``--app`` *(required)* – identifiers that drive platform-specific target directories.
+- ``--slug`` *(required)* – configuration family name; CLI does not assume defaults.
+- ``--target`` *(repeatable)* – any combination of ``app``, ``host``, ``user``; order determines the
+  deployment attempts.
+- ``--platform`` *(optional)* – override auto-detected platform (accepts ``linux``, ``darwin``,
+  ``win32`` and common aliases).
+- ``--force/--no-force`` *(flag, default: ``--no-force``)* – overwrite existing files when set; skip
+  them otherwise.
 
+**Example**
+```bash
+$ lib_layered_config deploy \
+    --source ./config/app.toml \
+    --vendor Acme \
+    --app Demo \
+    --slug demo \
+    --target app \
+    --target user
+["/etc/demo/config.toml", "/home/user/.config/demo/config.toml"]
+```
+
+### `generate-examples`
+**Purpose**
+    Scaffold the commented example files shipped in ``lib_layered_config.examples`` under a chosen
+    destination directory. Useful for documentation, demos, or quick-start boilerplates.
+
+**Options**
+- ``--destination`` *(required path)* – directory where the example tree should be created (created if
+  absent).
+- ``--slug`` / ``--vendor`` / ``--app`` *(required)* – values injected into filenames and file
+  contents so the examples read naturally.
+- ``--platform`` *(optional)* – choose ``posix`` or ``windows`` explicitly; defaults to the host
+  platform.
+- ``--force/--no-force`` *(flag, default: ``--no-force``)* – overwrite existing example files when set;
+  otherwise only missing files are created.
+
+**Example**
+```bash
+$ lib_layered_config generate-examples \
+    --destination ./examples/demo \
+    --slug demo \
+    --vendor Acme \
+    --app Demo \
+    --platform posix
+[
+  "/absolute/path/examples/demo/etc/demo/config.toml",
+  "/absolute/path/examples/demo/.env.example",
+  ...
+]
+```
+
+### `fail`
+**Purpose**
+    Deliberately raise ``RuntimeError('i should fail')`` to exercise error handling, logging, and
+    traceback formatting.
+
+**Options**
+    None (besides the global ``--traceback`` toggle).
+
+**Example**
+```bash
+$ lib_layered_config fail
+Error: i should fail
+```
 
 ## Further documentation
 

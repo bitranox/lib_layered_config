@@ -33,6 +33,7 @@ def deploy_config(
     targets: Sequence[str],
     slug: str | None = None,
     platform: str | None = None,
+    force: bool = False,
 ) -> list[Path]:
     """Copy *source* into the requested configuration layers without overwriting existing files.
 
@@ -53,12 +54,16 @@ def deploy_config(
         Optional override for the platform. Accepted values are ``"posix"``
         and ``"windows"``. When omitted the running interpreter platform
         is used.
+    force:
+        When ``True`` existing files are overwritten and included in the
+        returned path list. Defaults to ``False`` to preserve any manual
+        edits in place.
 
     Returns
     -------
     list[pathlib.Path]
-        List of destination paths that were created. Existing files are left
-        untouched and therefore omitted from the list.
+        Destination paths that were created or overwritten. When ``force`` is
+        ``False`` existing files remain untouched and therefore are omitted.
 
     Raises
     ------
@@ -72,7 +77,11 @@ def deploy_config(
     if not source_path.is_file():
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
 
-    resolver = DefaultPathResolver(vendor=vendor, app=app, slug=slug or app)
+    resolver_kwargs = {"vendor": vendor, "app": app, "slug": slug or app}
+    if platform is not None:
+        resolver_kwargs["platform"] = platform
+    resolver = DefaultPathResolver(**resolver_kwargs)
+    payload = source_path.read_bytes()
     created: list[Path] = []
     for raw_target in targets:
         target = raw_target.lower()
@@ -82,12 +91,12 @@ def deploy_config(
         destination = _resolve_destination(resolver, target)
         if destination is None:
             continue
-        if destination.exists():
-            continue
         if destination.resolve() == source_path.resolve():
             continue
+        if destination.exists() and not force:
+            continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(source_path.read_bytes())
+        destination.write_bytes(payload)
         created.append(destination)
     return created
 

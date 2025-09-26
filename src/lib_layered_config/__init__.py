@@ -37,7 +37,7 @@ from .core import (
     read_config_raw,
 )
 from .observability import bind_trace_id, get_logger
-from .examples import deploy_config
+from .examples import deploy_config, generate_examples
 from .testing import i_should_fail
 
 __all__ = [
@@ -50,6 +50,7 @@ __all__ = [
     "read_config",
     "read_config_raw",
     "deploy_config",
+    "generate_examples",
     "default_env_prefix",
     "i_should_fail",
     "bind_trace_id",
