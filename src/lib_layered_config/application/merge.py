@@ -116,16 +116,29 @@ def _merge_into(
         dotted = ".".join(current_path)
         if isinstance(value, Mapping):
             existing = target.get(key)
-            if not isinstance(existing, Mapping):
+            if not value:
+                if isinstance(existing, Mapping) and not segments:
+                    continue
                 prefix = dotted
                 for meta_key in list(meta.keys()):
                     if meta_key == prefix or meta_key.startswith(prefix + "."):
                         meta.pop(meta_key, None)
-                container: dict[str, object] = {}
+                target[key] = {}
+                continue
+            created_new = not isinstance(existing, Mapping)
+            if created_new:
+                prefix = dotted
+                for meta_key in list(meta.keys()):
+                    if meta_key == prefix or meta_key.startswith(prefix + "."):
+                        meta.pop(meta_key, None)
+                container = {}
             else:
                 container = dict(existing)
             target[key] = container
             _merge_into(container, meta, value, layer, path, current_path)
+            if created_new and not container:
+                target.pop(key, None)
+                continue
         else:
             prefix = dotted
             for meta_key in list(meta.keys()):

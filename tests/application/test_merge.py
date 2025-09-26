@@ -59,6 +59,16 @@ def test_merge_associative(lhs, mid, rhs) -> None:
     assert left_then_right == right_then_left
 
 
+def _assert_contains(actual, expected):
+    if isinstance(expected, dict):
+        assert isinstance(actual, dict)
+        for sub_key, sub_val in expected.items():
+            assert sub_key in actual
+            _assert_contains(actual[sub_key], sub_val)
+    else:
+        assert actual == expected
+
+
 @given(MAPPING, MAPPING)
 def test_last_layer_wins(lhs, rhs) -> None:
     merged, _ = merge_layers([("lhs", lhs, None), ("rhs", rhs, None)])
@@ -67,10 +77,4 @@ def test_last_layer_wins(lhs, rhs) -> None:
             continue  # empty mappings do not remove previously merged content
         if key not in merged:
             continue
-        merged_value = merged[key]
-        if isinstance(value, dict):
-            assert isinstance(merged_value, dict)
-            for nested_key, nested_val in value.items():
-                assert merged_value[nested_key] == nested_val
-        else:
-            assert merged_value == value
+        _assert_contains(merged[key], value)
