@@ -72,7 +72,7 @@ exclude = [
 ]
 
 [tool.pytest.ini_options]
-addopts = ["--maxfail=1", "--cov=lib_layered_config", "--cov-report=term-missing", "--cov-fail-under=90", "--doctest-modules"]
+addopts = ["--maxfail=1", "--cov=lib_layered_config", "--cov-report=term-missing", "--cov-fail-under=90", "--doctest-modules", "--ignore=scripts/menu.py"]
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 python_files = ["tests/**/test_*.py"]
 
