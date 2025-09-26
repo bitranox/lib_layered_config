@@ -33,10 +33,11 @@ def _cli_environment(tmp_path: Path) -> tuple[Path, dict[str, str]]:
         overrides["LIB_LAYERED_CONFIG_LOCALAPPDATA"] = str(local)
         base = program_data / VENDOR / APP
     elif sys.platform == "darwin":
-        support_root = tmp_path / "Library" / "Application Support"
-        overrides["LIB_LAYERED_CONFIG_MAC_APP_ROOT"] = str(support_root)
-        overrides["LIB_LAYERED_CONFIG_MAC_HOME_ROOT"] = str(support_root)
-        base = support_root / VENDOR / APP
+        app_support = tmp_path / "Library" / "Application Support"
+        home_support = tmp_path / "HomeLibrary" / "Application Support"
+        overrides["LIB_LAYERED_CONFIG_MAC_APP_ROOT"] = str(app_support)
+        overrides["LIB_LAYERED_CONFIG_MAC_HOME_ROOT"] = str(home_support)
+        base = app_support / VENDOR / APP
     else:
         etc_root = tmp_path / "etc"
         overrides["LIB_LAYERED_CONFIG_ETC"] = str(etc_root)

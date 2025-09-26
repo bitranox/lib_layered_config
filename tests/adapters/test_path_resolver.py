@@ -41,7 +41,8 @@ def test_linux_path_resolver(tmp_path: Path, monkeypatch) -> None:
 
     app_paths = list(resolver.app())
     assert app_paths[0].endswith("config.toml")
-    assert any(path.endswith("config.d/10-user.toml") for path in app_paths)
+    normalized = [p.replace("\\", "/") for p in app_paths]
+    assert any(path.endswith("config.d/10-user.toml") for path in normalized)
 
     host_paths = list(resolver.host())
     assert host_paths and host_paths[0].endswith("hosts/test-host.toml")

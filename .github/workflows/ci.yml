@@ -61,7 +61,7 @@ jobs:
         run: |
           python -m pip install pipx
           pipx install dist/*.whl
-          pipx run lib_layered_config env-prefix lib-layered-config
+          pipx run --spec dist/*.whl lib_layered_config env-prefix lib-layered-config
       - name: uv tool install
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
