@@ -101,6 +101,9 @@ env/
 venv/
 ENV/
 .venv/
+# allow the library adapter package despite the ignore rule
+!src/lib_layered_config/adapters/env/
+!src/lib_layered_config/adapters/env/**
 # backups, alternate names
 env.bak/
 venv.bak/
