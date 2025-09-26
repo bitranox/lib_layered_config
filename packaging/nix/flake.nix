@@ -9,7 +9,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
         lib = pkgs.lib;
-        pypkgs = pkgs.python312Packages;
+        pypkgs = pkgs.python310Packages;
 
         hatchlingVendor = pypkgs.buildPythonPackage rec {
           pname = "hatchling";
@@ -72,7 +72,7 @@
 
         devShells.default = pkgs.mkShell {
           packages = [
-            pkgs.python312
+            pkgs.python310
             hatchlingVendor
             libCliExitToolsVendor
             richClickVendor

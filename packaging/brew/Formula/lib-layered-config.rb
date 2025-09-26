@@ -7,7 +7,7 @@ class LibLayeredConfig < Formula
   sha256 "<fill-me>"
   license "MIT"
 
-  depends_on "python@3.12"
+  depends_on "python@3.10"
 
   resource "rich-click" do
     url "https://files.pythonhosted.org/packages/29/c2/f08b5e7c1a33af8a115be640aa0796ba01c4732696da6d2254391376b314/rich_click-1.9.1.tar.gz"
