@@ -13,6 +13,7 @@ Contents
 * :func:`lib_layered_config.examples.deploy.deploy_config`
 * :class:`lib_layered_config.domain.config.Config`
 * Error hierarchy (:class:`ConfigError`, :class:`InvalidFormat`, etc.)
+* Diagnostics helpers (:func:`lib_layered_config.testing.i_should_fail`)
 * Observability bindings (:func:`bind_trace_id`, :func:`get_logger`)
 
 System Role
@@ -37,6 +38,7 @@ from .core import (
 )
 from .observability import bind_trace_id, get_logger
 from .examples import deploy_config
+from .testing import i_should_fail
 
 __all__ = [
     "Config",
@@ -49,6 +51,7 @@ __all__ = [
     "read_config_raw",
     "deploy_config",
     "default_env_prefix",
+    "i_should_fail",
     "bind_trace_id",
     "get_logger",
 ]
