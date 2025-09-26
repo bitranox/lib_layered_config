@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -9,17 +10,47 @@ import lib_cli_exit_tools
 
 from lib_layered_config import cli
 
+VENDOR = "Acme"
+APP = "Demo"
+SLUG = "demo"
+
 
 def _write_toml(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 
+def _cli_environment(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+    """Return the app-layer directory and env overrides for the current platform."""
+
+    overrides: dict[str, str] = {}
+    if sys.platform.startswith("win"):
+        program_data = tmp_path / "ProgramData"
+        appdata = tmp_path / "AppData" / "Roaming"
+        local = tmp_path / "AppData" / "Local"
+        overrides["LIB_LAYERED_CONFIG_PROGRAMDATA"] = str(program_data)
+        overrides["LIB_LAYERED_CONFIG_APPDATA"] = str(appdata)
+        overrides["LIB_LAYERED_CONFIG_LOCALAPPDATA"] = str(local)
+        base = program_data / VENDOR / APP
+    elif sys.platform == "darwin":
+        support_root = tmp_path / "Library" / "Application Support"
+        overrides["LIB_LAYERED_CONFIG_MAC_APP_ROOT"] = str(support_root)
+        overrides["LIB_LAYERED_CONFIG_MAC_HOME_ROOT"] = str(support_root)
+        base = support_root / VENDOR / APP
+    else:
+        etc_root = tmp_path / "etc"
+        overrides["LIB_LAYERED_CONFIG_ETC"] = str(etc_root)
+        base = etc_root / SLUG
+    return base, overrides
+
+
 def test_cli_read_config_outputs_json(tmp_path: Path) -> None:
-    etc_root = tmp_path / "etc"
+    base, env = _cli_environment(tmp_path)
     _write_toml(
-        etc_root / "demo" / "config.toml",
-        """[service]\ntimeout = 15\n""",
+        base / "config.toml",
+        """[service]
+timeout = 15
+""",
     )
     runner = CliRunner()
     result = runner.invoke(
@@ -27,15 +58,15 @@ def test_cli_read_config_outputs_json(tmp_path: Path) -> None:
         [
             "read",
             "--vendor",
-            "Acme",
+            VENDOR,
             "--app",
-            "Demo",
+            APP,
             "--slug",
-            "demo",
+            SLUG,
             "--indent",
             "0",
         ],
-        env={"LIB_LAYERED_CONFIG_ETC": str(etc_root)},
+        env=env,
     )
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -43,10 +74,12 @@ def test_cli_read_config_outputs_json(tmp_path: Path) -> None:
 
 
 def test_cli_read_config_with_provenance(tmp_path: Path) -> None:
-    etc_root = tmp_path / "etc"
+    base, env = _cli_environment(tmp_path)
     _write_toml(
-        etc_root / "demo" / "config.toml",
-        """[feature]\nenabled = true\n""",
+        base / "config.toml",
+        """[feature]
+enabled = true
+""",
     )
     runner = CliRunner()
     result = runner.invoke(
@@ -54,14 +87,14 @@ def test_cli_read_config_with_provenance(tmp_path: Path) -> None:
         [
             "read",
             "--vendor",
-            "Acme",
+            VENDOR,
             "--app",
-            "Demo",
+            APP,
             "--slug",
-            "demo",
+            SLUG,
             "--provenance",
         ],
-        env={"LIB_LAYERED_CONFIG_ETC": str(etc_root)},
+        env=env,
     )
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -91,22 +124,23 @@ def test_cli_info_handles_missing_metadata(monkeypatch) -> None:
 
 def test_cli_main_restores_traceback_flag(tmp_path: Path, monkeypatch) -> None:
     previous_traceback = getattr(lib_cli_exit_tools.config, "traceback", False)
-    etc_root = tmp_path / "etc"
+    base, env = _cli_environment(tmp_path)
     _write_toml(
-        etc_root / "demo" / "config.toml",
+        base / "config.toml",
         "value = 1\n",
     )
-    monkeypatch.setenv("LIB_LAYERED_CONFIG_ETC", str(etc_root))
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
     exit_code = cli.main(
         [
             "--traceback",
             "read",
             "--vendor",
-            "Acme",
+            VENDOR,
             "--app",
-            "Demo",
+            APP,
             "--slug",
-            "demo",
+            SLUG,
         ],
         restore_traceback=True,
     )
