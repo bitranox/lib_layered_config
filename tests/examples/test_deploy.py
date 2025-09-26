@@ -120,3 +120,41 @@ def test_deploy_config_missing_source(tmp_path: Path) -> None:
     missing = tmp_path / "missing.toml"
     with pytest.raises(FileNotFoundError):
         deploy_config(missing, vendor=VENDOR, app=APP, targets=["app"])
+
+
+def test_deploy_config_windows_paths(tmp_path: Path, monkeypatch) -> None:
+    from lib_layered_config.examples import deploy as deploy_module
+
+    source = tmp_path / "config.toml"
+    source.write_text('[service]\nendpoint = "https://api.example.com"\n', encoding="utf-8")
+
+    program_data = tmp_path / "ProgramData"
+    appdata_roaming = tmp_path / "AppData" / "Roaming"
+    local_appdata = tmp_path / "AppData" / "Local"
+    for directory in (program_data, appdata_roaming, local_appdata):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_APPDATA", str(appdata_roaming))
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_LOCALAPPDATA", str(local_appdata))
+
+    class _Resolver(deploy_module.DefaultPathResolver):
+        def __init__(self, **kwargs):
+            super().__init__(platform="win32", hostname="WINHOST", **kwargs)
+
+    monkeypatch.setattr(deploy_module, "DefaultPathResolver", _Resolver)
+
+    deployed = deploy_module.deploy_config(
+        source,
+        vendor="Acme",
+        app="Demo",
+        targets=["app", "host", "user"],
+        slug="demo",
+    )
+
+    relative = sorted(path.relative_to(tmp_path).as_posix() for path in deployed)
+    assert relative == [
+        "AppData/Roaming/Acme/Demo/config.toml",
+        "ProgramData/Acme/Demo/config.toml",
+        "ProgramData/Acme/Demo/hosts/WINHOST.toml",
+    ]

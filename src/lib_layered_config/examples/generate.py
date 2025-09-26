@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+import os
+
 DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 """Filename stub used for host-specific example files (documented in README)."""
 
@@ -58,6 +60,7 @@ def generate_examples(
     vendor: str,
     app: str,
     force: bool = False,
+    platform: str | None = None,
 ) -> list[Path]:
     """Write the canonical example files for each configuration layer.
 
@@ -75,6 +78,9 @@ def generate_examples(
     force:
         When ``True`` existing files are overwritten; otherwise the function
         skips files that already exist.
+    platform:
+        Optional override for the OS layout (``"posix"`` or ``"windows"``).
+        When ``None`` it follows the running interpreter platform.
 
     Returns
     -------
@@ -96,7 +102,8 @@ def generate_examples(
     """
 
     dest = Path(destination)
-    specs = _build_specs(dest, slug=slug, vendor=vendor, app=app)
+    resolved_platform = _normalise_platform(platform)
+    specs = _build_specs(dest, slug=slug, vendor=vendor, app=app, platform=resolved_platform)
     written: list[Path] = []
     for spec in specs:
         path = dest / spec.relative_path
@@ -108,7 +115,7 @@ def generate_examples(
     return written
 
 
-def _build_specs(destination: Path, *, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
+def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platform: str) -> Iterator[ExampleSpec]:
     """Yield :class:`ExampleSpec` instances for each canonical layer.
 
     Why
@@ -122,10 +129,35 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str) -> Iter
 
     Examples
     --------
-    >>> specs = list(_build_specs(Path('.'), slug='demo', vendor='Acme', app='ConfigKit'))
+    >>> specs = list(_build_specs(Path('.'), slug='demo', vendor='Acme', app='ConfigKit', platform='posix'))
     >>> specs[0].relative_path.as_posix()
-    'app/config.toml'
+    'etc/demo/config.toml'
     """
+
+    if platform == "windows":
+        win_app = Path("ProgramData") / vendor / app
+        yield ExampleSpec(
+            win_app / "config.toml",
+            f"""# Application-wide defaults for {slug}\n[service]\nendpoint = \"https://api.example.com\"\ntimeout = 10\n""",
+        )
+        yield ExampleSpec(
+            win_app / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml",
+            """# Host overrides (replace filename with the machine hostname)\n[service]\ntimeout = 15\n""",
+        )
+        win_user = Path("AppData/Roaming") / vendor / app
+        yield ExampleSpec(
+            win_user / "config.toml",
+            f"""# User-specific preferences for {vendor} {app}\n[service]\nretry = 2\n""",
+        )
+        yield ExampleSpec(
+            win_user / "config.d" / "10-override.toml",
+            """# Split overrides live in config.d/ and apply in lexical order\n[service]\nretry = 3\n""",
+        )
+        yield ExampleSpec(
+            Path(".env.example"),
+            f"""# Copy to .env to provide secrets and local overrides\n{slug.replace("-", "_").upper()}_SERVICE__PASSWORD=changeme\n""",
+        )
+        return
 
     linux_slug = slug
     yield ExampleSpec(
@@ -148,3 +180,14 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str) -> Iter
         Path(".env.example"),
         f"""# Copy to .env to provide secrets and local overrides\n{slug.replace("-", "_").upper()}_SERVICE__PASSWORD=changeme\n""",
     )
+
+
+def _normalise_platform(value: str | None) -> str:
+    """Return a canonical platform key for example generation."""
+
+    if value is None:
+        return "windows" if os.name == "nt" else "posix"
+    lowered = value.lower()
+    if lowered.startswith("win"):
+        return "windows"
+    return "posix"

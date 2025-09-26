@@ -32,6 +32,7 @@ def deploy_config(
     app: str,
     targets: Sequence[str],
     slug: str | None = None,
+    platform: str | None = None,
 ) -> list[Path]:
     """Copy *source* into the requested configuration layers without overwriting existing files.
 
@@ -48,6 +49,10 @@ def deploy_config(
     slug:
         Optional slug identifying the configuration family. Defaults to ``app``
         for convenience when a dedicated slug is not available.
+    platform:
+        Optional override for the platform. Accepted values are ``"posix"``
+        and ``"windows"``. When omitted the running interpreter platform
+        is used.
 
     Returns
     -------
