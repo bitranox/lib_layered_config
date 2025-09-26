@@ -249,9 +249,21 @@ def _read_fail_under(pyproject: Path) -> int:
         return 80
 
 
+def _ensure_git_identity() -> None:
+    """Ensure git user identity is configured for helper commits."""
+
+    defaults = {"user.name": "lib_layered_config CI", "user.email": "ci@lib-layered-config.invalid"}
+    for key, value in defaults.items():
+        proc = subprocess.run(["git", "config", "--get", key], capture_output=True, text=True, check=False)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            click.echo(f"[git] configuring {key} for coverage upload")
+            subprocess.run(["git", "config", "--local", key, value], check=False)
+
+
 def _commit_before_upload() -> str:
     """Create a local commit (allow-empty) before uploading coverage."""
 
+    _ensure_git_identity()
     click.echo("[git] Creating local commit before Codecov upload")
 
     commit_message = CODECOV_COMMIT_MESSAGE
