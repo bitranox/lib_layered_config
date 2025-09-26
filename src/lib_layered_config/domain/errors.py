@@ -1,79 +1,73 @@
-"""Domain-level exception hierarchy.
+"""Plainspoken exception hierarchy for configuration failures.
 
 Purpose
--------
-Expose the stable error taxonomy shared by adapters, the composition root, and
-consuming applications. The hierarchy lives in the domain layer to respect the
-Clean Architecture dependency rule (outer layers may depend on inner layers, not
-vice versa).
+    Offer a single, memorable taxonomy that adapters and applications can share
+    when reporting configuration issues. The hierarchy sits in the domain layer
+    so every outer component can depend on it without creating import cycles.
 
 Contents
---------
-* :class:`ConfigError` – umbrella base class for all configuration-related
-  issues.
-* :class:`InvalidFormat` – parsing problems while reading files or env sources.
-* :class:`ValidationError` – reserved for semantic validation failures.
-* :class:`NotFound` – raised when an expected configuration resource is missing.
+    - ``ConfigError``: root for every library-specific exception.
+    - ``InvalidFormat``: wrap syntax/parse failures.
+    - ``ValidationError``: reserve semantic validation failures.
+    - ``NotFound``: signal missing-yet-optional resources.
 
-System Role
------------
-Adapters raise these exceptions to signal recoverable errors (e.g., missing
-files) while the composition root wraps unexpected failures in
-:class:`LayerLoadError`. Callers catch :class:`ConfigError` to handle all library
-failures uniformly.
+System Integration
+    Adapters raise the specialised subclasses; callers often catch
+    :class:`ConfigError` to treat all library failures uniformly. The
+    composition root may wrap adapter-specific exceptions into
+    :class:`ConfigError` derivatives to keep external contracts stable.
 """
 
 from __future__ import annotations
 
+__all__ = [
+    "ConfigError",
+    "InvalidFormat",
+    "ValidationError",
+    "NotFound",
+]
+
 
 class ConfigError(Exception):
-    """Base type for all exceptions emitted by ``lib_layered_config``.
+    """Root of the library's configuration error tree.
 
     Why
-    ----
-    Provide a single catch-all type for consumers that do not need fine-grained
-    handling.
-
-    What
-    ----
-    Subclasses :class:`Exception` without modification so it can be used in
-    ``except ConfigError`` blocks.
+        Gives consumers a single ``except ConfigError`` hook when they do not
+        care about fine-grained failure modes.
+    When
+        Raised directly only in guard rails; most modules raise subclasses.
     """
 
 
 class InvalidFormat(ConfigError):
-    """Raised when an input artifact cannot be parsed into structured data.
+    """Wrap syntactic parsing failures.
 
     Why
-    ----
-    Distinguish between missing files and malformed content.
-
-    Typical Sources
-    ---------------
-    Structured file loaders (:mod:`tomllib`, :mod:`json`, :mod:`yaml`) and dotenv
-    parsing helpers.
+        Communicates that a configuration source exists but could not be parsed
+        into structured data.
+    When
+        Raised by file loaders, dotenv parsing, or other structured parsers.
     """
 
 
 class ValidationError(ConfigError):
-    """Signifies that a syntactically valid configuration failed semantic checks.
+    """Reserved for semantic validation errors.
 
     Why
-    ----
-    Reserve a bucket for future schema validation without breaking the error
-    hierarchy.
-
-    Current Usage
-    -------------
-    Not actively raised yet; maintained for roadmap compatibility.
+        Keeps room for future schema validation without breaking the hierarchy.
+    When
+        Raised once semantic validation is introduced; currently unused on
+        purpose.
     """
 
 
 class NotFound(ConfigError):
-    """Represents missing-but-optional resources (files, directories, etc.).
+    """Signal optional artifacts that could not be located.
 
     Why
-    ----
-    Allow adapters to signal absence without aborting the entire configuration
-    load. The composition root treats this as a non-fatal condition.
+        Allows adapters to note missing files or directories without treating
+        the situation as fatal.
+    When
+        Raised by path resolvers and loaders when an optional resource is
+        absent.
     """

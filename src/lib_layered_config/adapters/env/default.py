@@ -6,20 +6,22 @@ Translate process environment variables into nested configuration dictionaries.
 It implements the port described in ``docs/systemdesign/module_reference.md``
 and forms the final precedence layer in ``lib_layered_config``.
 
-Key behaviours
---------------
-* Enforces a configurable prefix (``default_env_prefix``) so only relevant keys
-  are captured.
-* Supports ``__`` as a nesting delimiter (``FOO__BAR`` → ``{"foo": {"bar": ...}}``).
-* Performs light type coercion for common scalar types (bools, ints, floats,
-  ``null``/``none``).
-* Emits structured logging via :mod:`lib_layered_config.observability` to aid
-  troubleshooting.
+Contents
+    - ``default_env_prefix``: canonical prefix builder for a slug.
+    - ``DefaultEnvLoader``: orchestrates filtering, coercion, and nesting.
+    - ``assign_nested`` / ``_ensure_child_mapping`` / ``_resolve_key``: shared
+      helpers re-used by dotenv parsing to keep shapes aligned.
+    - ``_coerce`` plus tiny predicate helpers that translate strings into
+      Python primitives.
+    - ``_normalize_prefix`` / ``_iter_namespace_entries`` / ``_collect_keys``:
+      small verbs that keep the loader body declarative.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Iterator
+
 from ...observability import log_debug
 
 
@@ -101,17 +103,41 @@ class DefaultEnvLoader:
         True
         """
 
-        prefix = f"{prefix}_" if prefix and not prefix.endswith("_") else prefix
+        normalized_prefix = _normalize_prefix(prefix)
         collected: dict[str, object] = {}
-        for key, value in self._environ.items():
-            if prefix and not key.startswith(prefix):
-                continue
-            stripped = key[len(prefix) :] if prefix else key
-            if not stripped:
-                continue
-            assign_nested(collected, stripped, _coerce(value))
-        log_debug("env_variables_loaded", layer="env", path=None, keys=sorted(collected.keys()))
+        for raw_key, value in _iter_namespace_entries(self._environ.items(), normalized_prefix):
+            assign_nested(collected, raw_key, _coerce(value))
+        log_debug("env_variables_loaded", layer="env", path=None, keys=_collect_keys(collected))
         return collected
+
+
+def _normalize_prefix(prefix: str) -> str:
+    """Ensure the prefix ends with an underscore when non-empty."""
+
+    if prefix and not prefix.endswith("_"):
+        return f"{prefix}_"
+    return prefix
+
+
+def _iter_namespace_entries(
+    items: Iterable[tuple[str, str]],
+    prefix: str,
+) -> Iterator[tuple[str, str]]:
+    """Yield ``(stripped_key, value)`` pairs that match *prefix*."""
+
+    for key, value in items:
+        if prefix and not key.startswith(prefix):
+            continue
+        stripped = key[len(prefix) :] if prefix else key
+        if not stripped:
+            continue
+        yield stripped, value
+
+
+def _collect_keys(mapping: dict[str, object]) -> list[str]:
+    """Return sorted top-level keys for logging."""
+
+    return sorted(mapping.keys())
 
 
 def assign_nested(target: dict[str, object], key: str, value: object) -> None:
@@ -190,14 +216,39 @@ def _coerce(value: str) -> object:
     """
 
     lowered = value.lower()
-    if lowered in {"true", "false"}:
+    if _looks_like_bool(lowered):
         return lowered == "true"
-    if lowered in {"null", "none"}:
+    if _looks_like_null(lowered):
         return None
+    if _looks_like_int(value):
+        return int(value)
+    return _maybe_float(value)
+
+
+def _looks_like_bool(value: str) -> bool:
+    """Return ``True`` when *value* spells a boolean literal."""
+
+    return value in {"true", "false"}
+
+
+def _looks_like_null(value: str) -> bool:
+    """Return ``True`` when *value* represents a null literal."""
+
+    return value in {"null", "none"}
+
+
+def _looks_like_int(value: str) -> bool:
+    """Return ``True`` when *value* can be parsed as an integer."""
+
+    if value.startswith("-"):
+        return value[1:].isdigit()
+    return value.isdigit()
+
+
+def _maybe_float(value: str) -> object:
+    """Return a float when *value* looks numeric; otherwise return the original string."""
+
     try:
-        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
-            return int(value)
-        float_value = float(value)
-        return float_value
+        return float(value)
     except ValueError:
         return value

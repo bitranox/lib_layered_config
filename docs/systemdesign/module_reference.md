@@ -91,6 +91,8 @@ concerns to callers.
 
 ### Solution Overview
 - Instantiate path resolver, dotenv loader, env loader, and file loaders.
+- `_gather_layers` orchestrates layer discovery, invoking `_collect_path_layers`,
+  `_dotenv_layer`, and `_env_layer` to keep precedence readable.
 - Iterate layers in documented order (`app → host → user → dotenv → env`).
 - Merge payloads via the application merge policy and emit observability events.
 - Expose high-level (`read_config`) and low-level (`read_config_raw`) APIs.
@@ -105,6 +107,7 @@ layer.
 - **`LayerLoadError`:** Wraps adapter-specific exceptions with context.
 - **`read_config`:** Facade returning immutable `Config` objects.
 - **`read_config_raw`:** Returns raw merged dictionaries and provenance.
+- **`_gather_layers`:** Collects path, dotenv, and environment layers.
 - **`_load_files`:** Helper to load and filter per-layer config files.
 - **`_order_paths`:** Stable ordering honouring user preferences.
 - **`_FILE_LOADERS`:** Suffix → loader mapping (TOML/JSON/YAML).
@@ -312,7 +315,7 @@ metadata for provenance-aware tooling.
 
 ### Solution Overview
 - `merge_layers` iterates ordered layer payloads and merges into dict/meta pairs.
-- `_merge_into` handles nested containers and provenance recording.
+- `_merge_layer` and `_merge_mapping` handle nested containers and provenance.
 - Uses `deepcopy` to avoid mutating adapter-provided data structures.
 
 ### Architecture Integration
@@ -321,7 +324,7 @@ metadata for provenance-aware tooling.
 **System Dependencies:** Standard library only.
 
 ### Core Components
-`merge_layers`, `_merge_into`.
+`merge_layers`, `_merge_layer`, `_merge_mapping`.
 
 ### Implementation Details
 **Dependencies:** `deepcopy` from stdlib.
@@ -358,8 +361,9 @@ Windows with override hooks for tests.
 
 ### Solution Overview
 - Constructor captures vendor/app/slug plus optional overrides.
-- `_iter_layer` delegates to OS-specific helpers and records observability.
-- `_dotenv_paths` performs upward search and platform-specific additions.
+- `_platform_paths` dispatches to tiny per-OS helpers (`_linux_paths`,
+  `_mac_paths`, `_windows_paths`).
+- `_project_dotenv_paths` and `_platform_dotenv_path` narrate dotenv discovery.
 - `_collect_layer` iterates canonical files and `config.d` directories.
 
 ### Architecture Integration
@@ -381,7 +385,8 @@ Windows with override hooks for tests.
 `tests/adapters/test_path_resolver.py` (platform-specific expectations).
 
 ### Known Issues & Future Improvements
-`_iter_layer` flagged with high complexity; refactoring opportunity noted.
+Monitor platform overrides as new operating systems appear; current helpers keep
+branching minimal.
 
 ### Risks & Considerations
 Platform detection must remain in sync with new OS variants.
@@ -692,6 +697,69 @@ Relies on environment variables matching the path resolver conventions; changes 
 
 ---
 
+## Module: lib_layered_config/examples/__init__.py
+
+### Status
+Complete
+
+### Links & References
+**Feature Requirements:** Centralised example utilities for tutorials and docs.
+**Task/Ticket:** Original example suite scaffolding.
+**Pull Requests:** Initial release; subsequent refactors keep namespace flat.
+**Related Files:**
+- `src/lib_layered_config/examples/deploy.py`
+- `src/lib_layered_config/examples/generate.py`
+
+### Problem Statement
+Expose helper functions and data structures for example projects without asking
+consumers to learn the internal module layout.
+
+### Solution Overview
+- Re-export deployment and generation helpers under a single namespace.
+- Document the exports so tutorials reference stable, intentional names.
+- Keep glue minimal: no additional logic resides in this package surface.
+
+### Architecture Integration
+**App Layer Fit:** Presentation helper layer aimed at documentation and demos.
+**Data Flow:** Pure re-exports; no data processing occurs in this module.
+**System Dependencies:** Relies on sibling modules only.
+
+### Core Components
+- **`deploy_config`:** copy template files into configuration directories.
+- **`ExampleSpec`:** structure describing generated example assets.
+- **`DEFAULT_HOST_PLACEHOLDER`:** placeholder hostname string for templates.
+- **`generate_examples`:** orchestrates example file generation.
+
+### Implementation Details
+**Dependencies:** Imports from `deploy` and `generate` modules.
+**Key Configuration:** None.
+**Database Changes:** N/A.
+**Error Handling Strategy:** Delegated to underlying modules.
+
+### Testing Approach
+**Manual Testing Steps:** Import `lib_layered_config.examples` in REPL/notebook
+and call the re-exported helpers.
+**Automated Tests:** Covered via `tests/examples/test_deploy.py` and
+`tests/unit/test_examples.py` which exercise the underlying modules.
+**Edge Cases:** Ensure re-exports stay aligned when new helpers are added.
+
+### Known Issues & Future Improvements
+**Current Limitations:** Namespace mirrors only core helpers; additional
+examples require manual re-export.
+**Future Enhancements:** Consider exporting convenience builders for notebook
+stories.
+
+### Risks & Considerations
+**Technical Risks:** Low—module contains no behaviour but must stay in sync with
+underlying helpers.
+**User Impact:** Changes to exported names affect documentation code snippets.
+
+### Documentation & Resources
+**Internal References:** README examples section; notebooks under docs.
+**External References:** None.
+
+---
+
 ## Module: lib_layered_config/cli.py
 
 ### Status
@@ -762,5 +830,183 @@ Covered implicitly via CLI tests (`tests/e2e/test_cli.py`) which call `cli.main`
 
 ### Risks & Considerations
 None—module contains no additional logic.
+
+---
+
+## Module: lib_layered_config/testing.py
+
+### Status
+Complete
+
+### Links & References
+**Feature Requirements:** Deterministic diagnostics for observing failure handling.
+**Task/Ticket:** Testing support utilities (historical baseline).
+**Pull Requests:** Initial testing harness introduction.
+**Related Files:**
+- `src/lib_layered_config/cli.py`
+- `tests/unit/test_testing.py`
+
+### Problem Statement
+Integration and CLI examples require a predictable way to surface runtime
+failures so that tooling can assert on tracebacks, exit codes, and messaging
+without wiring bespoke fixtures for every test.
+
+### Solution Overview
+- Provide a single helper that always raises a `RuntimeError` with a stable
+  message.
+- Export the helper via the public package facade so notebooks and CLIs can
+  import identical behaviour.
+- Document the failure message as a constant to prevent drift between tests and
+  examples.
+
+### Architecture Integration
+**App Layer Fit:** Testing/diagnostics support module consumed by presentation
+layer tooling.
+**Data Flow:** No data flow; the helper simply raises an exception when invoked.
+**System Dependencies:** Standard library only.
+
+### Core Components
+- **`FAILURE_MESSAGE`:** Constant containing the canonical failure text.
+- **`i_should_fail`:** Function that raises `RuntimeError(FAILURE_MESSAGE)`.
+
+### Implementation Details
+**Dependencies:** Relies solely on Python's exception mechanism.
+**Key Configuration:** None.
+**Database Changes:** N/A.
+**Error Handling Strategy:** Always raises; callers assert on the message and
+traceback.
+
+### Testing Approach
+**Manual Testing Steps:** Run `lib-layered-config fail` CLI command or import the
+function in a shell to observe the exception.
+**Automated Tests:** `tests/unit/test_testing.py` verifies raising semantics and
+public re-export.
+**Edge Cases:** None; deterministic by design.
+
+### Known Issues & Future Improvements
+**Current Limitations:** Only provides one failure type; additional exception
+variants may be added if future tests demand differentiation.
+**Future Enhancements:** Consider helper for async failure scenarios if needed.
+
+### Risks & Considerations
+**Technical Risks:** Minimal; change to message text would break consumers
+asserting on exact output.
+**User Impact:** Public API contract; message text must remain stable.
+
+### Documentation & Resources
+**Internal References:** README CLI command reference, this module catalogue.
+**External References:** None.
+
+---
+
+---
+
+## Module: lib_layered_config/examples/generate.py
+
+### Status
+Complete
+
+### Links & References
+**Feature Requirements:** Produce filesystem scaffolding for documentation demos.
+**Related Files:**
+- `src/lib_layered_config/examples/__init__.py`
+- `tests/unit/test_examples.py`
+
+### Problem Statement
+Documentation and onboarding flows need reproducible example configurations that
+mirror the recommended directory layout across platforms.
+
+### Solution Overview
+- `generate_examples` orchestrates spec generation and writing through helper
+  verbs (`_write_examples`, `_write_spec`, `_should_write`).
+- `_build_specs` emits platform-specific file specifications so templates stay
+  centralised.
+- `_normalise_platform` maps interpreter/override values to canonical keys.
+
+### Architecture Integration
+**App Layer Fit:** Examples/Docs helper; not used at runtime by the core
+library.
+**Data Flow:** Creates files on disk; no in-process consumption.
+**System Dependencies:** `pathlib`, `os`, standard library only.
+
+### Core Components
+- `ExampleSpec`
+- `generate_examples`
+- `_build_specs`
+
+### Implementation Details
+**Dependencies:** No third-party libraries.
+**Key Configuration:** Platform override parameter; `force` flag for re-runs.
+**Error Handling Strategy:** Best-effort; existing files skipped unless `force`
+  permits overwrites.
+
+### Testing Approach
+`tests/unit/test_examples.py` validates generation across platforms and `force`
+semantics.
+
+### Known Issues & Future Improvements
+Templates are static; future iterations may load examples from user-provided
+manifests.
+
+### Risks & Considerations
+Overwriting files is controlled via the `force` flag; callers must opt in to
+avoid accidental clobbering.
+
+### Documentation & Resources
+README example generation section; notebooks referencing `generate_examples`.
+
+
+## Module: lib_layered_config/examples/deploy.py
+
+### Status
+Complete
+
+### Links & References
+**Feature Requirements:** Copy canonical config files into layered directories.
+**Related Files:**
+- `src/lib_layered_config/examples/generate.py`
+- `tests/examples/test_deploy.py`
+
+### Problem Statement
+Operators and tutorials need a convenience function that deploys a known-good
+configuration file into the same locations that the runtime resolver searches,
+without clobbering existing edits.
+
+### Solution Overview
+- `deploy_config` orchestrates resolution and copy decisions using helper verbs
+  (`_prepare_resolver`, `_destinations_for`, `_should_copy`, `_copy_payload`).
+- Platform-specific destination lookup routes through the same logic as the
+  runtime path resolver for correctness.
+- `force` flag enables overwriting while skipping unchanged files.
+
+### Architecture Integration
+**App Layer Fit:** Example tooling, not part of runtime composition.
+**Data Flow:** Reads a source file and copies bytes to destination locations.
+
+### Core Components
+- `deploy_config`
+- `_resolve_destination` family mirroring adapter logic
+- `_copy_payload`
+
+### Implementation Details
+**Dependencies:** `pathlib`, environment variables, `DefaultPathResolver`.
+**Key Configuration:** `platform` override; honours resolver environment
+variables.
+**Error Handling Strategy:** Raises `FileNotFoundError` for missing source; skips
+unknown targets.
+
+### Testing Approach
+`tests/examples/test_deploy.py` validates target resolution, force behaviour, and
+platform-specific paths.
+
+### Known Issues & Future Improvements
+Current helper supports synchronous file copy only; future versions may stream
+large files or add dry-run support.
+
+### Risks & Considerations
+Overwriting files is optional; callers must set `force=True` explicitly.
+
+### Documentation & Resources
+README deployment section; notebooks using `deploy_config`.
 
 ---

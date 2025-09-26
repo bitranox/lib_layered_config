@@ -7,11 +7,13 @@ onboarding materials. This module belongs to the outer ring of the architecture
 and has no runtime coupling to the composition root.
 
 Contents
---------
-* :data:`DEFAULT_HOST_PLACEHOLDER` – placeholder name used in host examples.
-* :class:`ExampleSpec` – lightweight dataclass describing one generated file.
-* :func:`generate_examples` – public API that writes examples to disk.
-* :func:`_build_specs` – internal helper producing the sequence of specs.
+    - ``DEFAULT_HOST_PLACEHOLDER``: filename stub for host examples.
+    - ``ExampleSpec``: dataclass capturing a relative path and text content.
+    - ``generate_examples``: public orchestration expressed through helper
+      verbs.
+    - ``_build_specs``: yields platform-aware specifications.
+    - ``_write_spec`` / ``_should_write`` / ``_ensure_parent``: tiny filesystem
+      helpers that narrate how files are written.
 
 System Role
 -----------
@@ -104,15 +106,39 @@ def generate_examples(
     dest = Path(destination)
     resolved_platform = _normalise_platform(platform)
     specs = _build_specs(dest, slug=slug, vendor=vendor, app=app, platform=resolved_platform)
+    return _write_examples(dest, specs, force)
+
+
+def _write_examples(destination: Path, specs: Iterator[ExampleSpec], force: bool) -> list[Path]:
+    """Write all ``specs`` under *destination* honouring the *force* flag."""
+
     written: list[Path] = []
     for spec in specs:
-        path = dest / spec.relative_path
-        if path.exists() and not force:
+        path = destination / spec.relative_path
+        if not _should_write(path, force):
             continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(spec.content, encoding="utf-8")
+        _ensure_parent(path)
+        _write_spec(path, spec)
         written.append(path)
     return written
+
+
+def _write_spec(path: Path, spec: ExampleSpec) -> None:
+    """Persist ``spec`` content at *path* using UTF-8 encoding."""
+
+    path.write_text(spec.content, encoding="utf-8")
+
+
+def _should_write(path: Path, force: bool) -> bool:
+    """Return ``True`` when *path* should be written respecting *force*."""
+
+    return force or not path.exists()
+
+
+def _ensure_parent(path: Path) -> None:
+    """Create parent directories for *path* when missing."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platform: str) -> Iterator[ExampleSpec]:

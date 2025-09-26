@@ -7,10 +7,13 @@ protocol by scanning for `.env` files using the search discipline captured in
 ``docs/systemdesign/module_reference.md``.
 
 Contents
---------
-* :class:`DefaultDotEnvLoader` – entry point with optional extra search paths.
-* Helper functions (`_iter_candidates`, `_parse_dotenv`, `_assign_nested`, etc.)
-  that perform parsing and nested assignment.
+    - ``DefaultDotEnvLoader``: public loader that composes the helpers.
+    - ``_iter_candidates`` / ``_build_search_list``: gather candidate paths.
+    - ``_parse_dotenv``: strict parser converting dotenv files into nested dicts.
+    - ``_assign_nested`` and friends: ensure ``__`` nesting mirrors environment
+      variable semantics.
+    - ``_log_dotenv_*``: appetite of logging helpers that narrate discovery and
+      parsing outcomes.
 
 System Role
 -----------
@@ -26,6 +29,27 @@ from typing import Iterable
 
 from ...domain.errors import InvalidFormat
 from ...observability import log_debug, log_error
+
+DOTENV_LAYER = "dotenv"
+"""Layer name used for structured logging calls."""
+
+
+def _log_dotenv_loaded(path: Path, keys: Mapping[str, object]) -> None:
+    """Record a successful dotenv load with sorted key names."""
+
+    log_debug("dotenv_loaded", layer=DOTENV_LAYER, path=str(path), keys=sorted(keys.keys()))
+
+
+def _log_dotenv_missing() -> None:
+    """Record that no dotenv file was discovered."""
+
+    log_debug("dotenv_not_found", layer=DOTENV_LAYER, path=None)
+
+
+def _log_dotenv_error(path: Path, line_number: int) -> None:
+    """Capture malformed line diagnostics."""
+
+    log_error("dotenv_invalid_line", layer=DOTENV_LAYER, path=str(path), line=line_number)
 
 
 class DefaultDotEnvLoader:
@@ -88,16 +112,23 @@ class DefaultDotEnvLoader:
         >>> tmp.cleanup()
         """
 
-        candidates = list(_iter_candidates(start_dir)) + self._extras
+        candidates = _build_search_list(start_dir, self._extras)
         self.last_loaded_path = None
         for candidate in candidates:
-            if candidate.is_file():
-                self.last_loaded_path = str(candidate)
-                data = _parse_dotenv(candidate)
-                log_debug("dotenv_loaded", layer="dotenv", path=self.last_loaded_path, keys=sorted(data.keys()))
-                return data
-        log_debug("dotenv_not_found", layer="dotenv", path=None)
+            if not candidate.is_file():
+                continue
+            self.last_loaded_path = str(candidate)
+            data = _parse_dotenv(candidate)
+            _log_dotenv_loaded(candidate, data)
+            return data
+        _log_dotenv_missing()
         return {}
+
+
+def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Path]:
+    """Return ordered candidate paths including *extras* supplied by adapters."""
+
+    return [*list(_iter_candidates(start_dir)), *extras]
 
 
 def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
@@ -153,7 +184,7 @@ def _parse_dotenv(path: Path) -> Mapping[str, object]:
             if not line or line.startswith("#"):
                 continue
             if "=" not in line:
-                log_error("dotenv_invalid_line", layer="dotenv", path=str(path), line=line_number)
+                _log_dotenv_error(path, line_number)
                 raise InvalidFormat(f"Malformed line {line_number} in {path}")
             key, value = line.split("=", 1)
             key = key.strip()

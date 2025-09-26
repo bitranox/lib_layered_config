@@ -8,10 +8,11 @@ mapping while tracking provenance. Mirrors precedence rules documented in
 reused in alternative composition roots.
 
 Contents
---------
-* :func:`merge_layers` – public entry point that iterates over layer payloads.
-* :func:`_merge_into` – recursive helper that handles nested dictionary updates
-  while recording provenance.
+    - ``merge_layers``: public entry point driven by a simple loop.
+    - ``_merge_layer`` / ``_merge_mapping``: recursive stanzas that keep
+      precedence logic readable.
+    - ``_set_scalar`` / ``_merge_branch`` / ``_clear_branch``: tiny helpers that
+      narrate how provenance is updated when values change.
 
 System Role
 -----------
@@ -72,11 +73,24 @@ def merge_layers(
     meta: dict[str, dict[str, object]] = {}
 
     for layer_name, data, path in layers:
-        _merge_into(merged, meta, deepcopy(dict(data)), layer_name, path, [])
+        _merge_layer(merged, meta, data, layer_name, path)
     return merged, meta
 
 
-def _merge_into(
+def _merge_layer(
+    target: dict[str, object],
+    meta: dict[str, dict[str, object]],
+    payload: Mapping[str, object],
+    layer: str,
+    path: str | None,
+) -> None:
+    """Merge a single *payload* into *target* while tracking provenance."""
+
+    clone = deepcopy(dict(payload))
+    _merge_mapping(target, meta, clone, layer, path, [])
+
+
+def _merge_mapping(
     target: dict[str, object],
     meta: dict[str, dict[str, object]],
     incoming: Mapping[str, object],
@@ -84,65 +98,76 @@ def _merge_into(
     path: str | None,
     segments: list[str],
 ) -> None:
-    """Recursively merge ``incoming`` into ``target`` while recording provenance.
-
-    Why
-    ----
-    Support nested dictionaries without losing track of which layer supplied the
-    final value.
-
-    Parameters
-    ----------
-    target:
-        Dictionary being mutated.
-    meta:
-        Provenance mapping updated alongside ``target``.
-    incoming:
-        Mapping provided by a specific configuration layer.
-    layer:
-        Layer identifier (``"app"``, ``"env"``, etc.).
-    path:
-        Filesystem path associated with ``incoming`` (if any).
-    segments:
-        Accumulator of path segments used to build dotted keys.
-
-    Side Effects
-    ------------
-    Mutates ``target`` and ``meta`` in place.
-    """
+    """Recursively merge ``incoming`` into ``target`` while recording provenance."""
 
     for key, value in incoming.items():
-        current_path = segments + [key]
-        dotted = ".".join(current_path)
+        dotted = _dotted_key(segments, key)
         if isinstance(value, Mapping):
-            existing = target.get(key)
-            if not value:
-                if isinstance(existing, Mapping) and not segments:
-                    continue
-                prefix = dotted
-                for meta_key in list(meta.keys()):
-                    if meta_key == prefix or meta_key.startswith(prefix + "."):
-                        meta.pop(meta_key, None)
-                target[key] = {}
-                continue
-            created_new = not isinstance(existing, Mapping)
-            if created_new:
-                prefix = dotted
-                for meta_key in list(meta.keys()):
-                    if meta_key == prefix or meta_key.startswith(prefix + "."):
-                        meta.pop(meta_key, None)
-                container = {}
-            else:
-                container = dict(existing)
-            target[key] = container
-            _merge_into(container, meta, value, layer, path, current_path)
-            if created_new and not container:
-                target.pop(key, None)
-                continue
+            _merge_branch(target, meta, key, value, dotted, layer, path, segments)
         else:
-            prefix = dotted
-            for meta_key in list(meta.keys()):
-                if meta_key == prefix or meta_key.startswith(prefix + "."):
-                    meta.pop(meta_key, None)
-            target[key] = value
-            meta[dotted] = {"layer": layer, "path": path, "key": dotted}
+            _set_scalar(target, meta, key, value, dotted, layer, path)
+
+
+def _merge_branch(
+    target: dict[str, object],
+    meta: dict[str, dict[str, object]],
+    key: str,
+    value: Mapping[str, object],
+    dotted: str,
+    layer: str,
+    path: str | None,
+    segments: list[str],
+) -> None:
+    """Merge mapping ``value`` into ``target[key]`` and recurse."""
+
+    existing = target.get(key)
+    payload = dict(value)
+    if not value:
+        if isinstance(existing, Mapping) and not segments:
+            return
+        _clear_branch(meta, dotted)
+        target[key] = {}
+        return
+
+    if isinstance(existing, Mapping):
+        container: dict[str, object] = dict(existing)
+        created_new = False
+    else:
+        _clear_branch(meta, dotted)
+        container = {}
+        created_new = True
+
+    target[key] = container
+    _merge_mapping(container, meta, payload, layer, path, segments + [key])
+    if created_new and not container:
+        target.pop(key, None)
+
+
+def _set_scalar(
+    target: dict[str, object],
+    meta: dict[str, dict[str, object]],
+    key: str,
+    value: object,
+    dotted: str,
+    layer: str,
+    path: str | None,
+) -> None:
+    """Assign a scalar value and update provenance for ``dotted``."""
+
+    _clear_branch(meta, dotted)
+    target[key] = value
+    meta[dotted] = {"layer": layer, "path": path, "key": dotted}
+
+
+def _clear_branch(meta: dict[str, dict[str, object]], prefix: str) -> None:
+    """Remove provenance entries that belong to *prefix* or its descendants."""
+
+    for meta_key in list(meta.keys()):
+        if meta_key == prefix or meta_key.startswith(prefix + "."):
+            meta.pop(meta_key, None)
+
+
+def _dotted_key(segments: list[str], key: str) -> str:
+    """Join *segments* and *key* with dots, skipping empties."""
+
+    return ".".join([*segments, key]) if segments else key

@@ -7,13 +7,14 @@ Adapters are small wrappers around ``tomllib``/``json``/``yaml.safe_load`` so
 error handling, observability, and immutability policies live in one place.
 
 Contents
---------
-* :class:`BaseFileLoader` – shared helpers for reading files and validating
-  mapping outputs.
-* :class:`TOMLFileLoader` – loader for the canonical TOML format.
-* :class:`JSONFileLoader` – minimal JSON loader.
-* :class:`YAMLFileLoader` – optional YAML loader (only available when PyYAML is
-  installed).
+    - ``BaseFileLoader``: shared primitives for reading files and asserting
+      mapping outputs.
+    - ``TOMLFileLoader`` / ``JSONFileLoader`` / ``YAMLFileLoader``: thin
+      adapters that delegate to parser-specific helpers.
+    - ``_log_file_read`` / ``_log_file_loaded`` / ``_log_file_invalid``:
+      structured logging helpers reused across loaders.
+    - ``_ensure_yaml_available``: guard ensuring YAML support is present before
+      attempting to parse.
 
 System Role
 -----------
@@ -39,6 +40,48 @@ try:
     import yaml  # type: ignore[import-not-found]
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     yaml = None  # type: ignore[assignment]
+
+
+FILE_LAYER = "file"
+"""Layer label used in structured logging for file-oriented events."""
+
+
+def _log_file_read(path: str, size: int) -> None:
+    """Record that *path* was read with *size* bytes."""
+
+    log_debug("config_file_read", layer=FILE_LAYER, path=path, size=size)
+
+
+def _log_file_loaded(path: str, format_name: str) -> None:
+    """Record a successful parse for *path* and *format_name*."""
+
+    log_debug("config_file_loaded", layer=FILE_LAYER, path=path, format=format_name)
+
+
+def _log_file_invalid(path: str, format_name: str, exc: Exception) -> None:
+    """Capture parser failures for diagnostics."""
+
+    log_error(
+        "config_file_invalid",
+        layer=FILE_LAYER,
+        path=path,
+        format=format_name,
+        error=str(exc),
+    )
+
+
+def _raise_invalid_format(path: str, format_name: str, exc: Exception) -> None:
+    """Log and raise :class:`InvalidFormat` for parser errors."""
+
+    _log_file_invalid(path, format_name, exc)
+    raise InvalidFormat(f"Invalid {format_name.upper()} in {path}: {exc}") from exc
+
+
+def _ensure_yaml_available() -> None:
+    """Raise :class:`NotFound` when optional YAML support is missing."""
+
+    if yaml is None:
+        raise NotFound("PyYAML is required for YAML configuration support")
 
 
 class BaseFileLoader:
@@ -81,7 +124,7 @@ class BaseFileLoader:
         if not file_path.is_file():
             raise NotFound(f"Configuration file not found: {path}")
         payload = file_path.read_bytes()
-        log_debug("config_file_read", path=path, layer="file", size=len(payload))
+        _log_file_read(path, len(payload))
         return payload
 
     @staticmethod
@@ -157,13 +200,12 @@ class TOMLFileLoader(BaseFileLoader):
         """
 
         try:
-            text = self._read(path).decode("utf-8")
-            data = tomllib.loads(text)
+            decoded = self._read(path).decode("utf-8")
+            data = tomllib.loads(decoded)
         except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:  # type: ignore[attr-defined]
-            log_error("config_file_invalid", layer="file", path=path, format="toml", error=str(exc))
-            raise InvalidFormat(f"Invalid TOML in {path}: {exc}") from exc
+            _raise_invalid_format(path, "toml", exc)
         result = self._ensure_mapping(data, path=path)
-        log_debug("config_file_loaded", layer="file", path=path, format="toml")
+        _log_file_loaded(path, "toml")
         return result
 
 
@@ -196,10 +238,9 @@ class JSONFileLoader(BaseFileLoader):
         try:
             data = json.loads(self._read(path))
         except json.JSONDecodeError as exc:
-            log_error("config_file_invalid", layer="file", path=path, format="json", error=str(exc))
-            raise InvalidFormat(f"Invalid JSON in {path}: {exc}") from exc
+            _raise_invalid_format(path, "json", exc)
         result = self._ensure_mapping(data, path=path)
-        log_debug("config_file_loaded", layer="file", path=path, format="json")
+        _log_file_loaded(path, "json")
         return result
 
 
@@ -235,15 +276,12 @@ class YAMLFileLoader(BaseFileLoader):
         ...     Path(tmp.name).unlink()
         """
 
-        if yaml is None:
-            raise NotFound("PyYAML is required for YAML configuration support")
+        _ensure_yaml_available()
         try:
-            data = yaml.safe_load(self._read(path))  # type: ignore[operator]
+            parsed = yaml.safe_load(self._read(path))  # type: ignore[operator]
         except yaml.YAMLError as exc:  # type: ignore[attr-defined]
-            log_error("config_file_invalid", layer="file", path=path, format="yaml", error=str(exc))
-            raise InvalidFormat(f"Invalid YAML in {path}: {exc}") from exc
-        if data is None:
-            data = {}
+            _raise_invalid_format(path, "yaml", exc)
+        data = {} if parsed is None else parsed
         result = self._ensure_mapping(data, path=path)
-        log_debug("config_file_loaded", layer="file", path=path, format="yaml")
+        _log_file_loaded(path, "yaml")
         return result

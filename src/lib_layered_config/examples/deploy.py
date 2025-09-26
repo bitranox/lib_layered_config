@@ -1,17 +1,22 @@
-"""Utilities for deploying configuration files into layered directories.
+"""Deploy configuration artifacts into layered directories.
 
 Purpose
--------
-Copy an existing configuration file into the canonical locations recognised by
-``lib_layered_config`` without overwriting any files that already exist. The
-logic mirrors :class:`lib_layered_config.adapters.path_resolvers.default.DefaultPathResolver`
-so generated files land exactly where :func:`read_config` expects them.
+    Copy a source file into the canonical locations recognised by
+    :func:`lib_layered_config.core.read_config` while avoiding accidental
+    overwrites.
 
-Supported targets are ``"app"``, ``"host"``, and ``"user"`` which correspond to
+Contents
+    - ``deploy_config``: public API orchestrating copy decisions.
+    - ``_prepare_resolver``: builds a path resolver with optional platform
+      override.
+    - ``_destinations_for`` / ``_resolve_destination``: map target names to
+      concrete filesystem paths.
+    - ``_copy_payload`` / ``_should_copy`` / ``_write_bytes``: tiny helpers that
+      narrate how files are written or skipped.
 
-the system-wide, host-specific, and per-user layers respectively. Hostnames are
-detected automatically (or influenced via environment variables mirrored by the
-path resolver).
+System Integration
+    Mirrors the logic from :class:`lib_layered_config.adapters.path_resolvers.default.DefaultPathResolver`
+    ensuring generated files align with the runtime search strategy.
 """
 
 from __future__ import annotations
@@ -77,28 +82,69 @@ def deploy_config(
     if not source_path.is_file():
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
 
-    resolver_kwargs = {"vendor": vendor, "app": app, "slug": slug or app}
-    if platform is not None:
-        resolver_kwargs["platform"] = platform
-    resolver = DefaultPathResolver(**resolver_kwargs)
+    resolver = _prepare_resolver(vendor=vendor, app=app, slug=slug or app, platform=platform)
     payload = source_path.read_bytes()
     created: list[Path] = []
+    for destination in _destinations_for(resolver, targets):
+        if not _should_copy(source_path, destination, force):
+            continue
+        _copy_payload(destination, payload)
+        created.append(destination)
+    return created
+
+
+def _prepare_resolver(
+    *,
+    vendor: str,
+    app: str,
+    slug: str,
+    platform: str | None,
+) -> DefaultPathResolver:
+    """Construct a :class:`DefaultPathResolver` for deployment decisions."""
+
+    kwargs = {"vendor": vendor, "app": app, "slug": slug}
+    if platform is not None:
+        kwargs["platform"] = platform
+    return DefaultPathResolver(**kwargs)
+
+
+def _destinations_for(
+    resolver: DefaultPathResolver,
+    targets: Sequence[str],
+) -> Iterator[Path]:
+    """Yield destination paths for requested *targets* in order."""
+
     for raw_target in targets:
         target = raw_target.lower()
         if target not in _VALID_TARGETS:
             raise ValueError(f"Unsupported deployment target: {raw_target}")
-
         destination = _resolve_destination(resolver, target)
         if destination is None:
             continue
-        if destination.resolve() == source_path.resolve():
-            continue
-        if destination.exists() and not force:
-            continue
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(payload)
-        created.append(destination)
-    return created
+        yield destination
+
+
+def _should_copy(source: Path, destination: Path, force: bool) -> bool:
+    """Return ``True`` when *destination* should be overwritten with *source*."""
+
+    if destination.resolve() == source.resolve():
+        return False
+    if destination.exists() and not force:
+        return False
+    return True
+
+
+def _copy_payload(destination: Path, payload: bytes) -> None:
+    """Create parent directories and write *payload* to *destination*."""
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _write_bytes(destination, payload)
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    """Persist *payload* at *path*."""
+
+    path.write_bytes(payload)
 
 
 def _resolve_destination(resolver: DefaultPathResolver, target: str) -> Path | None:

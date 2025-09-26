@@ -33,7 +33,7 @@ from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping as MappingType, MutableMapping, TypedDict, TypeVar, overload
+from typing import Any, Iterable, Mapping as MappingType, TypedDict, TypeVar, overload
 
 
 class SourceInfo(TypedDict):
@@ -126,8 +126,8 @@ class Config(MappingABC[str, Any]):
         initialisation only.
         """
 
-        object.__setattr__(self, "_data", MappingProxyType(dict(self._data)))
-        object.__setattr__(self, "_meta", MappingProxyType(dict(self._meta)))
+        object.__setattr__(self, "_data", _freeze_mapping(self._data))
+        object.__setattr__(self, "_meta", _freeze_mapping(self._meta))
 
     def __getitem__(self, key: str) -> Any:
         """Return the top-level value stored under *key*.
@@ -292,12 +292,7 @@ class Config(MappingABC[str, Any]):
         'fallback'
         """
 
-        current: Any = self._data
-        for part in key.split("."):
-            if not isinstance(current, MappingABC) or part not in current:
-                return default
-            current = current[part]
-        return current
+        return _resolve_dotted_path(self._data, key, default)
 
     def origin(self, key: str) -> SourceInfo | None:
         """Return provenance for *key* or ``None`` when no layer produced it.
@@ -359,9 +354,33 @@ class Config(MappingABC[str, Any]):
         False
         """
 
-        merged: MutableMapping[str, Any] = dict(self._data)
-        merged.update(overrides)
+        merged = _merge_top_level(self._data, overrides)
         return Config(merged, self._meta)
+
+
+def _freeze_mapping(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return an immutable proxy around *mapping*."""
+
+    return MappingProxyType(dict(mapping))
+
+
+def _merge_top_level(base: Mapping[str, Any], overrides: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply *overrides* to *base* and return a fresh mutable mapping."""
+
+    updated = dict(base)
+    updated.update(overrides)
+    return updated
+
+
+def _resolve_dotted_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:
+    """Resolve *dotted* within *source*, returning *default* when missing."""
+
+    current: Any = source
+    for part in dotted.split("."):
+        if not isinstance(current, MappingABC) or part not in current:
+            return default
+        current = current[part]
+    return current
 
 
 def _deepcopy_mapping(mapping: MappingType[str, Any]) -> dict[str, Any]:

@@ -1,23 +1,21 @@
-"""Filesystem path resolution for configuration layers.
+"""Filesystem path resolution composed of small platform-specific verses.
 
 Purpose
--------
-Implement the :class:`lib_layered_config.application.ports.PathResolver`
-protocol by encapsulating OS-specific search rules. The adapter is the only
-component that understands filesystem conventions, matching the responsibilities
-outlined in ``docs/systemdesign/module_reference.md``.
+    Implement the :class:`lib_layered_config.application.ports.PathResolver`
+    port while keeping operating-system branches readable and testable.
 
 Contents
---------
-* :class:`DefaultPathResolver` – resolves path candidates for each layer.
-* :func:`_collect_layer` – helper that yields canonical files within a base
-  directory.
+    - ``DefaultPathResolver``: public adapter consumed by the composition root.
+    - ``_linux_paths`` / ``_mac_paths`` / ``_windows_paths``: platform poems that
+      describe how each layer is built.
+    - ``_dotenv_paths`` helpers: narrate how ``.env`` locations are discovered
+      near the project root and within OS-specific config directories.
+    - ``_collect_layer``: shared helper that enumerates canonical files within a
+      base directory.
 
-System Role
------------
-Feeds deterministic path lists into :func:`lib_layered_config.core.read_config`.
-It respects environment overrides (for tests and custom deployments) while
-emitting observability events about discovered paths.
+System Integration
+    Produces ordered path lists for the core merge pipeline. All filesystem
+    knowledge stays here so inner layers remain filesystem-agnostic.
 """
 
 from __future__ import annotations
@@ -147,31 +145,24 @@ class DefaultPathResolver:
 
         return list(self._dotenv_paths())
 
-    def _iter_layer(self, layer: str) -> Iterable[str]:  # noqa: C901 - structured by OS
-        """Dispatch to the platform-specific implementation for *layer*.
+    def _iter_layer(self, layer: str) -> Iterable[str]:
+        """Dispatch to the platform-specific implementation for *layer*."""
 
-        Why
-        ----
-        Keep the public methods concise while handling platform branching in one
-        place.
-
-        Side Effects
-        ------------
-        Emits ``path_candidates`` debug logs when matches are found.
-        """
-
-        paths: List[str]
-        if self._is_linux:
-            paths = list(self._linux(layer))
-        elif self._is_macos:
-            paths = list(self._macos(layer))
-        elif self._is_windows:
-            paths = list(self._windows(layer))
-        else:
-            paths = []
+        paths = self._platform_paths(layer)
         if paths:
             log_debug("path_candidates", layer=layer, path=None, count=len(paths))
         return paths
+
+    def _platform_paths(self, layer: str) -> List[str]:
+        """Return discovered paths for *layer* based on the current platform."""
+
+        if self._is_linux:
+            return list(self._linux_paths(layer))
+        if self._is_macos:
+            return list(self._mac_paths(layer))
+        if self._is_windows:
+            return list(self._windows_paths(layer))
+        return []
 
     @property
     def _is_linux(self) -> bool:
@@ -196,7 +187,7 @@ class DefaultPathResolver:
 
         return self.platform.startswith("win")
 
-    def _linux(self, layer: str) -> Iterable[str]:
+    def _linux_paths(self, layer: str) -> Iterable[str]:
         """Yield Linux-specific candidates for *layer*.
 
         Why
@@ -205,21 +196,14 @@ class DefaultPathResolver:
         system design.
         """
 
-        slug = self.slug
-        etc_root = Path(self.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
-        if layer == "app":
-            base = etc_root / slug
-            yield from _collect_layer(base)
-        elif layer == "host":
-            candidate = etc_root / slug / "hosts" / f"{self.hostname}.toml"
-            if candidate.is_file():
-                yield str(candidate)
-        elif layer == "user":
-            xdg = self.env.get("XDG_CONFIG_HOME")
-            base = Path(xdg) if xdg else Path.home() / ".config"
-            yield from _collect_layer(base / slug)
+        builders = {
+            "app": self._linux_app_paths,
+            "host": self._linux_host_paths,
+            "user": self._linux_user_paths,
+        }
+        yield from builders.get(layer, lambda: [])()
 
-    def _macos(self, layer: str) -> Iterable[str]:
+    def _mac_paths(self, layer: str) -> Iterable[str]:
         """Yield macOS-specific candidates for *layer*.
 
         Why
@@ -227,22 +211,14 @@ class DefaultPathResolver:
         Follow macOS Application Support conventions for vendor/app directories.
         """
 
-        vendor = self.vendor
-        app = self.application
-        default_root = Path("/Library/Application Support")
-        base_root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root)) / vendor / app
-        if layer == "app":
-            yield from _collect_layer(base_root)
-        elif layer == "host":
-            candidate = base_root / "hosts" / f"{self.hostname}.toml"
-            if candidate.is_file():
-                yield str(candidate)
-        elif layer == "user":
-            home_default = Path.home() / "Library/Application Support"
-            home_root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default)) / vendor / app
-            yield from _collect_layer(home_root)
+        builders = {
+            "app": self._mac_app_paths,
+            "host": self._mac_host_paths,
+            "user": self._mac_user_paths,
+        }
+        yield from builders.get(layer, lambda: [])()
 
-    def _windows(self, layer: str) -> Iterable[str]:
+    def _windows_paths(self, layer: str) -> Iterable[str]:
         """Yield Windows-specific candidates for *layer*.
 
         Why
@@ -251,32 +227,76 @@ class DefaultPathResolver:
         portable setups.
         """
 
-        vendor = self.vendor
-        app = self.application
-        program_data = Path(
-            self.env.get("LIB_LAYERED_CONFIG_PROGRAMDATA", self.env.get("ProgramData", r"C:\\ProgramData"))
-        )
-        appdata = Path(
+        builders = {
+            "app": self._windows_app_paths,
+            "host": self._windows_host_paths,
+            "user": self._windows_user_paths,
+        }
+        yield from builders.get(layer, lambda: [])()
+
+    def _linux_app_paths(self) -> Iterable[str]:
+        etc_root = Path(self.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
+        yield from _collect_layer(etc_root / self.slug)
+
+    def _linux_host_paths(self) -> Iterable[str]:
+        etc_root = Path(self.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
+        candidate = etc_root / self.slug / "hosts" / f"{self.hostname}.toml"
+        if candidate.is_file():
+            yield str(candidate)
+
+    def _linux_user_paths(self) -> Iterable[str]:
+        xdg = self.env.get("XDG_CONFIG_HOME")
+        base = Path(xdg) if xdg else Path.home() / ".config"
+        yield from _collect_layer(base / self.slug)
+
+    def _mac_app_paths(self) -> Iterable[str]:
+        default_root = Path("/Library/Application Support")
+        root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root))
+        yield from _collect_layer(root / self.vendor / self.application)
+
+    def _mac_host_paths(self) -> Iterable[str]:
+        default_root = Path("/Library/Application Support")
+        root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root))
+        candidate = root / self.vendor / self.application / "hosts" / f"{self.hostname}.toml"
+        if candidate.is_file():
+            yield str(candidate)
+
+    def _mac_user_paths(self) -> Iterable[str]:
+        home_default = Path.home() / "Library/Application Support"
+        home_root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
+        yield from _collect_layer(home_root / self.vendor / self.application)
+
+    def _windows_app_paths(self) -> Iterable[str]:
+        base = self._program_data_root() / self.vendor / self.application
+        yield from _collect_layer(base)
+
+    def _windows_host_paths(self) -> Iterable[str]:
+        base = self._program_data_root() / self.vendor / self.application
+        candidate = base / "hosts" / f"{self.hostname}.toml"
+        if candidate.is_file():
+            yield str(candidate)
+
+    def _windows_user_paths(self) -> Iterable[str]:
+        base = self._appdata_root() / self.vendor / self.application
+        if not base.exists():
+            base = self._localappdata_root() / self.vendor / self.application
+        yield from _collect_layer(base)
+
+    def _program_data_root(self) -> Path:
+        return Path(self.env.get("LIB_LAYERED_CONFIG_PROGRAMDATA", self.env.get("ProgramData", r"C:\\ProgramData")))
+
+    def _appdata_root(self) -> Path:
+        return Path(
             self.env.get("LIB_LAYERED_CONFIG_APPDATA", self.env.get("APPDATA", Path.home() / "AppData" / "Roaming"))
         )
-        local = Path(
+
+    def _localappdata_root(self) -> Path:
+        return Path(
             self.env.get(
-                "LIB_LAYERED_CONFIG_LOCALAPPDATA", self.env.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")
+                "LIB_LAYERED_CONFIG_LOCALAPPDATA",
+                self.env.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"),
             )
         )
-
-        if layer == "app":
-            base = program_data / vendor / app
-            yield from _collect_layer(base)
-        elif layer == "host":
-            candidate = program_data / vendor / app / "hosts" / f"{self.hostname}.toml"
-            if candidate.is_file():
-                yield str(candidate)
-        elif layer == "user":
-            base = appdata / vendor / app
-            if not base.exists():
-                base = local / vendor / app
-            yield from _collect_layer(base)
 
     def _dotenv_paths(self) -> Iterable[str]:
         """Return candidate dotenv paths discovered via upward search and OS-specific directories.
@@ -287,31 +307,32 @@ class DefaultPathResolver:
         directories; both need to be considered to honour precedence rules.
         """
 
+        yield from self._project_dotenv_paths()
+        extra = self._platform_dotenv_path()
+        if extra and extra.is_file():
+            yield str(extra)
+
+    def _project_dotenv_paths(self) -> Iterable[str]:
         seen: set[Path] = set()
-        current = self.cwd
-        for parent in [current, *current.parents]:
-            candidate = parent / ".env"
+        for directory in [self.cwd, *self.cwd.parents]:
+            candidate = directory / ".env"
             if candidate in seen:
                 continue
             seen.add(candidate)
             if candidate.is_file():
                 yield str(candidate)
+
+    def _platform_dotenv_path(self) -> Path | None:
         if self._is_linux:
             base = Path(self.env.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-            extra = base / self.slug / ".env"
-        elif self._is_macos:
+            return base / self.slug / ".env"
+        if self._is_macos:
             home_default = Path.home() / "Library/Application Support"
             home_root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
-            extra = home_root / self.vendor / self.application / ".env"
-        elif self._is_windows:
-            appdata = Path(
-                self.env.get("LIB_LAYERED_CONFIG_APPDATA", self.env.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-            )
-            extra = appdata / self.vendor / self.application / ".env"
-        else:
-            extra = None
-        if extra and extra.is_file():
-            yield str(extra)
+            return home_root / self.vendor / self.application / ".env"
+        if self._is_windows:
+            return self._appdata_root() / self.vendor / self.application / ".env"
+        return None
 
 
 def _collect_layer(base: Path) -> Iterable[str]:

@@ -1,27 +1,21 @@
-"""Composition root for ``lib_layered_config``.
+"""Composition root expressed as a string of tiny orchestration phrases.
 
 Purpose
--------
-Provide the single entry point that orchestrates path resolution, file loading,
-dotenv parsing, environment ingestion, and merge policy enforcement.  The module
-implements the Clean Architecture composition root described in
-``docs/systemdesign/module_reference.md`` and exports only stable, consumer-ready
-APIs.
+    Build the configuration stack by delegating to adapters, then merge the
+    results into immutable value objects that callers can depend on.
 
 Contents
---------
-* :data:`_FILE_LOADERS` – mapping of file suffixes to loader instances.
-* :class:`LayerLoadError` – error raised when a layer fails to materialise.
-* :func:`read_config` – high-level API returning a :class:`Config` instance.
-* :func:`read_config_raw` – lower-level API returning raw data + provenance.
-* :func:`_load_files` / :func:`_order_paths` – internal helpers used by the
-  composition flow.
+    - ``LayerLoadError``: domain-flavoured wrapper for adapter failures.
+    - ``read_config``: public façade returning :class:`Config` objects.
+    - ``read_config_raw``: raw payload access for tooling and orchestration.
+    - ``_FILE_LOADERS`` and helper functions: small verbs that describe each
+      stage of the composition flow (order paths, load files, merge layers,
+      record observability events).
 
-System Role
------------
-This module connects adapters (filesystem, dotenv, environment) with the domain
-value object while emitting structured observability signals.  It is the
-canonical location for adjusting precedence rules or wiring new adapters.
+System Integration
+    Sits at the top of the Clean Architecture onion. Adapters feed data inward;
+    the domain consumes merged results. Every helper keeps effects isolated so
+    the orchestration reads like documentation.
 """
 
 from __future__ import annotations
@@ -37,6 +31,14 @@ from .adapters.path_resolvers.default import DefaultPathResolver
 from .domain.config import Config, EMPTY_CONFIG
 from .domain.errors import ConfigError, InvalidFormat, NotFound, ValidationError
 from .observability import bind_trace_id, log_debug, log_info, make_event
+
+LayerEntry = tuple[str, Mapping[str, object], str | None]
+"""Data structure passed into :func:`merge_layers`.
+
+Why
+    Keeps type annotations compact and narrative when orchestrating the layer
+    stack.
+"""
 
 # Supported structured file loaders keyed by suffix. Consumers can override the
 # mapping by wrapping :func:`read_config_raw` if they need custom formats.
@@ -175,46 +177,162 @@ def read_config_raw(
     True
     """
 
-    resolver = DefaultPathResolver(vendor=vendor, app=app, slug=slug, cwd=Path(start_dir) if start_dir else None)
-    dot_env_loader = DefaultDotEnvLoader(extras=resolver.dotenv())
-    env_loader = DefaultEnvLoader()
+    resolver = _build_resolver(vendor=vendor, app=app, slug=slug, start_dir=start_dir)
+    dotenv_loader, env_loader = _build_loaders(resolver)
 
     bind_trace_id(None)
 
-    layers: list[tuple[str, Mapping[str, object], str | None]] = []
-    for layer_name, paths in (
-        ("app", resolver.app()),
-        ("host", resolver.host()),
-        ("user", resolver.user()),
-    ):
+    layers = _gather_layers(
+        resolver=resolver,
+        prefer=prefer,
+        dotenv_loader=dotenv_loader,
+        env_loader=env_loader,
+        slug=slug,
+        start_dir=start_dir,
+    )
+
+    return _merge_or_empty(layers)
+
+
+def _build_loaders(
+    resolver: DefaultPathResolver,
+) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
+    """Return loaders bound to resolver-provided hints."""
+
+    return DefaultDotEnvLoader(extras=resolver.dotenv()), DefaultEnvLoader()
+
+
+def _gather_layers(
+    *,
+    resolver: DefaultPathResolver,
+    prefer: Sequence[str] | None,
+    dotenv_loader: DefaultDotEnvLoader,
+    env_loader: DefaultEnvLoader,
+    slug: str,
+    start_dir: str | None,
+) -> list[LayerEntry]:
+    """Collect all layer entries in precedence order."""
+
+    layers: list[LayerEntry] = []
+    layers.extend(_collect_path_layers(resolver, prefer))
+    _append_optional(layers, _dotenv_layer(dotenv_loader, start_dir))
+    _append_optional(layers, _env_layer(env_loader, slug))
+    return layers
+
+
+def _build_resolver(
+    *,
+    vendor: str,
+    app: str,
+    slug: str,
+    start_dir: str | None,
+) -> DefaultPathResolver:
+    """Create a path resolver anchored at *start_dir* when provided.
+
+    Why
+        Keeps :func:`read_config_raw` focused on orchestration rather than
+        constructor details.
+    """
+
+    cwd = Path(start_dir) if start_dir else None
+    return DefaultPathResolver(vendor=vendor, app=app, slug=slug, cwd=cwd)
+
+
+def _collect_path_layers(
+    resolver: DefaultPathResolver,
+    prefer: Sequence[str] | None,
+) -> list[LayerEntry]:
+    """Gather layer entries from filesystem-backed locations."""
+
+    collected: list[LayerEntry] = []
+    for layer_name, paths in _iter_path_layers(resolver):
         entries = _load_files(layer_name, paths, prefer)
         if entries:
-            log_debug("layer_loaded", **make_event(layer_name, None, {"files": len(entries)}))
-            layers.extend(entries)
+            _log_layer_loaded(layer_name, None, {"files": len(entries)})
+            collected.extend(entries)
+    return collected
 
-    dotenv_data = dot_env_loader.load(start_dir)
-    if dotenv_data:
-        layers.append(("dotenv", dotenv_data, dot_env_loader.last_loaded_path))
-        log_debug("layer_loaded", **make_event("dotenv", dot_env_loader.last_loaded_path, {"keys": len(dotenv_data)}))
 
-    env_prefix = default_env_prefix(slug)
-    env_data = env_loader.load(env_prefix)
-    if env_data:
-        layers.append(("env", env_data, None))
-        log_debug("layer_loaded", **make_event("env", None, {"keys": len(env_data)}))
+def _iter_path_layers(
+    resolver: DefaultPathResolver,
+) -> Iterable[tuple[str, Iterable[str]]]:
+    """Yield ``(layer_name, paths)`` pairs in precedence order."""
+
+    yield "app", resolver.app()
+    yield "host", resolver.host()
+    yield "user", resolver.user()
+
+
+def _append_optional(layers: list[LayerEntry], entry: LayerEntry | None) -> None:
+    """Append *entry* to *layers* when present."""
+
+    if entry is not None:
+        layers.append(entry)
+
+
+def _dotenv_layer(loader: DefaultDotEnvLoader, start_dir: str | None) -> LayerEntry | None:
+    """Return a dotenv layer entry when data exists."""
+
+    data = loader.load(start_dir)
+    if not data:
+        return None
+    _log_layer_loaded("dotenv", loader.last_loaded_path, {"keys": len(data)})
+    return "dotenv", data, loader.last_loaded_path
+
+
+def _env_layer(loader: DefaultEnvLoader, slug: str) -> LayerEntry | None:
+    """Return an environment layer entry when data exists."""
+
+    prefix = default_env_prefix(slug)
+    data = loader.load(prefix)
+    if not data:
+        return None
+    _log_layer_loaded("env", None, {"keys": len(data)})
+    return "env", data, None
+
+
+def _merge_or_empty(layers: list[LayerEntry]) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    """Return merged output or the empty tuple when no layers existed."""
 
     if not layers:
-        log_info("configuration_empty", layer="none", path=None)
+        _log_configuration_empty()
         return {}, {}
 
     merged = merge_layers(layers)
-    log_info("configuration_merged", layer="final", path=None, total_layers=len(layers))
+    _log_merge_complete(len(layers))
     return merged
 
 
+def _log_layer_loaded(layer: str, path: str | None, details: Mapping[str, object]) -> None:
+    """Emit a debug log that records a layer's successful load."""
+
+    log_debug("layer_loaded", **make_event(layer, path, dict(details)))
+
+
+def _log_configuration_empty() -> None:
+    """Report that no configuration layers produced data."""
+
+    log_info("configuration_empty", layer="none", path=None)
+
+
+def _log_merge_complete(total_layers: int) -> None:
+    """Announce that merging finished with *total_layers* entries."""
+
+    log_info("configuration_merged", layer="final", path=None, total_layers=total_layers)
+
+
+def _log_layer_error(layer: str, path: str, exc: Exception) -> None:
+    """Capture loader errors with structured metadata."""
+
+    _details = {"error": str(exc)}
+    log_debug("layer_error", **make_event(layer, path, _details))
+
+
 def _load_files(
-    layer: str, paths: Iterable[str], prefer: Sequence[str] | None
-) -> list[tuple[str, Mapping[str, object], str | None]]:
+    layer: str,
+    paths: Iterable[str],
+    prefer: Sequence[str] | None,
+) -> list[LayerEntry]:
     """Load all files enumerated for *layer* returning non-empty mappings only.
 
     Why
@@ -238,8 +356,9 @@ def _load_files(
 
     Returns
     -------
-    list[tuple[str, Mapping[str, object], str | None]]
-        Tuples containing the layer name, parsed mapping, and file path.
+    list[LayerEntry]
+        Entries ready for :func:`merge_layers`, each containing the layer name,
+        parsed mapping, and optional filepath.
 
     Side Effects
     ------------
@@ -259,7 +378,7 @@ def _load_files(
     """
 
     ordered_paths = _order_paths(paths, prefer)
-    collected: list[tuple[str, Mapping[str, object], str | None]] = []
+    collected: list[LayerEntry] = []
     for path in ordered_paths:
         loader = _FILE_LOADERS.get(Path(path).suffix.lower())
         if loader is None:
@@ -269,7 +388,7 @@ def _load_files(
         except NotFound:
             continue
         except InvalidFormat as exc:
-            log_debug("layer_error", layer=layer, path=path, error=str(exc))
+            _log_layer_error(layer, path, exc)
             raise LayerLoadError(f"Failed to load {layer} layer file {path}: {exc}") from exc
         if data:
             collected.append((layer, data, path))
