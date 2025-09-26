@@ -4,6 +4,9 @@ import json
 import os
 import textwrap
 from pathlib import Path
+import sys
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 NOTEBOOK_PATH = PROJECT_ROOT / "notebooks" / "Quickstart.ipynb"
@@ -47,6 +50,7 @@ def _iter_code_cells() -> list[str]:
         yield dedented
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="Notebook writes system paths on macOS")
 def test_quickstart_notebook_executes(tmp_path) -> None:
     """Execute every code cell in the Quickstart notebook to guard against regressions."""
     namespace: dict[str, object] = {}

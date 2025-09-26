@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ["3.12", "3.13"]
+        python: ["3.10", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Build wheel
         run: |
           python -m pip install --upgrade pip build
@@ -107,20 +107,19 @@ jobs:
           conda build packaging/conda/recipe --no-test -c conda-forge -c defaults
 
   notebooks:
-    name: Execute notebooks (ubuntu, Python 3.12)
+    name: Execute notebooks (ubuntu, Python 3.13)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Install notebook runner deps
         run: |
           python -m pip install --upgrade pip
           pip install nbclient nbformat ipykernel jupyter_client
           python -m ipykernel install --user --name python3 --display-name "Python 3"
       - name: Execute Quickstart notebook
-        if: ${{ false }}
         env:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
           PIP_NO_INPUT: "1"
@@ -142,10 +141,8 @@ jobs:
 
           with nb_path.open('r', encoding='utf-8') as f:
               nb = nbformat.read(f, as_version=4)
-          # Normalize to ensure required fields like cell ids are present (supports older nbformat return types)
           if normalize is not None:
-              nb_norm = normalize(nb)  # may return notebook or a tuple
-              # pick the first element that looks like a notebook
+              nb_norm = normalize(nb)
               cand = nb_norm
               if isinstance(nb_norm, tuple):
                   for item in nb_norm:
@@ -153,14 +150,12 @@ jobs:
                           cand = item
                           break
               nb = cand
-          # Final guard for robustness
           if isinstance(nb, tuple) or not (hasattr(nb, 'cells') and hasattr(nb, 'metadata')):
               raise SystemExit(f"Unexpected notebook object type after normalize: {type(nb)}")
 
           client = NotebookClient(nb, timeout=900, kernel_name='python3', allow_errors=False)
           client.execute()
 
-          # Optionally write executed notebook artifact (not committed)
           out_path = Path('notebooks/Quickstart-executed.ipynb')
           with out_path.open('w', encoding='utf-8') as f:
               nbformat.write(nb, f)
