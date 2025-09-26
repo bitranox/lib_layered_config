@@ -51,6 +51,17 @@
           doCheck = false;
         };
 
+        tomliVendor = pypkgs.buildPythonPackage rec {
+          pname = "tomli";
+          version = "2.0.1";
+          format = "wheel";
+          src = pkgs.fetchurl {
+            url = "https://files.pythonhosted.org/packages/97/75/10a9ebee3fd790d20926a90a2547f0bf78f371b2f13aa822c759680ca7b9/tomli-2.0.1-py3-none-any.whl";
+            sha256 = "sha256-k53j56YWGvDIh++Rt9QaU+fFocqXYyX0KctG6pvDDsw=";
+          };
+          doCheck = false;
+        };
+
       in
       {
         packages.default = pypkgs.buildPythonPackage {
@@ -59,7 +70,7 @@
           pyproject = true;
           src = ../..;
           nativeBuildInputs = [ hatchlingVendor ];
-          propagatedBuildInputs = [ libCliExitToolsVendor richClickVendor ];
+          propagatedBuildInputs = [ libCliExitToolsVendor richClickVendor tomliVendor ];
 
           meta = with pkgs.lib; {
             description = "Rich-powered logging helpers for colorful terminal output";
@@ -76,6 +87,7 @@
             hatchlingVendor
             libCliExitToolsVendor
             richClickVendor
+            tomliVendor
             pypkgs.pytest
             pkgs.ruff
             pkgs.nodejs

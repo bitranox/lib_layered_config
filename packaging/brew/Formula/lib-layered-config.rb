@@ -19,6 +19,11 @@ class LibLayeredConfig < Formula
     sha256 "0d7e496a139748e1f31ac01f55d583169ca8c3dded1830426e926499d1ae560c"
   end
 
+  resource "tomli" do
+    url "https://files.pythonhosted.org/packages/18/87/302344fed471e44a87289cf4967697d07e532f2421fdaf868a303cbae4ff/tomli-2.2.1.tar.gz"
+    sha256 "cd45e1dc79c835ce60f7404ec8119f2eb06d38b1deba146f07ced3bbc44505ff"
+  end
+
   def install
     virtualenv_install_with_resources
   end
