@@ -48,3 +48,10 @@ def test_generate_examples_paths_windows(tmp_path: Path) -> None:
     }
     assert len(paths) == len(expected)
     assert relative == expected
+
+
+def test_deploy_config_reexported() -> None:
+    from lib_layered_config import deploy_config
+    from lib_layered_config.examples import deploy_config as helper
+
+    assert deploy_config is helper

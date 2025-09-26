@@ -10,6 +10,7 @@ Contents
 --------
 * :func:`lib_layered_config.core.read_config`
 * :func:`lib_layered_config.core.read_config_raw`
+* :func:`lib_layered_config.examples.deploy.deploy_config`
 * :class:`lib_layered_config.domain.config.Config`
 * Error hierarchy (:class:`ConfigError`, :class:`InvalidFormat`, etc.)
 * Observability bindings (:func:`bind_trace_id`, :func:`get_logger`)
@@ -35,6 +36,7 @@ from .core import (
     read_config_raw,
 )
 from .observability import bind_trace_id, get_logger
+from .examples import deploy_config
 
 __all__ = [
     "Config",
@@ -45,6 +47,7 @@ __all__ = [
     "LayerLoadError",
     "read_config",
     "read_config_raw",
+    "deploy_config",
     "default_env_prefix",
     "bind_trace_id",
     "get_logger",
