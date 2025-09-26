@@ -19,7 +19,6 @@ coverage:
 ignore:
   - "tests/**"
   - "packaging/**"
-  - "**/__init__conf__.py"
   - "scripts/**"
 
 comment:

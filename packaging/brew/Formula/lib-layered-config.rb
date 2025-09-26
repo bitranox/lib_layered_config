@@ -1,27 +1,22 @@
 class LibLayeredConfig < Formula
   include Language::Python::Virtualenv
 
-  desc "Rich-powered logging helpers for colorful terminal output"
+  desc "Layered configuration loader for Python applications"
   homepage "https://github.com/bitranox/lib_layered_config"
   url "https://github.com/bitranox/lib_layered_config/archive/refs/tags/v0.0.1.tar.gz"
   sha256 "<fill-me>"
   license "MIT"
 
-  depends_on "python@3.10"
+  depends_on "python@3.12"
 
-  resource "rich" do
-    url "https://files.pythonhosted.org/packages/fe/75/af448d8e52bf1d8fa6a9d089ca6c07ff4453d86c65c145d0a300bb073b9b/rich-14.1.0.tar.gz"
-    sha256 "e497a48b844b0320d45007cdebfeaeed8db2a4f4bcf49f15e455cfc4af11eaa8"
-  end
-
-  resource "click" do
-    url "https://files.pythonhosted.org/packages/46/61/de6cd827efad202d7057d93e0fed9294b96952e188f7384832791c7b2254/click-8.3.0.tar.gz"
-    sha256 "e7b8232224eba16f4ebe410c25ced9f7875cb5f3263ffc93cc3e8da705e229c4"
+  resource "rich-click" do
+    url "https://files.pythonhosted.org/packages/29/c2/f08b5e7c1a33af8a115be640aa0796ba01c4732696da6d2254391376b314/rich_click-1.9.1.tar.gz"
+    sha256 "4f2620589d7287f86265432e6a909de4f281de909fe68d8c835fbba49265d268"
   end
 
   resource "lib_cli_exit_tools" do
-    url "https://files.pythonhosted.org/packages/93/49/8361de4ae5e740a2c63833e7fedfacb4ef46d79e97c17e59f2f44206a648/lib_cli_exit_tools-1.1.1.tar.gz"
-    sha256 "0611b53214052cd2b9d65aa3a0724329ccb6b1b22840c30de3e88e2faf62154c"
+    url "https://files.pythonhosted.org/packages/c0/0a/263aa633ae8926e9c30f28679be58c84691a9e3423863a053aef07d20338/lib_cli_exit_tools-1.3.1.tar.gz"
+    sha256 "0d7e496a139748e1f31ac01f55d583169ca8c3dded1830426e926499d1ae560c"
   end
 
   def install
@@ -29,6 +24,7 @@ class LibLayeredConfig < Formula
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/lib_layered_config --version")
+    output = shell_output("#{bin}/python -c 'import lib_layered_config; print(lib_layered_config.default_env_prefix(\"config-kit\"))'")
+    assert_match "CONFIG_KIT", output
   end
 end

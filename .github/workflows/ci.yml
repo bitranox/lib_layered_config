@@ -14,8 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        # Test against Python 3.10 and the latest 3.x available on Actions runners
-        python: ["3.10", "3.x"]
+        python: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,7 +43,7 @@ jobs:
           python -m venv .venv_wheel
           . .venv_wheel/bin/activate 2>/dev/null || . .venv_wheel/Scripts/activate 2>/dev/null
           pip install dist/*.whl
-          lib_layered_config --version || python -m lib_layered_config --version
+          python -c "from lib_layered_config import default_env_prefix; print(default_env_prefix('lib-layered-config'))"
 
   pipx-uv:
     name: pipx/uv verification (ubuntu)
@@ -62,13 +61,13 @@ jobs:
         run: |
           python -m pip install pipx
           pipx install dist/*.whl
-          lib_layered_config --version
+          pipx run python -c "from lib_layered_config import default_env_prefix; print(default_env_prefix('lib-layered-config'))"
       - name: uv tool install
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.local/share/uv/bin:$PATH"
           uv tool install .
-          lib_layered_config --version
+          uv run python -c "from lib_layered_config import default_env_prefix; print(default_env_prefix('lib-layered-config'))"
 
   # nix and conda packaging builds are disabled for now to keep CI green.
   nix:
@@ -108,13 +107,13 @@ jobs:
           conda build packaging/conda/recipe --no-test -c conda-forge -c defaults
 
   notebooks:
-    name: Execute notebooks (ubuntu, Python 3.10)
+    name: Execute notebooks (ubuntu, Python 3.12)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
       - name: Install notebook runner deps
         run: |
           python -m pip install --upgrade pip

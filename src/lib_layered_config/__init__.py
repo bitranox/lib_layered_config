@@ -1,14 +1,51 @@
-"""Public package surface exposing the stable greetings helper.
+"""Public API surface for ``lib_layered_config``.
 
-The project intentionally keeps the runtime surface area tiny while the richer
-logging utilities are designed. Exporting :func:`hello_world` here allows both
-``import lib_layered_config`` and ``python -m lib_layered_config``
-flows to exercise the same domain function, as documented in
-``docs/systemdesign/module_reference.md``.
+Purpose
+-------
+Expose the curated, stable symbols that consumers need to interact with the
+library: reader functions, value object, error taxonomy, and observability
+helpers.
+
+Contents
+--------
+* :func:`lib_layered_config.core.read_config`
+* :func:`lib_layered_config.core.read_config_raw`
+* :class:`lib_layered_config.domain.config.Config`
+* Error hierarchy (:class:`ConfigError`, :class:`InvalidFormat`, etc.)
+* Observability bindings (:func:`bind_trace_id`, :func:`get_logger`)
+
+System Role
+-----------
+Acts as the frontline module imported by applications, keeping the public
+surface area deliberate and well-documented (see
+``docs/systemdesign/module_reference.md``).
 """
 
 from __future__ import annotations
 
-from .lib_layered_config import hello_world
+from .core import (
+    Config,
+    ConfigError,
+    InvalidFormat,
+    LayerLoadError,
+    NotFound,
+    ValidationError,
+    default_env_prefix,
+    read_config,
+    read_config_raw,
+)
+from .observability import bind_trace_id, get_logger
 
-__all__ = ["hello_world"]
+__all__ = [
+    "Config",
+    "ConfigError",
+    "InvalidFormat",
+    "ValidationError",
+    "NotFound",
+    "LayerLoadError",
+    "read_config",
+    "read_config_raw",
+    "default_env_prefix",
+    "bind_trace_id",
+    "get_logger",
+]

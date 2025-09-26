@@ -47,8 +47,8 @@ _bootstrap-dev:
 test: _bootstrap-dev ## Lint, type-check, run tests with coverage, upload to Codecov
 	$(PY) scripts/test.py --coverage=$(COVERAGE)
 
-run: ## Run module CLI (requires dev install or src on PYTHONPATH)
-	$(PY) scripts/run_cli.py -- --help || true
+run: ## Display default environment prefix for the current slug
+	$(PY) -c "from lib_layered_config import default_env_prefix; print(default_env_prefix("lib-layered-config"))"
 
 version-current: ## Print current version from pyproject.toml
 	$(PY) scripts/version_current.py

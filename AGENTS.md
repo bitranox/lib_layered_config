@@ -2,19 +2,17 @@
 
 ## On session start
 
-- Read following files from directory /media/srv-main/softdev/*/projects/softwarestack/systemprompts and keep their guidance in working memory:
-  - core_programming_solid.md
-  - bash_clean_architecture.md
-  - bash_clean_code.md
-  - bash_small_functions.md
-  - python_solid_architecture_enforcer.md
-  - python_clean_architecture.md
-  - python_clean_code.md
-  - python_small_functions_style.md
-  - python_libraries_to_use.md
-  - python_structure_template.md
-  - self_documenting.md
+Review the system prompt files in `/media/srv-main/softdev/*/projects/softwarestack/systemprompts` and keep their guidance in working memory:
 
+- core_programming_solid.md
+- python_solid_architecture_enforcer.md
+- python_clean_architecture.md
+- python_clean_code.md
+- python_small_functions_style.md
+- python_libraries_to_use.md
+- python_structure_template.md
+- self_documenting.md
+- self_documenting_template.md
 
 always apply those Rules :
 
@@ -38,10 +36,14 @@ when writing or refracturing Python scripts, apply those Rules :
 
 ## Project Structure & Module Organization
 
-- `src/lib_layered_config/`: Python package exposing placeholders for testing.
-- `scripts/`: shared automation (build/test/release) reused from scaffold.
-- `packaging/`: Conda, Homebrew, and Nix specs kept in sync via scripts.
-- `tests/`: placeholder suite skipping until logging features exist.
+- `src/lib_layered_config/domain`: immutable value objects (`Config`), exception hierarchy.
+- `src/lib_layered_config/application`: orchestrators and ports (protocols, merge policy).
+- `src/lib_layered_config/adapters`: boundary implementations (filesystem paths, file loaders, `.env`, env vars) and structured logging.
+- `src/lib_layered_config/core.py`: composition root exposing `read_config` / `read_config_raw`.
+- `src/lib_layered_config/examples`: helper functions for generating example config files.
+- `scripts/`: automation for lint/type/test/build/publish flows (copied from template, adapted for this project).
+- `tests/`: unit, adapter, application, and end-to-end suites.
+- `packaging/`: Conda, Homebrew, and Nix manifests kept in sync with `pyproject.toml`.
 
 ## Build, Test, and Development Commands
 
@@ -58,7 +60,7 @@ when writing or refracturing Python scripts, apply those Rules :
 
 - Single source of truth for the package version is `pyproject.toml` (`[project].version`).
 - Runtime code reads metadata via `importlib.metadata`; do not duplicate the version in code files.
-- On a version bump, update only `pyproject.toml` and the `CHANGELOG.md` entry; do not edit `src/lib_layered_config/__init__conf__.py` for versioning.
+- On a version bump, update only `pyproject.toml` and the `CHANGELOG.md` entry; do not edit `src/bitranox_template_py_cli/__init__conf__.py` for versioning.
 - Tag releases `vX.Y.Z` and push tags; CI will build artifacts and publish when configured.
 
 ### Common Make Targets (Alphabetical)

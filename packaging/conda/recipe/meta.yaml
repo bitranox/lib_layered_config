@@ -23,14 +23,13 @@ build:
 
 requirements:
   host:
-    - python >=3.10
+    - python >=3.12
     - pip
     - hatchling >=1.25
   run:
-    - python >=3.10
-    - click >=8.1
-    - lib_cli_exit_tools >=1.1.1
-    - rich >=13.7
+    - python >=3.12
+    - lib_cli_exit_tools >=1.3.1
+    - rich-click >=1.9.1
 
 test:
   commands:
@@ -41,7 +40,7 @@ about:
   home: https://github.com/bitranox/lib_layered_config
   license: MIT
   license_family: MIT
-  summary: "Rich-powered logging helpers for colorful terminal output"
+  summary: "Layered configuration loader for Python applications"
 
 extra:
   recipe-maintainers:

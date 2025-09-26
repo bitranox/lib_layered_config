@@ -5,188 +5,347 @@
 [![CodeQL](https://github.com/bitranox/lib_layered_config/actions/workflows/codeql.yml/badge.svg)](https://github.com/bitranox/lib_layered_config/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Jupyter](https://img.shields.io/badge/Jupyter-Launch-orange?logo=jupyter)](https://mybinder.org/v2/gh/bitranox/lib_layered_config/HEAD?labpath=notebooks%2FQuickstart.ipynb)
-[![PyPI](https://img.shields.io/pypi/v/lib_layered_config.svg)](https://pypi.org/project/lib_layered_config/)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/lib_layered_config.svg)](https://pypi.org/project/lib_layered_config/)
+[![PyPI](https://img.shields.io/pypi/v/lib-layered-config.svg)](https://pypi.org/project/lib-layered-config/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/lib-layered-config.svg)](https://pypi.org/project/lib-layered-config/)
 [![Code Style: Ruff](https://img.shields.io/badge/Code%20Style-Ruff-46A3FF?logo=ruff&labelColor=000)](https://docs.astral.sh/ruff/)
-[![codecov](https://codecov.io/gh/bitranox/lib_layered_config/graph/badge.svg?token=UFBaUDIgRk)](https://codecov.io/gh/bitranox/lib_layered_config)
-[![Maintainability](https://qlty.sh/badges/041ba2c1-37d6-40bb-85a0-ec5a8a0aca0c/maintainability.svg)](https://qlty.sh/gh/bitranox/projects/lib_layered_config)
+[![codecov](https://codecov.io/gh/bitranox/lib_layered_config/graph/badge.svg)](https://codecov.io/gh/bitranox/lib_layered_config)
+[![Maintainability](https://qlty.sh/gh/bitranox/projects/lib_layered_config/maintainability.svg)](https://qlty.sh/gh/bitranox/projects/lib_layered_config)
 [![Known Vulnerabilities](https://snyk.io/test/github/bitranox/lib_layered_config/badge.svg)](https://snyk.io/test/github/bitranox/lib_layered_config)
 
-Scaffold for Python Projects with registered commandline commands:
-- CLI entry point
-- Exit-code and messaging helpers powered by lib_cli_exit_tools
+A cross-platform configuration loader that deep-merges application defaults, host overrides, user profiles, `.env` files, and environment variables into a single immutable object. The library follows Clean Architecture boundaries so adapters (filesystem, dotenv, env) stay isolated from the domain model.
 
-## Install
+## Why
 
-Pick one of the options below. All methods register the `lib_layered_config` and `lib-layered-config` commands on your PATH.
+- **Deterministic precedence** — order is always `app → host → user → dotenv → env`.
+- **Immutable API** — the returned `Config` value object prevents accidental runtime mutation.
+- **Provenance tracking** — each key stores the layer and path that produced it.
+- **OS-aware paths** — Linux (XDG), macOS, and Windows search strategies are built in.
+- **Optional YAML support** — TOML and JSON are core; enable YAML via the `yaml` extra. Only users who rely on `.yml` files need to install the optional dependency, keeping the default install lightweight and pure-stdlib.
 
-### 1) Standard virtualenv (pip)
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -e .[dev]       # dev install
-# or for runtime only:
-pip install .
-```
-
-### 2) Per-user (no venv)
+## Installation
 
 ```bash
-pip install --user .
+pip install lib_layered_config
+# or with YAML support
+pip install "lib_layered_config[yaml]"
 ```
 
-Note: respects PEP 668; avoid on system Python if “externally managed”. Ensure `~/.local/bin` (POSIX) is on PATH.
+*Only install the `yaml` extra when your deployment actually ships `.yml` files—this keeps the default dependency set pure stdlib and avoids pulling in PyYAML unnecessarily.*
 
-### 3) pipx (isolated, recommended for end users)
+Development tooling (lint, type-check, tests, security) lives behind the `dev` extra:
 
 ```bash
-pipx install .
-pipx upgrade lib_layered_config
-# From Git tag/commit:
-pipx install "git+https://github.com/bitranox/lib_layered_config"
+pip install "lib_layered_config[dev]"
 ```
 
-### 4) uv (fast installer/runner)
+## Quick start
 
-```bash
-uv pip install -e .[dev]
-uv tool install .
-uvx lib_layered_config --help
-```
-
-### 5) From artifacts
-
-```bash
-python -m build
-pip install dist/lib_layered_config-*.whl
-pip install dist/lib_layered_config-*.tar.gz   # sdist
-```
-
-### 6) Poetry / PDM (project-managed envs)
-
-```bash
-# Poetry
-poetry add lib_layered_config     # as dependency
-poetry install                    # for local dev
-
-# PDM
-pdm add lib_layered_config
-pdm install
-```
-
-### 7) From Git via pip (CI-friendly)
-
-```bash
-pip install "git+https://github.com/bitranox/lib_layered_config#egg=lib_layered_config"
-```
-
-### 8) Conda/mamba (optional)
-
-```bash
-mamba create -n lib-layered-config python=3.12 pip
-mamba activate lib-layered-config
-pip install .
-```
-
-### 9) System package managers (optional distribution)
-
-- Homebrew formula (macOS): `brew install lib_layered_config` (if published)
-- Nix: flake/package for reproducible installs
-- Deb/RPM via `fpm` for OS-native packages
-
-## Development
-
-Development workflow, make targets, and release details now live in [DEVELOPMENT.md](DEVELOPMENT.md).
-
-## Usage
-
-The scaffold keeps a CLI entry point so you can validate packaging flows, but it
-currently exposes a single informational command while logging features are
-developed:
-
-```bash
-lib_layered_config info
-lib-layered-config info
-python -m lib_layered_config info
-```
-
-For library use you gain a configurable dataclass and helper stubs that you can
-extend:
+1. Create configuration files in the conventional locations (see the tables below).
+2. Call `read_config` with your vendor, application, and slug identifiers.
 
 ```python
-import lib_layered_config
-
-lib_layered_config.configure(traceback=True, theme="monokai")
-lib_layered_config.print_exception_message("coming soon")  # no-op placeholder
-lib_layered_config.reset_defaults()
+>>> from lib_layered_config import Config, read_config, default_env_prefix
+>>> cfg = Config({"service": {"timeout": 30}}, {"service.timeout": {"layer": "app", "path": "config.toml", "key": "service.timeout"}})
+>>> cfg.get("service.timeout")
+30
+>>> default_env_prefix("config-kit")
+'CONFIG_KIT'
 ```
 
+Calling the real loader wires all adapters together:
 
-## Development
+```python
+from lib_layered_config import read_config
+
+config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit")
+print(config.get("service.endpoint", default="https://api.acme.com"))
+print(config.origin("service.endpoint"))  # {'layer': 'user', 'path': '/home/.../config.toml', 'key': 'service.endpoint'}
+```
+
+## Layer precedence
+
+Later layers override earlier ones **per key** while preserving unrelated settings.
+
+| Precedence | Layer   | Description                                   |
+|------------|---------|-----------------------------------------------|
+| 1          | `app`   | System-wide defaults (e.g., `/etc/<slug>/…`)   |
+| 2          | `host`  | Machine-specific overrides                    |
+| 3          | `user`  | Per-user settings (XDG, macOS, Windows paths) |
+| 4          | `dotenv`| First `.env` encountered (upward search + OS) |
+| 5          | `env`   | Process environment (prefix + `__` nesting)   |
+
+## Default paths
+
+### Linux (XDG)
+- `/etc/<slug>/config.toml`
+- `/etc/<slug>/config.d/*.toml|*.json|*.yaml`
+- `/etc/<slug>/hosts/<hostname>.toml`
+- `$XDG_CONFIG_HOME/<slug>/config.toml` (fallback `~/.config/<slug>/config.toml`)
+- `$XDG_CONFIG_HOME/<slug>/config.d/*.{toml,json,yaml,yml}`
+- `.env` search: current directory upwards + `$XDG_CONFIG_HOME/<slug>/.env`
+
+### macOS
+- `/Library/Application Support/<Vendor>/<App>/config.toml`
+- `/Library/Application Support/<Vendor>/<App>/config.d/*`
+- `/Library/Application Support/<Vendor>/<App>/hosts/<hostname>.toml`
+- `~/Library/Application Support/<Vendor>/<App>/config.toml`
+- `.env` search: current directory upwards + `~/Library/Application Support/<Vendor>/<App>/.env`
+
+### Windows
+- `%ProgramData%\<Vendor>\<App>\config.toml`
+- `%ProgramData%\<Vendor>\<App>\config.d\*`
+- `%ProgramData%\<Vendor>\<App>\hosts\%COMPUTERNAME%.toml`
+- `%APPDATA%\<Vendor>\<App>\config.toml` (fallback `%LOCALAPPDATA%`)
+- `.env` search: current directory upwards + `%APPDATA%\<Vendor>\<App>\.env`
+
+All directory roots accept test-friendly overrides via the environment variables:
+`LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_PROGRAMDATA`, `LIB_LAYERED_CONFIG_APPDATA`, `LIB_LAYERED_CONFIG_LOCALAPPDATA`, `LIB_LAYERED_CONFIG_MAC_APP_ROOT`, and `LIB_LAYERED_CONFIG_MAC_HOME_ROOT`.
+
+## API surface
+
+```python
+from lib_layered_config import (
+    Config,
+    ConfigError,
+    InvalidFormat,
+    ValidationError,
+    NotFound,
+    LayerLoadError,
+    read_config,
+    read_config_raw,
+    default_env_prefix,
+    deploy_config,
+)
+```
+
+### `read_config(*, vendor, app, slug, prefer=None, start_dir=None) -> Config`
+**Why**: Load all configured layers (application, host, user, dotenv, environment) and hand back an immutable `Config` so callers can read settings without knowing how precedence works.
+
+**Parameters**
+- `vendor` *(str)* – organisation or vendor namespace used by path resolvers (`/etc/<vendor>/…`, `%APPDATA%\<vendor>\…`).
+- `app` *(str)* – application name combined with the vendor to build host and user directories.
+- `slug` *(str)* – identifier for the configuration family (also feeds environment prefixes).
+- `prefer` *(Sequence[str] | None)* – optional ordered list of suffixes (e.g. `("toml", "json")`) used to prioritise files inside `config.d` directories.
+- `start_dir` *(str | None)* – directory the dotenv loader should start its upward search from; defaults to the current working directory.
+
+**Returns**: `Config` – immutable mapping with provenance metadata attached.
+
+**Side Effects**: Emits observability events via `lib_layered_config.observability`.
+
+**Example**
+```python
+>>> from pathlib import Path
+>>> from tempfile import TemporaryDirectory
+>>> import os
+>>> tmp = TemporaryDirectory()
+>>> etc_root = Path(tmp.name) / 'etc'
+>>> (etc_root / 'demo').mkdir(parents=True, exist_ok=True)
+>>> _ = (etc_root / 'demo' / 'config.toml').write_text('[service]
+endpoint = "https://api.example.com"
+', encoding='utf-8')
+>>> previous = os.environ.get('LIB_LAYERED_CONFIG_ETC')
+>>> try:
+...     os.environ['LIB_LAYERED_CONFIG_ETC'] = str(etc_root)
+...     cfg = read_config(vendor='Acme', app='Demo', slug='demo')
+...     value = cfg.get('service.endpoint')
+... finally:
+...     if previous is None:
+...         os.environ.pop('LIB_LAYERED_CONFIG_ETC', None)
+...     else:
+...         os.environ['LIB_LAYERED_CONFIG_ETC'] = previous
+...     tmp.cleanup()
+>>> value
+'https://api.example.com'
+```
+
+### `read_config_raw(*, vendor, app, slug, prefer=None, start_dir=None) -> tuple[dict[str, object], dict[str, dict[str, object]]]`
+**Why**: Some tools need the raw `dict` and provenance map (for JSON APIs, dashboards, or templating) instead of the `Config` wrapper.
+
+**Parameters**: Same as `read_config`.
+
+**Returns**: `(merged_data, provenance)` where `merged_data` mirrors the final configuration and `provenance` maps dotted keys to `{"layer", "path", "key"}` records.
+
+**Example**
+```python
+>>> from pathlib import Path
+>>> from tempfile import TemporaryDirectory
+>>> import os
+>>> tmp = TemporaryDirectory()
+>>> etc_root = Path(tmp.name) / 'etc'
+>>> (etc_root / 'demo').mkdir(parents=True, exist_ok=True)
+>>> _ = (etc_root / 'demo' / 'config.toml').write_text('[feature]
+enabled = true
+', encoding='utf-8')
+>>> previous = os.environ.get('LIB_LAYERED_CONFIG_ETC')
+>>> try:
+...     os.environ['LIB_LAYERED_CONFIG_ETC'] = str(etc_root)
+...     data, meta = read_config_raw(vendor='Acme', app='Demo', slug='demo')
+... finally:
+...     if previous is None:
+...         os.environ.pop('LIB_LAYERED_CONFIG_ETC', None)
+...     else:
+...         os.environ['LIB_LAYERED_CONFIG_ETC'] = previous
+...     tmp.cleanup()
+>>> data['feature']['enabled']
+True
+>>> meta['feature.enabled']['layer']
+'app'
+```
+
+### `default_env_prefix(slug: str) -> str`
+**Why**: Translates a slug into the canonical uppercase environment prefix (`demo-service` → `DEMO_SERVICE`) so automation scripts can check the right variables.
+
+**Parameters**: `slug` *(str)* – configuration slug (kebab or snake case).
+
+**Returns**: Uppercase prefix ending with no underscore.
+
+**Example**
+```python
+>>> default_env_prefix('config-kit')
+'CONFIG_KIT'
+```
+
+### `deploy_config(source, *, vendor, app, targets, slug=None) -> list[pathlib.Path]`
+**Why**: Provision configuration artifacts into the canonical layer directories (system app, host overrides, user profiles) without overwriting operator-managed files.
+
+**Parameters**
+- `source` *(str | Path)* – existing configuration file to copy.
+- `vendor` / `app` *(str)* – same identifiers used by `read_config`; drive target locations.
+- `targets` *(Sequence[str])* – any combination of `"app"`, `"host"`, `"user"`; order determines copy attempts.
+- `slug` *(str | None)* – optional slug for directory naming; defaults to `app` when omitted.
+
+**Returns**: list of destination paths that were created. Existing files are left untouched.
+
+**Example**
+```python
+>>> from tempfile import TemporaryDirectory
+>>> from pathlib import Path
+>>> from lib_layered_config.examples import deploy_config
+>>> import os
+>>> tmp = TemporaryDirectory()
+>>> source = Path(tmp.name) / 'base.toml'
+>>> _ = source.write_text('[service]\nendpoint = "https://api.example.com"\n', encoding='utf-8')
+>>> os.environ['LIB_LAYERED_CONFIG_ETC'] = str(Path(tmp.name) / 'etc')
+>>> os.environ['XDG_CONFIG_HOME'] = str(Path(tmp.name) / 'xdg')
+>>> paths = deploy_config(source, vendor='Acme', app='Demo', targets=['app', 'user'], slug='demo')
+>>> sorted(p.name for p in paths)
+['config.toml', 'config.toml']
+>>> tmp.cleanup()
+```
+
+### `i_should_fail() -> None`
+**Why**: Provide a deterministic failure hook for integration tests and CLI demonstrations.
+
+**Behaviour**: Always raises `RuntimeError` with the message `"i should fail"`.
+
+**Example**
+```python
+>>> from lib_layered_config.testing import i_should_fail
+>>> try:
+...     i_should_fail()
+... except RuntimeError as exc:
+...     error_message = str(exc)
+>>> error_message
+'i should fail'
+```
+
+### `Config` value object
+**Why**: Acts as the immutable façade returned by `read_config`, preserving provenance while behaving like a mapping.
+
+**Key Methods**
+- `Config.get(key, default=None)` – dotted-path lookup (`cfg.get("service.timeout")`).
+- `Config.origin(key)` – return provenance metadata for a dotted key or `None`.
+- `Config.to_json(indent=None)` – serialise configuration for logs or debugging.
+- `Config.with_overrides(mapping)` – return a shallow copy with specific top-level overrides (useful in tests).
+
+**Example**
+```python
+>>> cfg = Config({'service': {'timeout': 30}}, {'service.timeout': {'layer': 'env', 'path': None, 'key': 'service.timeout'}})
+>>> cfg.get('service.timeout')
+30
+>>> cfg.origin('service.timeout')
+{'layer': 'env', 'path': None, 'key': 'service.timeout'}
+>>> cfg.to_json()
+'{"service":{"timeout":30}}'
+```
+
+For shell usage, the CLI replicates these capabilities:
 
 ```bash
-make test                 # ruff + pyright + pytest + coverage (default ON)
-SKIP_BOOTSTRAP=1 make test  # skip auto-install of dev deps
-COVERAGE=off make test       # disable coverage locally
-COVERAGE=on make test        # force coverage and generate coverage.xml/codecov.xml
-
-**Automation notes**
-
-- `make test` creates an allow-empty commit (`test: auto commit before Codecov upload`) just before uploading coverage so Codecov receives a concrete revision. If you do not want to keep that commit, run `git reset --soft HEAD~1` or `git commit --amend` once the upload finishes.
-- `make push` prompts for a commit message (or reads `COMMIT_MESSAGE="..."`) and always pushes, creating an empty commit when there are no staged changes. The Textual menu (`make menu → push`) shows the same prompt via an input field.
+lib_layered_config read --vendor Acme --app Demo --slug demo --provenance --indent 2
 ```
 
-### Packaging sync (Conda/Brew/Nix)
+## CLI usage
 
-- `make test` and `make push` automatically align the packaging skeletons in `packaging/` with the current `pyproject.toml`:
-  - Conda: updates `{% set version = "X.Y.Z" %}` and both `python >=X.Y` constraints to match `requires-python`.
-  - Homebrew: updates the source URL tag to `vX.Y.Z` and sets `depends_on "python@X.Y"` to match `requires-python`.
-  - Nix: updates the package `version`, example `rev = "vX.Y.Z"`, and switches `pkgs.pythonXYZPackages` / `pkgs.pythonXYZ` to match the minimum Python version from `requires-python`.
+The package installs two entry points (``lib_layered_config`` and ``lib-layered-config``).
+All commands share the global option ``--traceback`` which toggles full Python stack traces
+when something goes wrong. The core subcommands are:
 
-- To run just the sync without bumping versions: `python scripts/bump_version.py --sync-packaging`.
+- ``info`` – print installed metadata, version, and project URLs.
+- ``env-prefix <slug>`` – return the canonical environment prefix for a slug (e.g. ``config-kit`` → ``CONFIG_KIT``).
+- ``read`` – execute the layered configuration pipeline and emit JSON (optionally with provenance).
+- ``fail`` – raise a deliberate ``RuntimeError('i should fail')`` to test error handling and traceback output.
 
-- On release tags (`v*.*.*`), CI validates that packaging files are consistent with `pyproject.toml` and will fail if they drift.
+### Inspect metadata
+```bash
+$ lib_layered_config info
+Info for lib_layered_config:
+  Version         : 0.0.1
+  Requires-Python : >=3.12
+  Summary         : Cross-platform layered configuration loader for Python
+```
 
-## Versioning & Metadata
+### Compute an environment prefix
+```bash
+$ lib_layered_config env-prefix config-kit
+CONFIG_KIT
+```
 
-- Single source of truth for package metadata is `pyproject.toml` (`[project]`).
-- The library reads its own installed metadata at runtime via `importlib.metadata` (see `src/lib_layered_config/__init__conf__.py`).
-- Do not duplicate the version in code; bump only `pyproject.toml` and update `CHANGELOG.md`.
-- Console script name is discovered from entry points; defaults to `lib_layered_config`.
+### Trigger a failure to inspect tracebacks
+```bash
+$ lib_layered_config fail
+Error: i should fail
+```
 
-## Packaging Skeletons
+### Read configuration with precedence controls
+```bash
+$ lib_layered_config read \
+    --vendor Acme \
+    --app Demo \
+    --slug demo \
+    --prefer toml --prefer json \
+    --indent 2 \
+    --provenance
+{
+  "config": {
+    "service": {
+      "endpoint": "https://api.example.com"
+    }
+  },
+  "provenance": {
+    "service.endpoint": {
+      "layer": "app",
+      "path": "/etc/demo/config.toml",
+      "key": "service.endpoint"
+    }
+  }
+}
+```
 
-Starter files for package managers live under `packaging/`:
+Pass ``--start-dir PATH`` when you want the dotenv loader to begin from a specific
+project directory instead of the current working directory. Repeat ``--prefer`` to
+prioritise multiple suffixes inside ``config.d`` (e.g. TOML over JSON). For large
+results, combine ``--indent`` with shell tools like ``jq`` to focus on specific keys.
 
-- Conda: `packaging/conda/recipe/meta.yaml` (update version + sha256)
-- Homebrew: `packaging/brew/Formula/lib-layered-config.rb` (fill sha256 and vendored resources)
-- Nix: `packaging/nix/flake.nix` (use working tree or pin to GitHub rev with sha256)
+## Example config generators (coming soon)
 
-These are templates; fill placeholders (e.g., sha256) before publishing. Version and Python constraints are auto-synced from `pyproject.toml` by `make test`/`make push` and during version bumps.
+Utility functions in `lib_layered_config.examples` (to be implemented in follow-up milestones) will scaffold commented example files for each layer.
 
-## CI & Publishing
 
-GitHub Actions workflows are included:
+## Further documentation
 
-- `.github/workflows/ci.yml` — lint/type/test, build wheel/sdist, verify pipx and uv installs, Nix and Conda builds (CI-only; no local install required).
-- `.github/workflows/release.yml` — on tags `v*.*.*`, builds artifacts and publishes to PyPI when `PYPI_API_TOKEN` secret is set.
-
-To publish a release:
-1. Bump `pyproject.toml` version and update `CHANGELOG.md`.
-2. Tag the commit (`git tag v0.1.1 && git push --tags`).
-3. Ensure `PYPI_API_TOKEN` secret is configured in the repo.
-4. Release workflow uploads wheel/sdist to PyPI.
-
-Conda/Homebrew/Nix: use files in `packaging/` to submit to their ecosystems. CI also attempts builds to validate recipes, but does not publish automatically.
-
-### Local Codecov uploads
-
-- `make test` (with coverage enabled) generates `coverage.xml` and `codecov.xml`, then attempts to upload via the Codecov CLI or the bash uploader.
-- For private repos, set `CODECOV_TOKEN` (see `.env.example`) or export it in your shell.
-- For public repos, a token is typically not required.
-- Because Codecov requires a revision, the test harness commits (allow-empty) immediately before uploading. Remove or amend that commit after the run if you do not intend to keep it.
-
-## License
-
-MIT
+- [CHANGELOG](CHANGELOG.md) — user-facing release notes.
+- [CONTRIBUTING](CONTRIBUTING.md) — guidelines for issues, pull requests, and coding style.
+- [DEVELOPMENT](DEVELOPMENT.md) — local tooling, recommended workflow, and release checklist.
+- [LICENSE](LICENSE) — project licensing details (MIT).
+- [Module Reference](docs/systemdesign/module_reference.md) — architecture-aligned module-by-module responsibilities.

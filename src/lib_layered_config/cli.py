@@ -1,62 +1,81 @@
-"""CLI adapter wiring the domain stubs into a Click-powered interface.
+"""CLI adapter for ``lib_layered_config`` built on ``lib_cli_exit_tools``.
 
 Purpose
 -------
-Expose a stable command-line surface so tooling, documentation, and packaging
-automation can be exercised while the richer logging helpers are being built.
-By keeping the CLI thin and delegating behavior to
-``lib_layered_config.lib_layered_config`` the transport stays aligned
-with the Clean Architecture boundaries referenced in
-``docs/systemdesign/module_reference.md``.
+Expose the layered configuration reader via a first-class command line
+interface so operators can inspect precedence outcomes without writing Python
+code. The CLI mirrors the methodology used in ``bitranox_template_py_cli`` while
+adapting the commands to the configuration domain (``read-config``,
+``env-prefix``, etc.).
 
 Contents
 --------
-* :data:`CLICK_CONTEXT_SETTINGS` – shared Click settings ensuring consistent
-  ``--help`` behavior across commands.
-* :func:`cli` – root command group that applies global options and syncs the
-  ``lib_cli_exit_tools`` configuration.
-* :func:`cli_main` – fallback invoked when no subcommand is provided; calls
-  the domain placeholder ``main`` helper.
-* :func:`cli_info`, :func:`cli_hello`, :func:`cli_fail` – subcommands covering
-  metadata printing, success path, and failure path.
-* :func:`main` – composition helper that defers to ``lib_cli_exit_tools`` for
-  exit-code normalization while restoring the global traceback preference.
+* :data:`CLICK_CONTEXT_SETTINGS` – shared Click settings ensuring ``-h`` works.
+* :func:`cli` – root command that wires global traceback handling into
+  ``lib_cli_exit_tools``.
+* :func:`cli_info` – prints distribution metadata for quick diagnostics.
+* :func:`cli_env_prefix` – helper exposing :func:`lib_layered_config.core.default_env_prefix`.
+* :func:`cli_read_config` – calls :func:`lib_layered_config.core.read_config` and
+  formats the result as JSON (optionally with provenance).
+* :func:`main` – entry point used by ``console_scripts`` registration.
 
 System Role
 -----------
-The CLI is the primary adapter for local development workflows; packaging
-targets register the console script defined in :mod:`lib_layered_config.__init__conf__`.
-Other transports (HTTP/TUI) can remain consistent by reusing the same domain
-helpers documented here.
+The CLI lives in the outermost layer of the Clean Architecture stack. It
+invokes the composition root (``read_config``) and never reaches into adapter
+implementation details directly. ``lib_cli_exit_tools`` centralises the exit code
+strategy so all commands behave consistently across shells and CI.
 """
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
-
-import click
+import json
+import sys
+from importlib import metadata
+from pathlib import Path
+from typing import Final, Optional, Sequence
 
 import lib_cli_exit_tools
+import rich_click as click
 
-from . import __init__conf__
-from .lib_layered_config import hello_world as _hello_world
-from .lib_layered_config import i_should_fail as _fail
-from .lib_layered_config import main as _domain_main
+from .core import default_env_prefix as _default_env_prefix
+from .core import read_config, read_config_raw
+from .testing import i_should_fail
 
-# Maintain a single help option map so every command advertises ``-h`` and
-# ``--help`` consistently; Click's default only exposes ``--help``.
-CLICK_CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])  # noqa: C408
+CLICK_CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+_TRACEBACK_SUMMARY_LIMIT: Final[int] = 500
+_TRACEBACK_VERBOSE_LIMIT: Final[int] = 10_000
+
+
+def _resolve_version() -> str:
+    """Return the installed package version with sensible fallbacks.
+
+    Why
+        ``click.version_option`` requires a string at decoration time. Fetching
+        metadata lazily avoids hard-coding the version and keeps editable installs
+        working without additional wiring.
+
+    Returns
+    -------
+    str
+        Distribution version if available, otherwise ``"0.0.0"``.
+    """
+
+    try:
+        return metadata.version("lib_layered_config")
+    except metadata.PackageNotFoundError:
+        return "0.0.0"
 
 
 @click.group(
-    help=__init__conf__.title,
+    help="Immutable layered configuration reader",
     context_settings=CLICK_CONTEXT_SETTINGS,
-    invoke_without_command=True,
+    invoke_without_command=False,
 )
 @click.version_option(
-    version=__init__conf__.version,
-    prog_name=__init__conf__.shell_command,
-    message=f"{__init__conf__.shell_command} version {__init__conf__.version}",
+    version=_resolve_version(),
+    prog_name="lib_layered_config",
+    message="lib_layered_config version %(version)s",
 )
 @click.option(
     "--traceback/--no-traceback",
@@ -66,197 +85,174 @@ CLICK_CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])  # noqa: C408
 )
 @click.pass_context
 def cli(ctx: click.Context, traceback: bool) -> None:
-    """Root command storing global flags and syncing shared traceback state.
+    """Root command configuring traceback handling for all subcommands.
 
     Why
-        The CLI must provide a switch for verbose tracebacks so developers can
-        toggle diagnostic depth without editing configuration files.
+        Downstream helpers (``lib_cli_exit_tools`` and command handlers) need the
+        traceback preference so they can render either summary tracebacks or the
+        full stack when debugging.
 
     What
-        Ensures a dict-based context, stores the ``traceback`` flag, and mirrors
-        the value into ``lib_cli_exit_tools.config.traceback`` so downstream
-        helpers observe the preference. When no subcommand is requested the
-        function delegates to :func:`cli_main` to exercise the sanctioned
-        default behavior.
+        Ensures the Click context exists, stores the preference, and mirrors it
+        into :mod:`lib_cli_exit_tools.config` which the shared ``main`` helper
+        reads when formatting exceptions.
 
     Side Effects
-        Mutates :mod:`lib_cli_exit_tools.config` to reflect the requested
-        traceback mode.
-
-    Examples
-    --------
-    >>> from click.testing import CliRunner
-    >>> runner = CliRunner()
-    >>> result = runner.invoke(cli, ["hello"])
-    >>> result.exit_code
-    0
-    >>> "Hello World" in result.output
-    True
+        Mutates ``lib_cli_exit_tools.config.traceback`` and
+        ``lib_cli_exit_tools.config.traceback_force_color``.
     """
 
     ctx.ensure_object(dict)
     ctx.obj["traceback"] = traceback
     lib_cli_exit_tools.config.traceback = traceback
-    if ctx.invoked_subcommand is None:
-        cli_main()
-        return None
-
-
-def cli_main() -> None:
-    """Run the domain placeholder when the CLI is invoked without a command.
-
-    Why
-        Some automation scripts and shell users expect bare invocations to
-        perform a sensible default action. While the domain layer currently
-        exposes only a no-op `main`, calling it here establishes the contract
-        and keeps future extensions discoverable.
-
-    What
-        Delegates to :func:`lib_layered_config.lib_layered_config.main`
-        so the sanctioned entry point is exercised even when no subcommand is
-        chosen. The helper returns ``None`` and produces no output today.
-
-    Side Effects
-        None. The domain placeholder intentionally avoids I/O to keep imports
-        deterministic.
-
-    Examples
-    --------
-    >>> cli_main()
-
-    """
-
-    _domain_main()
+    lib_cli_exit_tools.config.traceback_force_color = traceback
 
 
 @cli.command("info", context_settings=CLICK_CONTEXT_SETTINGS)
 def cli_info() -> None:
-    """Print resolved metadata so users can inspect installation details.
+    """Print basic distribution metadata so users can confirm installation."""
 
-    Why
-        Surface the distribution metadata that installers use (name, version,
-        homepage, etc.) without requiring developers to inspect the
-        ``pyproject.toml`` or package metadata manually.
-
-    What
-        Delegates to :func:`lib_layered_config.__init__conf__.print_info`
-        which formats the metadata block.
-
-    Side Effects
-        Writes to ``stdout``.
-
-    Examples
-    --------
-    >>> from click.testing import CliRunner
-    >>> runner = CliRunner()
-    >>> info_result = runner.invoke(cli, ["info"])
-    >>> info_result.exit_code
-    0
-    >>> info_result.output.splitlines()[0]
-    'Info for lib_layered_config:'
-    """
-
-    __init__conf__.print_info()
+    try:
+        meta = metadata.metadata("lib_layered_config")
+    except metadata.PackageNotFoundError:
+        click.echo("lib_layered_config (metadata unavailable)")
+        return
+    click.echo(f"Info for {meta.get('Name', 'lib_layered_config')}:")
+    click.echo(f"  Version         : {meta.get('Version', _resolve_version())}")
+    click.echo(f"  Requires-Python : {meta.get('Requires-Python', '>=3.12')}")
+    summary = meta.get("Summary")
+    if summary:
+        click.echo(f"  Summary         : {summary}")
+    for entry in meta.get_all("Project-URL") or []:
+        click.echo(f"  {entry}")
 
 
-@cli.command("hello", context_settings=CLICK_CONTEXT_SETTINGS)
-def cli_hello() -> None:
-    """Demonstrate the success path by calling the shared greeting helper.
-
-    Why
-        Provides a trivial success scenario so CLI smoke tests and onboarding
-        docs can verify the scaffold quickly.
-
-    What
-        Calls :func:`lib_layered_config.lib_layered_config.hello_world`.
-
-    Side Effects
-        Writes the greeting to ``stdout`` via the helper.
+@cli.command("env-prefix", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.argument("slug")
+def cli_env_prefix(slug: str) -> None:
+    """Compute the canonical environment prefix for *slug*.
 
     Examples
     --------
     >>> from click.testing import CliRunner
     >>> runner = CliRunner()
-    >>> hello_result = runner.invoke(cli, ["hello"])
-    >>> hello_result.output.strip()
-    'Hello World'
+    >>> result = runner.invoke(cli, ["env-prefix", "config-kit"])
+    >>> result.output.strip()
+    'CONFIG_KIT'
     """
 
-    _hello_world()
+    click.echo(_default_env_prefix(slug))
 
 
 @cli.command("fail", context_settings=CLICK_CONTEXT_SETTINGS)
 def cli_fail() -> None:
-    """Trigger the intentional failure helper to test error handling.
+    """Trigger a deterministic error for testing traceback handling.
 
-    Why
-        Ensures the CLI can propagate and format errors consistently,
-        especially when users toggle ``--traceback``.
-
-    What
-        Calls :func:`lib_layered_config.lib_layered_config.i_should_fail`
-        which always raises ``RuntimeError``.
-
-    Side Effects
-        Raises ``RuntimeError``.
-
-    Examples
-    --------
-    >>> from click.testing import CliRunner
-    >>> runner = CliRunner()
-    >>> fail_result = runner.invoke(cli, ["fail"])
-    >>> fail_result.exit_code != 0
-    True
-    >>> isinstance(fail_result.exception, RuntimeError)
-    True
+    This mirrors the helper exposed by `lib_layered_config.testing.i_should_fail`.
     """
 
-    _fail()
+    i_should_fail()
+
+
+@cli.command("read", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.option("--vendor", required=True, help="Vendor namespace (e.g. organisation name)")
+@click.option("--app", required=True, help="Application name used for host/user directories")
+@click.option("--slug", required=True, help="Slug identifying the configuration set")
+@click.option(
+    "--prefer",
+    multiple=True,
+    help="Preferred file suffix ordering for config.d entries (repeatable)",
+)
+@click.option(
+    "--start-dir",
+    type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True, readable=True),
+    default=None,
+    help="Starting directory for .env upward search (defaults to CWD)",
+)
+@click.option(
+    "--indent",
+    type=int,
+    default=None,
+    help="Pretty-print JSON output with the provided indent size",
+)
+@click.option(
+    "--provenance/--no-provenance",
+    default=False,
+    help="Include provenance metadata for each key in the output",
+)
+def cli_read_config(
+    vendor: str,
+    app: str,
+    slug: str,
+    prefer: Sequence[str],
+    start_dir: Optional[Path],
+    indent: Optional[int],
+    provenance: bool,
+) -> None:
+    """Load layered configuration and print the result as JSON.
+
+    Parameters mirror :func:`lib_layered_config.core.read_config`. Repeating
+    ``--prefer`` adjusts the ordering used inside ``config.d`` directories. When
+    ``--provenance`` is supplied the output includes merge metadata for each key.
+    """
+
+    prefer_order = _normalize_prefer(prefer)
+    start_dir_str = str(start_dir) if start_dir is not None else None
+    if provenance:
+        data, meta = read_config_raw(
+            vendor=vendor,
+            app=app,
+            slug=slug,
+            prefer=prefer_order,
+            start_dir=start_dir_str,
+        )
+        payload = {"config": data, "provenance": meta}
+        click.echo(json.dumps(payload, indent=indent, separators=(",", ":")))
+        return
+
+    config = read_config(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        prefer=prefer_order,
+        start_dir=start_dir_str,
+    )
+    click.echo(config.to_json(indent=indent))
+
+
+def _normalize_prefer(values: Sequence[str]) -> Optional[Sequence[str]]:
+    """Normalise preferred suffixes to lowercase tuples without leading dots."""
+
+    if not values:
+        return None
+    return tuple(value.lower().lstrip(".") for value in values)
 
 
 def main(argv: Optional[Sequence[str]] = None, *, restore_traceback: bool = True) -> int:
-    """Execute the CLI with shared exit handling and return the exit code.
-
-    Why
-        The project standardizes exit behavior through ``lib_cli_exit_tools`` so
-        all CLI entry points behave the same in CI and local shells.
-
-    What
-        Delegates to :func:`lib_cli_exit_tools.run_cli`, optionally restoring the
-        previous global traceback preference once execution completes.
-
-    Parameters
-    ----------
-    argv:
-        Optional argument vector. ``None`` means defer to ``sys.argv``.
-    restore_traceback:
-        Whether to reset :mod:`lib_cli_exit_tools.config.traceback` after the
-        CLI finishes. Defaults to ``True`` so subsequent invocations observe the
-        pre-existing configuration.
-
-    Returns
-    -------
-    int
-        Exit code produced by ``run_cli``.
-
-    Side Effects
-        Mutates ``lib_cli_exit_tools.config.traceback`` while the CLI runs and
-        optionally restores it afterwards.
-
-    Examples
-    --------
-    >>> main(["hello"])
-    Hello World
-    0
-    """
+    """Execute the CLI with shared exit handling and return the exit code."""
 
     previous_traceback = getattr(lib_cli_exit_tools.config, "traceback", False)
+    previous_force_color = getattr(lib_cli_exit_tools.config, "traceback_force_color", False)
     try:
-        return lib_cli_exit_tools.run_cli(
-            cli,
-            argv=list(argv) if argv is not None else None,
-            prog_name=__init__conf__.shell_command,
-        )
+        try:
+            return lib_cli_exit_tools.run_cli(
+                cli,
+                argv=list(argv) if argv is not None else None,
+                prog_name="lib_layered_config",
+            )
+        except BaseException as exc:  # noqa: BLE001 - funnel through shared printers
+            lib_cli_exit_tools.print_exception_message(
+                trace_back=lib_cli_exit_tools.config.traceback,
+                length_limit=(
+                    _TRACEBACK_VERBOSE_LIMIT if lib_cli_exit_tools.config.traceback else _TRACEBACK_SUMMARY_LIMIT
+                ),
+            )
+            return lib_cli_exit_tools.get_system_exit_code(exc)
     finally:
         if restore_traceback:
             lib_cli_exit_tools.config.traceback = previous_traceback
+            lib_cli_exit_tools.config.traceback_force_color = previous_force_color
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised via console entry point
+    raise SystemExit(main(sys.argv[1:]))
