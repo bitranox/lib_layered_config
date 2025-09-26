@@ -26,7 +26,6 @@ requirements:
     - python >=3.10
     - pip
     - hatchling >=1.25
-    - tomli >=2.0.1  # [py<311]
   run:
     - python >=3.10
     - lib_cli_exit_tools >=1.3.1
