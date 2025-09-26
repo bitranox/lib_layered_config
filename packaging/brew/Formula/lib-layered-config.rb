@@ -15,7 +15,7 @@ yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
   end
 
   resource "lib_cli_exit_tools" do
-    url "https://files.pythonhosted.org/packages/87/6d/e7aa8fa762fc41055b2fc9657d979c20586988f9565ef5098e65a7611682/lib_cli_exit_tools-1.4.0.tar.gz"
+    url "https://files.pythonhosted.org/packages/0b/d5/9078a95ee15b4147a4c92c764256468b9d18744413f45d6694a40476a626/lib_cli_exit_tools-1.5.0.tar.gz"
 yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
   end
 
