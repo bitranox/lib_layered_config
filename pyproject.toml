@@ -1,6 +1,6 @@
 [project]
 name = "lib_layered_config"
-version = "0.0.1"
+version = "0.1.0"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,9 +1,6 @@
 # Changelog
 
-## [Unreleased]
-- Document upcoming changes.
-
-## [0.0.1] - 2025-09-25
+## [0.1.0] - 2025-09-26
 - Implement core layered configuration system (`read_config`, immutable `Config`, provenance tracking).
 - Add adapters for OS path resolution, TOML/JSON/YAML loaders, `.env` parser, and environment variables.
 - Provide example generators, logging/observability helpers, and architecture enforcement via import-linter.

@@ -66,7 +66,7 @@
       {
         packages.default = pypkgs.buildPythonPackage {
           pname = "lib_layered_config";
-          version = "0.0.1";
+          version = "0.1.0";
           pyproject = true;
           src = ../..;
           nativeBuildInputs = [ hatchlingVendor ];
