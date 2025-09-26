@@ -13,6 +13,9 @@ Review the system prompt files in `/media/srv-main/softdev/*/projects/softwarest
 - python_structure_template.md
 - self_documenting.md
 - self_documenting_template.md
+- python_jupyter_notebooks.md
+- python_testing.md
+
 
 always apply those Rules :
 
@@ -44,17 +47,6 @@ when writing or refracturing Python scripts, apply those Rules :
 - `scripts/`: automation for lint/type/test/build/publish flows (copied from template, adapted for this project).
 - `tests/`: unit, adapter, application, and end-to-end suites.
 - `packaging/`: Conda, Homebrew, and Nix manifests kept in sync with `pyproject.toml`.
-
-## Build, Test, and Development Commands
-
-- `make help` — list all targets with one‑line docs.
-- `make test` — run ruff (lint + format check), pyright, pytest with coverage (enabled by default), and upload to Codecov (if configured via `.env`).
-  - Auto‑bootstrap: `make test` installs dev tools (`pip install -e .[dev]`) if linters/test deps are missing. Use `SKIP_BOOTSTRAP=1 make test` to disable.
-  - Coverage control: `COVERAGE=on|auto|off` (default `on` locally). Uses a unique `COVERAGE_FILE` each run to avoid DB locks.
-  - Before uploading to Codecov the harness creates an allow-empty commit (`test: auto commit before Codecov upload`) so the report attaches to a revision. Reset or amend if you do not want to keep it.
-- `make build` — build Python wheel/sdist and attempt Conda/Homebrew/Nix builds (auto‑installs missing tools when needed).
-- `make push` — runs the full `scripts/test.py` flow, prompts for/accepts a commit message (or `COMMIT_MESSAGE`), creates an allow-empty commit if needed, then pushes to the selected remote.
-- `make clean` — remove caches, coverage, and build artifacts (includes `dist/` and `build/`).
 
 ### Versioning & Releases
 
@@ -88,13 +80,6 @@ when writing or refracturing Python scripts, apply those Rules :
 ## Coding Style & Naming Conventions
   - apply python_clean_code.md
 
-## Testing Guidelines
-
-- Unit and integration-style tests live under `tests/`; keep them up to date when adding features.
-- Extend coverage for new CLI or library behaviour (the suite exercises CLI commands, package metadata, and automation scripts).
-- When adding functionality, replace or remove placeholders and ensure `make test` remains green.
-- write good doctests which clearly show how the function works and what are the intensions. Use it as an enhancement of the inline documentation
-
 ## Commit & Pull Request Guidelines
 
 ## Architecture Overview
@@ -120,11 +105,6 @@ when writing or refracturing Python scripts, apply those Rules :
 - run "make test" before any push to avoid lint/test breakage.
 - after push, monitor errors in the github actions and try to correct the errors
 
-## Jupyter Notebooks
-use at least nbformat >=4.5 
- - "nbformat": 4,
- - "nbformat_minor": 5
- 
 --- 
 
 # ONLY ON USER REQEST !!!! :
