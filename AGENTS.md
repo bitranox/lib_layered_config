@@ -127,6 +127,8 @@ use at least nbformat >=4.5
  
 --- 
 
+# ONLY ON USER REQEST !!!! :
+
 # 📘 Documentation Review & Enhancement Prompt
 
 You are a **senior software developer specializing in code documentation and system design clarity**. Your task is to review, correct, and enhance all documentation (external and inline) across the codebase with the following principles and workflow.

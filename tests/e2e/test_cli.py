@@ -1,7 +1,14 @@
+"""End-to-end CLI coverage for the public commands exposed by lib-layered-config.
+
+These tests exercise the documented CLI workflows (read, deploy, generate,
+metadata lookups) using the layered sandbox to stay faithful to the precedence
+order. They double as regression tests for the README examples and the module
+reference CLI section.
+"""
+
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -9,52 +16,38 @@ from click.testing import CliRunner
 import lib_cli_exit_tools
 
 from lib_layered_config import cli
+from tests.support import LayeredSandbox, create_layered_sandbox
 
 VENDOR = "Acme"
 APP = "Demo"
 SLUG = "demo"
 
 
-def _write_toml(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+def _write(sandbox: LayeredSandbox, layer: str, relative: str, body: str) -> Path:
+    """Helper to narrate fixture intent when shaping a specific configuration layer."""
+
+    return sandbox.write(layer, relative, content=body)
 
 
-def _cli_environment(tmp_path: Path) -> tuple[Path, dict[str, str]]:
-    """Return the app-layer directory and env overrides for the current platform."""
+def _runner() -> CliRunner:
+    """Return a fresh CLI runner so each test starts from a clean state."""
 
-    overrides: dict[str, str] = {}
-    if sys.platform.startswith("win"):
-        program_data = tmp_path / "ProgramData"
-        appdata = tmp_path / "AppData" / "Roaming"
-        local = tmp_path / "AppData" / "Local"
-        overrides["LIB_LAYERED_CONFIG_PROGRAMDATA"] = str(program_data)
-        overrides["LIB_LAYERED_CONFIG_APPDATA"] = str(appdata)
-        overrides["LIB_LAYERED_CONFIG_LOCALAPPDATA"] = str(local)
-        base = program_data / VENDOR / APP
-    elif sys.platform == "darwin":
-        app_support = tmp_path / "Library" / "Application Support"
-        home_support = tmp_path / "HomeLibrary" / "Application Support"
-        overrides["LIB_LAYERED_CONFIG_MAC_APP_ROOT"] = str(app_support)
-        overrides["LIB_LAYERED_CONFIG_MAC_HOME_ROOT"] = str(home_support)
-        base = app_support / VENDOR / APP
-    else:
-        etc_root = tmp_path / "etc"
-        overrides["LIB_LAYERED_CONFIG_ETC"] = str(etc_root)
-        base = etc_root / SLUG
-    return base, overrides
+    return CliRunner()
 
 
 def test_cli_read_config_outputs_json(tmp_path: Path) -> None:
-    base, env = _cli_environment(tmp_path)
-    _write_toml(
-        base / "config.toml",
+    """`cli read` should emit merged JSON respecting precedence and indentation options."""
+
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG)
+    _write(
+        sandbox,
+        "app",
+        "config.toml",
         """[service]
 timeout = 15
 """,
     )
-    runner = CliRunner()
-    result = runner.invoke(
+    result = _runner().invoke(
         cli.cli,
         [
             "read",
@@ -67,7 +60,7 @@ timeout = 15
             "--indent",
             "0",
         ],
-        env=env,
+        env=sandbox.env,
     )
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -75,15 +68,18 @@ timeout = 15
 
 
 def test_cli_read_config_with_provenance(tmp_path: Path) -> None:
-    base, env = _cli_environment(tmp_path)
-    _write_toml(
-        base / "config.toml",
+    """`cli read --provenance` should emit both config and provenance payloads."""
+
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG)
+    _write(
+        sandbox,
+        "app",
+        "config.toml",
         """[feature]
 enabled = true
 """,
     )
-    runner = CliRunner()
-    result = runner.invoke(
+    result = _runner().invoke(
         cli.cli,
         [
             "read",
@@ -95,7 +91,7 @@ enabled = true
             SLUG,
             "--provenance",
         ],
-        env=env,
+        env=sandbox.env,
     )
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -106,16 +102,17 @@ enabled = true
 
 
 def test_cli_deploy_command(tmp_path: Path) -> None:
-    base, env = _cli_environment(tmp_path)
-    xdg_root = tmp_path / "xdg"
-    env.setdefault("XDG_CONFIG_HOME", str(xdg_root))
-    source = tmp_path / "source.toml"
-    _write_toml(
-        source,
-        '[service]\nendpoint = "https://api.example.com"\n',
-    )
+    """`cli deploy` should provision selected targets and respect force semantics."""
 
-    runner = CliRunner()
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG)
+    destination = sandbox.roots["user"].parent.parent
+    env = dict(sandbox.env)
+    if sandbox.platform.startswith("linux") or sandbox.platform == "darwin":
+        env.setdefault("XDG_CONFIG_HOME", str(destination / "xdg"))
+
+    source = tmp_path / "source.toml"
+    source.write_text('[service]\nendpoint = "https://api.example.com"\n', encoding="utf-8")
+
     command = [
         "deploy",
         "--source",
@@ -131,6 +128,7 @@ def test_cli_deploy_command(tmp_path: Path) -> None:
         "--target",
         "user",
     ]
+    runner = _runner()
     first = runner.invoke(cli.cli, command, env=env)
     assert first.exit_code == 0
     created = [Path(item) for item in json.loads(first.output)]
@@ -143,7 +141,7 @@ def test_cli_deploy_command(tmp_path: Path) -> None:
     assert second.exit_code == 0
     assert json.loads(second.output) == []
 
-    app_path = next(path for path in created if str(path).startswith(str(base)))
+    app_path = next(path for path in created if str(path).startswith(str(sandbox.roots["app"])))
     app_path.write_text("[existing]\nvalue=1\n", encoding="utf-8")
 
     forced = runner.invoke(cli.cli, command + ["--force"], env=env)
@@ -154,8 +152,10 @@ def test_cli_deploy_command(tmp_path: Path) -> None:
 
 
 def test_cli_generate_examples_command(tmp_path: Path) -> None:
+    """`cli generate-examples` should create the documented example tree and overwrite on demand."""
+
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG)
     destination = tmp_path / "examples"
-    runner = CliRunner()
     command = [
         "generate-examples",
         "--destination",
@@ -170,6 +170,7 @@ def test_cli_generate_examples_command(tmp_path: Path) -> None:
         "posix",
     ]
 
+    runner = _runner()
     first = runner.invoke(cli.cli, command)
     assert first.exit_code == 0
     created = [Path(item) for item in json.loads(first.output)]
@@ -192,32 +193,32 @@ def test_cli_generate_examples_command(tmp_path: Path) -> None:
 
 
 def test_cli_env_prefix_command() -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli.cli, ["env-prefix", "config-kit"])
+    """`cli env-prefix` should echo the canonical uppercase prefix for a slug."""
+
+    result = _runner().invoke(cli.cli, ["env-prefix", "config-kit"])
     assert result.exit_code == 0
     assert result.output.strip() == "CONFIG_KIT"
 
 
 def test_cli_info_handles_missing_metadata(monkeypatch) -> None:
+    """`cli info` must degrade gracefully when package metadata is unavailable."""
+
     def _raise_pkg_not_found(*_args, **_kwargs):
         raise cli.metadata.PackageNotFoundError()
 
     monkeypatch.setattr(cli.metadata, "metadata", _raise_pkg_not_found)
-    runner = CliRunner()
-    result = runner.invoke(cli.cli, ["info"])
+    result = _runner().invoke(cli.cli, ["info"])
     assert result.exit_code == 0
     assert "metadata unavailable" in result.output
 
 
 def test_cli_main_restores_traceback_flag(tmp_path: Path, monkeypatch) -> None:
+    """`cli main` should restore lib_cli_exit_tools tracebacks after execution."""
+
     previous_traceback = getattr(lib_cli_exit_tools.config, "traceback", False)
-    base, env = _cli_environment(tmp_path)
-    _write_toml(
-        base / "config.toml",
-        "value = 1\n",
-    )
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG)
+    sandbox.apply_env(monkeypatch)
+    sandbox.write("app", "config.toml", content="value = 1\n")
     exit_code = cli.main(
         [
             "--traceback",
@@ -236,8 +237,9 @@ def test_cli_main_restores_traceback_flag(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_cli_fail_command() -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli.cli, ["fail"])
+    """`cli fail` should bubble runtime errors for debugging flows."""
+
+    result = _runner().invoke(cli.cli, ["fail"])
     assert result.exit_code != 0
     assert isinstance(result.exception, RuntimeError)
     assert str(result.exception) == "i should fail"

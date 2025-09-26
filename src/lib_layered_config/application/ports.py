@@ -23,9 +23,10 @@ protocol so the application layer can request behaviour via abstraction.
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Protocol, Tuple
+from typing import Iterable, Mapping, Protocol, Tuple, runtime_checkable
 
 
+@runtime_checkable
 class PathResolver(Protocol):
     """Discover configuration artifacts for each logical layer.
 
@@ -59,6 +60,7 @@ class PathResolver(Protocol):
         """Yield ``.env`` candidates discovered during path resolution."""
 
 
+@runtime_checkable
 class FileLoader(Protocol):
     """Parse a structured configuration file into a mapping.
 
@@ -71,6 +73,7 @@ class FileLoader(Protocol):
         """Read *path* and return a mapping representation or raise ``InvalidFormat``."""
 
 
+@runtime_checkable
 class DotEnvLoader(Protocol):
     """Materialise a ``.env`` file into nested dictionaries.
 
@@ -83,6 +86,7 @@ class DotEnvLoader(Protocol):
         """Search from *start_dir* upwards (plus extras) and return the first parsed file."""
 
 
+@runtime_checkable
 class EnvLoader(Protocol):
     """Translate process environment variables into nested configuration dictionaries.
 
@@ -96,6 +100,7 @@ class EnvLoader(Protocol):
         """Return variables that match *prefix* (case-insensitive, ``__`` for nesting)."""
 
 
+@runtime_checkable
 class Merger(Protocol):
     """Combine layers and produce both merged data and provenance metadata.
 

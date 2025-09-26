@@ -112,7 +112,17 @@ class DefaultEnvLoader:
 
 
 def _normalize_prefix(prefix: str) -> str:
-    """Ensure the prefix ends with an underscore when non-empty."""
+    """Ensure the prefix ends with an underscore when non-empty.
+
+    Examples
+    --------
+    >>> _normalize_prefix('DEMO')
+    'DEMO_'
+    >>> _normalize_prefix('DEMO_')
+    'DEMO_'
+    >>> _normalize_prefix('')
+    ''
+    """
 
     if prefix and not prefix.endswith("_"):
         return f"{prefix}_"
@@ -123,7 +133,15 @@ def _iter_namespace_entries(
     items: Iterable[tuple[str, str]],
     prefix: str,
 ) -> Iterator[tuple[str, str]]:
-    """Yield ``(stripped_key, value)`` pairs that match *prefix*."""
+    """Yield ``(stripped_key, value)`` pairs that match *prefix*.
+
+    Examples
+    --------
+    >>> list(_iter_namespace_entries([('DEMO_FLAG', '1'), ('OTHER', '0')], 'DEMO_'))
+    [('FLAG', '1')]
+    >>> list(_iter_namespace_entries([('DEMO', '1')], 'DEMO_'))
+    []
+    """
 
     for key, value in items:
         if prefix and not key.startswith(prefix):
@@ -135,7 +153,13 @@ def _iter_namespace_entries(
 
 
 def _collect_keys(mapping: dict[str, object]) -> list[str]:
-    """Return sorted top-level keys for logging."""
+    """Return sorted top-level keys for logging.
+
+    Examples
+    --------
+    >>> _collect_keys({'service': {}, 'logging': {}})
+    ['logging', 'service']
+    """
 
     return sorted(mapping.keys())
 
@@ -169,6 +193,14 @@ def _resolve_key(mapping: dict[str, object], key: str) -> str:
     Why
     ----
     Preserve case stability while avoiding duplicates that differ only by case.
+
+    Examples
+    --------
+    >>> target = {'timeout': 5}
+    >>> _resolve_key(target, 'TIMEOUT')
+    'timeout'
+    >>> _resolve_key({}, 'Endpoint')
+    'endpoint'
     """
 
     lower = key.lower()
@@ -185,6 +217,20 @@ def _ensure_child_mapping(mapping: dict[str, object], key: str, *, error_cls: ty
     ----
     Prevent accidental overwrites of scalar values when nested keys are
     introduced.
+
+    Examples
+    --------
+    >>> target = {}
+    >>> child = _ensure_child_mapping(target, 'SERVICE', error_cls=ValueError)
+    >>> child == {}
+    True
+    >>> target
+    {'service': {}}
+    >>> target['service'] = 1
+    >>> _ensure_child_mapping(target, 'SERVICE', error_cls=ValueError)
+    Traceback (most recent call last):
+    ...
+    ValueError: Cannot override scalar with mapping for key SERVICE
     """
 
     resolved = _resolve_key(mapping, key)
@@ -211,8 +257,8 @@ def _coerce(value: str) -> object:
 
     Examples
     --------
-    >>> _coerce('true'), _coerce('10'), _coerce('3.5'), _coerce('hello')
-    (True, 10, 3.5, 'hello')
+    >>> _coerce('true'), _coerce('10'), _coerce('3.5'), _coerce('hello'), _coerce('null')
+    (True, 10, 3.5, 'hello', None)
     """
 
     lowered = value.lower()
@@ -226,19 +272,31 @@ def _coerce(value: str) -> object:
 
 
 def _looks_like_bool(value: str) -> bool:
-    """Return ``True`` when *value* spells a boolean literal."""
+    """Return ``True`` when *value* spells a boolean literal.
+
+    >>> _looks_like_bool('true'), _looks_like_bool('false'), _looks_like_bool('maybe')
+    (True, True, False)
+    """
 
     return value in {"true", "false"}
 
 
 def _looks_like_null(value: str) -> bool:
-    """Return ``True`` when *value* represents a null literal."""
+    """Return ``True`` when *value* represents a null literal.
+
+    >>> _looks_like_null('null'), _looks_like_null('none'), _looks_like_null('nil')
+    (True, True, False)
+    """
 
     return value in {"null", "none"}
 
 
 def _looks_like_int(value: str) -> bool:
-    """Return ``True`` when *value* can be parsed as an integer."""
+    """Return ``True`` when *value* can be parsed as an integer.
+
+    >>> _looks_like_int('42'), _looks_like_int('-7'), _looks_like_int('3.14')
+    (True, True, False)
+    """
 
     if value.startswith("-"):
         return value[1:].isdigit()
@@ -246,7 +304,11 @@ def _looks_like_int(value: str) -> bool:
 
 
 def _maybe_float(value: str) -> object:
-    """Return a float when *value* looks numeric; otherwise return the original string."""
+    """Return a float when *value* looks numeric; otherwise return the original string.
+
+    >>> _maybe_float('2.5'), _maybe_float('not-a-number')
+    (2.5, 'not-a-number')
+    """
 
     try:
         return float(value)

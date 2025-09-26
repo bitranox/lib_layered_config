@@ -96,11 +96,17 @@ class Config(MappingABC[str, Any]):
 
     Examples
     --------
-    >>> cfg = Config({"service": {"timeout": 30}}, {"service.timeout": {"layer": "env", "path": None, "key": "service.timeout"}})
+    >>> cfg = Config(
+    ...     {"service": {"timeout": 30, "endpoint": "https://api.demo"}},
+    ...     {
+    ...         "service.timeout": {"layer": "app", "path": "/etc/demo/config.toml", "key": "service.timeout"},
+    ...         "service.endpoint": {"layer": "user", "path": "/home/demo/.config/demo/config.toml", "key": "service.endpoint"},
+    ...     },
+    ... )
     >>> cfg.get("service.timeout")
     30
-    >>> cfg.origin("service.timeout")
-    {'layer': 'env', 'path': None, 'key': 'service.timeout'}
+    >>> cfg.origin("service.endpoint")
+    {'layer': 'user', 'path': '/home/demo/.config/demo/config.toml', 'key': 'service.endpoint'}
     >>> cfg.with_overrides({"service": {"timeout": 60}}).get("service.timeout")
     60
     """
@@ -201,20 +207,20 @@ class Config(MappingABC[str, Any]):
     def as_dict(self) -> dict[str, Any]:
         """Construct a deep (mutable) ``dict`` copy of the configuration tree.
 
-        Why
-        ----
-        Provide callers with a mutable representation for serialisation or
-        temporary modifications without affecting the immutable source.
+            Why
+            ----
+            Provide callers with a mutable representation for serialisation or
+            temporary modifications without affecting the immutable source.
 
-        What
-        ----
-        Recursively clones nested mappings, lists, sets, and tuples using the
-        internal helper functions.
+            What
+            ----
+            Recursively clones nested mappings, lists, sets, and tuples using the
+            internal helper functions.
 
-        Returns
-        -------
-        dict[str, Any]
-            Deep copy suitable for mutation or JSON/YAML serialisation.
+            Returns
+            -------
+            dict[str, Any]
+                Deep copy suitable for mutation or JSON/YAML serialisation.
 
         Examples
         --------
@@ -223,6 +229,17 @@ class Config(MappingABC[str, Any]):
         >>> clone["service"]["timeout"] = 10
         >>> cfg.get("service.timeout")
         5
+        >>> complex_cfg = Config(
+        ...     {"features": {"flags": ["alpha", "beta"], "regions": {"primary", "backup"}}},
+        ...     {}
+        ... )
+        >>> exported = complex_cfg.as_dict()
+        >>> exported["features"]["flags"].append("gamma")
+        >>> exported["features"]["regions"].remove("primary")
+        >>> complex_cfg.as_dict()["features"]["flags"]
+        ['alpha', 'beta']
+        >>> sorted(complex_cfg.as_dict()["features"]["regions"])
+        ['backup', 'primary']
         """
 
         return _deepcopy_mapping(self._data)
@@ -230,25 +247,31 @@ class Config(MappingABC[str, Any]):
     def to_json(self, *, indent: int | None = None) -> str:
         """Serialise the configuration to JSON using :func:`as_dict` under the hood.
 
-        Why
-        ----
-        Offer a convenience exporter for debugging and documentation tooling.
+            Why
+            ----
+            Offer a convenience exporter for debugging and documentation tooling.
 
-        Parameters
-        ----------
-        indent:
-            Optional indentation size passed to :func:`json.dumps`.
+            Parameters
+            ----------
+            indent:
+                Optional indentation size passed to :func:`json.dumps`.
 
-        Returns
-        -------
-        str
-            JSON representation of the configuration.
+            Returns
+            -------
+            str
+                JSON representation of the configuration.
 
-        Examples
-        --------
-        >>> cfg = Config({"service": {"timeout": 5}}, {"service.timeout": {"layer": "env", "path": None, "key": "service.timeout"}})
+            Examples
+            --------
+            >>> cfg = Config({"service": {"timeout": 5}}, {"service.timeout": {"layer": "env", "path": None, "key": "service.timeout"}})
         >>> cfg.to_json()
         '{"service":{"timeout":5}}'
+        >>> print(cfg.to_json(indent=2))
+        {
+          "service":{
+            "timeout":5
+          }
+        }
         """
 
         import json
@@ -440,6 +463,8 @@ def _deepcopy_value(value: Any) -> Any:
     --------
     >>> _deepcopy_value({"nested": [1, 2]})
     {'nested': [1, 2]}
+    >>> _deepcopy_value(("a", "b"))
+    ('a', 'b')
     """
 
     if isinstance(value, MappingABC):

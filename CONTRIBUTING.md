@@ -26,10 +26,13 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 
 ## 4. Tests & Tooling
 
-- `make test` runs Ruff, import-linter, Pyright, and Pytest with coverage ≥90% plus doctests.
+- `make test` runs Ruff, import-linter, Pyright, and Pytest with coverage ≥75% plus doctests.
+- Shared fixtures live under `tests/support`; prefer `create_layered_sandbox` over bespoke platform scaffolding.
 - The dev extra (`pip install -e .[dev]`) installs Ruff, Pyright, Pytest, Bandit, pip-audit, Hypothesis, and typing/coverage helpers.
 - Import contracts live in `pyproject.toml` (`[tool.importlinter]`). Update them if you move modules between layers.
-- When adding new adapters, write contract tests to ensure they honour the port interfaces and precedence semantics.
+- When adding new adapters, extend `tests/adapters/test_port_contracts.py` to verify ports remain satisfied and precedence rules stay intact.
+- Notebook execution is marked with `@pytest.mark.slow`; quick iteration can run `pytest -m "not slow"`, while `make test` still executes the full suite.
+- Coverage data is written to `/tmp/.coverage...` (see `[tool.coverage.run].data_file`); remove those files if you need to retry a run manually.
 
 ## 5. Packaging Sync
 

@@ -1,62 +1,56 @@
+"""Example deployment helper tests covering cross-platform targets.
+
+Ensures ``lib_layered_config.examples.deploy_config`` adheres to the filesystem
+layouts documented in the system design and honours force/skip semantics.
+"""
+
 from __future__ import annotations
 
-import os
-import socket
-import sys
 from pathlib import Path
+import socket
 
 import pytest
+from textwrap import dedent
 
 from lib_layered_config.examples import deploy_config
+from tests.support import LayeredSandbox, create_layered_sandbox
 
 VENDOR = "Acme"
 APP = "Demo"
 SLUG = "demo"
 
 
-@pytest.fixture
+@pytest.fixture()
+def sandbox(tmp_path, monkeypatch: pytest.MonkeyPatch) -> LayeredSandbox:
+    """Provide a layered sandbox wired with platform-specific environment variables."""
+
+    instance = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG)
+    instance.apply_env(monkeypatch)
+    return instance
+
+
+@pytest.fixture()
 def source_config(tmp_path: Path) -> Path:
+    """Create a reusable source configuration used across deployment scenarios."""
+
     config_file = tmp_path / "source.toml"
-    config_file.write_text("[service]\nendpoint = 'https://api.example.com'\n", encoding="utf-8")
+    config_file.write_text(
+        dedent("""
+[service]
+endpoint = 'https://api.example.com'
+"""),
+        encoding="utf-8",
+    )
     return config_file
 
 
-def _prepare_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
-    if sys.platform.startswith("win"):
-        program_data = tmp_path / "ProgramData"
-        appdata = tmp_path / "AppData" / "Roaming"
-        local = tmp_path / "AppData" / "Local"
-        monkeypatch.setenv("LIB_LAYERED_CONFIG_PROGRAMDATA", str(program_data))
-        monkeypatch.setenv("LIB_LAYERED_CONFIG_APPDATA", str(appdata))
-        monkeypatch.setenv("LIB_LAYERED_CONFIG_LOCALAPPDATA", str(local))
-        return {
-            "app": program_data / VENDOR / APP,
-            "user": appdata / VENDOR / APP,
-            "host": program_data / VENDOR / APP / "hosts",
-        }
-    if sys.platform == "darwin":
-        app_support = tmp_path / "Library" / "Application Support"
-        home_support = tmp_path / "HomeLibrary" / "Application Support"
-        monkeypatch.setenv("LIB_LAYERED_CONFIG_MAC_APP_ROOT", str(app_support))
-        monkeypatch.setenv("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", str(home_support))
-        return {
-            "app": app_support / VENDOR / APP,
-            "user": home_support / VENDOR / APP,
-            "host": app_support / VENDOR / APP / "hosts",
-        }
-    etc_root = tmp_path / "etc"
-    xdg_root = tmp_path / "xdg"
-    monkeypatch.setenv("LIB_LAYERED_CONFIG_ETC", str(etc_root))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_root))
-    return {
-        "app": etc_root / SLUG,
-        "user": xdg_root / SLUG,
-        "host": (etc_root / SLUG / "hosts"),
-    }
+def test_deploy_config_creates_app_and_user(
+    sandbox: LayeredSandbox,
+    monkeypatch: pytest.MonkeyPatch,
+    source_config: Path,
+) -> None:
+    """Deploying to app and user targets should create both files with payload intact."""
 
-
-def test_deploy_config_creates_app_and_user(tmp_path: Path, monkeypatch, source_config: Path) -> None:
-    roots = _prepare_env(tmp_path, monkeypatch)
     monkeypatch.setattr("socket.gethostname", lambda: "deploy-host")
 
     deployed = deploy_config(
@@ -67,8 +61,8 @@ def test_deploy_config_creates_app_and_user(tmp_path: Path, monkeypatch, source_
         slug=SLUG,
     )
 
-    app_path = roots["app"] / "config.toml"
-    user_path = roots["user"] / "config.toml"
+    app_path = sandbox.roots["app"] / "config.toml"
+    user_path = sandbox.roots["user"] / "config.toml"
 
     assert app_path in deployed
     assert user_path in deployed
@@ -76,8 +70,13 @@ def test_deploy_config_creates_app_and_user(tmp_path: Path, monkeypatch, source_
     assert "endpoint" in user_path.read_text(encoding="utf-8")
 
 
-def test_deploy_config_host_target(tmp_path: Path, monkeypatch, source_config: Path) -> None:
-    roots = _prepare_env(tmp_path, monkeypatch)
+def test_deploy_config_host_target(
+    sandbox: LayeredSandbox,
+    monkeypatch: pytest.MonkeyPatch,
+    source_config: Path,
+) -> None:
+    """Host deployments should place host-specific artefacts in the hosts directory."""
+
     monkeypatch.setattr("socket.gethostname", lambda: "host-one")
 
     deployed = deploy_config(
@@ -88,16 +87,26 @@ def test_deploy_config_host_target(tmp_path: Path, monkeypatch, source_config: P
         slug=SLUG,
     )
 
-    host_path = roots["host"] / "host-one.toml"
+    host_path = sandbox.roots["host"] / "host-one.toml"
     assert deployed == [host_path]
     assert host_path.exists()
 
 
-def test_deploy_config_skips_existing(tmp_path: Path, monkeypatch, source_config: Path) -> None:
-    roots = _prepare_env(tmp_path, monkeypatch)
-    existing = roots["app"] / "config.toml"
+def test_deploy_config_skips_existing(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Existing targets should be preserved when force is False."""
+
+    existing = sandbox.roots["app"] / "config.toml"
     existing.parent.mkdir(parents=True, exist_ok=True)
-    existing.write_text("[existing]\nvalue=1\n", encoding="utf-8")
+    existing.write_text(
+        dedent("""
+[existing]
+value=1
+"""),
+        encoding="utf-8",
+    )
 
     deployed = deploy_config(
         source_config,
@@ -108,14 +117,27 @@ def test_deploy_config_skips_existing(tmp_path: Path, monkeypatch, source_config
     )
 
     assert deployed == []
-    assert existing.read_text(encoding="utf-8") == "[existing]\nvalue=1\n"
+    assert existing.read_text(encoding="utf-8") == dedent("""
+[existing]
+value=1
+""")
 
 
-def test_deploy_config_force_overwrites(tmp_path: Path, monkeypatch, source_config: Path) -> None:
-    roots = _prepare_env(tmp_path, monkeypatch)
-    existing = roots["app"] / "config.toml"
+def test_deploy_config_force_overwrites(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Force mode should overwrite an existing file with the new payload."""
+
+    existing = sandbox.roots["app"] / "config.toml"
     existing.parent.mkdir(parents=True, exist_ok=True)
-    existing.write_text("[existing]\nvalue=1\n", encoding="utf-8")
+    existing.write_text(
+        dedent("""
+[existing]
+value=1
+"""),
+        encoding="utf-8",
+    )
 
     deployed = deploy_config(
         source_config,
@@ -132,31 +154,42 @@ def test_deploy_config_force_overwrites(tmp_path: Path, monkeypatch, source_conf
 
 
 def test_deploy_config_invalid_target(source_config: Path) -> None:
+    """Invalid targets should surface a ValueError to callers."""
+
     with pytest.raises(ValueError):
         deploy_config(source_config, vendor=VENDOR, app=APP, targets=["invalid"])
 
 
 def test_deploy_config_missing_source(tmp_path: Path) -> None:
+    """Missing source files should raise FileNotFoundError before any writes occur."""
+
     missing = tmp_path / "missing.toml"
     with pytest.raises(FileNotFoundError):
         deploy_config(missing, vendor=VENDOR, app=APP, targets=["app"])
 
 
-def test_deploy_config_windows_paths(tmp_path: Path, monkeypatch) -> None:
+def test_deploy_config_windows_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Windows deployments should create ProgramData/AppData files with host suffixes."""
+
     from lib_layered_config.examples import deploy as deploy_module
 
+    sandbox = create_layered_sandbox(
+        tmp_path,
+        vendor="Acme",
+        app="Demo",
+        slug="demo",
+        platform="win32",
+    )
+    sandbox.apply_env(monkeypatch)
+
     source = tmp_path / "config.toml"
-    source.write_text('[service]\nendpoint = "https://api.example.com"\n', encoding="utf-8")
-
-    program_data = tmp_path / "ProgramData"
-    appdata_roaming = tmp_path / "AppData" / "Roaming"
-    local_appdata = tmp_path / "AppData" / "Local"
-    for directory in (program_data, appdata_roaming, local_appdata):
-        directory.mkdir(parents=True, exist_ok=True)
-
-    monkeypatch.setenv("LIB_LAYERED_CONFIG_PROGRAMDATA", str(program_data))
-    monkeypatch.setenv("LIB_LAYERED_CONFIG_APPDATA", str(appdata_roaming))
-    monkeypatch.setenv("LIB_LAYERED_CONFIG_LOCALAPPDATA", str(local_appdata))
+    source.write_text(
+        dedent("""
+[service]
+endpoint = "https://api.example.com"
+"""),
+        encoding="utf-8",
+    )
 
     class _Resolver(deploy_module.DefaultPathResolver):
         def __init__(self, **kwargs):

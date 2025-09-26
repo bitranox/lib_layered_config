@@ -30,6 +30,10 @@ pip install lib_layered_config
 pip install "lib_layered_config[yaml]"
 ```
 
+> **Note**
+> `tomli>=2.0.1` ships with the base package to guarantee compatibility with Python 3.10. Modern
+> interpreters (3.11+) use the stdlib `tomllib`, and the backport is effectively a no-op.
+
 *Only install the `yaml` extra when your deployment actually ships `.yml` files—this keeps the default dependency set pure stdlib and avoids pulling in PyYAML unnecessarily.*
 
 Development tooling (lint, type-check, tests, security) lives behind the `dev` extra:
@@ -469,6 +473,12 @@ $ lib_layered_config fail
 Error: i should fail
 ```
 
+## Packaging targets
+
+The repository ships manifests for common ecosystems (PyPI, Conda, Homebrew, Nix). Each target now
+declares the `tomli>=2.0.1` dependency so that Python 3.10 environments have a compatible TOML parser
+out of the box. On Python 3.11+ the stdlib `tomllib` takes over automatically.
+
 ## Further documentation
 
 - [CHANGELOG](CHANGELOG.md) — user-facing release notes.
@@ -476,3 +486,10 @@ Error: i should fail
 - [DEVELOPMENT](DEVELOPMENT.md) — local tooling, recommended workflow, and release checklist.
 - [LICENSE](LICENSE) — project licensing details (MIT).
 - [Module Reference](docs/systemdesign/module_reference.md) — architecture-aligned module-by-module responsibilities.
+
+## Development & Testing
+
+- `make dev` installs the project with development extras.
+- `make test` runs linting, type checking, full pytest (including notebooks) and uploads coverage.
+- For quicker feedback, run `pytest -m "not slow"` to skip the notebook suite.
+- Coverage files are emitted under `/tmp/.coverage*`; delete them if you need to reset a failed local run.
