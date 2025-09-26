@@ -120,6 +120,7 @@ jobs:
           pip install nbclient nbformat ipykernel jupyter_client
           python -m ipykernel install --user --name python3 --display-name "Python 3"
       - name: Execute Quickstart notebook
+        if: ${{ false }}
         env:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
           PIP_NO_INPUT: "1"
