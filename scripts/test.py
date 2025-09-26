@@ -69,14 +69,11 @@ def main(coverage: str, verbose: bool) -> None:
                     env_view = " ".join(f"{k}={v}" for k, v in overrides.items())
                     click.echo(f"    env {env_view}")
         merged_env = DEFAULT_ENV if env is None else DEFAULT_ENV | env
-        if merged_env.get("PYTHONPATH"):
-            merged_env = merged_env.copy()
-            merged_env["PYTHONPATH"] = os.pathsep.join(
-                [str(Path(__file__).resolve().parents[1] / "src"), merged_env["PYTHONPATH"]]
-            )
-        else:
-            merged_env = merged_env.copy()
-            merged_env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        merged_env = merged_env.copy()
+        prefix = str(Path(__file__).resolve().parents[1] / "src")
+        merged_env["PYTHONPATH"] = (
+            prefix if not merged_env.get("PYTHONPATH") else prefix + os.pathsep + merged_env["PYTHONPATH"]
+        )
         result = run(cmd, env=merged_env, check=check, capture=capture)  # type: ignore[arg-type]
         if verbose and label:
             click.echo(f"    -> {label}: exit={result.code} out={bool(result.out)} err={bool(result.err)}")
