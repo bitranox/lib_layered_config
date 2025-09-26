@@ -127,20 +127,21 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str) -> Iter
     'app/config.toml'
     """
 
+    linux_slug = slug
     yield ExampleSpec(
-        Path("app/config.toml"),
+        Path(f"etc/{linux_slug}/config.toml"),
         f"""# Application-wide defaults for {slug}\n[service]\nendpoint = \"https://api.example.com\"\ntimeout = 10\n""",
     )
     yield ExampleSpec(
-        Path(f"hosts/{DEFAULT_HOST_PLACEHOLDER}.toml"),
+        Path(f"etc/{linux_slug}/hosts/{DEFAULT_HOST_PLACEHOLDER}.toml"),
         """# Host overrides (replace filename with the machine hostname)\n[service]\ntimeout = 15\n""",
     )
     yield ExampleSpec(
-        Path("user/config.toml"),
+        Path(f"xdg/{linux_slug}/config.toml"),
         f"""# User-specific preferences for {vendor} {app}\n[service]\nretry = 2\n""",
     )
     yield ExampleSpec(
-        Path("user/config.d/10-override.toml"),
+        Path(f"xdg/{linux_slug}/config.d/10-override.toml"),
         """# Split overrides live in config.d/ and apply in lexical order\n[service]\nretry = 3\n""",
     )
     yield ExampleSpec(
