@@ -98,9 +98,7 @@ def generate_flake(version: str) -> str:
 
     prop_inputs = " ".join(info["ident"] for info in vendor_infos)
     devshell_nodes = (
-        [f"pkgs.python{python_digits}", "hatchlingVendor"]
-        + [info["ident"] for info in vendor_infos]
-        + ["pypkgs.pytest", "pkgs.ruff", "pkgs.nodejs"]
+        [f"pkgs.python{python_digits}", "hatchlingVendor"] + [info["ident"] for info in vendor_infos] + ["pypkgs.pytest", "pkgs.ruff", "pkgs.nodejs"]
     )
     devshell_inputs = "\n".join(f"            {item}" for item in _ordered_unique(devshell_nodes))
 

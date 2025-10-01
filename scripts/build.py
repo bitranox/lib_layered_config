@@ -32,9 +32,7 @@ def main(conda: bool, brew: bool, nix: bool) -> None:
         if ensure_conda():
             conda_cmd = ". $HOME/miniforge3/etc/profile.d/conda.sh >/dev/null 2>&1 || true; conda clean --all --yes >/dev/null 2>&1 || true; CONDA_USE_LOCAL=1 conda build packaging/conda/recipe"
             conda_result = run(["bash", "-lc", conda_cmd], check=False, capture=False)
-            conda_msg = (
-                click.style("success", fg="green") if conda_result.code == 0 else click.style("failed", fg="red")
-            )
+            conda_msg = click.style("success", fg="green") if conda_result.code == 0 else click.style("failed", fg="red")
         else:
             conda_msg = click.style("skipped", fg="yellow")
     else:
@@ -44,9 +42,7 @@ def main(conda: bool, brew: bool, nix: bool) -> None:
     click.echo("[3/4] Attempting Homebrew build/install from local formula")
     brew_msg: str
     if brew and cmd_exists("brew"):
-        brew_result = run(
-            ["bash", "-lc", f"brew install --build-from-source {project.brew_formula_path}"], check=False, capture=False
-        )
+        brew_result = run(["bash", "-lc", f"brew install --build-from-source {project.brew_formula_path}"], check=False, capture=False)
         brew_msg = click.style("success", fg="green") if brew_result.code == 0 else click.style("failed", fg="red")
     else:
         brew_msg = click.style("skipped", fg="yellow")

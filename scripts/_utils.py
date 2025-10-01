@@ -1,3 +1,25 @@
+"""Shared automation utilities for project scripts.
+
+Purpose
+-------
+Collect helper functions used by the ``scripts/`` entry points (build, test,
+release) so packaging sync, git helpers, and subprocess wrappers live in one
+place. The behaviour mirrors the operational guidance described in
+``docs/systemdesign/concept_architecture_plan.md`` and ``DEVELOPMENT.md``.
+
+Contents
+--------
+* ``run`` – subprocess wrapper returning structured results.
+* Metadata helpers (``get_project_metadata`` et al.) for packaging automation.
+* GitHub release helpers and packaging sync utilities.
+
+System Role
+-----------
+Provides the scripting boundary of the clean architecture: the core library
+remains framework-agnostic while operational scripts reuse these helpers to
+avoid duplication and keep CI/CD behaviour consistent with documentation.
+"""
+
 from __future__ import annotations
 
 import os
@@ -92,14 +114,7 @@ def run(
 
 
 def cmd_exists(name: str) -> bool:
-    return (
-        subprocess.call(
-            ["bash", "-lc", f"command -v {shlex.quote(name)} >/dev/null 2>&1"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        == 0
-    )
+    return subprocess.call(["bash", "-lc", f"command -v {shlex.quote(name)} >/dev/null 2>&1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
 
 
 def _normalize_slug(value: str) -> str:
@@ -125,14 +140,7 @@ def _load_pyproject(pyproject: Path) -> dict[str, Any]:
 
 def _derive_import_package(data: dict[str, Any], fallback: str) -> str:
     try:
-        packages = (
-            data.get("tool", {})
-            .get("hatch", {})
-            .get("build", {})
-            .get("targets", {})
-            .get("wheel", {})
-            .get("packages", [])
-        )
+        packages = data.get("tool", {}).get("hatch", {}).get("build", {}).get("targets", {}).get("wheel", {}).get("packages", [])
         if isinstance(packages, list) and packages:
             first = packages[0]
             if isinstance(first, str) and first:
@@ -304,9 +312,7 @@ def ensure_conda(auto_install: bool = True) -> bool:
 
 
 def ensure_clean_git_tree() -> None:
-    dirty = subprocess.call(
-        ["bash", "-lc", "! git diff --quiet || ! git diff --cached --quiet"], stdout=subprocess.DEVNULL
-    )
+    dirty = subprocess.call(["bash", "-lc", "! git diff --quiet || ! git diff --cached --quiet"], stdout=subprocess.DEVNULL)
     if dirty == 0:
         print("[release] Working tree not clean. Commit or stash changes first.", file=sys.stderr)
         raise SystemExit(1)
@@ -323,13 +329,7 @@ def git_delete_tag(name: str, *, remote: str | None = None) -> None:
 
 
 def git_tag_exists(name: str) -> bool:
-    return (
-        subprocess.call(
-            ["bash", "-lc", f"git rev-parse -q --verify {shlex.quote('refs/tags/' + name)} >/dev/null"],
-            stdout=subprocess.DEVNULL,
-        )
-        == 0
-    )
+    return subprocess.call(["bash", "-lc", f"git rev-parse -q --verify {shlex.quote('refs/tags/' + name)} >/dev/null"], stdout=subprocess.DEVNULL) == 0
 
 
 def git_create_annotated_tag(name: str, message: str) -> None:
@@ -345,12 +345,7 @@ def gh_available() -> bool:
 
 
 def gh_release_exists(tag: str) -> bool:
-    return (
-        subprocess.call(
-            ["bash", "-lc", f"gh release view {shlex.quote(tag)} >/dev/null 2>&1"], stdout=subprocess.DEVNULL
-        )
-        == 0
-    )
+    return subprocess.call(["bash", "-lc", f"gh release view {shlex.quote(tag)} >/dev/null 2>&1"], stdout=subprocess.DEVNULL) == 0
 
 
 def gh_release_create(tag: str, title: str, body: str) -> None:
@@ -362,8 +357,22 @@ def gh_release_edit(tag: str, title: str, body: str) -> None:
 
 
 def sync_packaging() -> None:
-    run([sys.executable, "scripts/bump_version.py", "--sync-packaging"], check=False)
-    run([sys.executable, "scripts/generate_nix_flake.py"], check=False)
+    """Ensure packaging specs mirror the canonical ``pyproject.toml`` values.
+
+    Why
+    ---
+    The system design mandates that Conda, Homebrew, and Nix manifests stay in
+    lockstep with the Python package metadata. Running this helper before tests
+    or releases prevents stale version pins from reaching CI/CD.
+
+    Side Effects
+    ------------
+    Executes the bump/sync scripts and raises if either fails so the calling
+    workflow surfaces drift immediately.
+    """
+
+    run([sys.executable, "scripts/bump_version.py", "--sync-packaging"])
+    run([sys.executable, "scripts/generate_nix_flake.py"])
 
 
 def bootstrap_dev() -> None:

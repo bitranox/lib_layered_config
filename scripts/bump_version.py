@@ -460,9 +460,7 @@ def _update_nix_flake(version: str, path: Path) -> None:
     def _update_pkg_block(m: re.Match[str]) -> str:
         nonlocal packages_changed
         block = m.group(0)
-        new_block = re.sub(
-            r"propagatedBuildInputs\s*=\s*\[[^\]]*\];", f"propagatedBuildInputs = [ {pkgs_list} ];", block, flags=re.S
-        )
+        new_block = re.sub(r"propagatedBuildInputs\s*=\s*\[[^\]]*\];", f"propagatedBuildInputs = [ {pkgs_list} ];", block, flags=re.S)
         if new_block != block:
             packages_changed = True
         return new_block

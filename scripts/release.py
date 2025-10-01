@@ -26,9 +26,7 @@ from scripts._utils import (
 )
 
 
-@click.command(
-    help="Create and push git tag vX.Y.Z from pyproject, create GitHub release (if gh present), then sync packaging SHAs"
-)
+@click.command(help="Create and push git tag vX.Y.Z from pyproject, create GitHub release (if gh present), then sync packaging SHAs")
 @click.option("--remote", default="origin", show_default=True, help="Git remote to push to")
 @click.option("--retries", default=5, show_default=True, help="Packaging sync retry attempts")
 @click.option("--retry-wait", default=3.0, show_default=True, help="Seconds to wait between sync retries")
