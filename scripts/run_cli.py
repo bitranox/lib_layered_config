@@ -5,7 +5,12 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+project_root = Path(__file__).resolve().parents[1]
+src_path = project_root / 'src'
+for entry in (src_path, project_root):
+    candidate = str(entry)
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
 from scripts._utils import get_project_metadata  # noqa: E402
 
 PROJECT = get_project_metadata()
