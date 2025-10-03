@@ -1,25 +1,43 @@
 from __future__ import annotations
 
+import re
+import sys
 import textwrap
 from pathlib import Path
 from string import Template
-import re
-import sys
+from typing import TypedDict
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+try:
+    from scripts._utils import read_version_from_pyproject
+    from scripts.bump_version import (
+        PROJECT_META,
+        min_py_from_requires,
+        preferred_dependency_version,
+        pypi_wheel_info,
+        read_pyproject_deps,
+        read_requires_python,
+    )
+except ModuleNotFoundError:
+    ROOT = Path(__file__).resolve().parents[1]
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from scripts._utils import read_version_from_pyproject
+    from scripts.bump_version import (
+        PROJECT_META,
+        min_py_from_requires,
+        preferred_dependency_version,
+        pypi_wheel_info,
+        read_pyproject_deps,
+        read_requires_python,
+    )
 
 
-from scripts._utils import read_version_from_pyproject
-from scripts.bump_version import (
-    PROJECT_META,
-    _min_py_from_requires,
-    _preferred_dependency_version,
-    _pypi_wheel_info,
-    _read_pyproject_deps,
-    _read_requires_python,
-)
+class VendorInfo(TypedDict):
+    ident: str
+    pname: str
+    version: str
+    url: str
+    hash: str
 
 
 def _vendor_identifier(name: str, existing: set[str]) -> str:
@@ -47,30 +65,30 @@ def _ordered_unique(values: list[str]) -> list[str]:
 
 
 def generate_flake(version: str) -> str:
-    deps = _read_pyproject_deps(Path("pyproject.toml"))
-    req = _read_requires_python(Path("pyproject.toml"))
-    min_py = _min_py_from_requires(req or "") if req else None
-    python_digits = (min_py or "3.10").replace(".", "")
+    deps = read_pyproject_deps(Path("pyproject.toml"))
+    req = read_requires_python(Path("pyproject.toml"))
+    min_py = min_py_from_requires(req or "") if req else None
+    python_digits = (min_py or "3.13").replace(".", "")
 
-    vendor_infos = []
+    vendor_infos: list[VendorInfo] = []
     seen_idents: set[str] = set()
     for dep_name in sorted(deps.keys()):
         spec = deps[dep_name]
-        desired_version = _preferred_dependency_version(dep_name, spec)
+        desired_version = preferred_dependency_version(dep_name, spec)
         if not desired_version:
             continue
-        wheel_url, nix_hash = _pypi_wheel_info(dep_name, desired_version)
+        wheel_url, nix_hash = pypi_wheel_info(dep_name, desired_version)
         if not wheel_url or not nix_hash:
             continue
         ident = _vendor_identifier(dep_name, seen_idents)
         vendor_infos.append(
-            {
-                "ident": ident,
-                "pname": dep_name,
-                "version": desired_version,
-                "url": wheel_url,
-                "hash": nix_hash,
-            }
+            VendorInfo(
+                ident=ident,
+                pname=dep_name,
+                version=desired_version,
+                url=wheel_url,
+                hash=nix_hash,
+            )
         )
 
     if not vendor_infos:
@@ -147,7 +165,7 @@ ${vendor_blocks}
           propagatedBuildInputs = [ ${prop_inputs} ];
 
           meta = with pkgs.lib; {
-            description = "Rich-powered logging helpers for colorful terminal output";
+            description = "Rich-powered logging runtime with contextual metadata and multi-sink fan-out";
             homepage = "https://github.com/bitranox/bitranox_template_py_cli";
             license = licenses.mit;
             maintainers = [];

@@ -1,29 +1,50 @@
 from __future__ import annotations
 
 import argparse
-import datetime as _dt
-import re
-from pathlib import Path
-from typing import Any, Dict, Tuple, Optional, cast
-import json
-import urllib.request
-import hashlib
 import base64
+import datetime as _dt
+import hashlib
+import json
+import re
 import sys
+import tomllib
+import urllib.request
+from pathlib import Path
+from typing import Any, Optional, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts._utils import get_project_metadata  # noqa: E402
 
-# Optional TOML parser for Python < 3.11 support during type checking
-try:  # pragma: no cover - import resolution
-    import tomllib as _tomllib  # type: ignore
-except Exception:  # pragma: no cover - best-effort fallback
-    try:
-        import tomli as _tomllib  # type: ignore
-    except Exception:  # noqa: PLC1901
-        _tomllib = None  # type: ignore[assignment]
-
 PROJECT_META = get_project_metadata()
+JsonMapping = dict[str, Any]
+JsonList = list[JsonMapping]
+
+
+def _as_json_mapping(value: object) -> JsonMapping:
+    if not isinstance(value, dict):
+        return {}
+    mapping = cast(dict[object, object], value)
+    result: JsonMapping = {}
+    for key_obj, item in mapping.items():
+        key_str = str(key_obj)
+        result[key_str] = cast(Any, item)
+    return result
+
+
+def _as_json_list(value: object) -> JsonList:
+    result: JsonList = []
+    if not isinstance(value, list):
+        return result
+    list_items = cast(list[object], value)
+    for item_obj in list_items:
+        if not isinstance(item_obj, dict):
+            continue
+        mapping: JsonMapping = {}
+        typed_item = cast(dict[object, object], item_obj)
+        for key_obj, val in typed_item.items():
+            mapping[str(key_obj)] = cast(Any, val)
+        result.append(mapping)
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,7 +76,7 @@ def bump_semver(old: str, part: str) -> str:
     return f"{major}.{minor}.{patch}"
 
 
-def _read_requires_python(pyproject: Path) -> str | None:
+def read_requires_python(pyproject: Path) -> str | None:
     try:
         text = pyproject.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -64,8 +85,8 @@ def _read_requires_python(pyproject: Path) -> str | None:
     return m.group(1) if m else None
 
 
-def _min_py_from_requires(spec: str) -> str | None:
-    """Extract the minimum X.Y from a requires-python spec like ">=3.10"."""
+def min_py_from_requires(spec: str) -> str | None:
+    """Extract the minimum X.Y from a requires-python spec like ">=3.13"."""
     m = re.search(r">=\s*(3\.[0-9]+)", spec)
     return m.group(1) if m else None
 
@@ -84,20 +105,23 @@ def _split_dep_spec(raw: str) -> tuple[str, str]:
     return name.lower(), spec
 
 
-def _deps_from_toml_text(text: str) -> Dict[str, str]:
-    """Parse dependencies from TOML text using tomllib/tomli if available.
+def _deps_from_toml_text(text: str) -> dict[str, str]:
+    """Parse dependencies from TOML text using the stdlib ``tomllib`` parser.
 
-    Returns an empty dict if toml parsing is unavailable or fails.
+    Returns an empty dict when parsing fails.
     """
-    if _tomllib is None:
-        return {}
+    raw_deps: list[Any] = []
     try:
-        data = cast(dict[str, Any], cast(Any, _tomllib).loads(text))
-        raw_deps = cast(list[Any], data.get("project", {}).get("dependencies", []))
+        loaded = cast(Any, tomllib).loads(text)
+        data = cast(dict[str, Any], loaded)
+        project_section = cast(dict[str, Any], data.get("project", {}))
+        raw_deps_obj = project_section.get("dependencies", [])
+        if isinstance(raw_deps_obj, list):
+            raw_deps = cast(list[Any], raw_deps_obj)
     except Exception:
         return {}
 
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for d in raw_deps:
         if isinstance(d, str) and d:
             name, spec = _split_dep_spec(d)
@@ -105,14 +129,14 @@ def _deps_from_toml_text(text: str) -> Dict[str, str]:
     return out
 
 
-def _deps_from_regex_text(text: str) -> Dict[str, str]:
+def _deps_from_regex_text(text: str) -> dict[str, str]:
     """Best-effort dependency parse via regex.
 
     Looks for a top-level 'dependencies = ["..."]' array inside the [project] table.
     This is intentionally minimal and serves as a fallback when TOML parsing is
     not available.
     """
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     m = re.search(r"(?ms)^dependencies\s*=\s*\[(.*?)\]", text)
     if not m:
         return out
@@ -125,7 +149,7 @@ def _deps_from_regex_text(text: str) -> Dict[str, str]:
     return out
 
 
-def _read_pyproject_deps(pyproject: Path) -> Dict[str, str]:
+def read_pyproject_deps(pyproject: Path) -> dict[str, str]:
     """Read [project].dependencies into a normalized mapping.
 
     Strategy: try TOML parsing first for correctness, otherwise fall back to a
@@ -145,7 +169,7 @@ def _pinned_version(spec: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _pypi_sdist_info(name: str, version: str) -> Tuple[str | None, str | None]:
+def _pypi_sdist_info(name: str, version: str) -> tuple[str | None, str | None]:
     """Return (sdist_url, sha256) for a PyPI project version.
 
     Handles both the version-specific endpoint (preferred) and falls back to
@@ -178,7 +202,7 @@ def _extract_floor_version(spec: str) -> str | None:
     return None
 
 
-def _preferred_dependency_version(name: str, spec: str) -> str | None:
+def preferred_dependency_version(name: str, spec: str) -> str | None:
     """Choose a deterministic version to vendor for a dependency."""
 
     pinned = _pinned_version(spec)
@@ -190,7 +214,7 @@ def _preferred_dependency_version(name: str, spec: str) -> str | None:
     return _pypi_latest_version(name)
 
 
-def _pypi_wheel_info(name: str, version: str) -> Tuple[str | None, str | None]:
+def pypi_wheel_info(name: str, version: str) -> tuple[str | None, str | None]:
     """Return (wheel_url, nix_hash) for a PyPI wheel release."""
 
     try:
@@ -200,31 +224,37 @@ def _pypi_wheel_info(name: str, version: str) -> Tuple[str | None, str | None]:
     except Exception:
         return None, None
 
-    def _select_wheel(files: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
-        chosen: Optional[dict[str, Any]] = None
+    def _select_wheel(files: list[JsonMapping]) -> Optional[JsonMapping]:
+        chosen: Optional[JsonMapping] = None
         for file in files:
-            if file.get("packagetype") != "bdist_wheel":
+            packagetype = cast(str | None, file.get("packagetype"))
+            if packagetype != "bdist_wheel":
                 continue
-            filename = file.get("filename", "")
-            if not chosen:
+            filename = cast(str, file.get("filename", ""))
+            if chosen is None:
                 chosen = file
             if filename.endswith("py3-none-any.whl"):
                 return file
         return chosen
 
-    candidates = data.get("urls", [])
+    candidates = _as_json_list(data.get("urls"))
     selected = _select_wheel(candidates)
     if not selected:
-        releases = data.get("releases", {}).get(version, [])
-        selected = _select_wheel(releases) if isinstance(releases, list) else None
+        releases_mapping = _as_json_mapping(data.get("releases"))
+        releases = _as_json_list(releases_mapping.get(version))
+        selected = _select_wheel(releases)
     if not selected:
         return None, None
 
-    sha_hex = selected.get("digests", {}).get("sha256")
-    if not sha_hex:
-        return selected.get("url"), None
+    digests_mapping = _as_json_mapping(selected.get("digests"))
+    sha_hex_obj = digests_mapping.get("sha256")
+    sha_hex = sha_hex_obj if isinstance(sha_hex_obj, str) else None
+    wheel_url_obj = selected.get("url")
+    wheel_url = wheel_url_obj if isinstance(wheel_url_obj, str) else None
+    if not sha_hex or wheel_url is None:
+        return wheel_url, None
     digest_b64 = base64.b64encode(bytes.fromhex(sha_hex)).decode("ascii")
-    return selected.get("url"), f"sha256-{digest_b64}"
+    return wheel_url, f"sha256-{digest_b64}"
 
 
 def _nix_replace_vendor_field(text: str, pname: str, field: str, value: str) -> tuple[str, bool]:
@@ -252,8 +282,8 @@ def _update_conda_recipe(version: str, path: Path) -> None:
     changed = text2 != text
     text = text2
     # Sync Python constraint with pyproject requires-python (>=X.Y)
-    req = _read_requires_python(Path("pyproject.toml"))
-    min_py = _min_py_from_requires(req or "") if req else None
+    req = read_requires_python(Path("pyproject.toml"))
+    min_py = min_py_from_requires(req or "") if req else None
     if min_py:
         pat = r"(python\s*>=\s*)3\.[0-9]+"
 
@@ -265,7 +295,7 @@ def _update_conda_recipe(version: str, path: Path) -> None:
             text = text3
             changed = True
     # Rebuild the run: requirements list from pyproject deps
-    deps = _read_pyproject_deps(Path("pyproject.toml"))
+    deps = read_pyproject_deps(Path("pyproject.toml"))
     lines = text.splitlines(True)
     # Find 'run:' line indent
     run_idx = next((i for i, ln in enumerate(lines) if re.match(r"^\s+run:\s*$", ln)), -1)
@@ -386,15 +416,15 @@ def _update_brew_formula(version: str, path: Path) -> None:
 
     text, changed_tag = _brew_set_source_tag(text, version)
     # Sync python@X.Y from requires-python
-    req = _read_requires_python(Path("pyproject.toml"))
-    min_py = _min_py_from_requires(req or "") if req else None
+    req = read_requires_python(Path("pyproject.toml"))
+    min_py = min_py_from_requires(req or "") if req else None
     text, changed_py = _brew_set_python_dep(text, min_py)
     if changed_tag or changed_py:
         path.write_text(text, encoding="utf-8")
         print(f"[bump] brew formula: url/python -> v{version}{' / @' + (min_py or '') if min_py else ''}")
 
     # Sync resources for all runtime deps
-    deps = _read_pyproject_deps(Path("pyproject.toml"))
+    deps = read_pyproject_deps(Path("pyproject.toml"))
     new_all = text
     for name, spec in deps.items():
         if name.lower() == "python":
@@ -415,7 +445,7 @@ def _update_nix_flake(version: str, path: Path) -> None:
     except FileNotFoundError:
         return
 
-    deps = _read_pyproject_deps(Path("pyproject.toml"))
+    deps = read_pyproject_deps(Path("pyproject.toml"))
 
     # Replace version = "X.Y.Z";
     # Update package block version only for the configured pname from pyproject
@@ -433,11 +463,11 @@ def _update_nix_flake(version: str, path: Path) -> None:
     t2 = re.sub(r"(rev\s*=\s*\")v[0-9]+\.[0-9]+\.[0-9]+(\")", rf"\1v{version}\2", t1)
     base_changed = t2 != text
     text = t2
-    # Sync python package set (python312Packages -> python310Packages for >=3.10) and interpreter in devShell
-    req = _read_requires_python(Path("pyproject.toml"))
-    min_py = _min_py_from_requires(req or "") if req else None
+    # Sync python package set (e.g., python313Packages) and interpreter in devShell
+    req = read_requires_python(Path("pyproject.toml"))
+    min_py = min_py_from_requires(req or "") if req else None
     if min_py:
-        digits = min_py.replace(".", "")  # e.g., 3.10 -> 310
+        digits = min_py.replace(".", "")  # e.g., 3.13 -> 313
 
         # pypkgs line
         def repl_pypkgs(m: re.Match[str]) -> str:
@@ -478,12 +508,12 @@ def _update_nix_flake(version: str, path: Path) -> None:
         spec = deps.get(key)
         if not spec:
             continue
-        desired_version = _preferred_dependency_version(vendor, spec)
+        desired_version = preferred_dependency_version(vendor, spec)
         if not desired_version:
             continue
         text, version_changed = _nix_replace_vendor_field(text, vendor, "version", desired_version)
         hash_changed = False
-        wheel_url, nix_hash = _pypi_wheel_info(vendor, desired_version)
+        _, nix_hash = pypi_wheel_info(vendor, desired_version)
         if nix_hash:
             text, hash_changed = _nix_replace_vendor_field(text, vendor, "hash", nix_hash)
             if not hash_changed:

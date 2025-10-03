@@ -5,32 +5,46 @@ from pathlib import Path
 import re
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 import click
 
-from scripts._utils import (
-    bootstrap_dev,
-    gh_available,
-    gh_release_create,
-    gh_release_edit,
-    gh_release_exists,
-    git_branch,
-    git_create_annotated_tag,
-    git_delete_tag,
-    git_push,
-    git_tag_exists,
-    read_version_from_pyproject,
-    run,
-    sync_packaging,
-)
+__all__ = ["release"]
+
+try:
+    from ._utils import (
+        bootstrap_dev,
+        gh_available,
+        gh_release_create,
+        gh_release_edit,
+        gh_release_exists,
+        git_branch,
+        git_create_annotated_tag,
+        git_delete_tag,
+        git_push,
+        git_tag_exists,
+        read_version_from_pyproject,
+        run,
+        sync_packaging,
+    )
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from scripts._utils import (
+        bootstrap_dev,
+        gh_available,
+        gh_release_create,
+        gh_release_edit,
+        gh_release_exists,
+        git_branch,
+        git_create_annotated_tag,
+        git_delete_tag,
+        git_push,
+        git_tag_exists,
+        read_version_from_pyproject,
+        run,
+        sync_packaging,
+    )
 
 
-@click.command(help="Create and push git tag vX.Y.Z from pyproject, create GitHub release (if gh present), then sync packaging SHAs")
-@click.option("--remote", default="origin", show_default=True, help="Git remote to push to")
-@click.option("--retries", default=5, show_default=True, help="Packaging sync retry attempts")
-@click.option("--retry-wait", default=3.0, show_default=True, help="Seconds to wait between sync retries")
-def main(remote: str, retries: int, retry_wait: float) -> None:
+def release(*, remote: str = "origin", retries: int = 5, retry_wait: float = 3.0) -> None:
     version = read_version_from_pyproject(Path("pyproject.toml"))
     if not version or not _looks_like_semver(version):
         raise SystemExit("[release] Could not read version X.Y.Z from pyproject.toml")
@@ -108,4 +122,6 @@ def _looks_like_semver(v: str) -> bool:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main()
+    from scripts.cli import main as cli_main
+
+    cli_main(["release", *sys.argv[1:]])

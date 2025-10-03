@@ -1,17 +1,24 @@
 from __future__ import annotations
 
-import click
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.bump import main as bump_main  # noqa: E402
+try:
+    from .bump import bump
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from scripts.bump import bump
+
+__all__ = ["bump_patch"]
 
 
-@click.command(help="Bump patch version")
-def main() -> None:  # pragma: no cover - thin wrapper
-    bump_main.main(standalone_mode=False, args=["--part", "patch"])  # type: ignore[attr-defined]
+def bump_patch(pyproject: Path = Path("pyproject.toml"), changelog: Path = Path("CHANGELOG.md")) -> None:
+    """Convenience wrapper to bump the patch version component."""
+
+    bump(part="patch", pyproject=pyproject, changelog=changelog)
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    from scripts.cli import main as cli_main
+
+    cli_main(["bump", "--part", "patch", *sys.argv[1:]])

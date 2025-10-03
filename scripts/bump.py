@@ -1,27 +1,33 @@
 from __future__ import annotations
 
-import click
 import sys
 from pathlib import Path
+from typing import Optional
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts._utils import run  # noqa: E402
+try:
+    from ._utils import run
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from scripts._utils import run
+
+__all__ = ["bump"]
 
 
-@click.command(help="Bump version in pyproject.toml and CHANGELOG.md")
-@click.option("--version", "version_", type=str, help="Explicit version X.Y.Z")
-@click.option("--part", type=click.Choice(["major", "minor", "patch"]), default=None)
-@click.option("--pyproject", type=click.Path(path_type=Path), default=Path("pyproject.toml"))
-@click.option("--changelog", type=click.Path(path_type=Path), default=Path("CHANGELOG.md"))
-def main(version_: str | None, part: str | None, pyproject: Path, changelog: Path) -> None:
+def bump(
+    *, version: Optional[str] = None, part: Optional[str] = None, pyproject: Path = Path("pyproject.toml"), changelog: Path = Path("CHANGELOG.md")
+) -> None:
+    """Bump the project version and update the changelog."""
+
     args = [sys.executable, "scripts/bump_version.py"]
-    if version_:
-        args += ["--version", version_]
+    if version:
+        args += ["--version", version]
     else:
         args += ["--part", part or "patch"]
     args += ["--pyproject", str(pyproject), "--changelog", str(changelog)]
     run(args)
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    from scripts.cli import main as cli_main
+
+    cli_main(["bump", *sys.argv[1:]])

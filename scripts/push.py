@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import os
-import click
 import sys
 from pathlib import Path
+from typing import Optional
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts._utils import git_branch, run, sync_packaging  # noqa: E402
+import rich_click as click
+
+try:
+    from ._utils import git_branch, run, sync_packaging
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from scripts._utils import git_branch, run, sync_packaging
+
+__all__ = ["push"]
 
 
-@click.command(help="Run tests, sync packaging, commit changes if any, and push current branch")
-@click.option("--remote", default="origin", show_default=True)
-def main(remote: str) -> None:
+def push(*, remote: str = "origin", message: Optional[str] = None) -> None:
+    """Run checks, sync packaging, commit changes, and push the current branch."""
+
     click.echo("[push] Sync packaging with pyproject before checks")
     sync_packaging()
 
@@ -24,21 +31,24 @@ def main(remote: str) -> None:
     click.echo("[push] Committing and pushing (single attempt)")
     run(["git", "add", "-A"])  # stage all
     staged = run(["bash", "-lc", "! git diff --cached --quiet"], check=False)
-    message = _resolve_commit_message()
+    commit_message = _resolve_commit_message(message)
     if staged.code != 0:
         click.echo("[push] No staged changes detected; creating empty commit")
-    run(["git", "commit", "--allow-empty", "-m", message])  # type: ignore[list-item]
+    run(["git", "commit", "--allow-empty", "-m", commit_message])  # type: ignore[list-item]
     branch = git_branch()
     run(["git", "push", "-u", remote, branch])  # type: ignore[list-item]
 
 
-def _resolve_commit_message() -> str:
+def _resolve_commit_message(message: Optional[str]) -> str:
     default_message = os.environ.get("COMMIT_MESSAGE", "chore: update").strip() or "chore: update"
+    if message is not None:
+        return message.strip() or default_message
+
     env_message = os.environ.get("COMMIT_MESSAGE")
     if env_message is not None:
-        message = env_message.strip() or default_message
-        click.echo(f"[push] Using commit message from COMMIT_MESSAGE: {message}")
-        return message
+        final = env_message.strip() or default_message
+        click.echo(f"[push] Using commit message from COMMIT_MESSAGE: {final}")
+        return final
 
     if sys.stdin.isatty():
         return click.prompt("[push] Commit message", default=default_message)
@@ -58,5 +68,7 @@ def _resolve_commit_message() -> str:
     return response or default_message
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    from scripts.cli import main as cli_main
+
+    cli_main(["push", *sys.argv[1:]])

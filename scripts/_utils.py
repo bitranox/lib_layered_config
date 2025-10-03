@@ -31,20 +31,13 @@ import sys
 import tempfile
 import hashlib
 import json
+import tomllib
 from urllib.request import urlopen
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import CompletedProcess
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence, cast
 from urllib.parse import urlparse
-
-try:  # Python 3.11+
-    import tomllib  # type: ignore[attr-defined]
-except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreters
-    try:
-        import tomli as tomllib  # type: ignore
-    except ModuleNotFoundError:  # pragma: no cover - pyproject parsing will degrade gracefully
-        tomllib = None  # type: ignore
 
 
 @dataclass(slots=True)
@@ -76,7 +69,7 @@ class ProjectMetadata:
         return ""
 
 
-_PYPROJECT_DATA_CACHE: dict[Path, dict[str, Any]] = {}
+_PYPROJECT_DATA_CACHE: dict[Path, dict[str, object]] = {}
 _METADATA_CACHE: dict[Path, ProjectMetadata] = {}
 
 
@@ -122,49 +115,83 @@ def _normalize_slug(value: str) -> str:
     return slug or value.replace("_", "-").lower()
 
 
-def _load_pyproject(pyproject: Path) -> dict[str, Any]:
+def _as_str_mapping(value: object) -> dict[str, object]:
+    """Return a shallow copy of mapping entries with string keys."""
+
+    result: dict[str, object] = {}
+    if isinstance(value, dict):
+        mapping = cast(dict[object, object], value)
+        for key_obj, item in mapping.items():
+            if isinstance(key_obj, str):
+                result[key_obj] = item
+    return result
+
+
+def _as_str_dict(value: object) -> dict[str, str]:
+    """Return a mapping containing only string keys and string values."""
+
+    result: dict[str, str] = {}
+    if isinstance(value, dict):
+        mapping = cast(dict[object, object], value)
+        for key_obj, item in mapping.items():
+            if isinstance(key_obj, str) and isinstance(item, str):
+                result[key_obj] = item
+    return result
+
+
+def _as_sequence(value: object) -> tuple[object, ...]:
+    """Return a tuple for list/tuple values, otherwise an empty tuple."""
+
+    if isinstance(value, (list, tuple)):
+        sequence = cast(Sequence[object], value)
+        return tuple(sequence)
+    return ()
+
+
+def _load_pyproject(pyproject: Path) -> dict[str, object]:
     path = pyproject.resolve()
     cached = _PYPROJECT_DATA_CACHE.get(path)
     if cached is not None:
         return cached
-    text = path.read_text(encoding="utf-8")
-    data: dict[str, Any] = {}
-    if tomllib is not None:
-        try:
-            data = tomllib.loads(text)
-        except Exception:
-            data = {}
+    raw_text = path.read_text(encoding="utf-8")
+    data: dict[str, object] = {}
+    try:
+        load_toml = cast(Callable[[str], dict[str, Any]], getattr(tomllib, "loads"))
+        parsed_obj = load_toml(raw_text)
+    except Exception:
+        parsed_obj = {}
+    data = {str(key): value for key, value in parsed_obj.items()}
     _PYPROJECT_DATA_CACHE[path] = data
     return data
 
 
 def _derive_import_package(data: dict[str, Any], fallback: str) -> str:
-    try:
-        packages = data.get("tool", {}).get("hatch", {}).get("build", {}).get("targets", {}).get("wheel", {}).get("packages", [])
-        if isinstance(packages, list) and packages:
-            first = packages[0]
-            if isinstance(first, str) and first:
-                return Path(first).name
-    except AttributeError:
-        pass
-    project_scripts = data.get("project", {}).get("scripts", {})
-    if isinstance(project_scripts, dict):
-        for value in project_scripts.values():
-            if isinstance(value, str) and ":" in value:
-                module = value.split(":", 1)[0]
-                return module.split(".", 1)[0]
+    tool_table = _as_str_mapping(data.get("tool"))
+    hatch_table = _as_str_mapping(tool_table.get("hatch"))
+    build_table = _as_str_mapping(hatch_table.get("build"))
+    targets_table = _as_str_mapping(build_table.get("targets"))
+    wheel_table = _as_str_mapping(targets_table.get("wheel"))
+    packages_value = wheel_table.get("packages")
+    for entry in _as_sequence(packages_value):
+        if isinstance(entry, str) and entry:
+            return Path(entry).name
+    project_table = _as_str_mapping(data.get("project"))
+    scripts_table = _as_str_mapping(project_table.get("scripts"))
+    for script_value in scripts_table.values():
+        if isinstance(script_value, str) and ":" in script_value:
+            module = script_value.split(":", 1)[0]
+            return module.split(".", 1)[0]
     return fallback.replace("-", "_")
 
 
 def _derive_coverage_source(data: dict[str, Any], fallback: str) -> str:
-    try:
-        sources = data.get("tool", {}).get("coverage", {}).get("run", {}).get("source", [])
-        if isinstance(sources, list) and sources:
-            first = sources[0]
-            if isinstance(first, str) and first:
-                return first
-    except AttributeError:
-        pass
+    tool_table = _as_str_mapping(data.get("tool"))
+    coverage_table = _as_str_mapping(tool_table.get("coverage"))
+    run_table = _as_str_mapping(coverage_table.get("run"))
+    sources_value = run_table.get("source")
+    for entry in _as_sequence(sources_value):
+        if isinstance(entry, str) and entry:
+            return entry
     return fallback
 
 
@@ -175,13 +202,20 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
         return cached
 
     data = _load_pyproject(pyproject)
-    project = data.get("project", {}) if isinstance(data, dict) else {}
-    name = str(project.get("name") or pyproject.stem).strip() or "project"
+    project_table = _as_str_mapping(data.get("project"))
+    name = str(pyproject.stem)
+    name_value = project_table.get("name")
+    if isinstance(name_value, str) and name_value.strip():
+        name = name_value.strip()
+    if not name:
+        name = "project"
     slug = _normalize_slug(name)
 
-    urls = project.get("urls", {}) if isinstance(project, dict) else {}
-    repo_url = str(urls.get("Repository") or "")
-    homepage = str(urls.get("Homepage") or project.get("homepage") or "")
+    urls_table = _as_str_dict(project_table.get("urls"))
+    repo_url = urls_table.get("Repository", "")
+    homepage_value = urls_table.get("Homepage")
+    homepage_project = project_table.get("homepage")
+    homepage = homepage_value or (homepage_project if isinstance(homepage_project, str) else "")
     repo_host = repo_owner = repo_name = ""
     if repo_url:
         parsed = urlparse(repo_url)
@@ -213,10 +247,10 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
 
 def read_version_from_pyproject(pyproject: Path = Path("pyproject.toml")) -> str:
     data = _load_pyproject(pyproject)
-    project = data.get("project", {}) if isinstance(data, dict) else {}
-    version = str(project.get("version") or "").strip()
-    if version:
-        return version
+    project_table = _as_str_mapping(data.get("project"))
+    version_value = project_table.get("version")
+    if isinstance(version_value, str) and version_value.strip():
+        return version_value.strip()
     text = pyproject.read_text(encoding="utf-8")
     match = re.search(r'(?m)^version\s*=\s*"([0-9]+(?:\.[0-9]+){2})"', text)
     return match.group(1) if match else ""
@@ -376,15 +410,25 @@ def sync_packaging() -> None:
 
 
 def bootstrap_dev() -> None:
+    needs_dev_install = False
     if not (cmd_exists("ruff") and cmd_exists("pyright")):
+        needs_dev_install = True
+    else:
+        try:
+            from importlib import import_module
+
+            import_module("pytest_asyncio")
+        except ModuleNotFoundError:
+            needs_dev_install = True
+    if needs_dev_install:
         print("[bootstrap] Installing dev dependencies via 'pip install -e .[dev]'")
-        run([sys.executable, "-m", "pip", "install", "-e", ".[dev]"])
+        run([sys.executable, "-m", "pip", "install", "--break-system-packages", "-e", ".[dev]"])
     try:
         from importlib import import_module
 
         import_module("sqlite3")
     except Exception:
-        run([sys.executable, "-m", "pip", "install", "pysqlite3-binary"], check=False)
+        run([sys.executable, "-m", "pip", "install", "--break-system-packages", "pysqlite3-binary"], check=False)
 
 
 def ensure_nix(auto_install: bool = True) -> bool:

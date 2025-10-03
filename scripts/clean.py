@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import Iterable
 
-import click
-
-
-DEFAULTS = [
+DEFAULT_PATTERNS: tuple[str, ...] = (
+    ".hypothesis",
+    ".import_linter_cache",
     ".pytest_cache",
     ".ruff_cache",
     ".pyright",
@@ -23,25 +23,26 @@ DEFAULTS = [
     "codecov.sh",
     ".cache",
     "result",
-]
+)
+
+__all__ = ["clean", "DEFAULT_PATTERNS"]
 
 
-def _glob_delete(pattern: str) -> None:
-    for path in Path(".").glob(pattern):
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-        else:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+def clean(patterns: Iterable[str] = DEFAULT_PATTERNS) -> None:
+    """Remove cached artefacts and build outputs matching ``patterns``."""
+
+    for pattern in patterns:
+        for path in Path.cwd().glob(pattern):
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    continue
 
 
-@click.command(help="Remove caches, build artifacts, and coverage outputs")
-def main() -> None:
-    for p in DEFAULTS:
-        _glob_delete(p)
+if __name__ == "__main__":  # pragma: no cover
+    from scripts.cli import main as cli_main
 
-
-if __name__ == "__main__":
-    main()
+    cli_main(["clean"])

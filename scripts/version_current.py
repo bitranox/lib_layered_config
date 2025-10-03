@@ -1,22 +1,25 @@
 from __future__ import annotations
 
-import click
+import sys
 from pathlib import Path
 
-import sys
+try:
+    from ._utils import read_version_from_pyproject
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from scripts._utils import read_version_from_pyproject
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts._utils import read_version_from_pyproject  # noqa: E402
+__all__ = ["print_current_version"]
 
 
-@click.command(name="version-current", help="Print version from pyproject.toml")
-@click.option("--pyproject", type=click.Path(path_type=Path), default=Path("pyproject.toml"))
-def main(pyproject: Path) -> None:
-    v = read_version_from_pyproject(pyproject)
-    if not v:
+def print_current_version(pyproject: Path = Path("pyproject.toml")) -> str:
+    """Return the project version declared in ``pyproject.toml``."""
+
+    version = read_version_from_pyproject(pyproject)
+    if not version:
         raise SystemExit("version not found")
-    click.echo(v)
+    return version
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    print(print_current_version())

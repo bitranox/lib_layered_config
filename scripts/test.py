@@ -12,20 +12,30 @@ from typing import Callable
 
 import click
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts._utils import (  # noqa: E402
-    RunResult,
-    bootstrap_dev,
-    cmd_exists,
-    get_project_metadata,
-    run,
-    sync_packaging,
-)
+try:
+    from ._utils import (
+        RunResult,
+        bootstrap_dev,
+        get_project_metadata,
+        run,
+        sync_packaging,
+    )
+except ImportError:  # pragma: no cover - direct execution fallback
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from scripts._utils import (
+        RunResult,
+        bootstrap_dev,
+        get_project_metadata,
+        run,
+        sync_packaging,
+    )
 
 PROJECT = get_project_metadata()
 COVERAGE_TARGET = PROJECT.coverage_source
-_TOML_MODULE: ModuleType | None = None
+__all__ = ["run_tests", "COVERAGE_TARGET"]
+_toml_module: ModuleType | None = None
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_TRUTHY = {"1", "true", "yes", "on"}
 
 
 def _build_default_env() -> dict[str, str]:
@@ -34,21 +44,24 @@ def _build_default_env() -> dict[str, str]:
     return os.environ | {"PYTHONPATH": pythonpath}
 
 
-DEFAULT_ENV = _build_default_env()
+_default_env = _build_default_env()
 
 
 def _refresh_default_env() -> None:
-    """Recompute DEFAULT_ENV after environment mutations."""
-    global DEFAULT_ENV
-    DEFAULT_ENV = _build_default_env()
+    """Recompute cached default env after environment mutations."""
+    global _default_env
+    _default_env = _build_default_env()
 
 
-@click.command(help="Run lints, type-check, tests with coverage, and Codecov upload if configured")
-@click.option("--coverage", type=click.Choice(["on", "auto", "off"]), default="on")
-@click.option("--verbose", "-v", is_flag=True, help="Print executed commands before running them")
-def main(coverage: str, verbose: bool) -> None:
+def run_tests(
+    *,
+    coverage: str = "on",
+    verbose: bool = False,
+    strict_format: bool | None = None,
+    skip_packaging_sync: bool | None = None,
+) -> None:
     env_verbose = os.getenv("TEST_VERBOSE", "").lower()
-    if not verbose and env_verbose in {"1", "true", "yes", "on"}:
+    if not verbose and env_verbose in _TRUTHY:
         verbose = True
 
     def _run(
@@ -69,67 +82,110 @@ def main(coverage: str, verbose: bool) -> None:
                 if overrides:
                     env_view = " ".join(f"{k}={v}" for k, v in overrides.items())
                     click.echo(f"    env {env_view}")
-        merged_env = DEFAULT_ENV if env is None else DEFAULT_ENV | env
+        merged_env = _default_env if env is None else _default_env | env
         result = run(cmd, env=merged_env, check=check, capture=capture)  # type: ignore[arg-type]
         if verbose and label:
             click.echo(f"    -> {label}: exit={result.code} out={bool(result.out)} err={bool(result.err)}")
+
         return result
+
+    def _wrap(*, cmd: list[str] | str, label: str, capture: bool = True) -> Callable[[], None]:
+        def _runner() -> None:
+            _run(cmd, label=label, capture=capture)
+
+        return _runner
 
     bootstrap_dev()
 
-    click.echo("[0/5] Sync packaging (conda/brew/nix) with pyproject")
-    sync_packaging()
+    resolved_skip_packaging = skip_packaging_sync if skip_packaging_sync is not None else os.getenv("SKIP_PACKAGING_SYNC", "1").strip().lower() in _TRUTHY
 
-    click.echo("[1/5] Ruff lint")
-    _run(["ruff", "check", "."], check=False)  # type: ignore[list-item]
+    steps: list[tuple[str, Callable[[], None]]] = []
+    if resolved_skip_packaging:
+        click.echo("[skip] Packaging sync disabled (set SKIP_PACKAGING_SYNC=0 to enable)")
+    else:
+        steps.append(("Sync packaging (conda/brew/nix) with pyproject", lambda: sync_packaging()))
 
-    click.echo("[2/5] Ruff format (apply)")
-    _run(["ruff", "format", "."], check=False)  # type: ignore[list-item]
+    resolved_format_strict = strict_format if strict_format is not None else os.getenv("STRICT_RUFF_FORMAT", "0").strip().lower() in _TRUTHY
 
-    click.echo("[3/5] Import-linter contracts")
-    _run([sys.executable, "-m", "lint_imports", "--config", "pyproject.toml"], check=False)
+    steps.extend(
+        [
+            (
+                "Ruff lint",
+                _wrap(cmd=["ruff", "check", "."], label="ruff-check", capture=False),
+            ),
+            (
+                "Ruff format check" if resolved_format_strict else "Ruff format (apply)",
+                _wrap(
+                    cmd=["ruff", "format", "--check", "."] if resolved_format_strict else ["ruff", "format", "."],
+                    label="ruff-format",
+                    capture=True,
+                ),
+            ),
+            (
+                "Import-linter contracts",
+                _wrap(
+                    cmd=[sys.executable, "-m", "importlinter.cli", "lint", "--config", "pyproject.toml"],
+                    label="import-linter",
+                    capture=False,
+                ),
+            ),
+            (
+                "Pyright type-check",
+                _wrap(cmd=["pyright"], label="pyright", capture=False),
+            ),
+        ]
+    )
 
-    click.echo("[4/5] Pyright type-check")
-    _run(["pyright"], check=False)  # type: ignore[list-item]
+    def _run_pytest() -> None:
+        for f in (".coverage", "coverage.xml"):
+            try:
+                Path(f).unlink()
+            except FileNotFoundError:
+                pass
 
-    click.echo("[5/5] Pytest with coverage")
-    for f in (".coverage", "coverage.xml"):
-        try:
-            Path(f).unlink()
-        except FileNotFoundError:
-            pass
-
-    if coverage == "on" or (coverage == "auto" and (os.getenv("CI") or os.getenv("CODECOV_TOKEN"))):
-        click.echo("[coverage] enabled")
-        fail_under = _read_fail_under(Path("pyproject.toml"))
-        with tempfile.TemporaryDirectory() as tmp:
-            cov_file = Path(tmp) / ".coverage"
-            click.echo(f"[coverage] file={cov_file}")
-            env = os.environ | {"COVERAGE_FILE": str(cov_file)}
+        if coverage == "on" or (coverage == "auto" and (os.getenv("CI") or os.getenv("CODECOV_TOKEN"))):
+            click.echo("[coverage] enabled")
+            fail_under = _read_fail_under(Path("pyproject.toml"))
+            with tempfile.TemporaryDirectory() as tmp:
+                cov_file = Path(tmp) / ".coverage"
+                click.echo(f"[coverage] file={cov_file}")
+                env = os.environ | {"COVERAGE_FILE": str(cov_file)}
+                pytest_result = _run(
+                    [
+                        "python",
+                        "-m",
+                        "pytest",
+                        f"--cov={COVERAGE_TARGET}",
+                        "--cov-report=xml:coverage.xml",
+                        "--cov-report=term-missing",
+                        f"--cov-fail-under={fail_under}",
+                        "-vv",
+                    ],
+                    env=env,
+                    capture=False,
+                    label="pytest",
+                )
+                if pytest_result.code != 0:
+                    click.echo("[pytest] failed; skipping Codecov upload", err=True)
+                    raise SystemExit(pytest_result.code)
+        else:
+            click.echo("[coverage] disabled (set --coverage=on to force)")
             pytest_result = _run(
-                [
-                    "python",
-                    "-m",
-                    "pytest",
-                    f"--cov={COVERAGE_TARGET}",
-                    "--cov-report=xml:coverage.xml",
-                    "--cov-report=term-missing",
-                    f"--cov-fail-under={fail_under}",
-                    "-vv",
-                ],
-                env=env,
+                ["python", "-m", "pytest", "-vv"],
                 capture=False,
-                label="pytest",
+                label="pytest-no-cov",
             )
             if pytest_result.code != 0:
                 click.echo("[pytest] failed; skipping Codecov upload", err=True)
                 raise SystemExit(pytest_result.code)
-    else:
-        click.echo("[coverage] disabled (set --coverage=on to force)")
-        pytest_result = _run(["python", "-m", "pytest", "-vv"], capture=False, label="pytest-no-cov")  # type: ignore[list-item]
-        if pytest_result.code != 0:
-            click.echo("[pytest] failed; skipping Codecov upload", err=True)
-            raise SystemExit(pytest_result.code)
+
+    pytest_label = "Pytest with coverage" if coverage != "off" else "Pytest"
+    steps.append((pytest_label, _run_pytest))
+
+    total = len(steps)
+    for index, (description, action) in enumerate(steps, start=1):
+        click.echo(f"[{index}/{total}] {description}")
+        action()
 
     _ensure_codecov_token()
 
@@ -145,19 +201,13 @@ def main(coverage: str, verbose: bool) -> None:
 
 
 def _get_toml_module() -> ModuleType:
-    global _TOML_MODULE
-    if _TOML_MODULE is not None:
-        return _TOML_MODULE
+    global _toml_module
+    if _toml_module is not None:
+        return _toml_module
 
-    try:
-        import tomllib as module  # type: ignore[import-not-found]
-    except ModuleNotFoundError:
-        try:
-            import tomli as module  # type: ignore[import-not-found, assignment]
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError("tomllib/tomli modules are unavailable. Install the 'tomli' package for Python < 3.11.") from exc
+    import tomllib as module
 
-    _TOML_MODULE = module
+    _toml_module = module
     return module
 
 
@@ -291,6 +341,12 @@ def _prune_coverage_data_files() -> None:
             continue
         except OSError as exc:
             click.echo(f"[coverage] warning: unable to remove {path}: {exc}", err=True)
+
+
+def main() -> None:
+    """Backward-compatible wrapper."""
+
+    run_tests()
 
 
 if __name__ == "__main__":
