@@ -267,7 +267,7 @@ jobs:
             print('nix flake: version mismatch'); sys.exit(1)
           if not re.search(r'pypkgs\s*=\s*pkgs\.python' + re.escape(min_digits) + r'Packages', nix):
             print('nix flake: python package set not aligned'); sys.exit(1)
-          if not re.search(r'pkgs\.python' + re.escape(min_digits) + r'\\b', nix):
+          if not re.search(r'pkgs\.python' + re.escape(min_digits) + r'\b', nix):
             print('nix flake: devShell python not aligned'); sys.exit(1)
           print('Packaging files are consistent with pyproject.')
           PY
