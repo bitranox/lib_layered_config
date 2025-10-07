@@ -11,7 +11,7 @@ Design and implement a **cross-platform configuration layer system** as a reusab
 
 ## Scope & Baseline
 
-* **Python:** ≥ **3.12** (validate on 3.13). Use timezone-aware UTC.
+* **Python:** ≥ **3.13** (validate on 3.14). Use timezone-aware UTC.
 * **Layout:** `src/` package layout; explicit public API via `__all__`.
 * **Distribution:** sdist + wheel; include LICENSE, README, `.env.example`.
 * **CI gates:** lint → type-check → test (≥90% coverage on core) → security audit → build.

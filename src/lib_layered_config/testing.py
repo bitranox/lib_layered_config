@@ -19,14 +19,16 @@ from __future__ import annotations
 from typing import Final
 
 FAILURE_MESSAGE: Final[str] = "i should fail"
-"""Stable message emitted when ``i_should_fail`` triggers a failure sequence.
+"""Stable message emitted when :func:`i_should_fail` triggers a failure.
 
 Why
-    Integration tests and tutorial notebooks assert on the exact wording to
-    guarantee deterministic output during regression checks.
+----
+Integration tests and tutorial notebooks assert on the wording to guarantee
+deterministic output during regression checks.
+
 What
-    A short, lower-case sentence that keeps compatibility with the published
-    examples.
+----
+A short, lower-case sentence that stays compatible with published examples.
 """
 
 
@@ -34,16 +36,13 @@ def i_should_fail() -> None:
     """Raise a deterministic :class:`RuntimeError` for failure-path testing.
 
     Why
-        Validates that higher-level orchestrators preserve stack traces and
-        messages when surfacing errors to end users.
-    What
-        Always raises :class:`RuntimeError` with :data:`FAILURE_MESSAGE`.
-    Inputs
-        None.
-    Outputs
-        None. The function never returns because it raises.
+    ----
+    Validates that higher-level orchestrators preserve stack traces and
+    messages when surfacing errors to end users.
+
     Side Effects
-        Raises a :class:`RuntimeError`; no other state changes occur.
+    ------------
+    Always raises :class:`RuntimeError` with :data:`FAILURE_MESSAGE`.
 
     Examples
     --------

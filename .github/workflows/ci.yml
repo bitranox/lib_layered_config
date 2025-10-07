@@ -14,13 +14,31 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        # Test against Python 3.10 and the latest 3.x available on Actions runners
-        python: ["3.10", "3.x"]
+        # Test against Python 3.13 and the latest 3.x available on Actions runners
+        python: ["3.13", "3.x"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Extract project metadata
+        shell: python
+        run: |
+          import os
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path('pyproject.toml').read_text('utf-8'))
+          project = data['project']['name']
+          module = project.replace('-', '_')
+          dash = project.replace('_', '-')
+          scripts = list(data['project'].get('scripts', {}).keys())
+          cli_bin = scripts[0] if scripts else dash
+
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write(f"PROJECT_NAME={project}\n")
+              env.write(f"PACKAGE_MODULE={module}\n")
+              env.write(f"CLI_BIN={cli_bin}\n")
       - name: Install make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -57,7 +75,7 @@ jobs:
           python -m venv .venv_wheel
           . .venv_wheel/bin/activate 2>/dev/null || . .venv_wheel/Scripts/activate 2>/dev/null
           pip install dist/*.whl
-          lib_log_rich --version || python -m lib_log_rich --version
+          "$CLI_BIN" --version 2>/dev/null || python -m "$PACKAGE_MODULE" --version
 
   pipx-uv:
     name: pipx/uv verification (ubuntu)
@@ -66,7 +84,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
+      - name: Extract project metadata
+        shell: python
+        run: |
+          import os
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path('pyproject.toml').read_text('utf-8'))
+          project = data['project']['name']
+          module = project.replace('-', '_')
+          dash = project.replace('_', '-')
+          scripts = list(data['project'].get('scripts', {}).keys())
+          cli_bin = scripts[0] if scripts else dash
+
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write(f"PROJECT_NAME={project}\n")
+              env.write(f"PACKAGE_MODULE={module}\n")
+              env.write(f"CLI_BIN={cli_bin}\n")
       - name: Build wheel
         run: |
           python -m pip install --upgrade pip build
@@ -75,7 +111,7 @@ jobs:
         run: |
           python -m pip install pipx
           pipx install dist/*.whl
-          lib_log_rich --version
+          "$CLI_BIN" --version 2>/dev/null || python -m "$PACKAGE_MODULE" --version
       - name: Install uv
         uses: astral-sh/setup-uv@v2
         with:
@@ -83,7 +119,7 @@ jobs:
       - name: uv tool install
         run: |
           uv tool install .
-          lib_log_rich --version
+          "$CLI_BIN" --version 2>/dev/null || python -m "$PACKAGE_MODULE" --version
 
   # nix and conda packaging builds are disabled for now to keep CI green.
   nix:
@@ -111,7 +147,7 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Build conda recipe (local source, no test)
         shell: bash -l {0}
         env:
@@ -123,13 +159,13 @@ jobs:
           conda build packaging/conda/recipe --no-test -c conda-forge -c defaults
 
   notebooks:
-    name: Execute notebooks (ubuntu, Python 3.10)
+    name: Execute notebooks (ubuntu, Python 3.13)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
       - name: Install notebook runner deps
         run: |
           python -m pip install --upgrade pip
@@ -192,21 +228,21 @@ jobs:
       - name: Verify packaging matches pyproject
         run: |
           python - << 'PY'
-          import re, sys
+          import re, sys, tomllib
           from pathlib import Path
 
-          py = Path('pyproject.toml').read_text(encoding='utf-8')
-          m_ver = re.search(r'^version\s*=\s*"([^"]+)"', py, re.M)
-          m_req = re.search(r'^requires-python\s*=\s*"([^"]+)"', py, re.M)
-          if not (m_ver and m_req):
-            print('pyproject missing version or requires-python'); sys.exit(1)
-          version = m_ver.group(1)
-          requires = m_req.group(1)
-          m_min = re.search(r'>=\s*(3\.[0-9]+)', requires)
-          if not m_min:
-            print('requires-python must be like ">=3.X"'); sys.exit(1)
-          min_py = m_min.group(1)
+          data = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))
+          project = data['project']['name']
+          version = data['project']['version']
+          requires = data['project']['requires-python']
+
+          min_match = re.search(r'([0-9]+\.[0-9]+)', requires)
+          if not min_match:
+            print('requires-python must declare a minimum like ">=3.X"'); sys.exit(1)
+          min_py = min_match.group(1)
           min_digits = min_py.replace('.', '')
+          project_dash = project.replace('_', '-')
+          project_module = project.replace('-', '_')
 
           # Conda
           conda = Path('packaging/conda/recipe/meta.yaml').read_text(encoding='utf-8')
@@ -216,7 +252,10 @@ jobs:
             print('conda/meta.yaml: python constraint not aligned (host/run)'); sys.exit(1)
 
           # Brew
-          brew = Path('packaging/brew/Formula/lib-log-rich.rb').read_text(encoding='utf-8')
+          brew_path = Path(f'packaging/brew/Formula/{project_dash}.rb')
+          if not brew_path.exists():
+            print(f'brew formula missing: {brew_path}'); sys.exit(1)
+          brew = brew_path.read_text(encoding='utf-8')
           if f"refs/tags/v{version}.tar.gz" not in brew:
             print('brew formula: url tag mismatch'); sys.exit(1)
           if f'"python@{min_py}"' not in brew:
@@ -224,11 +263,11 @@ jobs:
 
           # Nix
           nix = Path('packaging/nix/flake.nix').read_text(encoding='utf-8')
-          if not re.search(r'pname\s*=\s*"lib_log_rich";\s*[^}]*?version\s*=\s*"' + re.escape(version) + r'";', nix, re.S):
+          if not re.search(r'pname\s*=\s*"' + re.escape(project_module) + r'";\s*[^}]*?version\s*=\s*"' + re.escape(version) + r'";', nix, re.S):
             print('nix flake: version mismatch'); sys.exit(1)
           if not re.search(r'pypkgs\s*=\s*pkgs\.python' + re.escape(min_digits) + r'Packages', nix):
             print('nix flake: python package set not aligned'); sys.exit(1)
-          if not re.search(r'pkgs\.python' + re.escape(min_digits) + r'\b', nix):
+          if not re.search(r'pkgs\.python' + re.escape(min_digits) + r'\\b', nix):
             print('nix flake: devShell python not aligned'); sys.exit(1)
           print('Packaging files are consistent with pyproject.')
           PY

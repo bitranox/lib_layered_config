@@ -1,21 +1,23 @@
-"""Plainspoken exception hierarchy for configuration failures.
+"""Domain error taxonomy shared across layers.
 
 Purpose
-    Offer a single, memorable taxonomy that adapters and applications can share
-    when reporting configuration issues. The hierarchy sits in the domain layer
-    so every outer component can depend on it without creating import cycles.
+-------
+ codifies the error classes referenced throughout ``docs/systemdesign`` so the
+application and adapter layers can communicate failures without depending on
+concrete implementations.
 
 Contents
-    - ``ConfigError``: root for every library-specific exception.
-    - ``InvalidFormat``: wrap syntax/parse failures.
-    - ``ValidationError``: reserve semantic validation failures.
-    - ``NotFound``: signal missing-yet-optional resources.
+--------
+- ``ConfigError``: base class for every library-specific exception.
+- ``InvalidFormat``: raised when structured configuration cannot be parsed.
+- ``ValidationError``: reserved for semantic validation of configuration
+  payloads once implemented.
+- ``NotFound``: indicates optional configuration sources were absent.
 
-System Integration
-    Adapters raise the specialised subclasses; callers often catch
-    :class:`ConfigError` to treat all library failures uniformly. The
-    composition root may wrap adapter-specific exceptions into
-    :class:`ConfigError` derivatives to keep external contracts stable.
+System Role
+-----------
+Adapters raise these exceptions; the composition root and CLI translate them
+into operator-facing messages without leaking implementation details.
 """
 
 from __future__ import annotations
@@ -29,45 +31,35 @@ __all__ = [
 
 
 class ConfigError(Exception):
-    """Root of the library's configuration error tree.
+    """Base class for all configuration-related errors in the library.
 
     Why
-        Gives consumers a single ``except ConfigError`` hook when they do not
-        care about fine-grained failure modes.
-    When
-        Raised directly only in guard rails; most modules raise subclasses.
+    ----
+    Centralises exception handling so callers can catch a single type when
+    operating at library boundaries.
     """
 
 
 class InvalidFormat(ConfigError):
-    """Wrap syntactic parsing failures.
+    """Raised when a configuration source cannot be parsed.
 
-    Why
-        Communicates that a configuration source exists but could not be parsed
-        into structured data.
-    When
-        Raised by file loaders, dotenv parsing, or other structured parsers.
+    Typical sources include malformed TOML, JSON, YAML, or dotenv files. The
+    message should reference the offending path for operator debugging.
     """
 
 
 class ValidationError(ConfigError):
-    """Reserved for semantic validation errors.
+    """Placeholder for semantic configuration validation failures.
 
-    Why
-        Keeps room for future schema validation without breaking the hierarchy.
-    When
-        Raised once semantic validation is introduced; currently unused on
-        purpose.
+    The current release does not perform semantic validation, but the class is
+    reserved so downstream integrations already depend on a stable type.
     """
 
 
 class NotFound(ConfigError):
-    """Signal optional artifacts that could not be located.
+    """Indicates an optional configuration source was not discovered.
 
-    Why
-        Allows adapters to note missing files or directories without treating
-        the situation as fatal.
-    When
-        Raised by path resolvers and loaders when an optional resource is
-        absent.
+    Used when files, directory entries, or environment variable namespaces are
+    genuinely missing; callers generally treat this as informational rather than
+    fatal.
     """

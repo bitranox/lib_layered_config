@@ -3,7 +3,9 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from lib_layered_config.application.merge import merge_layers
+from lib_layered_config.application.merge import LayerSnapshot, merge_layers
+
+from tests.support.os_markers import os_agnostic
 
 
 SCALAR = st.one_of(st.booleans(), st.integers(), st.text(min_size=1, max_size=5))
@@ -15,66 +17,110 @@ VALUE = st.recursive(
 MAPPING = st.dictionaries(st.text(min_size=1, max_size=5), VALUE, max_size=4)
 
 
-def test_precedence_overwrites() -> None:
-    layers = [
-        ("app", {"feature": {"enabled": False}}, "app.toml"),
-        ("user", {"feature": {"enabled": True}}, "user.toml"),
-        ("env", {"feature": {"level": "debug"}}, None),
+def layer(name: str, payload: dict[str, object], origin: str | None = None) -> LayerSnapshot:
+    return LayerSnapshot(name, payload, origin)
+
+
+def feature_layers() -> list[LayerSnapshot]:
+    return [
+        layer("app", {"feature": {"enabled": False}}, "app.toml"),
+        layer("user", {"feature": {"enabled": True}}, "user.toml"),
+        layer("env", {"feature": {"level": "debug"}}),
     ]
-    merged, meta = merge_layers(layers)
+
+
+@os_agnostic
+def test_merge_layers_lets_latest_scalar_win() -> None:
+    merged, _ = merge_layers(feature_layers())
     assert merged["feature"]["enabled"] is True
+
+
+@os_agnostic
+def test_merge_layers_preserves_new_keys_from_env_layer() -> None:
+    merged, _ = merge_layers(feature_layers())
     assert merged["feature"]["level"] == "debug"
+
+
+@os_agnostic
+def test_merge_layers_records_provenance_for_scalar_override() -> None:
+    _, meta = merge_layers(feature_layers())
     assert meta["feature.enabled"]["layer"] == "user"
+
+
+@os_agnostic
+def test_merge_layers_records_provenance_for_new_key() -> None:
+    _, meta = merge_layers(feature_layers())
     assert meta["feature.level"]["layer"] == "env"
 
 
-def test_nested_merge_retains_previous_keys() -> None:
-    layers = [
-        ("app", {"db": {"host": "localhost", "port": 5432}}, "app.toml"),
-        ("dotenv", {"db": {"password": "secret"}}, ".env"),
+def database_layers() -> list[LayerSnapshot]:
+    return [
+        layer("app", {"db": {"host": "localhost", "port": 5432}}, "app.toml"),
+        layer("dotenv", {"db": {"password": "secret"}}, ".env"),
     ]
-    merged, _ = merge_layers(layers)
+
+
+@os_agnostic
+def test_merge_layers_keeps_existing_nested_values() -> None:
+    merged, _ = merge_layers(database_layers())
     assert merged["db"]["host"] == "localhost"
+
+
+@os_agnostic
+def test_merge_layers_adds_new_nested_values() -> None:
+    merged, _ = merge_layers(database_layers())
     assert merged["db"]["password"] == "secret"
 
 
-def test_merge_is_idempotent() -> None:
-    layers = [
-        ("app", {"db": {"host": "localhost", "ports": [5432]}}, "app.toml"),
-        ("env", {"db": {"host": "remote"}}, None),
+def idempotent_layers() -> list[LayerSnapshot]:
+    return [
+        layer("app", {"db": {"host": "localhost", "ports": [5432]}}, "app.toml"),
+        layer("env", {"db": {"host": "remote"}}),
     ]
-    merged_a, meta_a = merge_layers(layers)
-    merged_b, meta_b = merge_layers(layers)
+
+
+@os_agnostic
+def test_merge_layers_is_idempotent_for_payload() -> None:
+    merged_a, _ = merge_layers(idempotent_layers())
+    merged_b, _ = merge_layers(idempotent_layers())
     assert merged_a == merged_b
+
+
+@os_agnostic
+def test_merge_layers_is_idempotent_for_metadata() -> None:
+    _, meta_a = merge_layers(idempotent_layers())
+    _, meta_b = merge_layers(idempotent_layers())
     assert meta_a == meta_b
 
 
+@os_agnostic
 @given(MAPPING, MAPPING, MAPPING)
-def test_merge_associative(lhs, mid, rhs) -> None:
-    left, _ = merge_layers([("lhs", lhs, None), ("mid", mid, None), ("rhs", rhs, None)])
-    left_then_right, _ = merge_layers([("lhs-mid", left, None), ("rhs", rhs, None)])
-    right_then_left, _ = merge_layers(
-        [("lhs", lhs, None), ("mid-rhs", merge_layers([("mid", mid, None), ("rhs", rhs, None)])[0], None)]
-    )
+def test_merge_layers_associative_property(lhs, mid, rhs) -> None:
+    left, _ = merge_layers([layer("lhs", lhs), layer("mid", mid), layer("rhs", rhs)])
+    left_then_right, _ = merge_layers([layer("lhs-mid", left), layer("rhs", rhs)])
+    mid_then_right_payload, _ = merge_layers([layer("mid", mid), layer("rhs", rhs)])
+    right_then_left, _ = merge_layers([layer("lhs", lhs), layer("mid-rhs", mid_then_right_payload)])
     assert left_then_right == right_then_left
 
 
-def _assert_contains(actual, expected):
+def _contains(actual: object, expected: object) -> bool:
     if isinstance(expected, dict):
-        assert isinstance(actual, dict)
-        for sub_key, sub_val in expected.items():
-            assert sub_key in actual
-            _assert_contains(actual[sub_key], sub_val)
-    else:
-        assert actual == expected
+        if not isinstance(actual, dict):
+            return False
+        for key, value in expected.items():
+            if key not in actual:
+                return False
+            if not _contains(actual[key], value):
+                return False
+        return True
+    return actual == expected
 
 
+@os_agnostic
 @given(MAPPING, MAPPING)
-def test_last_layer_wins(lhs, rhs) -> None:
-    merged, _ = merge_layers([("lhs", lhs, None), ("rhs", rhs, None)])
-    for key, value in rhs.items():
-        if isinstance(value, dict) and not value:
-            continue  # empty mappings do not remove previously merged content
-        if key not in merged:
-            continue
-        _assert_contains(merged[key], value)
+def test_last_layer_wins_for_non_empty_payloads(lhs, rhs) -> None:
+    merged, _ = merge_layers([layer("lhs", lhs), layer("rhs", rhs)])
+    expectation = all(
+        _contains(merged[key], value) for key, value in rhs.items() if not (isinstance(value, dict) and not value)
+    )
+    assert expectation is True

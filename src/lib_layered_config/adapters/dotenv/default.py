@@ -25,29 +25,69 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, cast
 
 from ...domain.errors import InvalidFormat
 from ...observability import log_debug, log_error
 
 DOTENV_LAYER = "dotenv"
-"""Layer name used for structured logging calls."""
+"""Layer name used for structured logging calls.
+
+Why
+----
+Tag observability events with a stable layer identifier.
+
+What
+----
+Constant shared across logging helpers within this module.
+"""
 
 
 def _log_dotenv_loaded(path: Path, keys: Mapping[str, object]) -> None:
-    """Record a successful dotenv load with sorted key names."""
+    """Record a successful dotenv load with sorted key names.
+
+    Why
+    ----
+    Provide visibility into which dotenv file was applied and which keys were
+    present without dumping values.
+
+    Parameters
+    ----------
+    path:
+        Path to the loaded dotenv file.
+    keys:
+        Mapping of parsed keys (values are ignored; only key names are logged).
+    """
 
     log_debug("dotenv_loaded", layer=DOTENV_LAYER, path=str(path), keys=sorted(keys.keys()))
 
 
 def _log_dotenv_missing() -> None:
-    """Record that no dotenv file was discovered."""
+    """Record that no dotenv file was discovered.
+
+    Why
+    ----
+    Signal to operators that the dotenv layer was absent (useful for debugging
+    precedence expectations).
+    """
 
     log_debug("dotenv_not_found", layer=DOTENV_LAYER, path=None)
 
 
 def _log_dotenv_error(path: Path, line_number: int) -> None:
-    """Capture malformed line diagnostics."""
+    """Capture malformed line diagnostics.
+
+    Why
+    ----
+    Provide actionable telemetry when dotenv parsing fails on a particular line.
+
+    Parameters
+    ----------
+    path:
+        Path to the dotenv file being parsed.
+    line_number:
+        Line number containing the malformed entry.
+    """
 
     log_error("dotenv_invalid_line", layer=DOTENV_LAYER, path=str(path), line=line_number)
 
@@ -59,10 +99,19 @@ class DefaultDotEnvLoader:
     ----
     `.env` files supply secrets and developer overrides. They need deterministic
     discovery and identical nesting semantics to environment variables.
+
+    What
+    ----
+    Searches for candidate files, parses the first hit, records provenance, and
+    exposes the loaded path for diagnostics.
     """
 
     def __init__(self, *, extras: Iterable[str] | None = None) -> None:
         """Initialise the loader with optional *extras* supplied by the path resolver.
+
+        Why
+        ----
+        Allow callers to append OS-specific directories to the search order.
 
         Parameters
         ----------
@@ -80,6 +129,11 @@ class DefaultDotEnvLoader:
         Why
         ----
         Provide the precedence layer ``dotenv`` used by the composition root.
+
+        What
+        ----
+        Builds the search list, parses the first existing file into a nested
+        mapping, stores the loaded path, and logs success or absence.
 
         Parameters
         ----------
@@ -126,7 +180,25 @@ class DefaultDotEnvLoader:
 
 
 def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Path]:
-    """Return ordered candidate paths including *extras* supplied by adapters."""
+    """Return ordered candidate paths including *extras* supplied by adapters.
+
+    Why
+    ----
+    Combine project-relative candidates with platform-specific extras while
+    preserving precedence order.
+
+    Parameters
+    ----------
+    start_dir:
+        Directory that seeds the upward search.
+    extras:
+        Additional absolute paths appended after the upward search.
+
+    Returns
+    -------
+    list[Path]
+        Ordered candidate paths for dotenv discovery.
+    """
 
     return [*list(_iter_candidates(start_dir)), *extras]
 
@@ -138,6 +210,17 @@ def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
     ----
     Support layered overrides by checking the working directory and all parent
     directories.
+
+    Parameters
+    ----------
+    start_dir:
+        Starting directory for the upward search; ``None`` uses the current
+        working directory.
+
+    Returns
+    -------
+    Iterable[Path]
+        Sequence of candidate `.env` paths ordered from closest to farthest.
 
     Examples
     --------
@@ -160,10 +243,20 @@ def _parse_dotenv(path: Path) -> Mapping[str, object]:
     Ensure dotenv parsing is strict and produces dictionaries compatible with
     the merge algorithm.
 
+    Parameters
+    ----------
+    path:
+        Absolute path to the dotenv file to parse.
+
     Returns
     -------
     Mapping[str, object]
         Nested dictionary representing the parsed file.
+
+    Raises
+    ------
+    InvalidFormat
+        When a line lacks an ``=`` delimiter or contains invalid syntax.
 
     Examples
     --------
@@ -201,6 +294,16 @@ def _strip_quotes(value: str) -> str:
     `.env` syntax allows quoted strings and trailing inline comments; stripping
     them keeps behaviour aligned with community conventions.
 
+    Parameters
+    ----------
+    value:
+        Raw value token read from the dotenv file.
+
+    Returns
+    -------
+    str
+        Cleaned value with quotes and trailing comments removed.
+
     Examples
     --------
     >>> _strip_quotes('"token"')
@@ -226,6 +329,28 @@ def _assign_nested(target: dict[str, object], key: str, value: object) -> None:
     Ensure dotenv keys with ``__`` delimiters mirror environment variable
     nesting rules.
 
+    What
+    ----
+    Splits the key on ``__``, ensures each intermediate mapping exists, resolves
+    case-insensitive keys, and assigns the final value.
+
+    Parameters
+    ----------
+    target:
+        Mapping being mutated.
+    key:
+        Dotenv key using ``__`` separators.
+    value:
+        Parsed string value to assign.
+
+    Returns
+    -------
+    None
+
+    Side Effects
+    ------------
+    Mutates ``target``.
+
     Examples
     --------
     >>> data: dict[str, object] = {}
@@ -249,6 +374,18 @@ def _resolve_key(mapping: dict[str, object], key: str) -> str:
     ----
     Preserve original casing when keys repeat while avoiding duplicates that
     differ only by case.
+
+    Parameters
+    ----------
+    mapping:
+        Mutable mapping being inspected.
+    key:
+        Raw key from the dotenv file.
+
+    Returns
+    -------
+    str
+        Existing key or lowercase variant suitable for insertion.
     """
 
     lower = key.lower()
@@ -265,12 +402,37 @@ def _ensure_child_mapping(mapping: dict[str, object], key: str, *, error_cls: ty
     ----
     Nested keys should never overwrite scalar values without an explicit error.
     This keeps configuration shapes predictable.
+
+    What
+    ----
+    Resolves the key, creates an empty mapping when missing, or raises the
+    provided error when a scalar is encountered.
+
+    Parameters
+    ----------
+    mapping:
+        Mapping being mutated.
+    key:
+        Key segment to ensure.
+    error_cls:
+        Exception type raised on scalar collisions.
+
+    Returns
+    -------
+    dict[str, object]
+        Child mapping stored at the resolved key.
+
+    Side Effects
+    ------------
+    Mutates ``mapping`` by inserting a new child mapping when missing.
     """
 
     resolved = _resolve_key(mapping, key)
     if resolved not in mapping:
-        mapping[resolved] = {}
+        mapping[resolved] = dict[str, object]()
     child = mapping[resolved]
     if not isinstance(child, dict):
         raise error_cls(f"Cannot overwrite scalar with mapping for key {key}")
-    return child
+    typed_child = cast(dict[str, object], child)
+    mapping[resolved] = typed_child
+    return typed_child

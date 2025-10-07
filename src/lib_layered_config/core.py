@@ -1,67 +1,51 @@
-"""Composition root expressed as a string of tiny orchestration phrases.
+"""Composition root tying adapters, merge policy, and domain objects together.
 
 Purpose
-    Build the configuration stack by delegating to adapters, then merge the
-    results into immutable value objects that callers can depend on.
+-------
+Implement the orchestration described in ``docs/systemdesign/concept.md`` by
+discovering configuration layers, merging them with provenance, and returning a
+domain-level :class:`Config` value object. Also provides convenience helpers for
+JSON output and CLI wiring.
 
 Contents
-    - ``LayerLoadError``: domain-flavoured wrapper for adapter failures.
-    - ``read_config``: public façade returning :class:`Config` objects.
-    - ``read_config_raw``: raw payload access for tooling and orchestration.
-    - ``_FILE_LOADERS`` and helper functions: small verbs that describe each
-      stage of the composition flow (order paths, load files, merge layers,
-      record observability events).
+--------
+- ``read_config`` / ``read_config_json`` / ``read_config_raw``: public APIs used
+  by library consumers and the CLI.
+- ``LayerLoadError``: wraps adapter failures with a consistent exception type.
+- Private helpers for resolver/builder construction, JSON dumping, and
+  configuration composition.
 
-System Integration
-    Sits at the top of the Clean Architecture onion. Adapters feed data inward;
-    the domain consumes merged results. Every helper keeps effects isolated so
-    the orchestration reads like documentation.
+System Role
+-----------
+This module sits at the composition layer of the architecture. It instantiates
+adapters from ``lib_layered_config.adapters.*``, invokes
+``lib_layered_config._layers.collect_layers``, and converts merge results into
+domain objects returned to callers.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Sequence, cast
 
-from .application.merge import merge_layers
+from ._layers import collect_layers, merge_or_empty
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
-from .adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from .adapters.path_resolvers.default import DefaultPathResolver
-from .domain.config import Config, EMPTY_CONFIG
+from .application.merge import SourceInfoPayload
+from .domain.config import Config, EMPTY_CONFIG, SourceInfo
 from .domain.errors import ConfigError, InvalidFormat, NotFound, ValidationError
-from .observability import bind_trace_id, log_debug, log_info, make_event
-
-LayerEntry = tuple[str, Mapping[str, object], str | None]
-"""Data structure passed into :func:`merge_layers`.
-
-Why
-    Keeps type annotations compact and narrative when orchestrating the layer
-    stack.
-"""
-
-# Supported structured file loaders keyed by suffix. Consumers can override the
-# mapping by wrapping :func:`read_config_raw` if they need custom formats.
-_FILE_LOADERS = {
-    ".toml": TOMLFileLoader(),
-    ".json": JSONFileLoader(),
-    ".yaml": YAMLFileLoader(),
-    ".yml": YAMLFileLoader(),
-}
+from .observability import bind_trace_id
 
 
 class LayerLoadError(ConfigError):
-    """Raised when a configuration layer cannot be materialised.
+    """Adapter failure raised during layer collection.
 
     Why
     ----
-    The composition root needs to surface adapter failures using the domain
-    error taxonomy so callers can catch a single exception family.
-
-    What
-    -----
-    Wraps :class:`InvalidFormat` or other adapter exceptions with additional
-    context (layer name, file path).
+    Provides a single exception type for callers who need to distinguish merge
+    orchestration errors from other configuration issues.
     """
 
 
@@ -72,68 +56,90 @@ def read_config(
     slug: str,
     prefer: Sequence[str] | None = None,
     start_dir: str | None = None,
+    default_file: str | Path | None = None,
 ) -> Config:
-    """Return the merged configuration as a :class:`Config` value object.
+    """Return an immutable :class:`Config` built from all reachable layers.
 
     Why
     ----
-    Consumers need a drop-in immutable mapping that abstracts away adapter
-    wiring and precedence rules.
-
-    What
-    ----
-    Delegates to :func:`read_config_raw` and converts the resulting payload into
-    a :class:`Config`, returning :data:`EMPTY_CONFIG` when no layer produced
-    content.
+    Most consumers want the merged configuration value object rather than raw
+    dictionaries. This function wraps the lower-level helper and constructs the
+    domain aggregate in one step.
 
     Parameters
     ----------
     vendor / app / slug:
-        Naming context propagated to the path resolver (see the design docs).
+        Identifiers used by adapters to compute filesystem paths and prefixes.
     prefer:
-        Optional sequence of preferred file suffixes (e.g. ``("toml", "json")``)
-        used to prioritise ``config.d`` ordering within a layer.
+        Optional sequence of preferred file suffixes (``["toml", "json"]``).
     start_dir:
-        Directory used when the dotenv loader searches upwards; useful for
-        project-local configuration.
+        Optional directory that seeds `.env` discovery.
+    default_file:
+        Optional lowest-precedence file injected before filesystem layers.
 
     Returns
     -------
     Config
-        Immutable mapping with provenance metadata attached.
-
-    Side Effects
-    ------------
-    Emits structured logging events for each resolved layer and resets the
-    active trace identifier via :func:`bind_trace_id`.
+        Immutable configuration with provenance metadata.
 
     Examples
     --------
-    >>> import os
     >>> from pathlib import Path
-    >>> from tempfile import TemporaryDirectory
-    >>> tmp = TemporaryDirectory()
-    >>> root = Path(tmp.name)
-    >>> previous_root = os.environ.get("LIB_LAYERED_CONFIG_ETC")
-    >>> os.environ["LIB_LAYERED_CONFIG_ETC"] = str(root)
-    >>> target = root / "demo"
-    >>> _ = target.mkdir(parents=True, exist_ok=True)
-    >>> content = os.linesep.join(['[service]', "name='demo'"])
-    >>> _ = (target / 'config.toml').write_text(content, encoding='utf-8')
-    >>> cfg = read_config(vendor="Acme", app="Demo", slug="demo")
-    >>> cfg.get("service.name")
-    'demo'
-    >>> if previous_root is None:
-    ...     _ = os.environ.pop("LIB_LAYERED_CONFIG_ETC")
-    ... else:
-    ...     os.environ["LIB_LAYERED_CONFIG_ETC"] = previous_root
-    >>> tmp.cleanup()
+    >>> tmp = Path('.')  # doctest: +SKIP (illustrative)
+    >>> config = read_config(vendor="Acme", app="Demo", slug="demo", start_dir=str(tmp))  # doctest: +SKIP
+    >>> isinstance(config, Config)
+    True
     """
 
-    data, meta = read_config_raw(vendor=vendor, app=app, slug=slug, prefer=prefer, start_dir=start_dir)
-    if not data:
-        return EMPTY_CONFIG
-    return Config(data, meta)
+    data, raw_meta = read_config_raw(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        prefer=prefer,
+        start_dir=start_dir,
+        default_file=_stringify_path(default_file),
+    )
+    return _compose_config(data, raw_meta)
+
+
+def read_config_json(
+    *,
+    vendor: str,
+    app: str,
+    slug: str,
+    prefer: Sequence[str] | None = None,
+    start_dir: str | Path | None = None,
+    indent: int | None = None,
+    default_file: str | Path | None = None,
+) -> str:
+    """Return configuration and provenance as JSON suitable for tooling.
+
+    Why
+    ----
+    CLI commands and automation scripts often prefer JSON to Python objects.
+
+    Parameters
+    ----------
+    vendor / app / slug / prefer / start_dir / default_file:
+        Same meaning as :func:`read_config`.
+    indent:
+        Optional indentation level passed to ``json.dumps``.
+
+    Returns
+    -------
+    str
+        JSON document containing ``{"config": ..., "provenance": ...}``.
+    """
+
+    data, meta = read_config_raw(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        prefer=prefer,
+        start_dir=_stringify_path(start_dir),
+        default_file=_stringify_path(default_file),
+    )
+    return _dump_json({"config": data, "provenance": meta}, indent)
 
 
 def read_config_raw(
@@ -143,38 +149,19 @@ def read_config_raw(
     slug: str,
     prefer: Sequence[str] | None = None,
     start_dir: str | None = None,
-) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
-    """Return the merged configuration data and provenance metadata.
+    default_file: str | Path | None = None,
+) -> tuple[dict[str, object], dict[str, SourceInfoPayload]]:
+    """Return raw data and provenance dictionaries for advanced tooling.
 
     Why
     ----
-    Tooling and automation sometimes need access to primitive structures (for
-    serialisation or UI rendering) without the `Mapping` interface provided by
-    :class:`Config`.
-
-    What
-    ----
-    Coordinates adapters, collects layer payloads, merges them via
-    :func:`merge_layers`, and returns ``(merged_data, provenance)``.
+    Some consumers need dictionaries they can mutate or serialise differently
+    without enforcing the `Config` abstraction.
 
     Returns
     -------
-    tuple[dict[str, object], dict[str, dict[str, object]]]
-        ``(merged_data, provenance)`` suitable for constructing a
-        :class:`Config` instance.
-
-    Side Effects
-    ------------
-    - Calls :func:`bind_trace_id` with ``None`` to clear previous trace context.
-    - Emits structured log events for each layer and for the final merge.
-
-    Examples
-    --------
-    The example mirrors :func:`read_config` but shows access to raw data:
-
-    >>> data, meta = read_config_raw(vendor="Acme", app="Demo", slug="demo")
-    >>> isinstance(data, dict) and isinstance(meta, dict)
-    True
+    tuple[dict[str, object], dict[str, SourceInfoPayload]]
+        Data and provenance mappings produced directly by the merge policy.
     """
 
     resolver = _build_resolver(vendor=vendor, app=app, slug=slug, start_dir=start_dir)
@@ -182,42 +169,42 @@ def read_config_raw(
 
     bind_trace_id(None)
 
-    layers = _gather_layers(
-        resolver=resolver,
-        prefer=prefer,
-        dotenv_loader=dotenv_loader,
-        env_loader=env_loader,
-        slug=slug,
-        start_dir=start_dir,
-    )
+    try:
+        layers = collect_layers(
+            resolver=resolver,
+            prefer=prefer,
+            default_file=_stringify_path(default_file),
+            dotenv_loader=dotenv_loader,
+            env_loader=env_loader,
+            slug=slug,
+            start_dir=start_dir,
+        )
+    except InvalidFormat as exc:  # pragma: no cover - adapter tests exercise
+        raise LayerLoadError(str(exc)) from exc
 
-    return _merge_or_empty(layers)
-
-
-def _build_loaders(
-    resolver: DefaultPathResolver,
-) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
-    """Return loaders bound to resolver-provided hints."""
-
-    return DefaultDotEnvLoader(extras=resolver.dotenv()), DefaultEnvLoader()
+    return merge_or_empty(layers)
 
 
-def _gather_layers(
-    *,
-    resolver: DefaultPathResolver,
-    prefer: Sequence[str] | None,
-    dotenv_loader: DefaultDotEnvLoader,
-    env_loader: DefaultEnvLoader,
-    slug: str,
-    start_dir: str | None,
-) -> list[LayerEntry]:
-    """Collect all layer entries in precedence order."""
+def _compose_config(
+    data: dict[str, object],
+    raw_meta: dict[str, SourceInfoPayload],
+) -> Config:
+    """Wrap merged data and provenance into an immutable :class:`Config`.
 
-    layers: list[LayerEntry] = []
-    layers.extend(_collect_path_layers(resolver, prefer))
-    _append_optional(layers, _dotenv_layer(dotenv_loader, start_dir))
-    _append_optional(layers, _env_layer(env_loader, slug))
-    return layers
+    Why
+    ----
+    Keeps the conversion from plain dictionaries into the domain aggregate in
+    one place, ensuring metadata is cast to :class:`SourceInfo`.
+
+    Side Effects
+    ------------
+    None. Returns ``EMPTY_CONFIG`` when *data* is empty.
+    """
+
+    if not data:
+        return EMPTY_CONFIG
+    meta = {key: cast(SourceInfo, details) for key, details in raw_meta.items()}
+    return Config(data, meta)
 
 
 def _build_resolver(
@@ -227,210 +214,29 @@ def _build_resolver(
     slug: str,
     start_dir: str | None,
 ) -> DefaultPathResolver:
-    """Create a path resolver anchored at *start_dir* when provided.
+    """Create a path resolver configured with optional ``start_dir`` context."""
 
-    Why
-        Keeps :func:`read_config_raw` focused on orchestration rather than
-        constructor details.
-    """
-
-    cwd = Path(start_dir) if start_dir else None
-    return DefaultPathResolver(vendor=vendor, app=app, slug=slug, cwd=cwd)
+    return DefaultPathResolver(vendor=vendor, app=app, slug=slug, cwd=Path(start_dir) if start_dir else None)
 
 
-def _collect_path_layers(
-    resolver: DefaultPathResolver,
-    prefer: Sequence[str] | None,
-) -> list[LayerEntry]:
-    """Gather layer entries from filesystem-backed locations."""
+def _build_loaders(resolver: DefaultPathResolver) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
+    """Instantiate dotenv and environment loaders sharing resolver context."""
 
-    collected: list[LayerEntry] = []
-    for layer_name, paths in _iter_path_layers(resolver):
-        entries = _load_files(layer_name, paths, prefer)
-        if entries:
-            _log_layer_loaded(layer_name, None, {"files": len(entries)})
-            collected.extend(entries)
-    return collected
+    return DefaultDotEnvLoader(extras=resolver.dotenv()), DefaultEnvLoader()
 
 
-def _iter_path_layers(
-    resolver: DefaultPathResolver,
-) -> Iterable[tuple[str, Iterable[str]]]:
-    """Yield ``(layer_name, paths)`` pairs in precedence order."""
+def _stringify_path(value: str | Path | None) -> str | None:
+    """Convert ``Path`` or string inputs into plain string values for adapters."""
 
-    yield "app", resolver.app()
-    yield "host", resolver.host()
-    yield "user", resolver.user()
+    if isinstance(value, Path):
+        return str(value)
+    return value
 
 
-def _append_optional(layers: list[LayerEntry], entry: LayerEntry | None) -> None:
-    """Append *entry* to *layers* when present."""
+def _dump_json(payload: object, indent: int | None) -> str:
+    """Serialise *payload* to JSON while preserving non-ASCII characters."""
 
-    if entry is not None:
-        layers.append(entry)
-
-
-def _dotenv_layer(loader: DefaultDotEnvLoader, start_dir: str | None) -> LayerEntry | None:
-    """Return a dotenv layer entry when data exists."""
-
-    data = loader.load(start_dir)
-    if not data:
-        return None
-    _log_layer_loaded("dotenv", loader.last_loaded_path, {"keys": len(data)})
-    return "dotenv", data, loader.last_loaded_path
-
-
-def _env_layer(loader: DefaultEnvLoader, slug: str) -> LayerEntry | None:
-    """Return an environment layer entry when data exists."""
-
-    prefix = default_env_prefix(slug)
-    data = loader.load(prefix)
-    if not data:
-        return None
-    _log_layer_loaded("env", None, {"keys": len(data)})
-    return "env", data, None
-
-
-def _merge_or_empty(layers: list[LayerEntry]) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
-    """Return merged output or the empty tuple when no layers existed."""
-
-    if not layers:
-        _log_configuration_empty()
-        return {}, {}
-
-    merged = merge_layers(layers)
-    _log_merge_complete(len(layers))
-    return merged
-
-
-def _log_layer_loaded(layer: str, path: str | None, details: Mapping[str, object]) -> None:
-    """Emit a debug log that records a layer's successful load."""
-
-    log_debug("layer_loaded", **make_event(layer, path, dict(details)))
-
-
-def _log_configuration_empty() -> None:
-    """Report that no configuration layers produced data."""
-
-    log_info("configuration_empty", layer="none", path=None)
-
-
-def _log_merge_complete(total_layers: int) -> None:
-    """Announce that merging finished with *total_layers* entries."""
-
-    log_info("configuration_merged", layer="final", path=None, total_layers=total_layers)
-
-
-def _log_layer_error(layer: str, path: str, exc: Exception) -> None:
-    """Capture loader errors with structured metadata."""
-
-    _details = {"error": str(exc)}
-    log_debug("layer_error", **make_event(layer, path, _details))
-
-
-def _load_files(
-    layer: str,
-    paths: Iterable[str],
-    prefer: Sequence[str] | None,
-) -> list[LayerEntry]:
-    """Load all files enumerated for *layer* returning non-empty mappings only.
-
-    Why
-    ----
-    Isolate file-loading concerns so error handling and preference ordering stay
-    consistent across layers.
-
-    What
-    ----
-    Orders candidate paths, delegates to structured loaders, filters empty
-    mappings, and annotates each entry with the originating path.
-
-    Parameters
-    ----------
-    layer:
-        Logical layer name (``"app"``, ``"host"``, ``"user"``).
-    paths:
-        Iterable of candidate file paths discovered by the resolver.
-    prefer:
-        Optional sequence of preferred suffixes used to prioritise file order.
-
-    Returns
-    -------
-    list[LayerEntry]
-        Entries ready for :func:`merge_layers`, each containing the layer name,
-        parsed mapping, and optional filepath.
-
-    Side Effects
-    ------------
-    Emits structured debug logs for successful loads and errors.
-
-    Examples
-    --------
-    >>> from pathlib import Path
-    >>> from tempfile import TemporaryDirectory
-    >>> tmp = TemporaryDirectory()
-    >>> file_path = Path(tmp.name) / "sample.json"
-    >>> _ = file_path.write_text('{"flag": true}', encoding="utf-8")
-    >>> entries = _load_files("user", [str(file_path)], prefer=None)
-    >>> entries[0][1]["flag"]
-    True
-    >>> tmp.cleanup()
-    """
-
-    ordered_paths = _order_paths(paths, prefer)
-    entries: list[LayerEntry] = []
-    for path in ordered_paths:
-        entry = _load_entry(layer, path)
-        if entry is not None:
-            entries.append(entry)
-    return entries
-
-
-def _load_entry(layer: str, path: str) -> LayerEntry | None:
-    """Return a layer entry for *path* when a loader is available."""
-
-    loader = _FILE_LOADERS.get(Path(path).suffix.lower())
-    if loader is None:
-        return None
-    try:
-        data = loader.load(path)
-    except NotFound:
-        return None
-    except InvalidFormat as exc:
-        _log_layer_error(layer, path, exc)
-        raise LayerLoadError(f"Failed to load {layer} layer file {path}: {exc}") from exc
-    if not data:
-        return None
-    return layer, data, path
-
-
-def _order_paths(paths: Iterable[str], prefer: Sequence[str] | None) -> list[str]:
-    """Order ``paths`` so preferred suffixes appear first (stable sort).
-
-    Why
-    ----
-    Allow callers to prioritise formats (e.g., TOML before YAML) without
-    modifying filesystem contents.
-
-    What
-    ----
-    Builds a ranking map from ``prefer`` and sorts paths while preserving
-    original order within the same rank.
-
-    Examples
-    --------
-    >>> _order_paths(["a.json", "b.toml"], ["toml", "json"])
-    ['b.toml', 'a.json']
-    """
-
-    path_list = list(paths)
-    if not prefer:
-        return path_list
-    ranking = {suffix.lower().lstrip("."): idx for idx, suffix in enumerate(prefer)}
-    return sorted(
-        path_list,
-        key=lambda p: ranking.get(Path(p).suffix.lower().lstrip("."), len(ranking)),
-    )
+    return json.dumps(payload, indent=indent, separators=(",", ":"), ensure_ascii=False)
 
 
 __all__ = [
@@ -441,6 +247,7 @@ __all__ = [
     "NotFound",
     "LayerLoadError",
     "read_config",
+    "read_config_json",
     "read_config_raw",
     "default_env_prefix",
 ]

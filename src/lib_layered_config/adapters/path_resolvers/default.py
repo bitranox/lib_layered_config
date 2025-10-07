@@ -31,6 +31,17 @@ from ...observability import log_debug
 #: Supported structured configuration file extensions used when expanding
 #: ``config.d`` directories.
 _ALLOWED_EXTENSIONS = (".toml", ".yaml", ".yml", ".json")
+"""File suffixes considered when expanding ``config.d`` directories.
+
+Why
+----
+Ensure platform-specific discovery yields consistent formats and avoids
+non-structured files.
+
+What
+----
+Tuple of lowercase extensions in precedence order.
+"""
 
 
 class DefaultPathResolver:
@@ -87,27 +98,34 @@ class DefaultPathResolver:
     def app(self) -> Iterable[str]:
         """Return candidate system-wide configuration paths.
 
-            Why
-            ----
-            Provide the lowest-precedence defaults shared across machines.
+        Why
+        ----
+        Provide the lowest-precedence defaults shared across machines.
 
-            Examples
-            --------
-            >>> import os
-            >>> from tempfile import TemporaryDirectory
-            >>> from pathlib import Path
+        What
+        ----
+        Delegates to :meth:`_iter_layer` with the ``"app"`` label so platform
+        helpers can enumerate canonical locations.
+
+        Returns
+        -------
+        Iterable[str]
+            Ordered path strings for the application defaults layer.
+
+        Examples
+        --------
         >>> import os
-            >>> tmp = TemporaryDirectory()
-            >>> root = Path(tmp.name)
-            >>> target = root / "demo"
-            >>> target.mkdir(parents=True, exist_ok=True)
-            >>> config_body = os.linesep.join(['[settings]', 'value=1'])
-            >>> _ = (target / "config.toml").write_text(config_body, encoding="utf-8")
-            >>> resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", env={"LIB_LAYERED_CONFIG_ETC": str(root)}, platform="linux")
-            >>> paths = list(resolver.app())
-            >>> [Path(p).name for p in paths]
-            ['config.toml']
-            >>> tmp.cleanup()
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> tmp = TemporaryDirectory()
+        >>> root = Path(tmp.name)
+        >>> (root / 'demo').mkdir(parents=True, exist_ok=True)
+        >>> body = os.linesep.join(['[settings]', 'value=1'])
+        >>> _ = (root / 'demo' / 'config.toml').write_text(body, encoding='utf-8')
+        >>> resolver = DefaultPathResolver(vendor='Acme', app='Demo', slug='demo', env={'LIB_LAYERED_CONFIG_ETC': str(root)}, platform='linux')
+        >>> [Path(p).name for p in resolver.app()]
+        ['config.toml']
+        >>> tmp.cleanup()
         """
 
         return self._iter_layer("app")
@@ -118,7 +136,17 @@ class DefaultPathResolver:
         Why
         ----
         Allow operators to tailor configuration to individual hosts (e.g.
-        `demo-host.toml`).
+        ``demo-host.toml``).
+
+        What
+        ----
+        Delegates to :meth:`_iter_layer` with the ``"host"`` label to collect
+        hostname-specific files.
+
+        Returns
+        -------
+        Iterable[str]
+            Ordered host-level configuration paths.
         """
 
         return self._iter_layer("host")
@@ -130,6 +158,16 @@ class DefaultPathResolver:
         ----
         Capture per-user preferences stored in XDG/macOS/Windows user config
         directories.
+
+        What
+        ----
+        Delegates to :meth:`_iter_layer` with the ``"user"`` label, leveraging
+        platform helpers to enumerate per-user directories.
+
+        Returns
+        -------
+        Iterable[str]
+            Ordered user-level configuration paths.
         """
 
         return self._iter_layer("user")
@@ -141,12 +179,46 @@ class DefaultPathResolver:
         ----
         `.env` files often live near the project root; this helper provides the
         ordered search list for the dotenv adapter.
+
+        What
+        ----
+        Materialises the iterator produced by :meth:`_dotenv_paths` so callers
+        can inspect the ordered candidates.
+
+        Returns
+        -------
+        Iterable[str]
+            Ordered `.env` path strings.
         """
 
         return list(self._dotenv_paths())
 
     def _iter_layer(self, layer: str) -> Iterable[str]:
-        """Dispatch to the platform-specific implementation for *layer*."""
+        """Dispatch to the platform-specific implementation for *layer*.
+
+        Why
+        ----
+        Centralises logging and platform dispatch so public helpers stay tiny.
+
+        What
+        ----
+        Delegates to :meth:`_platform_paths`, emits a debug event when candidates
+        exist, and returns the resulting iterable.
+
+        Parameters
+        ----------
+        layer:
+            Logical layer name (``"app"``, ``"host"``, ``"user"", ``"dotenv"``).
+
+        Returns
+        -------
+        Iterable[str]
+            Candidate path strings.
+
+        Side Effects
+        ------------
+        Emits ``path_candidates`` debug events when paths are discovered.
+        """
 
         paths = self._platform_paths(layer)
         if paths:
@@ -154,7 +226,22 @@ class DefaultPathResolver:
         return paths
 
     def _platform_paths(self, layer: str) -> List[str]:
-        """Return discovered paths for *layer* based on the current platform."""
+        """Return discovered paths for *layer* based on the current platform.
+
+        Why
+        ----
+        Encapsulate platform branching in one place for readability and testing.
+
+        Parameters
+        ----------
+        layer:
+            Logical layer name passed through to platform helpers.
+
+        Returns
+        -------
+        list[str]
+            List of candidate paths (may be empty).
+        """
 
         if self._is_linux:
             return list(self._linux_paths(layer))
@@ -171,19 +258,44 @@ class DefaultPathResolver:
         Why
         ----
         Determines which helper method to invoke during resolution.
+
+        Returns
+        -------
+        bool
+            ``True`` when ``sys.platform`` starts with ``"linux"``.
         """
 
         return self.platform.startswith("linux")
 
     @property
     def _is_macos(self) -> bool:
-        """Return ``True`` when running on macOS."""
+        """Return ``True`` when running on macOS.
+
+        Why
+        ----
+        Selects macOS-specific directory builders for path resolution.
+
+        Returns
+        -------
+        bool
+            ``True`` when the platform equals ``"darwin"``.
+        """
 
         return self.platform == "darwin"
 
     @property
     def _is_windows(self) -> bool:
-        """Return ``True`` when running on Windows."""
+        """Return ``True`` when running on Windows.
+
+        Why
+        ----
+        Chooses Windows-specific directory builders during resolution.
+
+        Returns
+        -------
+        bool
+            ``True`` when the platform starts with ``"win"``.
+        """
 
         return self.platform.startswith("win")
 
@@ -194,6 +306,21 @@ class DefaultPathResolver:
         ----
         Mirror the XDG specification and `/etc` conventions documented in the
         system design.
+
+        What
+        ----
+        Dispatches to helpers that encode Linux directory layouts for the given
+        layer and yields their paths.
+
+        Parameters
+        ----------
+        layer:
+            Logical layer identifier passed to the helper lookup.
+
+        Returns
+        -------
+        Iterable[str]
+            Candidate Linux paths (may be empty).
         """
 
         builders = {
@@ -209,6 +336,21 @@ class DefaultPathResolver:
         Why
         ----
         Follow macOS Application Support conventions for vendor/app directories.
+
+        What
+        ----
+        Dispatches to helpers that encode macOS directory layouts and yields the
+        resulting path strings.
+
+        Parameters
+        ----------
+        layer:
+            Logical layer identifier used to pick the helper.
+
+        Returns
+        -------
+        Iterable[str]
+            Candidate macOS paths.
         """
 
         builders = {
@@ -225,6 +367,21 @@ class DefaultPathResolver:
         ----
         Respect ProgramData/AppData directory layouts and allow overrides for
         portable setups.
+
+        What
+        ----
+        Dispatches to helpers that encode Windows directory layouts and yields
+        the resulting path strings.
+
+        Parameters
+        ----------
+        layer:
+            Logical layer identifier used to pick the helper.
+
+        Returns
+        -------
+        Iterable[str]
+            Candidate Windows paths.
         """
 
         builders = {
@@ -235,26 +392,87 @@ class DefaultPathResolver:
         yield from builders.get(layer, lambda: [])()
 
     def _linux_app_paths(self) -> Iterable[str]:
+        """Yield Linux application-default configuration paths.
+
+        Why
+        ----
+        Provide deterministic discovery for `/etc/<slug>` layouts.
+
+        Returns
+        -------
+        Iterable[str]
+            Paths under `/etc` (or overridden root) relevant to the app layer.
+        """
+
         etc_root = Path(self.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
         yield from _collect_layer(etc_root / self.slug)
 
     def _linux_host_paths(self) -> Iterable[str]:
+        """Yield Linux host-specific configuration paths.
+
+        Why
+        ----
+        Allow installations to override defaults per hostname using `/etc/<slug>/hosts`.
+
+        Returns
+        -------
+        Iterable[str]
+            Host-level configuration paths (empty when missing).
+        """
+
         etc_root = Path(self.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
         candidate = etc_root / self.slug / "hosts" / f"{self.hostname}.toml"
         if candidate.is_file():
             yield str(candidate)
 
     def _linux_user_paths(self) -> Iterable[str]:
+        """Yield Linux user-specific configuration paths.
+
+        Why
+        ----
+        Honour XDG directories while falling back to `~/.config`.
+
+        Returns
+        -------
+        Iterable[str]
+            User-level configuration paths.
+        """
+
         xdg = self.env.get("XDG_CONFIG_HOME")
         base = Path(xdg) if xdg else Path.home() / ".config"
         yield from _collect_layer(base / self.slug)
 
     def _mac_app_paths(self) -> Iterable[str]:
+        """Yield macOS application-default configuration paths.
+
+        Why
+        ----
+        Follow macOS Application Support directory conventions.
+
+        Returns
+        -------
+        Iterable[str]
+            Application-level configuration paths.
+        """
+
         default_root = Path("/Library/Application Support")
         root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root))
         yield from _collect_layer(root / self.vendor / self.application)
 
     def _mac_host_paths(self) -> Iterable[str]:
+        """Yield macOS host-specific configuration paths.
+
+        Why
+        ----
+        Support host overrides stored under `hosts/<hostname>.toml` within
+        Application Support.
+
+        Returns
+        -------
+        Iterable[str]
+            Host-level macOS configuration paths (empty when missing).
+        """
+
         default_root = Path("/Library/Application Support")
         root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root))
         candidate = root / self.vendor / self.application / "hosts" / f"{self.hostname}.toml"
@@ -262,35 +480,119 @@ class DefaultPathResolver:
             yield str(candidate)
 
     def _mac_user_paths(self) -> Iterable[str]:
+        """Yield macOS user-specific configuration paths.
+
+        Why
+        ----
+        Honour per-user Application Support directories with optional overrides.
+
+        Returns
+        -------
+        Iterable[str]
+            User-level macOS configuration paths.
+        """
+
         home_default = Path.home() / "Library/Application Support"
         home_root = Path(self.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
         yield from _collect_layer(home_root / self.vendor / self.application)
 
     def _windows_app_paths(self) -> Iterable[str]:
+        """Yield Windows application-default configuration paths.
+
+        Why
+        ----
+        Mirror `%ProgramData%/<Vendor>/<App>` layouts with override support.
+
+        Returns
+        -------
+        Iterable[str]
+            Application-level Windows configuration paths.
+        """
+
         base = self._program_data_root() / self.vendor / self.application
         yield from _collect_layer(base)
 
     def _windows_host_paths(self) -> Iterable[str]:
+        """Yield Windows host-specific configuration paths.
+
+        Why
+        ----
+        Enable host overrides within `%ProgramData%/<Vendor>/<App>/hosts`.
+
+        Returns
+        -------
+        Iterable[str]
+            Host-level Windows configuration paths.
+        """
+
         base = self._program_data_root() / self.vendor / self.application
         candidate = base / "hosts" / f"{self.hostname}.toml"
         if candidate.is_file():
             yield str(candidate)
 
     def _windows_user_paths(self) -> Iterable[str]:
+        """Yield Windows user-specific configuration paths.
+
+        Why
+        ----
+        Honour `%APPDATA%` with a fallback to `%LOCALAPPDATA%` for portable setups.
+
+        Returns
+        -------
+        Iterable[str]
+            User-level Windows configuration paths.
+        """
+
         base = self._appdata_root() / self.vendor / self.application
         if not base.exists():
             base = self._localappdata_root() / self.vendor / self.application
         yield from _collect_layer(base)
 
     def _program_data_root(self) -> Path:
-        return Path(self.env.get("LIB_LAYERED_CONFIG_PROGRAMDATA", self.env.get("ProgramData", r"C:\\ProgramData")))
+        """Return the base directory for ProgramData lookups.
+
+        Why
+        ----
+        Centralise overrides for `%ProgramData%` so tests can supply temporary roots.
+
+        Returns
+        -------
+        Path
+            Resolved ProgramData root directory.
+        """
+
+        return Path(self.env.get("LIB_LAYERED_CONFIG_PROGRAMDATA", self.env.get("ProgramData", r"C:\ProgramData")))
 
     def _appdata_root(self) -> Path:
+        """Return the user AppData root used for `%APPDATA%` lookups.
+
+        Why
+        ----
+        Support overrides in tests or portable deployments.
+
+        Returns
+        -------
+        Path
+            Resolved AppData root directory.
+        """
+
         return Path(
             self.env.get("LIB_LAYERED_CONFIG_APPDATA", self.env.get("APPDATA", Path.home() / "AppData" / "Roaming"))
         )
 
     def _localappdata_root(self) -> Path:
+        """Return the fallback LocalAppData root.
+
+        Why
+        ----
+        Provide a deterministic fallback when `%APPDATA%` does not exist.
+
+        Returns
+        -------
+        Path
+            Resolved LocalAppData root directory.
+        """
+
         return Path(
             self.env.get(
                 "LIB_LAYERED_CONFIG_LOCALAPPDATA",
@@ -305,6 +607,16 @@ class DefaultPathResolver:
         ----
         `.env` files may live near the project root or in configuration
         directories; both need to be considered to honour precedence rules.
+
+        What
+        ----
+        Yields paths discovered from the project upward search and appends a
+        platform-specific fallback when present.
+
+        Returns
+        -------
+        Iterable[str]
+            Ordered `.env` candidate paths.
         """
 
         yield from self._project_dotenv_paths()
@@ -313,6 +625,19 @@ class DefaultPathResolver:
             yield str(extra)
 
     def _project_dotenv_paths(self) -> Iterable[str]:
+        """Yield `.env` files discovered by walking from the current working directory upward.
+
+        Why
+        ----
+        Projects often co-locate `.env` files near the repository root; walking
+        upward mirrors `dotenv` tooling semantics.
+
+        Returns
+        -------
+        Iterable[str]
+            `.env` paths discovered while traversing parent directories.
+        """
+
         seen: set[Path] = set()
         for directory in [self.cwd, *self.cwd.parents]:
             candidate = directory / ".env"
@@ -323,6 +648,19 @@ class DefaultPathResolver:
                 yield str(candidate)
 
     def _platform_dotenv_path(self) -> Path | None:
+        """Return platform-specific `.env` fallback paths.
+
+        Why
+        ----
+        Provide a deterministic location when the upward search does not find an
+        `.env` file.
+
+        Returns
+        -------
+        Path | None
+            Resolved fallback path or ``None`` when unsupported.
+        """
+
         if self._is_linux:
             base = Path(self.env.get("XDG_CONFIG_HOME", Path.home() / ".config"))
             return base / self.slug / ".env"
@@ -342,6 +680,11 @@ def _collect_layer(base: Path) -> Iterable[str]:
     ----
     Normalise discovery across operating systems while respecting preferred
     configuration formats.
+
+    What
+    ----
+    Emits ``config.toml`` when present and lexicographically ordered entries
+    from ``config.d`` limited to supported extensions.
 
     Parameters
     ----------

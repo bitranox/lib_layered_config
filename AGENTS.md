@@ -2,6 +2,10 @@
 
 ## On session start
 
+whenever You wait for user input or finished, execute "paplay /usr/share/sounds/codex/ready.wav"
+whenever You have a question, execute "paplay /usr/share/sounds/codex/ready.wav"
+whenever You have an error, execute "paplay /usr/share/sounds/codex/error.wav"
+
 Review the system prompt files in `/media/srv-main/softdev/*/projects/softwarestack/systemprompts` and keep their guidance in working memory:
 
 - core_programming_solid.md
@@ -52,7 +56,7 @@ when writing or refracturing Python scripts, apply those Rules :
 
 - Single source of truth for the package version is `pyproject.toml` (`[project].version`).
 - Runtime code reads metadata via `importlib.metadata`; do not duplicate the version in code files.
-- On a version bump, update only `pyproject.toml` and the `CHANGELOG.md` entry; do not edit `src/bitranox_template_py_cli/__init__conf__.py` for versioning.
+- On a version bump, update only `pyproject.toml` and the `CHANGELOG.md` entry; runtime code should continue to read the version via `importlib.metadata` (no separate `__init__conf__` file).
 - Tag releases `vX.Y.Z` and push tags; CI will build artifacts and publish when configured.
 
 ### Common Make Targets (Alphabetical)
@@ -107,7 +111,7 @@ when writing or refracturing Python scripts, apply those Rules :
 
 --- 
 
-# ONLY ON USER REQEST !!!! :
+# ONLY ON USER REQEST !!!! : 
 
 # 📘 Documentation Review & Enhancement Prompt
 

@@ -6,9 +6,10 @@ import json
 import os
 import textwrap
 from pathlib import Path
-import sys
 
 import pytest
+
+from tests.support.os_markers import IS_MAC, os_agnostic
 
 pytestmark = pytest.mark.slow
 
@@ -17,51 +18,71 @@ NOTEBOOK_PATH = PROJECT_ROOT / "notebooks" / "Quickstart.ipynb"
 """Path to the Quickstart tutorial notebook."""
 
 
-def _iter_code_cells() -> list[str]:
-    """Yield dedented source from each executable notebook cell."""
-    notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
-    for cell in notebook.get("cells", []):
-        if cell.get("cell_type") != "code":
-            continue
-        filtered_lines: list[str] = []
-        for line in "".join(cell.get("source", [])).splitlines():
-            stripped = line.lstrip()
-            if not stripped:
-                filtered_lines.append("")
-                continue
-            if stripped.startswith("!") or stripped.startswith("%"):
-                continue
-            filtered_lines.append(line)
-        filtered_source = "\n".join(filtered_lines).strip()
-        if not filtered_source:
-            continue
-        dedented = textwrap.dedent(filtered_source)
-        lines = dedented.splitlines()
-        indents = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
-        positive_indents = [indent for indent in indents if indent > 0]
-        min_positive = min(positive_indents) if positive_indents else None
-        if min_positive is not None and min_positive <= 2 and 0 in indents:
-            trim = min_positive
-            adjusted_lines = []
-            for line in lines:
-                if line.strip():
-                    leading = len(line) - len(line.lstrip(" "))
-                    if leading >= trim:
-                        adjusted_lines.append(line[trim:])
-                        continue
-                adjusted_lines.append(line)
-            dedented = "\n".join(adjusted_lines)
-        yield dedented
+def _load_notebook() -> dict[str, object]:
+    return json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Notebook writes system paths on macOS")
-def test_quickstart_notebook_executes(tmp_path) -> None:
-    """Execute every code cell in the Quickstart notebook to guard against regressions."""
+def _is_code_cell(cell: dict[str, object]) -> bool:
+    return cell.get("cell_type") == "code"
+
+
+def _clean_source(cell: dict[str, object]) -> str:
+    lines = "".join(cell.get("source", [])).splitlines()
+    kept: list[str] = []
+    for line in lines:
+        stripped = line.lstrip()
+        if not stripped:
+            kept.append("")
+            continue
+        if stripped.startswith("!") or stripped.startswith("%"):
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def _dedent_block(source: str) -> str:
+    if not source:
+        return ""
+    block = textwrap.dedent(source)
+    lines = block.splitlines()
+    indents = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
+    if 0 not in indents:
+        return block
+    positives = [indent for indent in indents if indent > 0]
+    trim = min(positives, default=0)
+    if trim == 0:
+        return block
+    adjusted: list[str] = []
+    for line in lines:
+        if line.strip() and len(line) - len(line.lstrip(" ")) >= trim:
+            adjusted.append(line[trim:])
+            continue
+        adjusted.append(line)
+    return "\n".join(adjusted)
+
+
+def iter_executable_cells() -> list[str]:
+    notebook = _load_notebook()
+    cells = notebook.get("cells", [])
+    executable: list[str] = []
+    for cell in cells:
+        if not _is_code_cell(cell):
+            continue
+        cleaned = _clean_source(cell)
+        if not cleaned:
+            continue
+        executable.append(_dedent_block(cleaned))
+    return executable
+
+
+@os_agnostic
+@pytest.mark.skipif(IS_MAC, reason="Notebook writes system paths on macOS")
+def test_quickstart_notebook_executes_cells(tmp_path: Path) -> None:
     namespace: dict[str, object] = {}
     original_cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
-        for source in _iter_code_cells():
+        for source in iter_executable_cells():
             exec(compile(source, NOTEBOOK_PATH.name, "exec"), namespace, namespace)
     finally:
         os.chdir(original_cwd)

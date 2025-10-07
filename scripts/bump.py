@@ -14,7 +14,11 @@ __all__ = ["bump"]
 
 
 def bump(
-    *, version: Optional[str] = None, part: Optional[str] = None, pyproject: Path = Path("pyproject.toml"), changelog: Path = Path("CHANGELOG.md")
+    *,
+    version: Optional[str] = None,
+    part: Optional[str] = None,
+    pyproject: Path = Path("pyproject.toml"),
+    changelog: Path = Path("CHANGELOG.md"),
 ) -> None:
     """Bump the project version and update the changelog."""
 

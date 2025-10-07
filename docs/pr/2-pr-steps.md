@@ -41,7 +41,7 @@
 
 ## 3) Merge Use Case (Application)
 
-**Goal:** Deterministic deep merge with key precedence (app → host → user → dotenv → env).
+**Goal:** Deterministic deep merge with key precedence (defaults → app → host → user → dotenv → env).
 **TDD:** Property-based tests (associativity/idempotency), overwrite rules, list policy.
 **DoD:** Merge invariants proven; edge cases (empty files, mixed types) covered.
 
@@ -157,7 +157,7 @@ A step is **done** when:
 
 ## Acceptance Criteria (measurable, examples)
 
-* **Layer precedence:** For same key, `env` overrides `dotenv` > `user` > `host` > `app`; golden cases tested.
+* **Layer precedence:** For same key, `env` overrides `dotenv` > `user` > `host` > `app` > `defaults`; golden cases tested.
 * **Property tests:** Merge is idempotent & associative (proven with Hypothesis).
 * **OS paths:** Candidate order per OS exactly as specified (tests).
 * **Error cases:** Invalid format → `InvalidFormat`; missing file → silent skip.

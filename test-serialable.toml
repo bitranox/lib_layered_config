@@ -1,0 +1,109 @@
+title = "Layered Configuration Playground"
+version = "1.2.3"
+environment = "test"
+
+[service]
+name = "juicy-service"
+enabled = true
+region = "us-west-2"
+
+[service.metadata]
+owner = "platform-team"
+tags = ["configuration", "layering", "toml"]
+created_at = "2025-10-07T09:30:00Z"
+
+[service.limits]
+cpu = "750m"
+memory = "1024MiB"
+connections = 120
+
+[[service.limits.processes]]
+name = "web"
+soft = 64
+hard = 128
+
+[[service.limits.processes]]
+name = "worker"
+soft = 32
+hard = 64
+
+[service.endpoints]
+public = "https://api.juicy.test"
+internal = "http://juicy.internal.svc.cluster.local"
+
+[database]
+driver = "postgres"
+uri = "postgresql://test_user:secret@localhost:5432/juicy"
+
+[database.pool]
+min = 2
+max = 10
+timeout_seconds = 30
+
+[[database.replicas]]
+name = "read-east"
+region = "us-east-1"
+lag_threshold_ms = 250
+
+[[database.replicas]]
+name = "read-west"
+region = "us-west-2"
+lag_threshold_ms = 150
+
+[features]
+beta = true
+flags = ["feature.alpha", "feature.gamma"]
+
+[features.rollout]
+percentage = 35
+cohort = "beta-testers"
+
+[features.rollout.schedule]
+start = "2025-10-08"
+end = "2025-11-01"
+
+[observability]
+logging_level = "DEBUG"
+metrics_port = 9090
+trace_sample_rate = 0.35
+
+[observability.alerts]
+enabled = true
+channels = ["pagerduty", "slack"]
+
+[[observability.alerts.rules]]
+name = "HighErrorRate"
+expression = "rate(http_requests_total{status=~\"5..\"}[5m]) > 5"
+severity = "critical"
+
+[[observability.alerts.rules]]
+name = "LatencySpike"
+expression = "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1.2"
+severity = "warning"
+
+[artifacts]
+registry = "ghcr.io/example/juicy-service"
+image_tag = "1.2.3-test"
+
+[artifacts.signatures]
+checksum = "sha256:deadbeefcafecafe1234567890abcdef1234567890abcdef1234567890abcdef"
+signed_by = "ci-bot@example.com"
+
+[security]
+allowlist = ["10.0.0.0/24", "192.168.1.0/24"]
+denylist = ["0.0.0.0/0"]
+
+[security.auth]
+mode = "oidc"
+
+[security.auth.oidc]
+issuer = "https://auth.example.com"
+client_id = "juicy-service-test"
+audiences = ["juicy-api", "juicy-worker"]
+
+[experiments]
+enabled = true
+notes = """
+This block is intentionally dense to exercise multi-line strings and nested keys.
+Use it to verify how the layered configuration library parses structured TOML.
+"""

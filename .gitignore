@@ -104,6 +104,8 @@ ENV/
 # allow the library adapter package despite the ignore rule
 !src/lib_layered_config/adapters/env/
 !src/lib_layered_config/adapters/env/**
+# but still ignore compiled bytecode inside the adapter package
+src/lib_layered_config/adapters/env/__pycache__/
 # backups, alternate names
 env.bak/
 venv.bak/

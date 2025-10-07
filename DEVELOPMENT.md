@@ -67,7 +67,7 @@ Keep runtime code side-effect free at import time. Only adapters and the composi
 
 `make test`, `make push`, and `python scripts/bump_version.py --sync-packaging` update:
 
-- Conda recipe version + Python floor (≥3.12).
+- Conda recipe version + Python floor (≥3.13).
 - Homebrew formula tarball + Python dependency.
 - Nix flake version and interpreter choice.
 

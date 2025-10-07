@@ -1,8 +1,4 @@
-"""Unit tests for structured logging utilities in ``observability``.
-
-Validates the null handler, trace binding, and event construction behaviour the
-module reference promises to downstream consumers.
-"""
+"""Observability helpers expressed as concise tests."""
 
 from __future__ import annotations
 
@@ -11,37 +7,49 @@ import logging
 import pytest
 
 from lib_layered_config import bind_trace_id, get_logger
-from lib_layered_config.observability import TRACE_ID, log_info, make_event
+from lib_layered_config.observability import TRACE_ID, log_info, make_event, _merge_payload
+
+from tests.support.os_markers import os_agnostic
 
 
-def test_null_handler_present() -> None:
-    """Package logger should always include a NullHandler to avoid surprises."""
-
+@os_agnostic
+def test_logger_decorates_itself_with_null_handler() -> None:
     logger = get_logger()
     assert any(isinstance(handler, logging.NullHandler) for handler in logger.handlers)
 
 
-def test_trace_id_in_log(caplog: pytest.LogCaptureFixture) -> None:
-    """Structured logs should include the bound trace identifier and contextual fields."""
-
+@os_agnostic
+def test_log_info_carries_trace_context(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="lib_layered_config")
     bind_trace_id("trace-123")
     log_info("merge-complete", layer="env", path=None)
-    assert caplog.records
     record = caplog.records[-1]
     assert getattr(record, "context") == {"trace_id": "trace-123", "layer": "env", "path": None}
 
 
-def test_bind_trace_id_clears_context() -> None:
-    """Clearing the trace ID should reset the context variable to None."""
-
+@os_agnostic
+def test_bind_trace_id_none_clears_context_variable() -> None:
     bind_trace_id("trace-temp")
     bind_trace_id(None)
     assert TRACE_ID.get() is None
 
 
-def test_make_event_merges_optional_payload() -> None:
-    """make_event should merge optional metadata without mutating base keys."""
-
+@os_agnostic
+def test_make_event_merges_optional_payload_without_losing_base_fields() -> None:
     event = make_event("env", None, {"keys": 3})
     assert event == {"layer": "env", "path": None, "keys": 3}
+
+
+@os_agnostic
+def test_merge_payload_returns_original_when_payload_missing() -> None:
+    event = {"layer": "env"}
+    result = _merge_payload(event, None)
+    assert result == {"layer": "env"}
+
+
+@os_agnostic
+def test_merge_payload_merges_copy_of_payload() -> None:
+    event = {"layer": "env"}
+    payload = {"keys": 2}
+    result = _merge_payload(event, payload)
+    assert result == {"layer": "env", "keys": 2}

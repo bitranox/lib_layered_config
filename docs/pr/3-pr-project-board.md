@@ -57,7 +57,7 @@ Names are short and imperative so they read well on a kanban board.
 
 * **Labels:** type\:infra, prio\:P1
 * **TDD:** CI fails without stages; add minimal dummy test to verify stage wiring.
-* **Tasks:** GitHub Actions (or equivalent) with matrix for 3.12 / 3.13.
+* **Tasks:** GitHub Actions (or equivalent) with matrix for 3.13 / 3.14.
 * **Acceptance:** All stages pass on default branch; artifacts include sdist+wheel.
 * **Estimate:** M
 * **Depends on:** #1
@@ -260,7 +260,7 @@ Names are short and imperative so they read well on a kanban board.
 
 * **Labels:** type\:infra, prio\:P2
 * **TDD:** `tests/unit/test_import_cost.py::test_import_is_lightweight` (optional), build in CI.
-* **Tasks:** Include `py.typed`, extras for YAML, strict Python requires (>=3.12), wheel/sdist build.
+* **Tasks:** Include `py.typed`, extras for YAML, strict Python requires (>=3.13), wheel/sdist build.
 * **Acceptance:** Build artifacts correct; install locally works; typing recognized by IDEs.
 * **Estimate:** S
 * **Depends on:** #18
@@ -295,7 +295,7 @@ Names are short and imperative so they read well on a kanban board.
 * Clean Architecture dependency rule enforced (domain/app free of I/O/logs; adapters only at edges).
 * `read_config` returns immutable, typed `Config`; precedence & deep-merge correct; `.env` & env prefix work; provenance via `origin()`.
 * Public surface small & explicit via `__all__`.
-* CI green across 3.12/3.13; build artifacts ready; `.env.example` & example configs included.
+* CI green across 3.13/3.14; build artifacts ready; `.env.example` & example configs included.
 
 ---
 

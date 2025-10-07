@@ -1,173 +1,208 @@
-"""Application-layer merge policy.
+"""Merge ordered configuration layers while keeping provenance crystal clear.
 
 Purpose
 -------
-Convert a sequence of layer payloads into a single coherent configuration
-mapping while tracking provenance. Mirrors precedence rules documented in
-``docs/systemdesign/module_reference.md`` and remains free of I/O so it can be
-reused in alternative composition roots.
+Implement the merge policy described in ``docs/systemdesign/concept.md`` by
+folding a sequence of layer snapshots into a single mapping plus provenance.
+Preserves the "last writer wins" rule without mutating caller-provided data.
 
 Contents
-    - ``merge_layers``: public entry point driven by a simple loop.
-    - ``_merge_layer`` / ``_merge_mapping``: recursive stanzas that keep
-      precedence logic readable.
-    - ``_set_scalar`` / ``_merge_branch`` / ``_clear_branch``: tiny helpers that
-      narrate how provenance is updated when values change.
+--------
+- ``LayerSnapshot``: immutable record describing a layer name, payload, and
+  origin path.
+- ``merge_layers``: public API returning merged data and provenance mappings.
+- Internal helpers (``_weave_layer``, ``_descend`` …) that manage recursive
+  merging, branch clearing, and dotted-key generation.
 
 System Role
 -----------
-Receives layer payloads from :mod:`lib_layered_config.core`, applies precedence
-(`app → host → user → dotenv → env`), and returns data structures consumed by
-:class:`lib_layered_config.domain.config.Config`.
+The composition root assembles layer snapshots and delegates to
+``merge_layers`` before building the domain ``Config`` value object.
+Adapters and CLI code depend on the provenance structure to explain precedence.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping as MappingABC
 from copy import deepcopy
-from typing import Iterable
+from dataclasses import dataclass
+from typing import Iterable, Mapping as TypingMapping, Sequence, TypeGuard, cast
+
+from .ports import SourceInfoPayload
 
 
-def merge_layers(
-    layers: Iterable[tuple[str, Mapping[str, object], str | None]],
-) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
-    """Merge configuration *layers* honouring precedence and provenance.
+@dataclass(frozen=True, eq=False, slots=True)
+class LayerSnapshot:
+    """Immutable description of a configuration layer.
 
     Why
     ----
-    Centralising merge semantics keeps the domain reusable and guarantees
-    deterministic precedence regardless of adapter ordering.
+    Keeps layer metadata compact and explicit so merge logic can reason about
+    precedence without coupling to adapter implementations.
 
-    What
+    Attributes
+    ----------
+    name:
+        Logical name of the layer (``"defaults"``, ``"app"``, ``"host"``,
+        ``"user"``, ``"dotenv"``, ``"env"``).
+    payload:
+        Mapping produced by adapters; expected to contain only JSON-serialisable
+        types.
+    origin:
+        Optional filesystem path (or ``None`` for in-memory sources).
+    """
+
+    name: str
+    payload: Mapping[str, object]
+    origin: str | None
+
+
+def merge_layers(layers: Iterable[LayerSnapshot]) -> tuple[dict[str, object], dict[str, SourceInfoPayload]]:
+    """Merge ordered layers into data and provenance dictionaries.
+
+    Why
     ----
-    Iterates layer tuples, calls :func:`_merge_into` for each mapping, and
-    collects two dictionaries: the merged configuration and provenance metadata.
+    Central policy point for layered configuration. Ensures later layers may
+    override earlier ones and that provenance stays aligned with the final data.
 
     Parameters
     ----------
     layers:
-        Iterable of ``(layer_name, mapping, source_path)`` tuples ordered from
-        lowest to highest precedence.
+        Iterable of :class:`LayerSnapshot` instances in merge order (lowest to
+        highest precedence).
 
     Returns
     -------
-    tuple[dict[str, object], dict[str, dict[str, object]]]
-        ``(merged_data, provenance)`` where ``merged_data`` is a nested ``dict``
-        and ``provenance`` maps dotted keys to ``{"layer", "path", "key"}``.
-
-    Side Effects
-    ------------
-    None; operates on copies of provided mappings.
+    tuple[dict[str, object], dict[str, SourceInfoPayload]]
+        The merged configuration mapping and provenance mapping keyed by dotted
+        path.
 
     Examples
     --------
-    >>> merged, meta = merge_layers([
-    ...     ("app", {"service": {"timeout": 5}}, None),
-    ...     ("env", {"service": {"timeout": 10}}, None),
-    ... ])
-    >>> merged["service"]["timeout"], meta["service.timeout"]["layer"]
-    (10, 'env')
+    >>> base = LayerSnapshot("app", {"db": {"host": "localhost"}}, "/etc/app.toml")
+    >>> override = LayerSnapshot("env", {"db": {"host": "prod"}}, None)
+    >>> data, provenance = merge_layers([base, override])
+    >>> data["db"]["host"], provenance["db.host"]["layer"]
+    ('prod', 'env')
     """
 
     merged: dict[str, object] = {}
-    meta: dict[str, dict[str, object]] = {}
+    provenance: dict[str, SourceInfoPayload] = {}
 
-    for layer_name, data, path in layers:
-        _merge_layer(merged, meta, data, layer_name, path)
-    return merged, meta
+    for snapshot in layers:
+        _weave_layer(merged, provenance, snapshot)
+
+    return merged, provenance
 
 
-def _merge_layer(
-    target: dict[str, object],
-    meta: dict[str, dict[str, object]],
-    payload: Mapping[str, object],
-    layer: str,
-    path: str | None,
+def _weave_layer(
+    target: MutableMapping[str, object],
+    provenance: MutableMapping[str, SourceInfoPayload],
+    snapshot: LayerSnapshot,
 ) -> None:
-    """Merge a single *payload* into *target* while tracking provenance."""
+    """Clone snapshot payload and fold it into accumulators.
 
-    clone = deepcopy(dict(payload))
-    _merge_mapping(target, meta, clone, layer, path, [])
+    Side Effects
+    ------------
+    Mutates *target* and *provenance* in place.
+    """
+
+    cloned = deepcopy(dict(snapshot.payload))
+    _descend(target, provenance, cloned, snapshot, [])
 
 
-def _merge_mapping(
-    target: dict[str, object],
-    meta: dict[str, dict[str, object]],
+def _descend(
+    target: MutableMapping[str, object],
+    provenance: MutableMapping[str, SourceInfoPayload],
     incoming: Mapping[str, object],
-    layer: str,
-    path: str | None,
+    snapshot: LayerSnapshot,
     segments: list[str],
 ) -> None:
-    """Recursively merge ``incoming`` into ``target`` while recording provenance."""
+    """Walk each key/value pair, updating scalars or branches as needed."""
 
     for key, value in incoming.items():
-        dotted = _dotted_key(segments, key)
-        if isinstance(value, Mapping):
-            _merge_branch(target, meta, key, value, dotted, layer, path, segments)
+        dotted = _join_segments(segments, key)
+        if _looks_like_mapping(value):
+            _store_branch(target, provenance, key, value, dotted, snapshot, segments)
         else:
-            _set_scalar(target, meta, key, value, dotted, layer, path)
+            _store_scalar(target, provenance, key, value, dotted, snapshot)
 
 
-def _merge_branch(
-    target: dict[str, object],
-    meta: dict[str, dict[str, object]],
+def _store_branch(
+    target: MutableMapping[str, object],
+    provenance: MutableMapping[str, SourceInfoPayload],
     key: str,
     value: Mapping[str, object],
     dotted: str,
-    layer: str,
-    path: str | None,
+    snapshot: LayerSnapshot,
     segments: list[str],
 ) -> None:
-    """Merge mapping ``value`` into ``target[key]`` and recurse."""
+    """Ensure a nested mapping exists, then descend into it."""
 
-    existing = target.get(key)
-    payload = dict(value)
-    if not value:
-        if isinstance(existing, Mapping) and not segments:
-            return
-        _clear_branch(meta, dotted)
-        target[key] = {}
-        return
-
-    if isinstance(existing, Mapping):
-        container: dict[str, object] = dict(existing)
-        created_new = False
-    else:
-        _clear_branch(meta, dotted)
-        container = {}
-        created_new = True
-
-    target[key] = container
-    _merge_mapping(container, meta, payload, layer, path, segments + [key])
-    if created_new and not container:
-        target.pop(key, None)
+    branch = _ensure_branch(target, key)
+    segments.append(key)
+    _descend(branch, provenance, value, snapshot, segments)
+    segments.pop()
+    _clear_branch_if_empty(branch, dotted, provenance)
 
 
-def _set_scalar(
-    target: dict[str, object],
-    meta: dict[str, dict[str, object]],
+def _store_scalar(
+    target: MutableMapping[str, object],
+    provenance: MutableMapping[str, SourceInfoPayload],
     key: str,
     value: object,
     dotted: str,
-    layer: str,
-    path: str | None,
+    snapshot: LayerSnapshot,
 ) -> None:
-    """Assign a scalar value and update provenance for ``dotted``."""
+    """Set the scalar value and update provenance in lockstep."""
 
-    _clear_branch(meta, dotted)
     target[key] = value
-    meta[dotted] = {"layer": layer, "path": path, "key": dotted}
+    provenance[dotted] = {
+        "layer": snapshot.name,
+        "path": snapshot.origin,
+        "key": dotted,
+    }
 
 
-def _clear_branch(meta: dict[str, dict[str, object]], prefix: str) -> None:
-    """Remove provenance entries that belong to *prefix* or its descendants."""
+def _ensure_branch(target: MutableMapping[str, object], key: str) -> MutableMapping[str, object]:
+    """Return an existing branch or create a fresh empty one."""
 
-    for meta_key in list(meta.keys()):
-        if meta_key == prefix or meta_key.startswith(prefix + "."):
-            meta.pop(meta_key, None)
+    current = target.get(key)
+    if _looks_like_mapping(current):
+        return cast(MutableMapping[str, object], current)
+
+    new_branch: MutableMapping[str, object] = {}
+    target[key] = new_branch
+    return new_branch
 
 
-def _dotted_key(segments: list[str], key: str) -> str:
-    """Join *segments* and *key* with dots, skipping empties."""
+def _clear_branch_if_empty(
+    branch: MutableMapping[str, object], dotted: str, provenance: MutableMapping[str, SourceInfoPayload]
+) -> None:
+    """Remove empty branches from provenance when overwritten by scalars."""
 
-    return ".".join([*segments, key]) if segments else key
+    if branch:
+        return
+    provenance.pop(dotted, None)
+
+
+def _join_segments(segments: Sequence[str], key: str) -> str:
+    """Join the current path segments with the new key."""
+
+    if not segments:
+        return key
+    return ".".join((*segments, key))
+
+
+def _looks_like_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
+    """Return ``True`` when *value* is a mapping with string keys."""
+
+    if not isinstance(value, MappingABC):
+        return False
+    mapping = cast(TypingMapping[object, object], value)
+    keys = cast(Iterable[object], mapping.keys())
+    return all(isinstance(k, str) for k in keys)
+
+
+__all__ = ["LayerSnapshot", "merge_layers"]

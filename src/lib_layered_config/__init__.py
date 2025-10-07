@@ -34,6 +34,7 @@ from .core import (
     ValidationError,
     default_env_prefix,
     read_config,
+    read_config_json,
     read_config_raw,
 )
 from .observability import bind_trace_id, get_logger
@@ -48,6 +49,7 @@ __all__ = [
     "NotFound",
     "LayerLoadError",
     "read_config",
+    "read_config_json",
     "read_config_raw",
     "deploy_config",
     "generate_examples",

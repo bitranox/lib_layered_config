@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Sequence
+from typing import Iterator, Sequence
 
 from ..adapters.path_resolvers.default import DefaultPathResolver
 
@@ -42,33 +42,33 @@ def deploy_config(
 ) -> list[Path]:
     """Copy *source* into the requested configuration layers without overwriting existing files.
 
+    Why
+    ----
+    Provide a programmatic counterpart to the CLI deployment command while mirroring the runtime search strategy.
+
     Parameters
     ----------
     source:
         Path to the configuration artifact that should be deployed.
     vendor / app:
-        Metadata used to resolve OS-specific directories (mirrors
-        :func:`read_config`).
+        Metadata used to resolve OS-specific directories (mirrors :func:`read_config`).
     targets:
-        Iterable containing any combination of ``"app"``, ``"host"``, ``"user"``.
-        Order matters; the function attempts deployment in the provided order.
+        Iterable containing any combination of ``"app"``, ``"host"``, ``"user"``. Order matters; the function attempts
+        deployment in the provided order.
     slug:
-        Optional slug identifying the configuration family. Defaults to ``app``
-        for convenience when a dedicated slug is not available.
+        Optional slug identifying the configuration family. Defaults to ``app`` when not supplied.
     platform:
-        Optional override for the platform. Accepted values are ``"posix"``
-        and ``"windows"``. When omitted the running interpreter platform
-        is used.
+        Optional override for the platform. Accepted values are ``"posix"`` and ``"windows"``. When omitted the running
+        interpreter platform is used.
     force:
-        When ``True`` existing files are overwritten and included in the
-        returned path list. Defaults to ``False`` to preserve any manual
-        edits in place.
+        When ``True`` existing files are overwritten and included in the returned path list. Defaults to ``False`` to
+        preserve manual edits.
 
     Returns
     -------
     list[pathlib.Path]
-        Destination paths that were created or overwritten. When ``force`` is
-        ``False`` existing files remain untouched and therefore are omitted.
+        Destination paths that were created or overwritten. When ``force`` is ``False`` existing files remain untouched
+        and are therefore omitted.
 
     Raises
     ------
@@ -100,19 +100,57 @@ def _prepare_resolver(
     slug: str,
     platform: str | None,
 ) -> DefaultPathResolver:
-    """Construct a :class:`DefaultPathResolver` for deployment decisions."""
+    """Construct a :class:`DefaultPathResolver` for deployment decisions.
 
-    kwargs = {"vendor": vendor, "app": app, "slug": slug}
-    if platform is not None:
-        kwargs["platform"] = platform
-    return DefaultPathResolver(**kwargs)
+    Why
+    ----
+    Reuse the runtime search strategy when computing deployment destinations.
+
+    Parameters
+    ----------
+    vendor / app / slug:
+        Naming context passed to the resolver.
+    platform:
+        Optional override for deterministic platform selection.
+
+    Returns
+    -------
+    DefaultPathResolver
+        Resolver supplying canonical paths for each layer.
+    """
+
+    if platform is None:
+        return DefaultPathResolver(vendor=vendor, app=app, slug=slug)
+    return DefaultPathResolver(vendor=vendor, app=app, slug=slug, platform=platform)
 
 
 def _destinations_for(
     resolver: DefaultPathResolver,
     targets: Sequence[str],
 ) -> Iterator[Path]:
-    """Yield destination paths for requested *targets* in order."""
+    """Yield destination paths for requested *targets* in order.
+
+    Why
+    ----
+    Provide a shared loop that validates target names and preserves user order.
+
+    Parameters
+    ----------
+    resolver:
+        Configured path resolver.
+    targets:
+        Sequence of target identifiers supplied via CLI/API.
+
+    Yields
+    ------
+    pathlib.Path
+        Canonical destination for each valid target.
+
+    Raises
+    ------
+    ValueError
+        When an unknown target is supplied.
+    """
 
     for raw_target in targets:
         target = raw_target.lower()
@@ -125,7 +163,26 @@ def _destinations_for(
 
 
 def _should_copy(source: Path, destination: Path, force: bool) -> bool:
-    """Return ``True`` when *destination* should be overwritten with *source*."""
+    """Return ``True`` when *destination* should be overwritten with *source*.
+
+    Why
+    ----
+    Protect existing files from accidental overwrites unless ``--force`` is supplied.
+
+    Parameters
+    ----------
+    source:
+        Original configuration file.
+    destination:
+        Path being considered for deployment.
+    force:
+        Whether overwrites are allowed.
+
+    Returns
+    -------
+    bool
+        ``True`` when copying should proceed.
+    """
 
     if destination.resolve() == source.resolve():
         return False
@@ -135,87 +192,172 @@ def _should_copy(source: Path, destination: Path, force: bool) -> bool:
 
 
 def _copy_payload(destination: Path, payload: bytes) -> None:
-    """Create parent directories and write *payload* to *destination*."""
+    """Create parent directories and write *payload* to *destination*.
+
+    Why
+    ----
+    Ensure deployments succeed even when intermediate directories are missing.
+
+    Side Effects
+    ------------
+    Creates directories and writes file contents to disk.
+    """
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     _write_bytes(destination, payload)
 
 
 def _write_bytes(path: Path, payload: bytes) -> None:
-    """Persist *payload* at *path*."""
+    """Persist *payload* at *path*.
+
+    Why
+    ----
+    Provide a single location for file writes, making it easier to stub in tests.
+    """
 
     path.write_bytes(payload)
 
 
 def _resolve_destination(resolver: DefaultPathResolver, target: str) -> Path | None:
-    """Return the canonical file path for *target* according to *resolver*.
+    """Return the canonical file path for *target* according to *resolver*."""
 
-    The helper reproduces the OS-specific logic used by
-    :class:`DefaultPathResolver` but returns paths regardless of whether they
-    already exist.
-    """
-
-    if resolver.platform.startswith("linux") or resolver.platform == "linux":
-        return _resolve_for_linux(resolver, target)
-    if resolver.platform == "darwin":
-        return _resolve_for_macos(resolver, target)
-    if resolver.platform.startswith("win"):
-        return _resolve_for_windows(resolver, target)
-    # Fallback to POSIX-style defaults when the platform is unknown.
-    return _resolve_for_linux(resolver, target)
+    family = _platform_family(resolver.platform)
+    dispatch = {
+        "linux": _linux_destination_for,
+        "mac": _mac_destination_for,
+        "windows": _windows_destination_for,
+    }
+    resolver_fn = dispatch.get(family, _linux_destination_for)
+    return resolver_fn(resolver, target)
 
 
-def _resolve_for_linux(resolver: DefaultPathResolver, target: str) -> Path | None:
+def _platform_family(platform: str) -> str:
+    """Map the resolver platform string to a normalised family name."""
+
+    if platform.startswith("win"):
+        return "windows"
+    if platform == "darwin":
+        return "mac"
+    return "linux"
+
+
+def _linux_destination_for(resolver: DefaultPathResolver, target: str) -> Path | None:
+    """Return the Linux destination for *target* when one exists."""
+
+    story = {
+        "app": _linux_app_path,
+        "host": _linux_host_path,
+        "user": _linux_user_path,
+    }
+    builder = story.get(target)
+    return None if builder is None else builder(resolver)
+
+
+def _linux_app_path(resolver: DefaultPathResolver) -> Path:
     etc_root = Path(resolver.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
-    slug = resolver.slug
-    if target == "app":
-        return etc_root / slug / "config.toml"
-    if target == "host":
-        return etc_root / slug / "hosts" / f"{resolver.hostname}.toml"
-    if target == "user":
-        xdg = resolver.env.get("XDG_CONFIG_HOME")
-        base = Path(xdg) if xdg else Path.home() / ".config"
-        return base / slug / "config.toml"
-    return None
+    return etc_root / resolver.slug / "config.toml"
 
 
-def _resolve_for_macos(resolver: DefaultPathResolver, target: str) -> Path | None:
-    vendor = resolver.vendor
-    app = resolver.application
+def _linux_host_path(resolver: DefaultPathResolver) -> Path:
+    etc_root = Path(resolver.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
+    return etc_root / resolver.slug / "hosts" / f"{resolver.hostname}.toml"
+
+
+def _linux_user_path(resolver: DefaultPathResolver) -> Path:
+    candidate = resolver.env.get("XDG_CONFIG_HOME")
+    base = Path(candidate) if candidate else Path.home() / ".config"
+    return base / resolver.slug / "config.toml"
+
+
+def _mac_destination_for(resolver: DefaultPathResolver, target: str) -> Path | None:
+    """Return the macOS destination for *target* when one exists."""
+
+    story = {
+        "app": _mac_app_path,
+        "host": _mac_host_path,
+        "user": _mac_user_path,
+    }
+    builder = story.get(target)
+    return None if builder is None else builder(resolver)
+
+
+def _mac_app_path(resolver: DefaultPathResolver) -> Path:
+    return _mac_app_root(resolver) / "config.toml"
+
+
+def _mac_host_path(resolver: DefaultPathResolver) -> Path:
+    return _mac_app_root(resolver) / "hosts" / f"{resolver.hostname}.toml"
+
+
+def _mac_user_path(resolver: DefaultPathResolver) -> Path:
+    return _mac_home_root(resolver) / resolver.vendor / resolver.application / "config.toml"
+
+
+def _mac_app_root(resolver: DefaultPathResolver) -> Path:
     default_root = Path("/Library/Application Support")
-    app_root = Path(resolver.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root)) / vendor / app
-    if target == "app":
-        return app_root / "config.toml"
-    if target == "host":
-        return app_root / "hosts" / f"{resolver.hostname}.toml"
-    if target == "user":
-        home_default = Path.home() / "Library/Application Support"
-        home_root = Path(resolver.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
-        return home_root / vendor / app / "config.toml"
-    return None
+    base = Path(resolver.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root))
+    return base / resolver.vendor / resolver.application
 
 
-def _resolve_for_windows(resolver: DefaultPathResolver, target: str) -> Path | None:
-    vendor = resolver.vendor
-    app = resolver.application
+def _mac_home_root(resolver: DefaultPathResolver) -> Path:
+    home_default = Path.home() / "Library/Application Support"
+    return Path(resolver.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
 
-    program_data = Path(
+
+def _windows_destination_for(resolver: DefaultPathResolver, target: str) -> Path | None:
+    """Return the Windows destination for *target* when one exists."""
+
+    story = {
+        "app": _windows_app_path,
+        "host": _windows_host_path,
+        "user": _windows_user_path,
+    }
+    builder = story.get(target)
+    return None if builder is None else builder(resolver)
+
+
+def _windows_app_path(resolver: DefaultPathResolver) -> Path:
+    return _windows_program_data(resolver) / resolver.vendor / resolver.application / "config.toml"
+
+
+def _windows_host_path(resolver: DefaultPathResolver) -> Path:
+    host_root = _windows_program_data(resolver) / resolver.vendor / resolver.application / "hosts"
+    return host_root / f"{resolver.hostname}.toml"
+
+
+def _windows_user_path(resolver: DefaultPathResolver) -> Path:
+    appdata_root = _windows_appdata(resolver)
+    chosen_root = appdata_root
+    if "LIB_LAYERED_CONFIG_APPDATA" not in resolver.env and not appdata_root.exists():
+        chosen_root = _windows_localappdata(resolver)
+    return chosen_root / resolver.vendor / resolver.application / "config.toml"
+
+
+def _windows_program_data(resolver: DefaultPathResolver) -> Path:
+    return Path(
         resolver.env.get(
             "LIB_LAYERED_CONFIG_PROGRAMDATA",
             resolver.env.get("ProgramData", os.environ.get("ProgramData", r"C:\\ProgramData")),
         )
     )
-    if target == "app":
-        return program_data / vendor / app / "config.toml"
-    if target == "host":
-        return program_data / vendor / app / "hosts" / f"{resolver.hostname}.toml"
 
-    appdata = Path(
+
+def _windows_appdata(resolver: DefaultPathResolver) -> Path:
+    return Path(
         resolver.env.get(
             "LIB_LAYERED_CONFIG_APPDATA",
             resolver.env.get("APPDATA", os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")),
         )
     )
-    if target == "user":
-        return appdata / vendor / app / "config.toml"
-    return None
+
+
+def _windows_localappdata(resolver: DefaultPathResolver) -> Path:
+    return Path(
+        resolver.env.get(
+            "LIB_LAYERED_CONFIG_LOCALAPPDATA",
+            resolver.env.get(
+                "LOCALAPPDATA",
+                os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"),
+            ),
+        )
+    )

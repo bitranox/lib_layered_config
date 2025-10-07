@@ -3,25 +3,20 @@ class LibLayeredConfig < Formula
 
   desc "Layered configuration loader for Python applications"
   homepage "https://github.com/bitranox/lib_layered_config"
-  url "https://github.com/bitranox/lib_layered_config/archive/refs/tags/v0.1.0.tar.gz"
-yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
+  url "https://github.com/bitranox/lib_layered_config/archive/refs/tags/v0.1.1.tar.gz"
+  sha256 "<fill-me>"
   license "MIT"
 
-  depends_on "python@3.10"
+  depends_on "python@3.13"
 
   resource "rich-click" do
-    url "https://files.pythonhosted.org/packages/29/c2/f08b5e7c1a33af8a115be640aa0796ba01c4732696da6d2254391376b314/rich_click-1.9.1.tar.gz"
-yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
+    url "https://files.pythonhosted.org/packages/0c/4d/e8fcbd785a93dc5d7aef38f8aa4ade1e31b0c820eb2e8ff267056eda70b1/rich_click-1.9.2.tar.gz"
+    sha256 "1c4212f05561be0cac6a9c1743e1ebcd4fe1fb1e311f9f672abfada3be649db6"
   end
 
   resource "lib_cli_exit_tools" do
     url "https://files.pythonhosted.org/packages/0b/d5/9078a95ee15b4147a4c92c764256468b9d18744413f45d6694a40476a626/lib_cli_exit_tools-1.5.0.tar.gz"
-yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
-  end
-
-  resource "tomli" do
-    url "https://files.pythonhosted.org/packages/18/87/302344fed471e44a87289cf4967697d07e532f2421fdaf868a303cbae4ff/tomli-2.2.1.tar.gz"
-yc7d27e880e24eddd5bae6a16fe0e78aa7787b8c85dc571dceec1182354f612"
+    sha256 "8fdacaa92a08e9f1e2bb8e70ba5bc3c9b4e786c866894ef9e0956f1fe8c1a6fd"
   end
 
   def install

@@ -51,7 +51,9 @@ def build_artifacts(*, allow_conda: bool = True, allow_brew: bool = True, allow_
 
     click.echo("[3/4] Attempting Homebrew build/install from local formula")
     if allow_brew and shutil.which("brew"):
-        brew_result = run(["bash", "-lc", f"brew install --build-from-source {project.brew_formula_path}"], check=False, capture=False)
+        brew_result = run(
+            ["bash", "-lc", f"brew install --build-from-source {project.brew_formula_path}"], check=False, capture=False
+        )
         brew_msg = _status("success") if brew_result.code == 0 else _failure("failed")
     else:
         brew_msg = _skip("skipped")

@@ -97,7 +97,11 @@ def run_tests(
 
     bootstrap_dev()
 
-    resolved_skip_packaging = skip_packaging_sync if skip_packaging_sync is not None else os.getenv("SKIP_PACKAGING_SYNC", "1").strip().lower() in _TRUTHY
+    resolved_skip_packaging = (
+        skip_packaging_sync
+        if skip_packaging_sync is not None
+        else os.getenv("SKIP_PACKAGING_SYNC", "1").strip().lower() in _TRUTHY
+    )
 
     steps: list[tuple[str, Callable[[], None]]] = []
     if resolved_skip_packaging:
@@ -105,7 +109,9 @@ def run_tests(
     else:
         steps.append(("Sync packaging (conda/brew/nix) with pyproject", lambda: sync_packaging()))
 
-    resolved_format_strict = strict_format if strict_format is not None else os.getenv("STRICT_RUFF_FORMAT", "0").strip().lower() in _TRUTHY
+    resolved_format_strict = (
+        strict_format if strict_format is not None else os.getenv("STRICT_RUFF_FORMAT", "0").strip().lower() in _TRUTHY
+    )
 
     steps.extend(
         [

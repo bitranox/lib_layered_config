@@ -9,7 +9,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
         lib = pkgs.lib;
-        pypkgs = pkgs.python310Packages;
+        pypkgs = pkgs.python313Packages;
 
         hatchlingVendor = pypkgs.buildPythonPackage rec {
           pname = "hatchling";
@@ -42,22 +42,11 @@
 
         richClickVendor = pypkgs.buildPythonPackage rec {
           pname = "rich-click";
-          version = "1.9.1";
+          version = "1.9.2";
           format = "wheel";
           src = pkgs.fetchurl {
-            url = "https://files.pythonhosted.org/packages/a8/77/e9144dcf68a0b3f3f4386986f97255c3d9f7c659be58bb7a5fe8f26f3efa/rich_click-1.9.1-py3-none-any.whl";
-            sha256 = "sha256-6mEUqeCBt9aMwHsxUHA5j4BvAbsODEnaVvEp5nKHeBc=";
-          };
-          doCheck = false;
-        };
-
-        tomliVendor = pypkgs.buildPythonPackage rec {
-          pname = "tomli";
-          version = "2.0.1";
-          format = "wheel";
-          src = pkgs.fetchurl {
-            url = "https://files.pythonhosted.org/packages/97/75/10a9ebee3fd790d20926a90a2547f0bf78f371b2f13aa822c759680ca7b9/tomli-2.0.1-py3-none-any.whl";
-            sha256 = "sha256-k53j56YWGvDIh++Rt9QaU+fFocqXYyX0KctG6pvDDsw=";
+            url = "https://files.pythonhosted.org/packages/a9/27/7a82106d69738aefb81e044d6dd278053c5263581c5e8e5330e1339b8444/rich_click-1.9.2-py3-none-any.whl";
+            sha256 = "sha256-UHna1n7X30NKnsHyCx1i2DHljHh0ACb5aM49O4YfAaA=";
           };
           doCheck = false;
         };
@@ -66,14 +55,14 @@
       {
         packages.default = pypkgs.buildPythonPackage {
           pname = "lib_layered_config";
-          version = "0.1.0";
+          version = "0.1.1";
           pyproject = true;
           src = ../..;
           nativeBuildInputs = [ hatchlingVendor ];
-          propagatedBuildInputs = [ libCliExitToolsVendor richClickVendor tomliVendor ];
+          propagatedBuildInputs = [ libCliExitToolsVendor richClickVendor ];
 
           meta = with pkgs.lib; {
-            description = "Rich-powered logging helpers for colorful terminal output";
+            description = "Rich-powered logging runtime with contextual metadata and multi-sink fan-out";
             homepage = "https://github.com/bitranox/bitranox_template_py_cli";
             license = licenses.mit;
             maintainers = [];
@@ -83,11 +72,10 @@
 
         devShells.default = pkgs.mkShell {
           packages = [
-            pkgs.python310
+            pkgs.python313
             hatchlingVendor
             libCliExitToolsVendor
             richClickVendor
-            tomliVendor
             pypkgs.pytest
             pkgs.ruff
             pkgs.nodejs

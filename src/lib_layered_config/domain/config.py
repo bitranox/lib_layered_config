@@ -1,65 +1,57 @@
-"""Domain-level configuration value objects.
+"""Immutable configuration value object with provenance tracking.
 
 Purpose
 -------
-Anchor the immutable `Config` value object that carries merged configuration and
-provenance through the system. This module belongs to the domain layer and
-contains no I/O, aligning with the Clean Architecture blueprint documented in
-``docs/systemdesign/module_reference.md``.
+Provide the "configuration aggregate" described in
+``docs/systemdesign/concept.md``: an immutable mapping that preserves both the
+final merged values and the metadata explaining *where* every dotted key was
+sourced. The application and adapter layers rely on this module to honour the
+precedence rules documented for layered configuration.
 
 Contents
 --------
-* :class:`SourceInfo` – typed metadata structure describing where a key came
-  from (layer, path, and dotted key).
-* :class:`Config` – ``Mapping`` implementation exposing helper methods for
-  introspection, provenance lookups, and functional overrides.
-* :func:`_deepcopy_mapping` / :func:`_deepcopy_value` – internal helpers that
-  clone nested mappings without relying on ``copy.deepcopy`` (which does not
-  handle ``mappingproxy`` objects).
-* :data:`EMPTY_CONFIG` – canonical empty instance used when no layer produced
-  concrete values.
+- ``SourceInfo``: typed dictionary describing layer, path, and dotted key.
+- ``Config``: frozen mapping-like dataclass exposing lookup, provenance, and
+  serialisation helpers.
+- Internal helpers (``_follow_path``, ``_clone_map`` …) that keep traversal
+  logic pure and testable.
+- ``EMPTY_CONFIG``: canonical empty instance shared across the composition
+  root and CLI utilities.
 
 System Role
 -----------
-Every consumer call to :func:`lib_layered_config.core.read_config` ultimately
-receives an instance of :class:`Config`. The type guarantees immutability,
-introspectable provenance, and dotted-path convenience without leaking adapter
-concerns into the domain.
+The composition root builds ``Config`` instances after merging layer snapshots.
+Presentation layers (CLI, examples) consume the public API to render human or
+JSON output without re-implementing provenance rules.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping as MappingABC
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Mapping as MappingABC
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping as MappingType, TypedDict, TypeVar, overload
+from typing import Any, Iterable, Iterator, Mapping as MappingType, TypedDict, TypeGuard, TypeVar, cast
 
 
 class SourceInfo(TypedDict):
-    """Describe the origin of a resolved configuration key.
+    """Describe the provenance of a configuration value.
 
     Why
     ----
-    Tooling (CLI, UI, logging) needs to explain which layer supplied a value to
-    justify precedence outcomes.
+    Downstream tooling (CLI, deploy helpers) needs to display where a value
+    originated so operators can trace precedence decisions.
 
-    What
-    ----
-    Captures the logical layer, optional filesystem path, and full dotted key
-    for each merged entry.
-
-    Attributes
-    ----------
+    Fields
+    ------
     layer:
-        Logical layer name (``"app"``, ``"host"``, ``"user"``, ``"dotenv"``, or
-        ``"env"``).
+        Name of the logical layer (``"defaults"``, ``"app"``, ``"host"``,
+        ``"user"``, ``"dotenv"``, or ``"env"``).
     path:
-        Concrete filesystem path (if any) that produced the key. ``None`` is
-        used for in-memory sources such as environment variables.
+        Absolute filesystem path when known; ``None`` for ephemeral sources
+        such as environment variables.
     key:
-        Fully qualified dotted key (for example ``"service.timeout"``) that
-        uniquely identifies the merged value.
+        Fully-qualified dotted key corresponding to the stored value.
     """
 
     layer: str
@@ -72,274 +64,190 @@ T = TypeVar("T")
 
 @dataclass(frozen=True, slots=True)
 class Config(MappingABC[str, Any]):
-    """Immutable mapping returned to library consumers.
+    """Immutable mapping plus provenance metadata for a merged configuration.
 
     Why
     ----
-    Callers require a read-only structure that behaves like a dictionary yet
-    offers provenance insight and safe override mechanics for tests or
-    temporary adjustments.
+    The system design mandates that merged configuration stays read-only after
+    assembly so every layer sees a consistent snapshot. ``Config`` enforces that
+    contract while providing ergonomic helpers for dotted lookups and
+    serialisation.
 
-    What
-    ----
-    Stores merged configuration data and metadata inside ``MappingProxyType``
-    instances, implements the :class:`Mapping` protocol, and exposes helper
-    methods tailored to layered configuration.
-
-    Parameters
+    Attributes
     ----------
     _data:
-        Raw mapping produced by the merge algorithm. It is wrapped in a
-        ``mappingproxy`` during initialisation to enforce immutability.
+        Mapping containing the merged configuration tree. Stored as a
+        ``MappingProxyType`` to prevent mutation.
     _meta:
-        Mapping from dotted keys to :class:`SourceInfo` describing provenance.
-
-    Examples
-    --------
-    >>> cfg = Config(
-    ...     {"service": {"timeout": 30, "endpoint": "https://api.demo"}},
-    ...     {
-    ...         "service.timeout": {"layer": "app", "path": "/etc/demo/config.toml", "key": "service.timeout"},
-    ...         "service.endpoint": {"layer": "user", "path": "/home/demo/.config/demo/config.toml", "key": "service.endpoint"},
-    ...     },
-    ... )
-    >>> cfg.get("service.timeout")
-    30
-    >>> cfg.origin("service.endpoint")
-    {'layer': 'user', 'path': '/home/demo/.config/demo/config.toml', 'key': 'service.endpoint'}
-    >>> cfg.with_overrides({"service": {"timeout": 60}}).get("service.timeout")
-    60
+        Mapping of dotted keys to :class:`SourceInfo`, allowing provenance
+        queries via :meth:`origin`.
     """
 
     _data: Mapping[str, Any]
     _meta: Mapping[str, SourceInfo]
 
     def __post_init__(self) -> None:
-        """Wrap incoming mappings in ``MappingProxyType`` to guarantee immutability.
+        """Freeze internal mappings immediately after construction."""
 
-        Why
-        ----
-        Prevent accidental mutation by callers or adapters.
-
-        What
-        ----
-        Replaces the supplied mappings with ``MappingProxyType`` instances,
-        ensuring all subsequent access is read-only.
-
-        Side Effects
-        ------------
-        Mutates the dataclass fields via ``object.__setattr__`` during
-        initialisation only.
-        """
-
-        object.__setattr__(self, "_data", _freeze_mapping(self._data))
-        object.__setattr__(self, "_meta", _freeze_mapping(self._meta))
+        object.__setattr__(self, "_data", _lock_map(self._data))
+        object.__setattr__(self, "_meta", _lock_map(self._meta))
 
     def __getitem__(self, key: str) -> Any:
-        """Return the top-level value stored under *key*.
+        """Return the value stored under a top-level key.
 
         Why
         ----
-        Honour the mapping contract so :class:`Config` behaves like a standard
-        dictionary for simple lookups.
+        Consumers expect ``Config`` to behave like a standard mapping.
 
         Parameters
         ----------
         key:
-            Name of the top-level entry to retrieve.
+            Top-level key to retrieve.
 
         Returns
         -------
         Any
-            The stored value.
+            Stored value.
+
+        Raises
+        ------
+        KeyError
+            When *key* does not exist.
 
         Examples
         --------
-        >>> cfg = Config({"feature": True}, {"feature": {"layer": "env", "path": None, "key": "feature"}})
-        >>> cfg["feature"]
+        >>> cfg = Config({"debug": True}, {"debug": {"layer": "env", "path": None, "key": "debug"}})
+        >>> cfg["debug"]
         True
         """
 
         return self._data[key]
 
-    def __iter__(self) -> Iterable[str]:
-        """Iterate over the top-level keys of the configuration.
-
-        Why
-        ----
-        Support iteration constructs (`for` loops, comprehensions) that expect
-        mapping semantics.
-
-        Returns
-        -------
-        Iterable[str]
-            Iterator over keys.
-
-        Examples
-        --------
-        >>> cfg = Config({"service": {}, "logging": {}}, {})
-        >>> sorted(list(iter(cfg)))
-        ['logging', 'service']
-        """
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over top-level keys in insertion order."""
 
         return iter(self._data)
 
     def __len__(self) -> int:
-        """Return the number of top-level keys available.
-
-        Why
-        ----
-        Maintain compatibility with ``len(mapping)`` operations.
-
-        Returns
-        -------
-        int
-            Number of top-level keys.
-
-        Examples
-        --------
-        >>> len(Config({"a": 1, "b": 2}, {}))
-        2
-        """
+        """Return the number of stored top-level keys."""
 
         return len(self._data)
 
     def as_dict(self) -> dict[str, Any]:
-        """Construct a deep (mutable) ``dict`` copy of the configuration tree.
-
-            Why
-            ----
-            Provide callers with a mutable representation for serialisation or
-            temporary modifications without affecting the immutable source.
-
-            What
-            ----
-            Recursively clones nested mappings, lists, sets, and tuples using the
-            internal helper functions.
-
-            Returns
-            -------
-            dict[str, Any]
-                Deep copy suitable for mutation or JSON/YAML serialisation.
-
-        Examples
-        --------
-        >>> cfg = Config({"service": {"timeout": 5}}, {"service.timeout": {"layer": "env", "path": None, "key": "service.timeout"}})
-        >>> clone = cfg.as_dict()
-        >>> clone["service"]["timeout"] = 10
-        >>> cfg.get("service.timeout")
-        5
-        >>> complex_cfg = Config(
-        ...     {"features": {"flags": ["alpha", "beta"], "regions": {"primary", "backup"}}},
-        ...     {}
-        ... )
-        >>> exported = complex_cfg.as_dict()
-        >>> exported["features"]["flags"].append("gamma")
-        >>> exported["features"]["regions"].remove("primary")
-        >>> complex_cfg.as_dict()["features"]["flags"]
-        ['alpha', 'beta']
-        >>> sorted(complex_cfg.as_dict()["features"]["regions"])
-        ['backup', 'primary']
-        """
-
-        return _deepcopy_mapping(self._data)
-
-    def to_json(self, *, indent: int | None = None) -> str:
-        """Serialise the configuration to JSON using :func:`as_dict` under the hood.
-
-            Why
-            ----
-            Offer a convenience exporter for debugging and documentation tooling.
-
-            Parameters
-            ----------
-            indent:
-                Optional indentation size passed to :func:`json.dumps`.
-
-            Returns
-            -------
-            str
-                JSON representation of the configuration.
-
-            Examples
-            --------
-            >>> cfg = Config({"service": {"timeout": 5}}, {"service.timeout": {"layer": "env", "path": None, "key": "service.timeout"}})
-        >>> cfg.to_json()
-        '{"service":{"timeout":5}}'
-        >>> print(cfg.to_json(indent=2))
-        {
-          "service":{
-            "timeout":5
-          }
-        }
-        """
-
-        import json
-
-        return json.dumps(self.as_dict(), indent=indent, separators=(",", ":"), ensure_ascii=False)
-
-    @overload
-    def get(self, key: str, *, default: T) -> T:  # type: ignore[override]
-        ...
-
-    @overload
-    def get(self, key: str, *, default: None = ...) -> Any | None:  # type: ignore[override]
-        ...
-
-    def get(self, key: str, *, default: Any = None) -> Any:
-        """Resolve *key* as a dotted path and return ``default`` when missing.
+        """Return a deep, mutable copy of the configuration tree.
 
         Why
         ----
-        Consumers frequently request nested configuration values; dotted access
-        prevents repetitive guard code.
+        Callers occasionally need to serialise or further mutate the data in a
+        context that does not require provenance.
+
+        Returns
+        -------
+        dict[str, Any]
+            Independent copy of the configuration data.
+
+        Side Effects
+        ------------
+        None. The original mapping remains locked.
+
+        Examples
+        --------
+        >>> cfg = Config({"debug": True}, {"debug": {"layer": "env", "path": None, "key": "debug"}})
+        >>> clone = cfg.as_dict()
+        >>> clone["debug"]
+        True
+        >>> clone["debug"] = False
+        >>> cfg["debug"]
+        True
+        """
+
+        return _clone_map(self._data)
+
+    def to_json(self, *, indent: int | None = None) -> str:
+        """Serialise the configuration as JSON.
+
+        Why
+        ----
+        CLI tooling and documentation examples render the merged configuration
+        in JSON to support piping into other scripts.
+
+        Parameters
+        ----------
+        indent:
+            Optional indentation level mirroring ``json.dumps`` semantics.
+
+        Returns
+        -------
+        str
+            JSON payload containing the cloned configuration data.
+
+        Examples
+        --------
+        >>> cfg = Config({"debug": True}, {"debug": {"layer": "env", "path": None, "key": "debug"}})
+        >>> cfg.to_json()
+        '{"debug":true}'
+        >>> "\n  \"debug\"" in cfg.to_json(indent=2)
+        True
+        """
+
+        return json.dumps(self.as_dict(), indent=indent, separators=(",", ":"), ensure_ascii=False)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Return the value for *key* or a default when the path is missing.
+
+        Why
+        ----
+        Layered configuration relies on dotted keys (e.g. ``"db.host"``).
+        This helper avoids repetitive traversal code at call sites.
 
         Parameters
         ----------
         key:
-            Dotted path (e.g. ``"service.timeout"``).
+            Dotted path identifying nested entries.
         default:
-            Value returned when the path cannot be resolved.
+            Value to return when the path does not resolve or encounters a
+            non-mapping.
 
         Returns
         -------
         Any
-            Resolved value or ``default``.
+            The resolved value or *default* when missing.
 
         Examples
         --------
-        >>> cfg = Config({"service": {"timeout": 5}}, {"service.timeout": {"layer": "env", "path": None, "key": "service.timeout"}})
-        >>> cfg.get("service.timeout")
-        5
-        >>> cfg.get("missing.path", default="fallback")
-        'fallback'
+        >>> cfg = Config({"db": {"host": "localhost"}}, {"db.host": {"layer": "app", "path": None, "key": "db.host"}})
+        >>> cfg.get("db.host")
+        'localhost'
+        >>> cfg.get("db.port", default=5432)
+        5432
         """
 
-        return _resolve_dotted_path(self._data, key, default)
+        return _follow_path(self._data, key, default)
 
     def origin(self, key: str) -> SourceInfo | None:
-        """Return provenance for *key* or ``None`` when no layer produced it.
+        """Return provenance metadata for *key* when available.
 
         Why
         ----
-        Enables tooling to explain configuration precedence outcomes to
-        operators and developers.
+        Operators need to understand which layer supplied a value to debug
+        precedence questions.
 
         Parameters
         ----------
         key:
-            Dotted path to inspect.
+            Dotted key in the metadata map.
 
         Returns
         -------
         SourceInfo | None
-            Metadata describing the winning layer or ``None`` if absent.
+            Metadata dictionary or ``None`` if the key was never observed.
 
         Examples
         --------
-        >>> cfg = Config({"feature": True}, {"feature": {"layer": "env", "path": None, "key": "feature"}})
-        >>> cfg.origin("feature")
-        {'layer': 'env', 'path': None, 'key': 'feature'}
+        >>> meta = {"db.host": {"layer": "app", "path": "/etc/app.toml", "key": "db.host"}}
+        >>> cfg = Config({"db": {"host": "localhost"}}, meta)
+        >>> cfg.origin("db.host")["layer"]
+        'app'
         >>> cfg.origin("missing") is None
         True
         """
@@ -347,137 +255,236 @@ class Config(MappingABC[str, Any]):
         return self._meta.get(key)
 
     def with_overrides(self, overrides: Mapping[str, Any]) -> Config:
-        """Produce a shallow copy of the configuration with *overrides* applied.
+        """Return a new configuration with shallow top-level overrides applied.
 
         Why
         ----
-        Facilitate per-test/per-request adjustments without mutating shared
-        state.
+        CLI helpers allow callers to inject ad-hoc overrides while keeping the
+        original snapshot intact. This method produces that variant.
 
         Parameters
         ----------
         overrides:
-            Mapping of top-level keys to replace.
+            Top-level keys and values to override.
 
         Returns
         -------
         Config
-            New :class:`Config` instance sharing provenance metadata.
+            New configuration instance sharing provenance with the original.
 
         Side Effects
         ------------
-        None; returns a new instance.
+        None. Both instances remain independent thanks to cloning.
 
         Examples
         --------
-        >>> base = Config({"feature": False}, {"feature": {"layer": "env", "path": None, "key": "feature"}})
-        >>> base.with_overrides({"feature": True}).get("feature")
-        True
-        >>> base.get("feature")
-        False
+        >>> cfg = Config({"feature": False}, {"feature": {"layer": "app", "path": None, "key": "feature"}})
+        >>> cfg.with_overrides({"feature": True})["feature"], cfg["feature"]
+        (True, False)
         """
 
-        merged = _merge_top_level(self._data, overrides)
-        return Config(merged, self._meta)
+        tinted = _blend_top_level(self._data, overrides)
+        return Config(tinted, self._meta)
 
 
-def _freeze_mapping(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Return an immutable proxy around *mapping*."""
-
-    return MappingProxyType(dict(mapping))
-
-
-def _merge_top_level(base: Mapping[str, Any], overrides: Mapping[str, Any]) -> dict[str, Any]:
-    """Apply *overrides* to *base* and return a fresh mutable mapping."""
-
-    updated = dict(base)
-    updated.update(overrides)
-    return updated
-
-
-def _resolve_dotted_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:
-    """Resolve *dotted* within *source*, returning *default* when missing."""
-
-    current: Any = source
-    for part in dotted.split("."):
-        if not isinstance(current, MappingABC) or part not in current:
-            return default
-        current = current[part]
-    return current
-
-
-def _deepcopy_mapping(mapping: MappingType[str, Any]) -> dict[str, Any]:
-    """Recursively clone a mapping so callers receive a mutable copy.
+def _lock_map(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return a read-only view of *mapping*.
 
     Why
     ----
-    ``copy.deepcopy`` does not preserve ``mappingproxy`` semantics used by
-    :class:`Config`. A custom clone keeps behaviour predictable.
+    Internal state must remain immutable to uphold the domain contract.
 
     Parameters
     ----------
     mapping:
-        Mapping to duplicate.
+        Mapping to wrap. A shallow copy protects against caller mutation.
+
+    Returns
+    -------
+    Mapping[str, Any]
+        ``MappingProxyType`` over a copy of the source mapping.
+
+    Examples
+    --------
+    >>> view = _lock_map({"flag": True})
+    >>> view["flag"], isinstance(view, MappingProxyType)
+    (True, True)
+    """
+
+    return MappingProxyType(dict(mapping))
+
+
+def _blend_top_level(base: Mapping[str, Any], overrides: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy of *base* with *overrides* applied.
+
+    Why
+    ----
+    ``Config.with_overrides`` depends on a pure helper so it can reuse
+    provenance metadata without mutation.
+
+    Parameters
+    ----------
+    base:
+        Original mapping.
+    overrides:
+        Mapping whose keys replace entries in *base*.
 
     Returns
     -------
     dict[str, Any]
-        Deep copy of ``mapping``.
+        New dictionary with updated top-level values.
 
     Examples
     --------
-    >>> _deepcopy_mapping({"a": {"b": 1}})["a"]["b"]
-    1
+    >>> _blend_top_level({"port": 8000}, {"port": 9000})["port"]
+    9000
     """
 
-    result: dict[str, Any] = {}
-    for key, value in mapping.items():
-        if isinstance(value, MappingABC):
-            result[key] = _deepcopy_mapping(value)
-        elif isinstance(value, list):
-            result[key] = [_deepcopy_value(item) for item in value]
-        else:
-            result[key] = _deepcopy_value(value)
-    return result
+    tinted = dict(base)
+    tinted.update(overrides)
+    return tinted
 
 
-def _deepcopy_value(value: Any) -> Any:
-    """Clone nested values while preserving container types where practical.
+def _follow_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:
+    """Traverse *source* using dotted notation.
 
     Why
     ----
-    Ensure composite data structures survive copying even when the standard
-    library would convert them to less specific types.
+    Nested configuration should be accessible without exposing internal data
+    structures. This helper powers :meth:`Config.get`.
 
     Parameters
     ----------
-    value:
-        Value to clone.
+    source:
+        Mapping to traverse.
+    dotted:
+        Dotted path, e.g. ``"db.host"``.
+    default:
+        Fallback when traversal fails.
 
     Returns
     -------
     Any
-        Cloned value.
+        Resolved value or *default*.
 
     Examples
     --------
-    >>> _deepcopy_value({"nested": [1, 2]})
-    {'nested': [1, 2]}
-    >>> _deepcopy_value(("a", "b"))
-    ('a', 'b')
+    >>> payload = {"db": {"host": "localhost"}}
+    >>> _follow_path(payload, "db.host", default=None)
+    'localhost'
+    >>> _follow_path(payload, "db.port", default=5432)
+    5432
+    """
+
+    current: object = source
+    for fragment in dotted.split("."):
+        if not _looks_like_mapping(current):
+            return default
+        if fragment not in current:
+            return default
+        current = current[fragment]
+    return cast(Any, current)
+
+
+def _clone_map(mapping: MappingType[str, Any]) -> dict[str, Any]:
+    """Deep-clone *mapping* while preserving container types.
+
+    Why
+    ----
+    ``Config.as_dict`` and JSON serialisation must not leak references to the
+    internal immutable structures.
+
+    Parameters
+    ----------
+    mapping:
+        Mapping to clone.
+
+    Returns
+    -------
+    dict[str, Any]
+        Deep copy containing cloned containers and scalar values.
+
+    Examples
+    --------
+    >>> original = {"levels": (1, 2), "queue": [1, 2]}
+    >>> cloned = _clone_map(original)
+    >>> cloned["levels"], cloned["queue"]
+    ((1, 2), [1, 2])
+    >>> cloned["queue"].append(3)
+    >>> original["queue"]
+    [1, 2]
+    """
+
+    sculpted: dict[str, Any] = {}
+    for key, value in mapping.items():
+        sculpted[key] = _clone_value(value)
+    return sculpted
+
+
+def _clone_value(value: Any) -> Any:
+    """Return a clone of *value*, respecting the container type.
+
+    Why
+    ----
+    ``_clone_map`` delegates element cloning here so complex structures (lists,
+    sets, tuples, nested mappings) remain detached from the immutable source.
+
+    Examples
+    --------
+    >>> cloned = _clone_value(({"flag": True},))
+    >>> cloned
+    ({'flag': True},)
+    >>> cloned is _clone_value(({"flag": True},))
+    False
     """
 
     if isinstance(value, MappingABC):
-        return _deepcopy_mapping(value)
+        nested = cast(MappingType[str, Any], value)
+        return _clone_map(nested)
     if isinstance(value, list):
-        return [_deepcopy_value(item) for item in value]
-    if isinstance(value, (set, tuple)):
-        iterable = [_deepcopy_value(item) for item in value]
-        return type(value)(iterable)
+        items = cast(list[Any], value)
+        return [_clone_value(item) for item in items]
+    if isinstance(value, set):
+        items = cast(set[Any], value)
+        return {_clone_value(item) for item in items}
+    if isinstance(value, tuple):
+        items = cast(tuple[Any, ...], value)
+        return tuple(_clone_value(item) for item in items)
     return value
 
 
-#: Shared empty configuration used when no layer produced content. The instance
-#: is safe to re-use because :class:`Config` enforces immutability.
+def _looks_like_mapping(value: object) -> TypeGuard[MappingType[str, Any]]:
+    """Return ``True`` when *value* is a mapping with string keys.
+
+    Why
+    ----
+    Dotted traversal should stop when encountering scalars or non-string-keyed
+    mappings to avoid surprising behaviour.
+
+    Examples
+    --------
+    >>> _looks_like_mapping({"key": 1})
+    True
+    >>> _looks_like_mapping({1: "value"})
+    False
+    >>> _looks_like_mapping(["not", "mapping"])
+    False
+    """
+
+    if not isinstance(value, MappingABC):
+        return False
+    for key in cast(Iterable[object], value.keys()):
+        if not isinstance(key, str):
+            return False
+    return True
+
+
 EMPTY_CONFIG = Config(MappingProxyType({}), MappingProxyType({}))
-"""Canonical empty configuration returned by :func:`lib_layered_config.core.read_config`."""
+"""Shared empty configuration used by the composition root and CLI helpers.
+
+Why
+---
+Avoids repeated allocations when no layers contribute values. The empty
+instance satisfies the domain contract (immutability, provenance available but
+empty) and is safe to reuse across contexts.
+"""

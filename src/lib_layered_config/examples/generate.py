@@ -110,7 +110,26 @@ def generate_examples(
 
 
 def _write_examples(destination: Path, specs: Iterator[ExampleSpec], force: bool) -> list[Path]:
-    """Write all ``specs`` under *destination* honouring the *force* flag."""
+    """Write all ``specs`` under *destination* honouring the *force* flag.
+
+    Why
+    ----
+    Centralise the loop that applies ``force`` semantics and records written paths.
+
+    Parameters
+    ----------
+    destination:
+        Root directory that will receive the examples.
+    specs:
+        Iterator of example specifications to materialise.
+    force:
+        When ``True`` existing files are overwritten.
+
+    Returns
+    -------
+    list[Path]
+        Paths written during this invocation.
+    """
 
     written: list[Path] = []
     for spec in specs:
@@ -124,19 +143,39 @@ def _write_examples(destination: Path, specs: Iterator[ExampleSpec], force: bool
 
 
 def _write_spec(path: Path, spec: ExampleSpec) -> None:
-    """Persist ``spec`` content at *path* using UTF-8 encoding."""
+    """Persist ``spec`` content at *path* using UTF-8 encoding.
+
+    Why
+    ----
+    Keep the actual write primitive isolated for easy stubbing in tests.
+    """
 
     path.write_text(spec.content, encoding="utf-8")
 
 
 def _should_write(path: Path, force: bool) -> bool:
-    """Return ``True`` when *path* should be written respecting *force*."""
+    """Return ``True`` when *path* should be written respecting *force*.
+
+    Why
+    ----
+    Avoid clobbering existing content unless the caller explicitly requests it.
+
+    Returns
+    -------
+    bool
+        ``True`` when writing should proceed.
+    """
 
     return force or not path.exists()
 
 
 def _ensure_parent(path: Path) -> None:
-    """Create parent directories for *path* when missing."""
+    """Create parent directories for *path* when missing.
+
+    Why
+    ----
+    Ensure example generation works even on fresh directories.
+    """
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -151,7 +190,16 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platfor
     Parameters
     ----------
     destination:
-        Destination root (unused but kept for future dynamic templates).
+        Destination root (currently unused; reserved for future dynamic templates).
+    slug / vendor / app:
+        Metadata interpolated into template content.
+    platform:
+        Normalised platform key (``"posix"`` or ``"windows"``).
+
+    Yields
+    ------
+    ExampleSpec
+        Specification describing one file to render.
 
     Examples
     --------
@@ -209,7 +257,22 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platfor
 
 
 def _normalise_platform(value: str | None) -> str:
-    """Return a canonical platform key for example generation."""
+    """Return a canonical platform key for example generation.
+
+    Why
+    ----
+    Ensure downstream logic receives only ``"posix"`` or ``"windows"`` regardless of user input.
+
+    Parameters
+    ----------
+    value:
+        Raw input (possibly ``None``) from the caller.
+
+    Returns
+    -------
+    str
+        Normalised platform key.
+    """
 
     if value is None:
         return "windows" if os.name == "nt" else "posix"

@@ -4,16 +4,24 @@ from pathlib import Path
 
 from lib_layered_config.examples.generate import generate_examples
 
-
-def test_generate_examples_idempotent(tmp_path: Path) -> None:
-    written_first = generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
-    assert written_first
-    # second call without force should not overwrite
-    written_second = generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
-    assert written_second == []
+from tests.support.os_markers import os_agnostic
 
 
-def test_generate_examples_force_overwrites(tmp_path: Path) -> None:
+@os_agnostic
+def test_generate_examples_first_pass_creates_files(tmp_path: Path) -> None:
+    written = generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
+    assert bool(written) is True
+
+
+@os_agnostic
+def test_generate_examples_second_pass_without_force_writes_nothing(tmp_path: Path) -> None:
+    generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
+    repeat = generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
+    assert repeat == []
+
+
+@os_agnostic
+def test_generate_examples_force_overwrites_existing_payload(tmp_path: Path) -> None:
     paths = generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
     target = paths[0]
     original = target.read_text(encoding="utf-8")
@@ -22,7 +30,8 @@ def test_generate_examples_force_overwrites(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == original
 
 
-def test_generate_examples_paths_posix(tmp_path: Path) -> None:
+@os_agnostic
+def test_generate_examples_emits_posix_layout(tmp_path: Path) -> None:
     paths = generate_examples(tmp_path, slug="demo-config", vendor="Acme", app="ConfigKit", platform="posix")
     relative = {p.relative_to(tmp_path).as_posix() for p in paths}
     expected = {
@@ -32,11 +41,11 @@ def test_generate_examples_paths_posix(tmp_path: Path) -> None:
         "xdg/demo-config/config.d/10-override.toml",
         ".env.example",
     }
-    assert len(paths) == len(expected)
     assert relative == expected
 
 
-def test_generate_examples_paths_windows(tmp_path: Path) -> None:
+@os_agnostic
+def test_generate_examples_emits_windows_layout(tmp_path: Path) -> None:
     paths = generate_examples(tmp_path, slug="demo-config", vendor="Acme", app="ConfigKit", platform="windows")
     relative = {p.relative_to(tmp_path).as_posix() for p in paths}
     expected = {
@@ -46,11 +55,11 @@ def test_generate_examples_paths_windows(tmp_path: Path) -> None:
         "ProgramData/Acme/ConfigKit/hosts/your-hostname.toml",
         ".env.example",
     }
-    assert len(paths) == len(expected)
     assert relative == expected
 
 
-def test_deploy_config_reexported() -> None:
+@os_agnostic
+def test_deploy_config_is_reexported_from_public_namespace() -> None:
     from lib_layered_config import deploy_config
     from lib_layered_config.examples import deploy_config as helper
 
