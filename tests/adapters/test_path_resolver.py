@@ -217,7 +217,7 @@ def test_windows_resolver_host_path_uses_hosts_folder(tmp_path: Path) -> None:
     resolver, sandbox = _windows_context(tmp_path)
     sandbox.write("host", "HOST.toml", content="[host]\nvalue=2\n")
     host_paths = list(resolver.host())
-    assert any(path.endswith("hosts/HOST.toml") for path in host_paths)
+    assert any(Path(path).as_posix().endswith("hosts/HOST.toml") for path in host_paths)
 
 
 @windows_only
@@ -348,7 +348,7 @@ def test_windows_host_paths_return_file_when_present(tmp_path: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[host]\nvalue=2\n", encoding="utf-8")
     host_paths = list(resolver._windows_host_paths())
-    assert host_paths == [str(target)]
+    assert [Path(entry) for entry in host_paths] == [target]
 
 
 @os_agnostic
