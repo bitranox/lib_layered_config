@@ -445,6 +445,8 @@ def bootstrap_dev() -> None:
             import_module("pytest_asyncio")
         except ModuleNotFoundError:
             needs_dev_install = True
+    # Ensure pip itself is patched so security audits do not flag known CVEs on the runner.
+    run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=False, capture=False)
     if needs_dev_install:
         print("[bootstrap] Installing dev dependencies via 'pip install -e .[dev]'")
         run([sys.executable, "-m", "pip", "install", "--break-system-packages", "-e", ".[dev]"])

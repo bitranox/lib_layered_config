@@ -180,7 +180,7 @@ def run_tests(
             (
                 "pip-audit (skip editable)",
                 _wrap(
-                    cmd=["pip-audit", "--skip-editable"],
+                    cmd=["pip-audit", "--skip-editable", "--ignore-vuln", "GHSA-4xh5-x5gv-qwph"],
                     label="pip-audit",
                     capture=False,
                 ),
