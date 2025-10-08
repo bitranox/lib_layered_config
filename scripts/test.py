@@ -189,6 +189,24 @@ def run_tests(
 
         if result.stdout.strip():
             click.echo(result.stdout, err=True)
+            diff_stat = subprocess.run(
+                ["git", "diff", "--stat", "--", "packaging"],
+                cwd=PROJECT_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if diff_stat.returncode == 0 and diff_stat.stdout.strip():
+                click.echo(diff_stat.stdout, err=True)
+            diff_full = subprocess.run(
+                ["git", "diff", "--", "packaging"],
+                cwd=PROJECT_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if diff_full.returncode == 0 and diff_full.stdout.strip():
+                click.echo(diff_full.stdout, err=True)
             raise SystemExit(
                 "Packaging files drifted from pyproject.toml. Run scripts/bump_version.py --sync-packaging "
                 "and commit the updates."
