@@ -17,7 +17,7 @@ jobs:
         # Test against Python 3.13 and the latest 3.x available on Actions runners
         python: ["3.13", "3.x"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -86,7 +86,7 @@ jobs:
     name: pipx/uv verification (ubuntu)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -131,7 +131,7 @@ jobs:
     name: Nix build (flake)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Nix (flakes)
         uses: cachix/install-nix-action@v27
         with:
@@ -147,7 +147,7 @@ jobs:
     name: Conda build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
@@ -167,7 +167,7 @@ jobs:
     name: Execute notebooks (ubuntu, Python 3.13)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -226,7 +226,7 @@ jobs:
     name: Packaging files in sync
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
