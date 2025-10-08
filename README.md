@@ -284,10 +284,6 @@ examples = generate_examples(Path("./examples"), slug="config-kit", vendor="Acme
 - Structured logging lives in `lib_layered_config.observability` (trace-aware `log_debug`, `log_info`, `log_error`).
 - Use `bind_trace_id("abc123")` to correlate CLI/log events with your own tracing.
 
-## Packaging targets
-
-- **pipx / uv** smoke tests — ensure the built wheel installs cleanly via the CLI entry points.
-
 ## Further documentation
 
 - [CHANGELOG](CHANGELOG.md) — user-facing release notes.

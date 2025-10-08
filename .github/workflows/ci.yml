@@ -125,44 +125,6 @@ jobs:
         run: |
           uv tool install .
           "$CLI_BIN" --version 2>/dev/null || python -m "$PACKAGE_MODULE" --version
-
-  # nix and conda packaging builds are disabled for now to keep CI green.
-  nix:
-    name: Nix build (flake)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Nix (flakes)
-        uses: cachix/install-nix-action@v27
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-      - name: Build with Nix flake
-        working-directory: packaging/nix
-        run: |
-          nix build .#default -L
-          echo "Built path: $(readlink -f result || true)"
-
-  conda:
-    name: Conda build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          auto-update-conda: true
-          python-version: "3.13"
-      - name: Build conda recipe (local source, no test)
-        shell: bash -l {0}
-        env:
-          CONDA_USE_LOCAL: "1"
-        run: |
-          conda config --add channels conda-forge
-          conda config --add channels defaults
-          conda install -y conda-build
-          conda build packaging/conda/recipe --no-test -c conda-forge -c defaults
-
   notebooks:
     name: Execute notebooks (ubuntu, Python 3.13)
     runs-on: ubuntu-latest

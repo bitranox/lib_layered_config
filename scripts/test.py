@@ -155,7 +155,7 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
 
     bootstrap_dev()
 
-    # Packaging targets (Conda/Nix/Homebrew) were removed; keep legacy toggles as no-ops.
+    # Legacy packaging toggles now no-op intentionally but retained for compatibility.
     steps: list[tuple[str, Callable[[], None]]] = []
 
     if strict_format is not None:

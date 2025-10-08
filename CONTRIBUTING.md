@@ -34,10 +34,7 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 - Notebook execution is marked with `@pytest.mark.slow`; quick iteration can run `pytest -m "not slow"`, while `make test` still executes the full suite.
 - Coverage data is written to `/tmp/.coverage...` (see `[tool.coverage.run].data_file`); remove those files if you need to retry a run manually.
 
-## 5. Packaging Sync
-
-
-## 6. Documentation Checklist
+## 5. Documentation Checklist
 
 Before opening a PR, confirm:
 
@@ -46,7 +43,7 @@ Before opening a PR, confirm:
 - [ ] `CHANGELOG.md` documents user-visible behaviour.
 - [ ] Example generators still run idempotently (`python - <<'PY'` snippets in docs when relevant).
 
-## 7. Security & Configuration
+## 6. Security & Configuration
 
 - Never commit secrets. Tokens (Codecov, PyPI) belong in `.env` (ignored by git) or CI secrets.
 - Sanitise structured log fields; avoid leaking secrets in log metadata.
