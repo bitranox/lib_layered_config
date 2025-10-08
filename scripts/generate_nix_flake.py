@@ -122,10 +122,15 @@ def generate_flake(version: str) -> str:
     )
     devshell_inputs = "\n".join(f"            {item}" for item in _ordered_unique(devshell_nodes))
 
+    flake_desc = (PROJECT_META.description or f"{PROJECT_META.name} Nix flake").replace('"', '\\"')
+    package_desc = (PROJECT_META.description or PROJECT_META.name).replace('"', '\\"')
+    homepage_value = PROJECT_META.homepage or PROJECT_META.repo_url or ""
+    homepage = homepage_value.replace('"', '\\"')
+
     template = Template(
         textwrap.dedent(
             """{
-  description = "bitranox_template_py_cli Nix flake";
+  description = "${flake_description}";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
   inputs.flake-utils.url = "github:numtide/flake-utils";
@@ -167,8 +172,8 @@ ${vendor_blocks}
           propagatedBuildInputs = [ ${prop_inputs} ];
 
           meta = with pkgs.lib; {
-            description = "Rich-powered logging runtime with contextual metadata and multi-sink fan-out";
-            homepage = "https://github.com/bitranox/bitranox_template_py_cli";
+            description = "${package_description}";
+            homepage = "${homepage}";
             license = licenses.mit;
             maintainers = [];
             platforms = platforms.unix ++ platforms.darwin;
@@ -194,6 +199,9 @@ ${devshell_inputs}
         version=version,
         prop_inputs=prop_inputs,
         devshell_inputs=devshell_inputs,
+        flake_description=flake_desc,
+        package_description=package_desc,
+        homepage=homepage,
     )
 
 

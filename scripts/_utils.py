@@ -50,6 +50,7 @@ class RunResult:
 @dataclass(slots=True)
 class ProjectMetadata:
     name: str
+    description: str
     slug: str
     repo_url: str
     repo_host: str
@@ -218,6 +219,9 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
         name = "project"
     slug = _normalize_slug(name)
 
+    description_value = project_table.get("description")
+    description = description_value.strip() if isinstance(description_value, str) else ""
+
     urls_table = _as_str_dict(project_table.get("urls"))
     repo_url = urls_table.get("Repository", "")
     homepage_value = urls_table.get("Homepage")
@@ -239,6 +243,7 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
 
     meta = ProjectMetadata(
         name=name,
+        description=description,
         slug=slug,
         repo_url=repo_url,
         repo_host=repo_host,

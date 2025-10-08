@@ -33,6 +33,7 @@ except ImportError:  # pragma: no cover - direct execution fallback
 PROJECT = get_project_metadata()
 COVERAGE_TARGET = PROJECT.coverage_source
 __all__ = ["run_tests", "COVERAGE_TARGET"]
+PACKAGE_SRC = Path("src") / PROJECT.import_package
 _toml_module: ModuleType | None = None
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -100,14 +101,38 @@ def run_tests(
     resolved_skip_packaging = (
         skip_packaging_sync
         if skip_packaging_sync is not None
-        else os.getenv("SKIP_PACKAGING_SYNC", "1").strip().lower() in _TRUTHY
+        else os.getenv("SKIP_PACKAGING_SYNC", "0").strip().lower() in _TRUTHY
     )
 
     steps: list[tuple[str, Callable[[], None]]] = []
+
+    def _sync_packaging() -> None:
+        sync_packaging()
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain", "packaging"],
+                cwd=PROJECT_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:  # pragma: no cover - git unavailable
+            raise SystemExit(f"Packaging sync verification failed: {exc}") from exc
+
+        if result.returncode != 0:
+            raise SystemExit("git status failed while verifying packaging sync changes")
+
+        if result.stdout.strip():
+            click.echo(result.stdout, err=True)
+            raise SystemExit(
+                "Packaging files drifted from pyproject.toml. Run scripts/bump_version.py --sync-packaging "
+                "and commit the updates."
+            )
+
     if resolved_skip_packaging:
-        click.echo("[skip] Packaging sync disabled (set SKIP_PACKAGING_SYNC=0 to enable)")
+        click.echo("[skip] Packaging sync disabled (set SKIP_PACKAGING_SYNC=1 to opt out)")
     else:
-        steps.append(("Sync packaging (conda/brew/nix) with pyproject", lambda: sync_packaging()))
+        steps.append(("Sync packaging (conda/brew/nix) with pyproject", _sync_packaging))
 
     resolved_format_strict = (
         strict_format if strict_format is not None else os.getenv("STRICT_RUFF_FORMAT", "0").strip().lower() in _TRUTHY
@@ -138,6 +163,27 @@ def run_tests(
             (
                 "Pyright type-check",
                 _wrap(cmd=["pyright"], label="pyright", capture=False),
+            ),
+        ]
+    )
+
+    steps.extend(
+        [
+            (
+                "Bandit security scan",
+                _wrap(
+                    cmd=["bandit", "-q", "-r", str(PACKAGE_SRC)],
+                    label="bandit",
+                    capture=False,
+                ),
+            ),
+            (
+                "pip-audit (skip editable)",
+                _wrap(
+                    cmd=["pip-audit", "--skip-editable"],
+                    label="pip-audit",
+                    capture=False,
+                ),
             ),
         ]
     )

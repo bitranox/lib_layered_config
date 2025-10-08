@@ -1,5 +1,5 @@
 {
-  description = "bitranox_template_py_cli Nix flake";
+  description = "Cross-platform layered configuration loader for Python";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
   inputs.flake-utils.url = "github:numtide/flake-utils";
@@ -62,8 +62,8 @@
           propagatedBuildInputs = [ libCliExitToolsVendor richClickVendor ];
 
           meta = with pkgs.lib; {
-            description = "Rich-powered logging runtime with contextual metadata and multi-sink fan-out";
-            homepage = "https://github.com/bitranox/bitranox_template_py_cli";
+            description = "Cross-platform layered configuration loader for Python";
+            homepage = "https://github.com/bitranox/lib_layered_config";
             license = licenses.mit;
             maintainers = [];
             platforms = platforms.unix ++ platforms.darwin;
