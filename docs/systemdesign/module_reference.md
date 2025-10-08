@@ -961,6 +961,76 @@ helpers.
 
 ---
 
+### Feature Documentation: Platform Alias Helpers
+
+## Status
+
+Complete
+
+## Links & References
+
+**Feature Requirements:** docs/systemdesign/concept.md (Platform alias normalisation)
+**Related Files:**
+
+- `src/lib_layered_config/_platform.py`
+- `src/lib_layered_config/cli.py`
+- `src/lib_layered_config/examples/generate.py`
+- `tests/unit/test_cli_helpers.py`
+
+---
+
+## Problem Statement
+
+CLI and example tooling accept user-provided platform strings. Duplicated alias
+logic risked drift between commands and documentation, and made it difficult to
+expand supported names consistently.
+
+## Solution Overview
+
+- Centralise alias normalisation in `_platform.py` with explicit resolver and
+  example mappings.
+- Expose helpers that raise descriptive `ValueError`s so CLI code can translate
+  them to `click.BadParameter`.
+- Keep defaults (auto-detection) in outer layers while sharing validation
+  semantics.
+
+---
+
+## Architecture Integration
+
+**Layer Fit:** Presentation/helper boundary shared by CLI and example tooling.
+
+**System Dependencies:** Standard library only.
+
+---
+
+## Core Components
+
+### `normalise_resolver_platform`
+- **Purpose:** Map CLI `--platform` inputs to resolver identifiers (`linux`,
+  `darwin`, `win32`).
+- **Tests:** `tests/unit/test_cli_helpers.py::test_normalise_platform_maps_aliases`.
+
+### `normalise_examples_platform`
+- **Purpose:** Collapse platform aliases into the example generator families
+  (`posix`, `windows`).
+- **Tests:** `tests/unit/test_cli_helpers.py::test_normalise_examples_platform_maps_aliases`.
+
+---
+
+## Testing Approach
+
+- Unit tests cover alias permutations and error handling via Click wrappers.
+
+---
+
+## Known Issues & Future Improvements
+
+- Revisit mappings if additional artefact generators introduce new platform
+  families.
+
+---
+
 ### Feature Documentation: Example Deployment Helper
 
 ## Status

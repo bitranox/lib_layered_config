@@ -4,7 +4,7 @@ class LibLayeredConfig < Formula
   desc "Layered configuration loader for Python applications"
   homepage "https://github.com/bitranox/lib_layered_config"
   url "https://github.com/bitranox/lib_layered_config/archive/refs/tags/v0.1.1.tar.gz"
-  sha256 "<fill-me>"
+  sha256 "68cf43bdd55e2be22ca0bbd03492516446e4d1ebc9bfaa11a363e8187410c629"
   license "MIT"
 
   depends_on "python@3.13"

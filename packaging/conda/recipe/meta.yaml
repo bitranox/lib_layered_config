@@ -13,7 +13,7 @@ source:
 source:
   # For released tags; replace sha256 before submitting to conda-forge
   url: https://github.com/bitranox/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: <fill-me>
+  sha256: 68cf43bdd55e2be22ca0bbd03492516446e4d1ebc9bfaa11a363e8187410c629
 {% endif %}
 
 build:
@@ -44,4 +44,4 @@ about:
 
 extra:
   recipe-maintainers:
-    - <your-github-id>
+    - bitranox

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping
 from collections.abc import Mapping as MappingABC
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import Iterable, Mapping as TypingMapping, Sequence, TypeGuard, cast
 
@@ -108,8 +107,7 @@ def _weave_layer(
     Mutates *target* and *provenance* in place.
     """
 
-    cloned = deepcopy(dict(snapshot.payload))
-    _descend(target, provenance, cloned, snapshot, [])
+    _descend(target, provenance, snapshot.payload, snapshot, [])
 
 
 def _descend(
@@ -157,12 +155,30 @@ def _store_scalar(
 ) -> None:
     """Set the scalar value and update provenance in lockstep."""
 
-    target[key] = value
+    target[key] = _clone_leaf(value)
     provenance[dotted] = {
         "layer": snapshot.name,
         "path": snapshot.origin,
         "key": dotted,
     }
+
+
+def _clone_leaf(value: object) -> object:
+    """Return a defensive copy of mutable leaf values."""
+
+    if isinstance(value, dict):
+        mapping = cast(dict[str, object], value)
+        return {key: _clone_leaf(item) for key, item in mapping.items()}
+    if isinstance(value, list):
+        sequence = cast(list[object], value)
+        return [_clone_leaf(item) for item in sequence]
+    if isinstance(value, set):
+        members = cast(set[object], value)
+        return {_clone_leaf(item) for item in members}
+    if isinstance(value, tuple):
+        items = cast(tuple[object, ...], value)
+        return tuple(_clone_leaf(item) for item in items)
+    return value
 
 
 def _ensure_branch(target: MutableMapping[str, object], key: str) -> MutableMapping[str, object]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 from typing import Callable, Final, Iterable, Mapping, Optional, Sequence, cast
@@ -12,6 +13,7 @@ import lib_cli_exit_tools
 import rich_click as click
 
 from .application.ports import SourceInfoPayload
+from ._platform import normalise_examples_platform, normalise_resolver_platform
 from .core import default_env_prefix as _default_env_prefix
 from .core import read_config, read_config_json, read_config_raw
 from .examples import deploy_config as _deploy_config
@@ -24,6 +26,16 @@ TRACEBACK_VERBOSE = 10_000
 TARGET_CHOICES = ("app", "host", "user")
 EXAMPLE_PLATFORM_CHOICES = ("posix", "windows")
 DEFAULT_JSON_INDENT: Final[int] = 2
+
+
+@dataclass(frozen=True)
+class ReadQuery:
+    vendor: str
+    app: str
+    slug: str
+    prefer: tuple[str, ...] | None
+    start_dir: str | None
+    default_file: str | None
 
 
 def _toggle_traceback(show: bool) -> None:
@@ -268,35 +280,11 @@ def cli_read_config(
 ) -> None:
     """Read configuration and print either human prose or JSON."""
 
-    prefer_order = _normalise_prefer(prefer)
-    start_dir_str = _stringify(start_dir)
-    default_file_str = _stringify(default_file)
-
-    if output_format.lower() == "json":
-        indent_value = _resolve_indent(indent)
-        click.echo(
-            _render_json(
-                vendor=vendor,
-                app=app,
-                slug=slug,
-                prefer=prefer_order,
-                start_dir=start_dir_str,
-                default_file=default_file_str,
-                indent=indent_value,
-                provenance=provenance,
-            )
-        )
+    query = _build_read_query(vendor, app, slug, prefer, start_dir, default_file)
+    if _wants_json(output_format):
+        _echo_json_config(query, _resolve_indent(indent), provenance)
         return
-
-    data, meta = read_config_raw(
-        vendor=vendor,
-        app=app,
-        slug=slug,
-        prefer=prefer_order,
-        start_dir=start_dir_str,
-        default_file=default_file_str,
-    )
-    click.echo(_render_human(data, meta))
+    _echo_human_config(query)
 
 
 @cli.command("read-json", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -331,17 +319,8 @@ def cli_read_config_json(
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
 
-    indent_value = _resolve_indent(indent)
-    payload = read_config_json(
-        vendor=vendor,
-        app=app,
-        slug=slug,
-        prefer=_normalise_prefer(prefer),
-        start_dir=_stringify(start_dir),
-        default_file=_stringify(default_file),
-        indent=indent_value,
-    )
-    click.echo(payload)
+    query = _build_read_query(vendor, app, slug, prefer, start_dir, default_file)
+    _echo_json_config(query, _resolve_indent(indent), provenance=True)
 
 
 def main(argv: Optional[Sequence[str]] = None, *, restore_traceback: bool = True) -> int:
@@ -371,40 +350,6 @@ def _resolve_indent(enabled: bool) -> int | None:
     """Return default JSON indentation when *enabled* is true."""
 
     return DEFAULT_JSON_INDENT if enabled else None
-
-
-def _render_json(
-    *,
-    vendor: str,
-    app: str,
-    slug: str,
-    prefer: Sequence[str] | None,
-    start_dir: str | None,
-    default_file: str | None,
-    indent: int | None,
-    provenance: bool,
-) -> str:
-    """Render configuration as JSON with optional provenance inclusion."""
-    if provenance:
-        return read_config_json(
-            vendor=vendor,
-            app=app,
-            slug=slug,
-            prefer=prefer,
-            start_dir=start_dir,
-            default_file=default_file,
-            indent=indent,
-        )
-
-    config = read_config(
-        vendor=vendor,
-        app=app,
-        slug=slug,
-        prefer=prefer,
-        start_dir=start_dir,
-        default_file=default_file,
-    )
-    return config.to_json(indent=indent)
 
 
 def _render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfoPayload]) -> str:
@@ -446,7 +391,7 @@ def _format_scalar(value: object) -> str:
     return str(value)
 
 
-def _normalise_prefer(values: Sequence[str]) -> Sequence[str] | None:
+def _normalise_prefer(values: Sequence[str]) -> tuple[str, ...] | None:
     """Lowercase supplied extensions and strip leading dots."""
 
     if not values:
@@ -463,53 +408,19 @@ def _normalise_targets(values: Sequence[str]) -> tuple[str, ...]:
 def _normalise_platform(platform: Optional[str]) -> Optional[str]:
     """Map user-friendly platform aliases to canonical resolver identifiers."""
 
-    if platform is None:
-        return None
-    alias = platform.strip().lower()
-    mapping = {
-        "linux": "linux",
-        "posix": "linux",
-        "darwin": "darwin",
-        "mac": "darwin",
-        "macos": "darwin",
-        "windows": "win32",
-        "win": "win32",
-        "win32": "win32",
-        "wine": "win32",
-    }
     try:
-        return mapping[alias]
-    except KeyError as exc:
-        raise click.BadParameter(
-            "Platform must be one of: linux, posix, darwin, mac, macos, windows, win, win32, wine.",
-            param_hint="--platform",
-        ) from exc
+        return normalise_resolver_platform(platform)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--platform") from exc
 
 
 def _normalise_examples_platform(platform: Optional[str]) -> Optional[str]:
     """Map example-generation platform aliases to canonical values."""
 
-    if platform is None:
-        return None
-    alias = platform.strip().lower()
-    mapping = {
-        "posix": "posix",
-        "linux": "posix",
-        "darwin": "posix",
-        "mac": "posix",
-        "macos": "posix",
-        "windows": "windows",
-        "win": "windows",
-        "win32": "windows",
-        "wine": "windows",
-    }
     try:
-        return mapping[alias]
-    except KeyError as exc:
-        raise click.BadParameter(
-            "Platform must be one of: posix, linux, darwin, mac, macos, windows, win, win32, wine.",
-            param_hint="--platform",
-        ) from exc
+        return normalise_examples_platform(platform)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--platform") from exc
 
 
 def _stringify(path: Optional[Path]) -> Optional[str]:
@@ -522,6 +433,83 @@ def _json_paths(paths: Iterable[Path]) -> str:
     """Return JSON array of stringified paths written by helper commands."""
 
     return json.dumps([str(path) for path in paths], indent=2)
+
+
+def _build_read_query(
+    vendor: str,
+    app: str,
+    slug: str,
+    prefer: Sequence[str],
+    start_dir: Optional[Path],
+    default_file: Optional[Path],
+) -> ReadQuery:
+    """Shape CLI parameters into a read query."""
+
+    return ReadQuery(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        prefer=_normalise_prefer(prefer),
+        start_dir=_stringify(start_dir),
+        default_file=_stringify(default_file),
+    )
+
+
+def _wants_json(output_format: str) -> bool:
+    """Return ``True`` when JSON output was requested."""
+
+    return output_format.strip().lower() == "json"
+
+
+def _echo_json_config(query: ReadQuery, indent: int | None, provenance: bool) -> None:
+    """Read configuration and echo JSON."""
+
+    payload = _json_payload(query, indent, provenance)
+    click.echo(payload)
+
+
+def _json_payload(query: ReadQuery, indent: int | None, provenance: bool) -> str:
+    """Build JSON payload for a query."""
+
+    if provenance:
+        return read_config_json(
+            vendor=query.vendor,
+            app=query.app,
+            slug=query.slug,
+            prefer=query.prefer,
+            start_dir=query.start_dir,
+            default_file=query.default_file,
+            indent=indent,
+        )
+    config = read_config(
+        vendor=query.vendor,
+        app=query.app,
+        slug=query.slug,
+        prefer=query.prefer,
+        start_dir=query.start_dir,
+        default_file=query.default_file,
+    )
+    return config.to_json(indent=indent)
+
+
+def _echo_human_config(query: ReadQuery) -> None:
+    """Read configuration and echo a human summary."""
+
+    click.echo(_human_payload(query))
+
+
+def _human_payload(query: ReadQuery) -> str:
+    """Return prose describing config values and provenance."""
+
+    data, meta = read_config_raw(
+        vendor=query.vendor,
+        app=query.app,
+        slug=query.slug,
+        prefer=query.prefer,
+        start_dir=query.start_dir,
+        default_file=query.default_file,
+    )
+    return _render_human(data, meta)
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised via console script

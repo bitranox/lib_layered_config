@@ -29,6 +29,8 @@ from typing import Iterator
 
 import os
 
+from .._platform import normalise_examples_platform
+
 DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 """Filename stub used for host-specific example files (documented in README)."""
 
@@ -53,6 +55,16 @@ class ExampleSpec:
 
     relative_path: Path
     content: str
+
+
+@dataclass(frozen=True)
+class ExamplePlan:
+    destination: Path
+    slug: str
+    vendor: str
+    app: str
+    force: bool
+    platform: str
 
 
 def generate_examples(
@@ -103,10 +115,38 @@ def generate_examples(
     >>> tmp.cleanup()
     """
 
+    plan = _build_example_plan(
+        destination=destination,
+        slug=slug,
+        vendor=vendor,
+        app=app,
+        force=force,
+        platform=platform,
+    )
+    specs = _build_specs(plan.destination, slug=plan.slug, vendor=plan.vendor, app=plan.app, platform=plan.platform)
+    return _write_examples(plan.destination, specs, plan.force)
+
+
+def _build_example_plan(
+    *,
+    destination: str | Path,
+    slug: str,
+    vendor: str,
+    app: str,
+    force: bool,
+    platform: str | None,
+) -> ExamplePlan:
+    """Compose an example generation plan."""
+
     dest = Path(destination)
-    resolved_platform = _normalise_platform(platform)
-    specs = _build_specs(dest, slug=slug, vendor=vendor, app=app, platform=resolved_platform)
-    return _write_examples(dest, specs, force)
+    return ExamplePlan(
+        destination=dest,
+        slug=slug,
+        vendor=vendor,
+        app=app,
+        force=force,
+        platform=_normalise_platform(platform),
+    )
 
 
 def _write_examples(destination: Path, specs: Iterator[ExampleSpec], force: bool) -> list[Path]:
@@ -208,75 +248,85 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platfor
     'etc/demo/config.toml'
     """
 
-    if platform == "windows":
-        win_app = Path("ProgramData") / vendor / app
-        yield ExampleSpec(
-            win_app / "config.toml",
-            f"""# Application-wide defaults for {slug}\n[service]\nendpoint = \"https://api.example.com\"\ntimeout = 10\n""",
-        )
-        yield ExampleSpec(
-            win_app / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml",
-            """# Host overrides (replace filename with the machine hostname)\n[service]\ntimeout = 15\n""",
-        )
-        win_user = Path("AppData/Roaming") / vendor / app
-        yield ExampleSpec(
-            win_user / "config.toml",
-            f"""# User-specific preferences for {vendor} {app}\n[service]\nretry = 2\n""",
-        )
-        yield ExampleSpec(
-            win_user / "config.d" / "10-override.toml",
-            """# Split overrides live in config.d/ and apply in lexical order\n[service]\nretry = 3\n""",
-        )
-        yield ExampleSpec(
-            Path(".env.example"),
-            f"""# Copy to .env to provide secrets and local overrides\n{slug.replace("-", "_").upper()}_SERVICE__PASSWORD=changeme\n""",
-        )
-        return
+    yield from _platform_specs(slug=slug, vendor=vendor, app=app, platform=platform)
+    yield _env_example(slug)
 
-    linux_slug = slug
-    yield ExampleSpec(
-        Path(f"etc/{linux_slug}/config.toml"),
-        f"""# Application-wide defaults for {slug}\n[service]\nendpoint = \"https://api.example.com\"\ntimeout = 10\n""",
-    )
-    yield ExampleSpec(
-        Path(f"etc/{linux_slug}/hosts/{DEFAULT_HOST_PLACEHOLDER}.toml"),
-        """# Host overrides (replace filename with the machine hostname)\n[service]\ntimeout = 15\n""",
-    )
-    yield ExampleSpec(
-        Path(f"xdg/{linux_slug}/config.toml"),
-        f"""# User-specific preferences for {vendor} {app}\n[service]\nretry = 2\n""",
-    )
-    yield ExampleSpec(
-        Path(f"xdg/{linux_slug}/config.d/10-override.toml"),
-        """# Split overrides live in config.d/ and apply in lexical order\n[service]\nretry = 3\n""",
-    )
-    yield ExampleSpec(
-        Path(".env.example"),
-        f"""# Copy to .env to provide secrets and local overrides\n{slug.replace("-", "_").upper()}_SERVICE__PASSWORD=changeme\n""",
-    )
+
+def _platform_specs(*, slug: str, vendor: str, app: str, platform: str) -> Iterator[ExampleSpec]:
+    """Dispatch to platform-specific example specifications."""
+
+    if platform == "windows":
+        yield from _windows_specs(slug=slug, vendor=vendor, app=app)
+        return
+    yield from _posix_specs(slug=slug, vendor=vendor, app=app)
+
+
+def _windows_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
+    """Yield Windows layout examples."""
+
+    root = Path("ProgramData") / vendor / app
+    yield ExampleSpec(root / "config.toml", _app_defaults_body(slug))
+    yield ExampleSpec(root / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml", _host_override_body())
+    user_root = Path("AppData") / "Roaming" / vendor / app
+    yield ExampleSpec(user_root / "config.toml", _user_preferences_body(vendor, app))
+    yield ExampleSpec(user_root / "config.d" / "10-override.toml", _split_override_body())
+
+
+def _posix_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
+    """Yield POSIX layout examples."""
+
+    slug_root = Path("etc") / slug
+    yield ExampleSpec(slug_root / "config.toml", _app_defaults_body(slug))
+    yield ExampleSpec(slug_root / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml", _host_override_body())
+    user_root = Path("xdg") / slug
+    yield ExampleSpec(user_root / "config.toml", _user_preferences_body(vendor, app))
+    yield ExampleSpec(user_root / "config.d" / "10-override.toml", _split_override_body())
+
+
+def _env_example(slug: str) -> ExampleSpec:
+    """Return the shared .env example."""
+
+    return ExampleSpec(Path(".env.example"), _env_secrets_body(slug))
+
+
+def _app_defaults_body(slug: str) -> str:
+    """Describe baseline application defaults."""
+
+    return f'# Application-wide defaults for {slug}\n[service]\nendpoint = "https://api.example.com"\ntimeout = 10\n'
+
+
+def _host_override_body() -> str:
+    """Describe host-level overrides."""
+
+    return "# Host overrides (replace filename with the machine hostname)\n[service]\ntimeout = 15\n"
+
+
+def _user_preferences_body(vendor: str, app: str) -> str:
+    """Describe user-level preferences."""
+
+    return f"# User-specific preferences for {vendor} {app}\n[service]\nretry = 2\n"
+
+
+def _split_override_body() -> str:
+    """Describe config.d overrides."""
+
+    return "# Split overrides live in config.d/ and apply in lexical order\n[service]\nretry = 3\n"
+
+
+def _env_secrets_body(slug: str) -> str:
+    """Describe .env secrets guidance."""
+
+    key = slug.replace("-", "_").upper()
+    return f"# Copy to .env to provide secrets and local overrides\n{key}_SERVICE__PASSWORD=changeme\n"
 
 
 def _normalise_platform(value: str | None) -> str:
-    """Return a canonical platform key for example generation.
-
-    Why
-    ----
-    Ensure downstream logic receives only ``"posix"`` or ``"windows"`` regardless of user input.
-
-    Parameters
-    ----------
-    value:
-        Raw input (possibly ``None``) from the caller.
-
-    Returns
-    -------
-    str
-        Normalised platform key.
-    """
+    """Return a canonical platform key for example generation."""
 
     if value is None:
         return "windows" if os.name == "nt" else "posix"
-    lowered = value.lower()
-    if lowered.startswith("win"):
-        return "windows"
-    return "posix"
+    try:
+        resolved = normalise_examples_platform(value)
+    except ValueError as exc:  # pragma: no cover - validated via CLI helpers
+        raise ValueError(str(exc)) from exc
+    return resolved or ("windows" if os.name == "nt" else "posix")

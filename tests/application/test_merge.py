@@ -92,6 +92,14 @@ def test_merge_layers_is_idempotent_for_metadata() -> None:
     _, meta_b = merge_layers(idempotent_layers())
     assert meta_a == meta_b
 
+@os_agnostic
+def test_merge_layers_does_not_share_mutable_inputs() -> None:
+    payload = {"numbers": [1, 2]}
+    snapshot = layer("env", payload)
+    merged, _ = merge_layers([snapshot])
+    payload["numbers"].append(3)
+    assert merged["numbers"] == [1, 2]
+
 
 @os_agnostic
 @given(MAPPING, MAPPING, MAPPING)
