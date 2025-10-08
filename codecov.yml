@@ -18,7 +18,6 @@ coverage:
 
 ignore:
   - "tests/**"
-  - "packaging/**"
   - "scripts/**"
 
 comment:

@@ -83,7 +83,6 @@ exclude = [
   "tests",
   "notebooks",
   "docs",
-  "packaging",
   "dist",
 ]
 
@@ -109,7 +108,6 @@ source = ["src/lib_layered_config"]
 [tool.coverage.report]
 omit = [
   "tests/*",
-  "packaging/*",
 ]
 fail_under = 90
 show_missing = true

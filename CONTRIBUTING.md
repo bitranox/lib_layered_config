@@ -36,8 +36,6 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 
 ## 5. Packaging Sync
 
-- Packaging definitions in `packaging/` (Conda, Homebrew, Nix) stay in sync with `pyproject.toml` via automation (`make test`, `make push`, and the bump scripts).
-- To run just the sync without tests, use `python scripts/bump_version.py --sync-packaging`.
 
 ## 6. Documentation Checklist
 

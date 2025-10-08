@@ -8,25 +8,19 @@ from typing import Optional
 import rich_click as click
 
 try:
-    from ._utils import git_branch, run, sync_packaging
+    from ._utils import git_branch, run
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts._utils import git_branch, run, sync_packaging
+    from scripts._utils import git_branch, run
 
 __all__ = ["push"]
 
 
 def push(*, remote: str = "origin", message: Optional[str] = None) -> None:
-    """Run checks, sync packaging, commit changes, and push the current branch."""
-
-    click.echo("[push] Sync packaging with pyproject before checks")
-    sync_packaging()
+    """Run checks, commit changes, and push the current branch."""
 
     click.echo("[push] Running local checks (scripts/test.py)")
     run(["python", "scripts/test.py"])  # type: ignore[list-item]
-
-    click.echo("[push] Sync packaging with pyproject before commit")
-    sync_packaging()
 
     click.echo("[push] Committing and pushing (single attempt)")
     run(["git", "add", "-A"])  # stage all

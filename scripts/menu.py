@@ -141,7 +141,7 @@ def _build_targets() -> list[Target]:
         Target("clean", "Remove caches/build artifacts/coverage", []),
         Target(
             "push",
-            "Run tests, sync packaging, commit, push",
+            "Run tests, commit, push",
             [
                 Param("REMOTE", "Git remote", default=_env_default("REMOTE", "origin")),
                 Param(
@@ -154,7 +154,7 @@ def _build_targets() -> list[Target]:
         Target("build", "Build wheel/sdist; attempt conda/brew/nix if available", []),
         Target(
             "release",
-            "Tag vX.Y.Z from pyproject; create GitHub release; sync packaging",
+            "Tag vX.Y.Z from pyproject; create GitHub release",
             [Param("REMOTE", "Git remote", default=_env_default("REMOTE", "origin"))],
         ),
     ]

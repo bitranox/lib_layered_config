@@ -3,15 +3,14 @@
 Purpose
 -------
 Collect helper functions used by the ``scripts/`` entry points (build, test,
-release) so packaging sync, git helpers, and subprocess wrappers live in one
-place. The behaviour mirrors the operational guidance described in
+release) so git helpers and subprocess wrappers live in one place. The behaviour mirrors the operational guidance described in
 ``docs/systemdesign/concept_architecture_plan.md`` and ``DEVELOPMENT.md``.
 
 Contents
 --------
 * ``run`` – subprocess wrapper returning structured results.
-* Metadata helpers (``get_project_metadata`` et al.) for packaging automation.
-* GitHub release helpers and packaging sync utilities.
+* Metadata helpers (``get_project_metadata`` et al.) for build/test automation.
+* GitHub release helpers and subprocess utilities.
 
 System Role
 -----------
@@ -59,10 +58,6 @@ class ProjectMetadata:
     homepage: str
     import_package: str
     coverage_source: str
-
-    @property
-    def brew_formula_path(self) -> str:
-        return f"packaging/brew/Formula/{self.slug}.rb"
 
     def github_tarball_url(self, version: str) -> str:
         if self.repo_host == "github.com" and self.repo_owner and self.repo_name:
@@ -413,25 +408,6 @@ def gh_release_create(tag: str, title: str, body: str) -> None:
 
 def gh_release_edit(tag: str, title: str, body: str) -> None:
     run(["gh", "release", "edit", tag, "-t", title, "-n", body], check=False)
-
-
-def sync_packaging() -> None:
-    """Ensure packaging specs mirror the canonical ``pyproject.toml`` values.
-
-    Why
-    ---
-    The system design mandates that Conda, Homebrew, and Nix manifests stay in
-    lockstep with the Python package metadata. Running this helper before tests
-    or releases prevents stale version pins from reaching CI/CD.
-
-    Side Effects
-    ------------
-    Executes the bump/sync scripts and raises if either fails so the calling
-    workflow surfaces drift immediately.
-    """
-
-    run([sys.executable, "scripts/bump_version.py", "--sync-packaging"])
-    run([sys.executable, "scripts/generate_nix_flake.py"])
 
 
 def bootstrap_dev() -> None:

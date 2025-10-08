@@ -50,7 +50,6 @@ when writing or refracturing Python scripts, apply those Rules :
 - `src/lib_layered_config/examples`: helper functions for generating example config files.
 - `scripts/`: automation for lint/type/test/build/publish flows (copied from template, adapted for this project).
 - `tests/`: unit, adapter, application, and end-to-end suites.
-- `packaging/`: Conda, Homebrew, and Nix manifests kept in sync with `pyproject.toml`.
 
 ### Versioning & Releases
 
@@ -75,7 +74,7 @@ when writing or refracturing Python scripts, apply those Rules :
 | `install`         | Editable install.                                                              |
 | `menu`            | Interactive TUI menu (make menu).                                              |
 | `push`            | Commit changes once and push to GitHub (no CI monitoring).                     |
-| `release`         | Tag vX.Y.Z, push, sync packaging, run gh release if available.                 |
+| `release`         | Tag vX.Y.Z, push, run gh release if available.                              |
 | `run`             | Run module entry (`python -m ... --help`).                                     |
 | `test`            | Lint, format, type-check, run tests with coverage, upload to Codecov.          |
 | `version-current` | Print current version from `pyproject.toml`.                                   |

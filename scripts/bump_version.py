@@ -52,11 +52,6 @@ def parse_args() -> argparse.Namespace:
     g = p.add_mutually_exclusive_group()
     g.add_argument("--version", dest="version", help="Explicit new version X.Y.Z")
     g.add_argument("--part", choices=["major", "minor", "patch"], default="patch", help="Semver part to bump")
-    p.add_argument(
-        "--sync-packaging",
-        action="store_true",
-        help="Align conda/brew/nix files to current pyproject version and requires-python without changing pyproject or CHANGELOG",
-    )
     p.add_argument("--pyproject", default="pyproject.toml")
     p.add_argument("--changelog", default="CHANGELOG.md")
     return p.parse_args()
@@ -537,28 +532,14 @@ def main() -> int:
     ns = parse_args()
     py = Path(ns.pyproject)
 
-    # Sync-only mode: read current pyproject values and align packaging; no edits to pyproject/CHANGELOG
-    if ns.sync_packaging:
-        text = py.read_text(encoding="utf-8")
-        m = re.search(r"^version\s*=\s*\"([^\"]+)\"", text, re.M)
-        if not m:
-            raise SystemExit("version not found in pyproject.toml")
-        target = m.group(1)
-        _update_conda_recipe(target, Path("packaging/conda/recipe/meta.yaml"))
-        _update_brew_formula(target, Path(PROJECT_META.brew_formula_path))
-        _update_nix_flake(target, Path("packaging/nix/flake.nix"))
-        return 0
-
-    # Normal bump flow
     cl = Path(ns.changelog)
     text = py.read_text(encoding="utf-8")
-    m = re.search(r"^version\s*=\s*\"([^\"]+)\"", text, re.M)
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
     if not m:
         raise SystemExit("version not found in pyproject.toml")
     old = m.group(1)
     target = ns.version or bump_semver(old, ns.part)
-    text2 = re.sub(r"^version\s*=\s*\"[^\"]+\"", f'"version = "{target}"', text, count=1, flags=re.M)
-    # Fix accidental leading quote in the replacement string above
+    text2 = re.sub(r'^version\s*=\s*"[^"]+"', f'"version = "{target}"', text, count=1, flags=re.M)
     text2 = text2.replace('"version = ', "version = ", 1)
     py.write_text(text2, encoding="utf-8")
     print(f"[bump] pyproject.toml: {old} -> {target}")
@@ -567,17 +548,13 @@ def main() -> int:
     entry = f"## [{target}] - {today}\n\n- _Describe changes here._\n\n"
     if cl.exists():
         lines = cl.read_text(encoding="utf-8").splitlines(True)
-        idx = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
-        lines[idx:idx] = [entry]
+        insert_idx = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
+        lines[insert_idx:insert_idx] = [entry]
         cl.write_text("".join(lines), encoding="utf-8")
     else:
         cl.write_text("# Changelog\n\n" + entry, encoding="utf-8")
     print(f"[bump] CHANGELOG.md: inserted section for {target}")
 
-    # Also bump packaging skeletons if present
-    _update_conda_recipe(target, Path("packaging/conda/recipe/meta.yaml"))
-    _update_brew_formula(target, Path(PROJECT_META.brew_formula_path))
-    _update_nix_flake(target, Path("packaging/nix/flake.nix"))
     return 0
 
 

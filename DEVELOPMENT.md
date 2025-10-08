@@ -16,7 +16,7 @@
 | `bump-major`      | Convenience alias for `make bump PART=major`                                               |
 | `clean`           | Remove caches, build artefacts, and coverage files                                         |
 | `push`            | Run full test pipeline, prompt for commit message, and push to the selected remote         |
-| `build`           | Build wheel/sdist and verify Conda/Homebrew/Nix packaging                                  |
+| `build`           | Build wheel/sdist artifacts                                                               |
 | `menu`            | Textual-based TUI for running targets interactively                                        |
 
 ### Target Parameters (env vars)
@@ -29,12 +29,11 @@
 
 `make test` orchestrates the full local CI workflow:
 
-1. Sync packaging definitions (`packaging/conda`, `packaging/brew`, `packaging/nix`) with `pyproject.toml`.
-2. `ruff check .` (lint) and `ruff format --check`.
-3. `python -m lint_imports --config pyproject.toml` (Clean Architecture contracts).
-4. `pyright` (strict type checking).
-5. `pytest` with doctests, coverage reports, and `--cov-fail-under=90`.
-6. Optional Codecov upload (requires `CODECOV_TOKEN` or running in CI).
+1. `ruff check .` (lint) and `ruff format --check`.
+2. `python -m lint_imports --config pyproject.toml` (Clean Architecture contracts).
+3. `pyright` (strict type checking).
+4. `pytest` with doctests, coverage reports, and `--cov-fail-under=90`.
+5. Optional Codecov upload (requires `CODECOV_TOKEN` or running in CI).
 
 Coverage data is written to `.coverage`/`coverage.xml`. The harness creates an allow-empty commit named `test: auto commit before Codecov upload` before uploading so Codecov can associate the report with a SHA. Drop it afterwards with `git reset --soft HEAD~1` if undesired.
 
@@ -51,11 +50,9 @@ pip-audit
 
 Use `make test` for the full gate; the individual commands help when iterating quickly.
 
-### Formatting & Hooks
+### Formatting
 
-- `make test` runs Ruff in check mode; run `ruff format .` (or `pre-commit run --all-files`) before pushing
-  to avoid formatter failures.
-- Install pre-commit hooks with `pre-commit install` so Ruff and `pip-audit` run automatically on staged files.
+- `make test` runs Ruff in check mode; run `ruff format .` before pushing to avoid formatter failures.
 
 Coverage is enforced at 90% for the `src/lib_layered_config` package. `py.typed` ships with the distribution so external type checkers treat the library as typed by default.
 
@@ -69,23 +66,13 @@ The import-linter configuration in `pyproject.toml` enforces:
 
 Keep runtime code side-effect free at import time. Only adapters and the composition root perform I/O.
 
-## Packaging Sync
-
-`make test`, `make push`, and `python scripts/bump_version.py --sync-packaging` update:
-
-- Conda recipe version + Python floor (≥3.13).
-- Homebrew formula tarball + Python dependency.
-- Nix flake version and interpreter choice.
-
-Fill in distribution-specific hashes before publishing.
-
 ## Release Checklist
 
 1. Update `CHANGELOG.md` with user-facing entries.
 2. Bump the version (`make bump VERSION=X.Y.Z`).
 3. Commit, tag (`git tag vX.Y.Z`), and push (`git push --tags`).
 4. Ensure `PYPI_API_TOKEN` is configured for `.github/workflows/release.yml`.
-5. Monitor CI (lint, types, tests, security, build, packaging verifications).
+5. Monitor CI (lint, types, tests, security).
 
 ## Observability Guidelines
 

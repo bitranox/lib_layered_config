@@ -49,7 +49,7 @@ clean: ## Remove caches, build artifacts, and coverage
 push: ## Commit all changes once and push to GitHub (no CI monitoring)
 	$(SCRIPTS) push --remote $(REMOTE)
 
-build: ## Build wheel/sdist and attempt optional packaging builds
+build: ## Build wheel/sdist artifacts
 	$(SCRIPTS) build
 
 release: ## Create and push tag, optionally create GitHub release

@@ -118,7 +118,7 @@
 
 ## 12) CI Hardening & Release Preparation
 
-**Goal:** Quality gates, packaging, `py.typed`, wheel/sdist.
+**Goal:** Quality gates, `py.typed`, wheel/sdist.
 **TDD:** Release dry-run in CI; import cost test; layer contracts enforced via import-linter.
 **DoD:** All gates green (lint/types/tests/coverage/security/build); wheel includes `py.typed`; SemVer & changelog present.
 

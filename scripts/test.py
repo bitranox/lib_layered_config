@@ -19,7 +19,6 @@ try:
         bootstrap_dev,
         get_project_metadata,
         run,
-        sync_packaging,
     )
 except ImportError:  # pragma: no cover - direct execution fallback
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -28,7 +27,6 @@ except ImportError:  # pragma: no cover - direct execution fallback
         bootstrap_dev,
         get_project_metadata,
         run,
-        sync_packaging,
     )
 
 PROJECT = get_project_metadata()
@@ -56,13 +54,7 @@ def _refresh_default_env() -> None:
     _default_env = _build_default_env()
 
 
-def run_tests(
-    *,
-    coverage: str = "on",
-    verbose: bool = False,
-    strict_format: bool | None = None,
-    skip_packaging_sync: bool | None = None,
-) -> None:
+def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: bool | None = None) -> None:
     env_verbose = os.getenv("TEST_VERBOSE", "").lower()
     if not verbose and env_verbose in _TRUTHY:
         verbose = True
@@ -163,59 +155,8 @@ def run_tests(
 
     bootstrap_dev()
 
-    resolved_skip_packaging = (
-        skip_packaging_sync
-        if skip_packaging_sync is not None
-        else os.getenv("SKIP_PACKAGING_SYNC", "0").strip().lower() in _TRUTHY
-    )
-
+    # Packaging targets (Conda/Nix/Homebrew) were removed; keep legacy toggles as no-ops.
     steps: list[tuple[str, Callable[[], None]]] = []
-
-    def _sync_packaging() -> None:
-        sync_packaging()
-        try:
-            result = subprocess.run(
-                ["git", "status", "--porcelain", "packaging"],
-                cwd=PROJECT_ROOT,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        except Exception as exc:  # pragma: no cover - git unavailable
-            raise SystemExit(f"Packaging sync verification failed: {exc}") from exc
-
-        if result.returncode != 0:
-            raise SystemExit("git status failed while verifying packaging sync changes")
-
-        if result.stdout.strip():
-            click.echo(result.stdout, err=True)
-            diff_stat = subprocess.run(
-                ["git", "diff", "--stat", "--", "packaging"],
-                cwd=PROJECT_ROOT,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if diff_stat.returncode == 0 and diff_stat.stdout.strip():
-                click.echo(diff_stat.stdout, err=True)
-            diff_full = subprocess.run(
-                ["git", "diff", "--", "packaging"],
-                cwd=PROJECT_ROOT,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if diff_full.returncode == 0 and diff_full.stdout.strip():
-                click.echo(diff_full.stdout, err=True)
-            raise SystemExit(
-                "Packaging files drifted from pyproject.toml. Run scripts/bump_version.py --sync-packaging "
-                "and commit the updates."
-            )
-
-    if resolved_skip_packaging:
-        click.echo("[skip] Packaging sync disabled (set SKIP_PACKAGING_SYNC=1 to opt out)")
-    else:
-        steps.append(("Sync packaging (conda/brew/nix) with pyproject", _sync_packaging))
 
     if strict_format is not None:
         resolved_format_strict = strict_format

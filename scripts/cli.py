@@ -77,39 +77,23 @@ def run_command(use_dotenv: Optional[bool], args: Sequence[str]) -> None:
 @click.option("--coverage", type=click.Choice(["on", "auto", "off"]), default="on", show_default=True)
 @click.option("--verbose", is_flag=True, help="Print executed commands")
 @click.option("--strict-format/--no-strict-format", default=None, help="Control ruff format behaviour")
-@click.option("--skip-packaging-sync/--no-skip-packaging-sync", default=None, help="Control packaging sync step")
-def test_command(
-    coverage: str,
-    verbose: bool,
-    strict_format: Optional[bool],
-    skip_packaging_sync: Optional[bool],
-) -> None:
+def test_command(coverage: str, verbose: bool, strict_format: Optional[bool]) -> None:
     test_module.run_tests(
         coverage=coverage,
         verbose=verbose,
         strict_format=strict_format,
-        skip_packaging_sync=skip_packaging_sync,
     )
 
 
-@main.command(name="build", help="Build wheel/sdist and optional packaging artefacts")
-@click.option("--conda/--no-conda", "allow_conda", default=True, show_default=True)
-@click.option("--brew/--no-brew", "allow_brew", default=True, show_default=True)
-@click.option("--nix/--no-nix", "allow_nix", default=True, show_default=True)
-def build_command(allow_conda: bool, allow_brew: bool, allow_nix: bool) -> None:
-    build_module.build_artifacts(
-        allow_conda=allow_conda,
-        allow_brew=allow_brew,
-        allow_nix=allow_nix,
-    )
+@main.command(name="build", help="Build wheel/sdist artifacts")
+def build_command() -> None:
+    build_module.build_artifacts()
 
 
 @main.command(name="release", help="Create git tag and optional GitHub release")
 @click.option("--remote", default="origin", show_default=True)
-@click.option("--retries", default=5, show_default=True, type=int)
-@click.option("--retry-wait", default=3.0, show_default=True, type=float)
-def release_command(remote: str, retries: int, retry_wait: float) -> None:
-    release_module.release(remote=remote, retries=retries, retry_wait=retry_wait)
+def release_command(remote: str) -> None:
+    release_module.release(remote=remote)
 
 
 @main.command(name="push", help="Run checks, commit, and push current branch")

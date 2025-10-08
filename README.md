@@ -286,11 +286,6 @@ examples = generate_examples(Path("./examples"), slug="config-kit", vendor="Acme
 
 ## Packaging targets
 
-The repository ships manifests for common ecosystems (PyPI, Conda, Homebrew, Nix). Continuous integration keeps each target aligned with `pyproject.toml`, so version numbers and minimum Python requirements stay consistent across packaging channels.
-
-- **Conda** — recipe under `packaging/conda/recipe/meta.yaml`.
-- **Homebrew** — formula under `packaging/brew/Formula/lib-layered-config.rb` (built from the project name).
-- **Nix** — flake in `packaging/nix/flake.nix` providing packages and a development shell.
 - **pipx / uv** smoke tests — ensure the built wheel installs cleanly via the CLI entry points.
 
 ## Further documentation
@@ -307,7 +302,7 @@ The repository ships manifests for common ecosystems (PyPI, Conda, Homebrew, Nix
 ```bash
 pip install "lib_layered_config[dev]"
 make test          # lint + type-check + pytest + coverage (fail-under=90%)
-make build         # build wheel / sdist and packaging manifests
+make build         # build wheel / sdist artifacts
 make run -- --help # run the CLI via the repo entrypoint
 ```
 
