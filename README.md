@@ -155,7 +155,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit   --pref
 ```
 
 - `--format human` prints an annotated prose list (default).
-- `--format json` returns either the Config JSON or, with `--provenance`, a combined `{config, provenance}` document.
+- `--format json` returns either the Config JSON or, with `--provenance`, a combined `{config, provenance}` document. Pretty-printing is enabled by default; add `--no-indent` for compact output.
 - `--default-file` seeds the merge with a lowest-precedence baseline file.
 
 Human output example:
@@ -170,7 +170,7 @@ service.endpoint: https://api.example.com
 JSON output example:
 
 ```bash
-lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit --format json --indent 2
+lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit --format json --indent
 ```
 
 ### `deploy`
@@ -197,7 +197,7 @@ lib_layered_config env-prefix config-kit
 ### `read-json`
 
 ```bash
-lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit --indent 2
+lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit --no-indent
 ```
 
 ### `fail`

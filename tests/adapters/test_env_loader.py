@@ -106,6 +106,12 @@ def test_env_loader_handles_random_namespace(entries) -> None:
 
 
 @os_agnostic
+def test_env_loader_respects_explicit_empty_environment() -> None:
+    payload = DefaultEnvLoader(environ={}).load("DEMO")
+    assert payload == {}
+
+
+@os_agnostic
 def test_normalize_prefix_preserves_existing_suffix() -> None:
     assert _normalize_prefix("DEMO_") == "DEMO_"
 

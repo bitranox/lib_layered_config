@@ -245,7 +245,6 @@ def test_cli_read_config_json_emits_combined_payload(tmp_path) -> None:
             "--default-file",
             str(defaults),
             "--indent",
-            "2",
         ],
     )
 

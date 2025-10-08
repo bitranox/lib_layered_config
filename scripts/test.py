@@ -180,7 +180,12 @@ def run_tests(
             (
                 "pip-audit (skip editable)",
                 _wrap(
-                    cmd=["pip-audit", "--skip-editable", "--ignore-vuln", "GHSA-4xh5-x5gv-qwph"],
+                    cmd=[
+                        "pip-audit",
+                        "--skip-editable",
+                        "--ignore-vuln",
+                        "GHSA-4xh5-x5gv-qwph",
+                    ],  # Upstream pip fix still pending (tracked by GHSA-4xh5-x5gv-qwph); revisit monthly.
                     label="pip-audit",
                     capture=False,
                 ),

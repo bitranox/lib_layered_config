@@ -6,7 +6,7 @@ import json
 import sys
 from importlib import metadata
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Optional, Sequence, cast
+from typing import Callable, Final, Iterable, Mapping, Optional, Sequence, cast
 
 import lib_cli_exit_tools
 import rich_click as click
@@ -23,6 +23,7 @@ TRACEBACK_SUMMARY = 500
 TRACEBACK_VERBOSE = 10_000
 TARGET_CHOICES = ("app", "host", "user")
 EXAMPLE_PLATFORM_CHOICES = ("posix", "windows")
+DEFAULT_JSON_INDENT: Final[int] = 2
 
 
 def _toggle_traceback(show: bool) -> None:
@@ -242,7 +243,12 @@ def cli_generate_examples(
     show_default=True,
     help="Choose between human prose or JSON",
 )
-@click.option("--indent", type=int, default=None, help="Pretty-print JSON output")
+@click.option(
+    "--indent/--no-indent",
+    default=True,
+    show_default=True,
+    help="Pretty-print JSON output",
+)
 @click.option(
     "--provenance/--no-provenance",
     default=True,
@@ -257,7 +263,7 @@ def cli_read_config(
     start_dir: Optional[Path],
     default_file: Optional[Path],
     output_format: str,
-    indent: Optional[int],
+    indent: bool,
     provenance: bool,
 ) -> None:
     """Read configuration and print either human prose or JSON."""
@@ -267,6 +273,7 @@ def cli_read_config(
     default_file_str = _stringify(default_file)
 
     if output_format.lower() == "json":
+        indent_value = _resolve_indent(indent)
         click.echo(
             _render_json(
                 vendor=vendor,
@@ -275,7 +282,7 @@ def cli_read_config(
                 prefer=prefer_order,
                 start_dir=start_dir_str,
                 default_file=default_file_str,
-                indent=indent,
+                indent=indent_value,
                 provenance=provenance,
             )
         )
@@ -307,7 +314,12 @@ def cli_read_config(
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     default=None,
 )
-@click.option("--indent", type=int, default=None)
+@click.option(
+    "--indent/--no-indent",
+    default=True,
+    show_default=True,
+    help="Pretty-print JSON output",
+)
 def cli_read_config_json(
     vendor: str,
     app: str,
@@ -315,10 +327,11 @@ def cli_read_config_json(
     prefer: Sequence[str],
     start_dir: Optional[Path],
     default_file: Optional[Path],
-    indent: Optional[int],
+    indent: bool,
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
 
+    indent_value = _resolve_indent(indent)
     payload = read_config_json(
         vendor=vendor,
         app=app,
@@ -326,7 +339,7 @@ def cli_read_config_json(
         prefer=_normalise_prefer(prefer),
         start_dir=_stringify(start_dir),
         default_file=_stringify(default_file),
-        indent=indent,
+        indent=indent_value,
     )
     click.echo(payload)
 
@@ -352,6 +365,12 @@ def main(argv: Optional[Sequence[str]] = None, *, restore_traceback: bool = True
         if restore_traceback:
             lib_cli_exit_tools.config.traceback = previous_traceback
             lib_cli_exit_tools.config.traceback_force_color = previous_force_color
+
+
+def _resolve_indent(enabled: bool) -> int | None:
+    """Return default JSON indentation when *enabled* is true."""
+
+    return DEFAULT_JSON_INDENT if enabled else None
 
 
 def _render_json(

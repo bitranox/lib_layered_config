@@ -80,7 +80,7 @@ class DefaultEnvLoader:
             Mapping to read from. Defaults to :data:`os.environ`.
         """
 
-        self._environ = environ or os.environ
+        self._environ = os.environ if environ is None else environ
 
     def load(self, prefix: str) -> dict[str, object]:
         """Return a nested mapping containing variables with the supplied *prefix*.
