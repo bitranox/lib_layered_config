@@ -59,7 +59,7 @@
           pyproject = true;
           src = ../..;
           nativeBuildInputs = [ hatchlingVendor ];
-          propagatedBuildInputs = [ libCliExitToolsVendor richClickVendor ];
+          propagatedBuildInputs = [ pypkgs.lib_cli_exit_tools pypkgs.rich_click ];
 
           meta = with pkgs.lib; {
             description = "Cross-platform layered configuration loader for Python";
