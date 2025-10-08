@@ -8,10 +8,11 @@ from typing import Optional
 import rich_click as click
 
 try:
-    from ._utils import git_branch, run
+    from ._utils import get_project_metadata, git_branch, read_version_from_pyproject, run
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from scripts._utils import git_branch, run
+    from scripts._utils import get_project_metadata, read_version_from_pyproject
 
 __all__ = ["push"]
 
@@ -19,18 +20,25 @@ __all__ = ["push"]
 def push(*, remote: str = "origin", message: Optional[str] = None) -> None:
     """Run checks, commit changes, and push the current branch."""
 
+    metadata = get_project_metadata()
+    version = read_version_from_pyproject(Path("pyproject.toml")) or "unknown"
+    click.echo("[push] project diagnostics: " + ", ".join(metadata.diagnostic_lines()))
+    click.echo(f"[push] version={version}")
+    branch = git_branch()
+    click.echo(f"[push] branch={branch} remote={remote}")
+
     click.echo("[push] Running local checks (scripts/test.py)")
-    run(["python", "scripts/test.py"])  # type: ignore[list-item]
+    run(["python", "scripts/test.py"], capture=False)
 
     click.echo("[push] Committing and pushing (single attempt)")
-    run(["git", "add", "-A"])  # stage all
+    run(["git", "add", "-A"], capture=False)  # stage all
     staged = run(["bash", "-lc", "! git diff --cached --quiet"], check=False)
     commit_message = _resolve_commit_message(message)
     if staged.code != 0:
         click.echo("[push] No staged changes detected; creating empty commit")
-    run(["git", "commit", "--allow-empty", "-m", commit_message])  # type: ignore[list-item]
-    branch = git_branch()
-    run(["git", "push", "-u", remote, branch])  # type: ignore[list-item]
+    run(["git", "commit", "--allow-empty", "-m", commit_message], capture=False)  # type: ignore[list-item]
+    click.echo(f"[push] Commit message: {commit_message}")
+    run(["git", "push", "-u", remote, branch], capture=False)  # type: ignore[list-item]
 
 
 def _resolve_commit_message(message: Optional[str]) -> str:

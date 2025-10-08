@@ -66,11 +66,9 @@ def clean_command(patterns: tuple[str, ...]) -> None:
 
 
 @main.command(name="run", help="Run the project CLI and forward extra arguments")
-@click.option("--use-dotenv", "use_dotenv", flag_value=True, default=None, help="Enable dotenv loading")
-@click.option("--no-use-dotenv", "use_dotenv", flag_value=False, help="Disable dotenv loading")
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def run_command(use_dotenv: Optional[bool], args: Sequence[str]) -> None:
-    raise SystemExit(run_cli_module.run_cli(args, use_dotenv=use_dotenv))
+def run_command(args: Sequence[str]) -> None:
+    raise SystemExit(run_cli_module.run_cli(args))
 
 
 @main.command(name="test", help="Run lint, type-check, tests, and coverage upload")

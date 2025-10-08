@@ -58,11 +58,44 @@ class ProjectMetadata:
     homepage: str
     import_package: str
     coverage_source: str
+    scripts: dict[str, str]
 
     def github_tarball_url(self, version: str) -> str:
         if self.repo_host == "github.com" and self.repo_owner and self.repo_name:
             return f"https://github.com/{self.repo_owner}/{self.repo_name}/archive/refs/tags/v{version}.tar.gz"
         return ""
+
+    def resolve_cli_entry(self) -> tuple[str, str, str | None] | None:
+        """Return ``(script_name, module, attr)`` for the preferred CLI entry point.
+
+        Resolution strategy keeps ``pyproject.toml`` as the single source of truth:
+        prefer scripts whose name matches the project slug/name/import package and
+        fall back to the first declared script.
+        """
+
+        if not self.scripts:
+            return None
+        candidates = (
+            self.slug,
+            self.name,
+            self.import_package,
+            self.import_package.replace("_", "-"),
+        )
+        return _select_cli_entry(self.scripts, candidates)
+
+    def diagnostic_lines(self) -> tuple[str, ...]:
+        """Return human-friendly lines that summarise project metadata."""
+
+        summary = [
+            f"name={self.name}",
+            f"slug={self.slug}",
+            f"package={self.import_package}",
+        ]
+        if self.repo_url:
+            summary.append(f"repository={self.repo_url}")
+        if self.homepage:
+            summary.append(f"homepage={self.homepage}")
+        return tuple(summary)
 
 
 _PYPROJECT_DATA_CACHE: dict[Path, dict[str, object]] = {}
@@ -198,6 +231,55 @@ def _derive_coverage_source(data: dict[str, Any], fallback: str) -> str:
     return fallback
 
 
+def _derive_scripts(data: dict[str, Any]) -> dict[str, str]:
+    project_table = _as_str_mapping(data.get("project"))
+    scripts_table = _as_str_mapping(project_table.get("scripts"))
+    scripts: dict[str, str] = {}
+    for name, raw in scripts_table.items():
+        if isinstance(raw, str):
+            value = raw.strip()
+            if value:
+                scripts[name] = value
+    return scripts
+
+
+def _normalize_script_key(name: str) -> str:
+    return name.replace("_", "-").lower()
+
+
+def _parse_entrypoint(spec: str) -> tuple[str, str | None]:
+    module, _, attr = spec.partition(":")
+    module = module.strip()
+    attr = attr.strip()
+    return module, attr or None
+
+
+def _select_cli_entry(
+    scripts: Mapping[str, str],
+    candidates: Sequence[str],
+) -> tuple[str, str, str | None] | None:
+    normalised: dict[str, tuple[str, str]] = {}
+    for script_name, spec in scripts.items():
+        if not spec:
+            continue
+        normalised[_normalize_script_key(script_name)] = (script_name, spec)
+
+    for candidate in candidates:
+        normalised_candidate = _normalize_script_key(candidate)
+        match = normalised.get(normalised_candidate)
+        if match is not None:
+            script_name, spec = match
+            module, attr = _parse_entrypoint(spec)
+            return script_name, module, attr
+
+    if normalised:
+        script_name, spec = next(iter(normalised.values()))
+        module, attr = _parse_entrypoint(spec)
+        return script_name, module, attr
+
+    return None
+
+
 def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMetadata:
     path = pyproject.resolve()
     cached = _METADATA_CACHE.get(path)
@@ -235,6 +317,7 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
 
     import_package = _derive_import_package(data, name)
     coverage_source = _derive_coverage_source(data, import_package)
+    scripts = _derive_scripts(data)
 
     meta = ProjectMetadata(
         name=name,
@@ -247,6 +330,7 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
         homepage=homepage,
         import_package=import_package,
         coverage_source=coverage_source,
+        scripts=scripts,
     )
     _METADATA_CACHE[path] = meta
     return meta

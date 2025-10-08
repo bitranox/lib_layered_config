@@ -11,6 +11,7 @@ __all__ = ["release"]
 try:
     from ._utils import (
         bootstrap_dev,
+        get_project_metadata,
         gh_available,
         gh_release_create,
         gh_release_edit,
@@ -27,6 +28,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from scripts._utils import (
         bootstrap_dev,
+        get_project_metadata,
         gh_available,
         gh_release_create,
         gh_release_edit,
@@ -41,11 +43,15 @@ except ImportError:
     )
 
 
+PROJECT = get_project_metadata()
+
+
 def release(*, remote: str = "origin") -> None:
     version = read_version_from_pyproject(Path("pyproject.toml"))
     if not version or not _looks_like_semver(version):
         raise SystemExit("[release] Could not read version X.Y.Z from pyproject.toml")
     click.echo(f"[release] Target version {version}")
+    click.echo("[release] project diagnostics: " + ", ".join(PROJECT.diagnostic_lines()))
 
     # Verify clean working tree
     _ensure_clean()
@@ -54,7 +60,8 @@ def release(*, remote: str = "origin") -> None:
     bootstrap_dev()
 
     # Run local checks
-    run(["python", "scripts/test.py"])  # type: ignore[list-item]
+    click.echo("[release] Running validation suite (scripts/test.py)")
+    run(["python", "scripts/test.py"], capture=False)  # type: ignore[list-item]
 
     # Remove stray 'v' tag (local and remote)
     git_delete_tag("v", remote=remote)
