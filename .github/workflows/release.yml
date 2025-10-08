@@ -22,7 +22,7 @@ jobs:
             echo "See: https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions" 
             exit 1
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
       - name: Build artifacts
