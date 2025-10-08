@@ -311,6 +311,8 @@ make build         # build wheel / sdist and packaging manifests
 make run -- --help # run the CLI via the repo entrypoint
 ```
 
+*Formatting gate:* Ruff formatting runs in check mode during `make test`. Run `ruff format .` (or `pre-commit run --all-files`) before pushing and consider `pre-commit install` to keep local edits aligned.
+
 *Coverage gate:* the maintained test suite must stay ≥90% (see `pyproject.toml`). Add targeted unit tests if you extend functionality.
 
 ## License

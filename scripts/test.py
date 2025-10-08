@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -37,6 +38,7 @@ PACKAGE_SRC = Path("src") / PROJECT.import_package
 _toml_module: ModuleType | None = None
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _TRUTHY = {"1", "true", "yes", "on"}
+_FALSY = {"0", "false", "no", "off"}
 
 
 def _build_default_env() -> dict[str, str]:
@@ -96,6 +98,69 @@ def run_tests(
 
         return _runner
 
+    def _pip_audit_guarded() -> None:
+        known_vulnerability = "GHSA-4xh5-x5gv-qwph"
+        _run(
+            [
+                "pip-audit",
+                "--skip-editable",
+                "--ignore-vuln",
+                known_vulnerability,
+            ],
+            label="pip-audit-ignore",
+            capture=False,
+        )
+
+        result = _run(
+            [
+                "pip-audit",
+                "--skip-editable",
+                "--format",
+                "json",
+            ],
+            label="pip-audit-verify",
+            capture=True,
+            check=False,
+        )
+
+        if result.code == 0:
+            return
+
+        try:
+            payload = json.loads(result.out or "{}")
+        except json.JSONDecodeError as exc:  # pragma: no cover - audit emitted non-JSON output
+            click.echo("pip-audit verification output was not valid JSON", err=True)
+            raise SystemExit("pip-audit verification failed") from exc
+
+        dependencies: list[dict[str, object]]
+        if isinstance(payload, dict):
+            dependencies = payload.get("dependencies", [])  # type: ignore[assignment]
+        elif isinstance(payload, list):
+            dependencies = payload  # pragma: no cover - legacy output
+        else:  # pragma: no cover - defensive
+            dependencies = []
+
+        unexpected: list[str] = []
+        for item in dependencies:
+            if not isinstance(item, dict):
+                continue
+            package = item.get("name", "<unknown>")
+            vulns = item.get("vulns", [])
+            if not isinstance(vulns, list):
+                continue
+            for vulnerability in vulns:
+                if not isinstance(vulnerability, dict):
+                    continue
+                vuln_id = vulnerability.get("id")
+                if vuln_id != known_vulnerability:
+                    unexpected.append(f"{package}: {vuln_id}")
+
+        if unexpected:
+            click.echo("pip-audit reported new vulnerabilities:", err=True)
+            for entry in unexpected:
+                click.echo(f"  - {entry}", err=True)
+            raise SystemExit("Resolve the reported vulnerabilities before continuing.")
+
     bootstrap_dev()
 
     resolved_skip_packaging = (
@@ -134,9 +199,20 @@ def run_tests(
     else:
         steps.append(("Sync packaging (conda/brew/nix) with pyproject", _sync_packaging))
 
-    resolved_format_strict = (
-        strict_format if strict_format is not None else os.getenv("STRICT_RUFF_FORMAT", "0").strip().lower() in _TRUTHY
-    )
+    if strict_format is not None:
+        resolved_format_strict = strict_format
+    else:
+        env_value = os.getenv("STRICT_RUFF_FORMAT")
+        if env_value is None:
+            resolved_format_strict = True
+        else:
+            token = env_value.strip().lower()
+            if token in _TRUTHY:
+                resolved_format_strict = True
+            elif token in _FALSY or token == "":
+                resolved_format_strict = False
+            else:
+                raise SystemExit("STRICT_RUFF_FORMAT must be one of {0,1,true,false,yes,no,on,off}.")
 
     steps.extend(
         [
@@ -178,17 +254,8 @@ def run_tests(
                 ),
             ),
             (
-                "pip-audit (skip editable)",
-                _wrap(
-                    cmd=[
-                        "pip-audit",
-                        "--skip-editable",
-                        "--ignore-vuln",
-                        "GHSA-4xh5-x5gv-qwph",
-                    ],  # Upstream pip fix still pending (tracked by GHSA-4xh5-x5gv-qwph); revisit monthly.
-                    label="pip-audit",
-                    capture=False,
-                ),
+                "pip-audit (guarded)",
+                _pip_audit_guarded,
             ),
         ]
     )

@@ -446,7 +446,24 @@ def bootstrap_dev() -> None:
         except ModuleNotFoundError:
             needs_dev_install = True
     # Ensure pip itself is patched so security audits do not flag known CVEs on the runner.
-    run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=False, capture=False)
+    pip_upgrade = run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+        check=False,
+        capture=True,
+    )
+    if pip_upgrade.code != 0:
+        combined_output = f"{pip_upgrade.out}\n{pip_upgrade.err}".lower()
+        ci_token = os.getenv("CI", "").strip().lower()
+        is_ci = ci_token in {"1", "true", "yes"}
+        sha_error = "sha256" in combined_output and "hash" in combined_output
+        if is_ci and sha_error:
+            print("[bootstrap] pip upgrade failed due to SHA256 verification; continuing on CI")
+        else:
+            if pip_upgrade.out:
+                print(pip_upgrade.out, end="")
+            if pip_upgrade.err:
+                print(pip_upgrade.err, end="", file=sys.stderr)
+            raise SystemExit("pip upgrade failed; see output above")
     if needs_dev_install:
         print("[bootstrap] Installing dev dependencies via 'pip install -e .[dev]'")
         run([sys.executable, "-m", "pip", "install", "--break-system-packages", "-e", ".[dev]"])

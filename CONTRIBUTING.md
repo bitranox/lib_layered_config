@@ -26,7 +26,7 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 
 ## 4. Tests & Tooling
 
-- `make test` runs Ruff, import-linter, Pyright, and Pytest with coverage ≥75% plus doctests.
+- `make test` runs Ruff (lint + format check), import-linter, Pyright, and Pytest with coverage ≥90% plus doctests.
 - Shared fixtures live under `tests/support`; prefer `create_layered_sandbox` over bespoke platform scaffolding.
 - The dev extra (`pip install -e .[dev]`) installs Ruff, Pyright, Pytest, Bandit, pip-audit, Hypothesis, and typing/coverage helpers.
 - Import contracts live in `pyproject.toml` (`[tool.importlinter]`). Update them if you move modules between layers.
@@ -54,4 +54,3 @@ Before opening a PR, confirm:
 - Sanitise structured log fields; avoid leaking secrets in log metadata.
 
 Happy hacking!
-

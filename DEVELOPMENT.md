@@ -51,6 +51,12 @@ pip-audit
 
 Use `make test` for the full gate; the individual commands help when iterating quickly.
 
+### Formatting & Hooks
+
+- `make test` runs Ruff in check mode; run `ruff format .` (or `pre-commit run --all-files`) before pushing
+  to avoid formatter failures.
+- Install pre-commit hooks with `pre-commit install` so Ruff and `pip-audit` run automatically on staged files.
+
 Coverage is enforced at 90% for the `src/lib_layered_config` package. `py.typed` ships with the distribution so external type checkers treat the library as typed by default.
 
 ## Architecture Rules

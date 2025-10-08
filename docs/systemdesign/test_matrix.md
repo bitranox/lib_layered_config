@@ -11,7 +11,7 @@ documented in `module_reference.md`. It should stay in sync with the fixtures in
 | `tests/adapters` | Adapter contracts and boundary coercion | `lib_layered_config.adapters.*` | Contract tests rely on `tests.support.layered` to keep platform-specific scaffolding declarative. |
 | `tests/examples` | Example helpers and deployment tooling | `lib_layered_config.examples` | Ensures generated artefacts and deployment flows match documented filesystem layouts. |
 | `tests/e2e` | Composition root and CLI behaviour | `lib_layered_config.core`, `lib_layered_config.cli` | Exercised via end-to-end scenarios; notebook execution is marked `slow`. |
-| `tests/notebooks` | Documentation parity | `notebooks/Quickstart.ipynb` | Guards tutorial parity; skipped on macOS because of path leakage. |
+| `tests/e2e/test_notebooks.py` | Documentation parity | `notebooks/Quickstart.ipynb` | Executes notebook cells (skipped on macOS because of path leakage) to ensure tutorials stay in sync. |
 
 When adding a new feature, update this matrix and the relevant module reference
 entry so test intent stays visible to readers and reviewers.

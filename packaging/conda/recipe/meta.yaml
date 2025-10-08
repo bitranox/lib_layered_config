@@ -28,7 +28,7 @@ requirements:
     - hatchling >=1.25
   run:
     - python >=3.13
-    - lib_cli_exit_tools >=1.5.0
+    - lib_cli_exit_tools >=1.6.0
     - rich-click >=1.9.2
 
 test:

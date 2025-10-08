@@ -15,8 +15,8 @@ class LibLayeredConfig < Formula
   end
 
   resource "lib_cli_exit_tools" do
-    url "https://files.pythonhosted.org/packages/0b/d5/9078a95ee15b4147a4c92c764256468b9d18744413f45d6694a40476a626/lib_cli_exit_tools-1.5.0.tar.gz"
-    sha256 "8fdacaa92a08e9f1e2bb8e70ba5bc3c9b4e786c866894ef9e0956f1fe8c1a6fd"
+    url "https://files.pythonhosted.org/packages/29/a7/8a874081717e418623eafe2fea1146dbc777f6b19f57928bae9b89e52be1/lib_cli_exit_tools-1.6.0.tar.gz"
+    sha256 "aa1e250caff184ea661a504a4321daeba57e2571420ea40e65957f31e02343a0"
   end
 
   def install
