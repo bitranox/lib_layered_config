@@ -1,0 +1,2 @@
+# Enforce LF endings for generated packaging manifests so CI sync stays clean
+packaging/** text eol=lf
