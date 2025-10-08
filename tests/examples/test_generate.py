@@ -1,10 +1,8 @@
-from __future__ import annotations
-
 """Example generation helper tests that sing one behaviour each."""
 
-from pathlib import Path
+from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
 from lib_layered_config.examples import generate_examples
 from lib_layered_config.examples.generate import (
@@ -72,4 +70,3 @@ def test_env_secrets_body_uses_uppercase_slug() -> None:
 def test_split_override_body_mentions_config_directory() -> None:
     body = _split_override_body()
     assert "config.d" in body
-
