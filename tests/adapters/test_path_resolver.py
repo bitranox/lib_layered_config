@@ -437,7 +437,7 @@ def test_dotenv_paths_append_platform_file_when_present(tmp_path: Path) -> None:
     fallback = Path(resolver.env["XDG_CONFIG_HOME"]) / resolver.slug / ".env"
     fallback.parent.mkdir(parents=True, exist_ok=True)
     fallback.write_text("KEY=value\n", encoding="utf-8")
-    collected = list(resolver.dotenv())
+    collected = {Path(path).as_posix() for path in resolver.dotenv()}
     assert fallback.as_posix() in collected
 
 

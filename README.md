@@ -306,6 +306,16 @@ make run -- --help # run the CLI via the repo entrypoint
 
 *Coverage gate:* the maintained test suite must stay ≥90% (see `pyproject.toml`). Add targeted unit tests if you extend functionality.
 
+### Continuous integration
+
+The GitHub Actions workflow executes three jobs:
+
+- **Test matrix** (Linux/macOS/Windows, Python 3.13 + latest 3.x) running the same pipeline as `make test`.
+- **pipx / uv verification** to prove the built wheel installs cleanly with the common Python app launchers.
+- **Notebook smoke test** that executes `notebooks/Quickstart.ipynb` to keep the tutorial in sync.
+
+Packaging-specific jobs (conda, Nix, Homebrew sync) were retired; the Python packaging metadata in `pyproject.toml` remains the single source of truth.
+
 ## License
 
 MIT © Robert Nowotny

@@ -56,6 +56,16 @@ Use `make test` for the full gate; the individual commands help when iterating q
 
 Coverage is enforced at 90% for the `src/lib_layered_config` package. `py.typed` ships with the distribution so external type checkers treat the library as typed by default.
 
+## Continuous Integration Overview
+
+The `.github/workflows/ci.yml` pipeline mirrors local expectations:
+
+- `test` job executes the full suite on Linux, macOS, and Windows (Python 3.13 plus the latest 3.x).
+- `pipx-uv` job builds the wheel and checks CLI installation via `pipx` and `uv`.
+- `notebooks` job runs the Quickstart notebook to ensure documentation stays runnable.
+
+Legacy packaging jobs (Conda, Nix, and “packaging files in sync”) were removed; `pyproject.toml` remains the single source of truth for packaging metadata.
+
 ## Architecture Rules
 
 The import-linter configuration in `pyproject.toml` enforces:
@@ -86,4 +96,3 @@ Keep runtime code side-effect free at import time. Only adapters and the composi
 - README snippets double as doctests; keep them short and deterministic.
 
 Happy building!
-
