@@ -153,6 +153,7 @@ def _windows_context(tmp_path: Path):
         platform="win32",
     )
     sandbox.write("app", "config.toml", content="[windows]\nvalue=1\n")
+    sandbox.write("user", "config.toml", content="[user]\nvalue=3\n")
     resolver = DefaultPathResolver(
         vendor="Acme",
         app="ConfigKit",

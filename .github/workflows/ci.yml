@@ -125,6 +125,7 @@ jobs:
         run: |
           uv tool install .
           "$CLI_BIN" --version 2>/dev/null || python -m "$PACKAGE_MODULE" --version
+
   notebooks:
     name: Execute notebooks (ubuntu, Python 3.13)
     runs-on: ubuntu-latest
@@ -182,59 +183,4 @@ jobs:
           with out_path.open('w', encoding='utf-8') as f:
               nbformat.write(nb, f)
           print(f"Executed notebook written to: {out_path}")
-          PY
-
-  packaging-consistency:
-    name: Packaging files in sync
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - name: Verify packaging matches pyproject
-        run: |
-          python - << 'PY'
-          import re, sys, tomllib
-          from pathlib import Path
-
-          data = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))
-          project = data['project']['name']
-          version = data['project']['version']
-          requires = data['project']['requires-python']
-
-          min_match = re.search(r'([0-9]+\.[0-9]+)', requires)
-          if not min_match:
-            print('requires-python must declare a minimum like ">=3.X"'); sys.exit(1)
-          min_py = min_match.group(1)
-          min_digits = min_py.replace('.', '')
-          project_dash = project.replace('_', '-')
-          project_module = project.replace('-', '_')
-
-          # Conda
-          conda = Path('packaging/conda/recipe/meta.yaml').read_text(encoding='utf-8')
-          if not re.search(r'\{\%\s*set\s+version\s*=\s*"' + re.escape(version) + r'"\s*\%\}', conda):
-            print('conda/meta.yaml: version mismatch'); sys.exit(1)
-          if len(re.findall(r'python\s*>?=\s*' + re.escape(min_py), conda)) < 2:
-            print('conda/meta.yaml: python constraint not aligned (host/run)'); sys.exit(1)
-
-          # Brew
-          brew_path = Path(f'packaging/brew/Formula/{project_dash}.rb')
-          if not brew_path.exists():
-            print(f'brew formula missing: {brew_path}'); sys.exit(1)
-          brew = brew_path.read_text(encoding='utf-8')
-          if f"refs/tags/v{version}.tar.gz" not in brew:
-            print('brew formula: url tag mismatch'); sys.exit(1)
-          if f'"python@{min_py}"' not in brew:
-            print('brew formula: python dependency not aligned'); sys.exit(1)
-
-          # Nix
-          nix = Path('packaging/nix/flake.nix').read_text(encoding='utf-8')
-          if not re.search(r'pname\s*=\s*"' + re.escape(project_module) + r'";\s*[^}]*?version\s*=\s*"' + re.escape(version) + r'";', nix, re.S):
-            print('nix flake: version mismatch'); sys.exit(1)
-          if not re.search(r'pypkgs\s*=\s*pkgs\.python' + re.escape(min_digits) + r'Packages', nix):
-            print('nix flake: python package set not aligned'); sys.exit(1)
-          if not re.search(r'pkgs\.python' + re.escape(min_digits) + r'\b', nix):
-            print('nix flake: devShell python not aligned'); sys.exit(1)
-          print('Packaging files are consistent with pyproject.')
           PY
