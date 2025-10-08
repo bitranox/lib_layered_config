@@ -22,16 +22,11 @@ avoid duplication and keep CI/CD behaviour consistent with documentation.
 from __future__ import annotations
 
 import os
-import platform
 import re
 import shlex
 import subprocess
 import sys
-import tempfile
-import hashlib
-import json
 import tomllib
-from urllib.request import urlopen
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -347,95 +342,6 @@ def read_version_from_pyproject(pyproject: Path = Path("pyproject.toml")) -> str
     return match.group(1) if match else ""
 
 
-def ensure_conda(auto_install: bool = True) -> bool:
-    """Ensure the `conda` CLI is available, optionally bootstrapping Miniforge."""
-
-    if cmd_exists("conda"):
-        return True
-
-    if not auto_install:
-        return False
-
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-
-    if system.startswith("linux"):
-        os_name = "Linux"
-    elif system == "darwin":
-        os_name = "MacOSX"
-    else:
-        return False
-
-    if machine in {"x86_64", "amd64"}:
-        arch = "x86_64"
-    elif machine in {"aarch64", "arm64"}:
-        arch = "aarch64" if os_name == "Linux" else "arm64"
-    else:
-        return False
-
-    filename = f"Miniforge3-{os_name}-{arch}.sh"
-    base = "https://github.com/conda-forge/miniforge/releases/latest/download/"
-    asset_url = base + filename
-    sums_url = base + "SHA256SUMS"
-
-    try:
-        with urlopen("https://api.github.com/repos/conda-forge/miniforge/releases/latest", timeout=10) as resp:
-            release = json.loads(resp.read().decode("utf-8"))
-        for asset in release.get("assets", []):
-            name = asset.get("name")
-            if name == filename:
-                asset_url = asset.get("browser_download_url", asset_url)
-            elif name == "SHA256SUMS":
-                sums_url = asset.get("browser_download_url", sums_url)
-    except Exception:
-        pass
-
-    conda_root = Path.home() / "miniforge3"
-
-    if not conda_root.exists():
-        attempts = 3
-        for _ in range(attempts):
-            try:
-                installer_bytes = urlopen(asset_url, timeout=30).read()
-                sums_text = urlopen(sums_url, timeout=30).read().decode("utf-8")
-            except Exception:
-                continue
-
-            expected_hash = None
-            for line in sums_text.splitlines():
-                line = line.strip()
-                if line.endswith(f"  {filename}"):
-                    parts = line.split()
-                    if parts:
-                        expected_hash = parts[0]
-                    break
-
-            if not expected_hash:
-                continue
-
-            actual_hash = hashlib.sha256(installer_bytes).hexdigest()
-            if actual_hash != expected_hash:
-                continue
-
-            with tempfile.TemporaryDirectory() as tmp:
-                installer = Path(tmp) / filename
-                installer.write_bytes(installer_bytes)
-                installer.chmod(0o755)
-                install = run(["bash", str(installer), "-b"], check=False, capture=False)
-                if install.code == 0:
-                    break
-        else:
-            return False
-    candidates = [conda_root / "condabin", conda_root / "bin"]
-
-    existing = os.environ.get("PATH", "").split(os.pathsep)
-    new_entries = [str(p) for p in candidates if p.exists()]
-    if new_entries:
-        os.environ["PATH"] = os.pathsep.join(new_entries + [p for p in existing if p])
-
-    return cmd_exists("conda")
-
-
 def ensure_clean_git_tree() -> None:
     dirty = subprocess.call(
         ["bash", "-lc", "! git diff --quiet || ! git diff --cached --quiet"], stdout=subprocess.DEVNULL
@@ -533,38 +439,3 @@ def bootstrap_dev() -> None:
         import_module("sqlite3")
     except Exception:
         run([sys.executable, "-m", "pip", "install", "--break-system-packages", "pysqlite3-binary"], check=False)
-
-
-def ensure_nix(auto_install: bool = True) -> bool:
-    """Ensure the `nix` command is available, optionally bootstrapping it."""
-
-    if cmd_exists("nix"):
-        return True
-
-    if not auto_install:
-        return False
-
-    import os
-    import sys
-
-    platform = sys.platform
-    if not (platform.startswith("linux") or platform == "darwin"):
-        return False
-
-    # Install single-user Nix (no-daemon) for non-root environments.
-    install_cmd = "curl -L https://nixos.org/nix/install | sh -s -- --no-daemon"
-    run(["bash", "-lc", install_cmd], check=False, capture=False)
-
-    profile_dir = Path.home() / ".nix-profile"
-    profile_env = profile_dir / "etc" / "profile.d" / "nix.sh"
-    bin_dir = profile_dir / "bin"
-
-    if bin_dir.exists():
-        path_entries = os.environ.get("PATH", "").split(os.pathsep)
-        if str(bin_dir) not in path_entries:
-            os.environ["PATH"] = os.pathsep.join([str(bin_dir)] + [p for p in path_entries if p])
-
-    if profile_env.exists():
-        run(["bash", "-lc", f". {profile_env} >/dev/null 2>&1 && nix --version"], check=False, capture=False)
-
-    return cmd_exists("nix")

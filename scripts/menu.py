@@ -151,7 +151,7 @@ def _build_targets() -> list[Target]:
                 ),
             ],
         ),
-        Target("build", "Build wheel/sdist; attempt conda/brew/nix if available", []),
+        Target("build", "Build wheel/sdist artifacts", []),
         Target(
             "release",
             "Tag vX.Y.Z from pyproject; create GitHub release",
