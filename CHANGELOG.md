@@ -9,7 +9,7 @@
 - Align Windows deployment with runtime path resolution by honouring `LIB_LAYERED_CONFIG_APPDATA` even when the directory is missing and falling back to `%LOCALAPPDATA%` only when necessary.
 - Expand the test suite to cover CLI metadata helpers, layer fallbacks, and default-file precedence; raise the global coverage bar to 90 %.
 - Document the `default_file` usage pattern in the README and clarify that deployment respects the same environment overrides as the reader APIs.
-- Raise the minimum supported Python version to 3.13 and update packaging manifests (PyPI, Conda, Homebrew, Nix) to match.
+- Raise the minimum supported Python version to 3.13; retire the legacy Conda, Nix, and Homebrew automation in favour of the PyPI-first build (now verified via pipx/uv in CI).
 
 ## [0.1.0] - 2025-09-26
 - Implement core layered configuration system (`read_config`, immutable `Config`, provenance tracking).

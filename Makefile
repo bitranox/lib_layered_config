@@ -2,58 +2,50 @@ SHELL := /bin/bash
 
 PYTHON ?= python3
 SCRIPTS ?= $(PYTHON) -m scripts
-COVERAGE ?= on
-REMOTE ?= origin
 
 .PHONY: help install dev test run clean build push release version-current bump bump-patch bump-minor bump-major menu
 
-help: ## Show help
-	@awk '/^[a-zA-Z_-]+:.*##/ {split($$0,a,"## "); printf "\033[36m%-20s\033[0m %s\n", a[1], a[2]}' $(MAKEFILE_LIST)
+help:
+	$(SCRIPTS) help
 
-install: ## Install package editable
+install:
 	$(SCRIPTS) install
 
-dev: ## Install package with dev extras
+dev:
 	$(SCRIPTS) dev
 
-test: ## Lint, type-check, run tests with coverage, upload to Codecov
-	$(SCRIPTS) test --coverage $(COVERAGE)
+test:
+	$(SCRIPTS) test
 
-run: ## Run project CLI (forwards arguments)
-	$(SCRIPTS) run -- --help || true
+run:
+	$(SCRIPTS) run
 
-version-current: ## Print current version from pyproject.toml
+version-current:
 	$(SCRIPTS) version-current
 
-bump: ## Bump version: VERSION=X.Y.Z or PART=major|minor|patch (default: patch)
-	@if [ -n "$(VERSION)" ]; then \
-		$(SCRIPTS) bump --version $(VERSION); \
-	elif [ -n "$(PART)" ]; then \
-		$(SCRIPTS) bump --part $(PART); \
-	else \
-		$(SCRIPTS) bump; \
-	fi
+bump:
+	$(SCRIPTS) bump
 
-bump-patch: ## Bump patch version (X.Y.Z -> X.Y.(Z+1))
+bump-patch:
 	$(SCRIPTS) bump-patch
 
-bump-minor: ## Bump minor version (X.Y.Z -> X.(Y+1).0)
+bump-minor:
 	$(SCRIPTS) bump-minor
 
-bump-major: ## Bump major version ((X+1).0.0)
+bump-major:
 	$(SCRIPTS) bump-major
 
-clean: ## Remove caches, build artifacts, and coverage
+clean:
 	$(SCRIPTS) clean
 
-push: ## Commit all changes once and push to GitHub (no CI monitoring)
-	$(SCRIPTS) push --remote $(REMOTE)
+push:
+	$(SCRIPTS) push
 
-build: ## Build wheel/sdist artifacts
+build:
 	$(SCRIPTS) build
 
-release: ## Create and push tag, optionally create GitHub release
-	$(SCRIPTS) release --remote $(REMOTE)
+release:
+	$(SCRIPTS) release
 
-menu: ## Interactive TUI menu
-	$(PYTHON) -u scripts/menu.py < /dev/tty > /dev/tty 2>&1
+menu:
+	$(SCRIPTS) menu

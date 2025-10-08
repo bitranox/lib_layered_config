@@ -450,6 +450,53 @@ def test_project_dotenv_paths_skip_duplicate_candidates(tmp_path: Path) -> None:
     assert paths == []
 
 
+@windows_only
+def test_windows_user_paths_use_localappdata_when_roaming_empty(tmp_path: Path) -> None:
+    env = {
+        "ProgramData": str(tmp_path / "ProgramData"),
+        "APPDATA": str(tmp_path / "Roaming"),
+        "LOCALAPPDATA": str(tmp_path / "Local"),
+    }
+    roaming_base = Path(env["APPDATA"]) / "Acme" / "Demo"
+    roaming_base.mkdir(parents=True, exist_ok=True)
+
+    local_base = Path(env["LOCALAPPDATA"]) / "Acme" / "Demo"
+    local_base.mkdir(parents=True, exist_ok=True)
+    target = local_base / "config.toml"
+    target.write_text("[service]\nvalue=2\n", encoding="utf-8")
+
+    resolver = DefaultPathResolver(
+        vendor="Acme",
+        app="Demo",
+        slug="demo",
+        env=env,
+        platform="win32",
+        hostname="HOST",
+    )
+
+    user_paths = list(resolver.user())
+    assert str(target) in user_paths
+
+
+@windows_only
+def test_windows_user_paths_empty_when_no_user_directories(tmp_path: Path) -> None:
+    env = {
+        "ProgramData": str(tmp_path / "ProgramData"),
+        "APPDATA": str(tmp_path / "Roaming"),
+        "LOCALAPPDATA": str(tmp_path / "Local"),
+    }
+    resolver = DefaultPathResolver(
+        vendor="Acme",
+        app="Demo",
+        slug="demo",
+        env=env,
+        platform="win32",
+        hostname="HOST",
+    )
+
+    assert list(resolver.user()) == []
+
+
 @os_agnostic
 def test_collect_layer_discards_unknown_extensions(tmp_path: Path) -> None:
     base = tmp_path / "layer"

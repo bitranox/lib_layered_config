@@ -59,6 +59,24 @@ class ExampleSpec:
 
 @dataclass(frozen=True)
 class ExamplePlan:
+    """Plan describing how example files should be generated.
+
+    Attributes
+    ----------
+    destination:
+        Target directory where files will be written.
+    slug:
+        Configuration slug used in templates.
+    vendor:
+        Vendor name interpolated into paths/content.
+    app:
+        Application name interpolated into paths/content.
+    force:
+        Whether generation should overwrite existing files.
+    platform:
+        Normalised platform key (``"posix"`` or ``"windows"``).
+    """
+
     destination: Path
     slug: str
     vendor: str
@@ -136,7 +154,24 @@ def _build_example_plan(
     force: bool,
     platform: str | None,
 ) -> ExamplePlan:
-    """Compose an example generation plan."""
+    """Compose an example generation plan.
+
+    Parameters
+    ----------
+    destination:
+        Root destination directory (string or :class:`Path`).
+    slug / vendor / app:
+        Identifiers embedded into generated content.
+    force:
+        Whether existing files may be overwritten.
+    platform:
+        Optional platform override supplied by the caller.
+
+    Returns
+    -------
+    ExamplePlan
+        Immutable plan consumed by downstream helpers.
+    """
 
     dest = Path(destination)
     return ExamplePlan(
@@ -169,6 +204,10 @@ def _write_examples(destination: Path, specs: Iterator[ExampleSpec], force: bool
     -------
     list[Path]
         Paths written during this invocation.
+
+    Side Effects
+    ------------
+    Creates directories and writes files to disk.
     """
 
     written: list[Path] = []
@@ -188,6 +227,17 @@ def _write_spec(path: Path, spec: ExampleSpec) -> None:
     Why
     ----
     Keep the actual write primitive isolated for easy stubbing in tests.
+
+    Parameters
+    ----------
+    path:
+        Destination path for the example file.
+    spec:
+        Example specification containing content to write.
+
+    Side Effects
+    ------------
+    Writes UTF-8 text to *path*.
     """
 
     path.write_text(spec.content, encoding="utf-8")
@@ -200,10 +250,27 @@ def _should_write(path: Path, force: bool) -> bool:
     ----
     Avoid clobbering existing content unless the caller explicitly requests it.
 
+    Parameters
+    ----------
+    path:
+        Destination path under consideration.
+    force:
+        Whether overwriting is allowed.
+
     Returns
     -------
     bool
         ``True`` when writing should proceed.
+
+    Examples
+    --------
+    >>> from tempfile import NamedTemporaryFile
+    >>> tmp = NamedTemporaryFile(delete=True)
+    >>> _should_write(Path(tmp.name), force=False)
+    False
+    >>> _should_write(Path(tmp.name), force=True)
+    True
+    >>> tmp.close()
     """
 
     return force or not path.exists()
@@ -215,6 +282,15 @@ def _ensure_parent(path: Path) -> None:
     Why
     ----
     Ensure example generation works even on fresh directories.
+
+    Parameters
+    ----------
+    path:
+        Target file path whose parent directories should exist.
+
+    Side Effects
+    ------------
+    Creates directories on disk.
     """
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -253,7 +329,20 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platfor
 
 
 def _platform_specs(*, slug: str, vendor: str, app: str, platform: str) -> Iterator[ExampleSpec]:
-    """Dispatch to platform-specific example specifications."""
+    """Dispatch to platform-specific example specifications.
+
+    Parameters
+    ----------
+    slug / vendor / app:
+        Metadata interpolated into generated content.
+    platform:
+        Normalised platform key (``"posix"`` or ``"windows"``).
+
+    Yields
+    ------
+    ExampleSpec
+        Specifications describing files to create.
+    """
 
     if platform == "windows":
         yield from _windows_specs(slug=slug, vendor=vendor, app=app)
@@ -262,7 +351,18 @@ def _platform_specs(*, slug: str, vendor: str, app: str, platform: str) -> Itera
 
 
 def _windows_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
-    """Yield Windows layout examples."""
+    """Yield Windows layout examples.
+
+    Parameters
+    ----------
+    slug / vendor / app:
+        Metadata interpolated into template content.
+
+    Yields
+    ------
+    ExampleSpec
+        Specification for each Windows example file.
+    """
 
     root = Path("ProgramData") / vendor / app
     yield ExampleSpec(root / "config.toml", _app_defaults_body(slug))
@@ -273,7 +373,18 @@ def _windows_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]
 
 
 def _posix_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
-    """Yield POSIX layout examples."""
+    """Yield POSIX layout examples.
+
+    Parameters
+    ----------
+    slug / vendor / app:
+        Metadata interpolated into template content.
+
+    Yields
+    ------
+    ExampleSpec
+        Specification for each POSIX example file.
+    """
 
     slug_root = Path("etc") / slug
     yield ExampleSpec(slug_root / "config.toml", _app_defaults_body(slug))
@@ -284,44 +395,138 @@ def _posix_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
 
 
 def _env_example(slug: str) -> ExampleSpec:
-    """Return the shared .env example."""
+    """Return the shared .env example specification.
+
+    Parameters
+    ----------
+    slug:
+        Configuration slug used when building environment variable names.
+
+    Returns
+    -------
+    ExampleSpec
+        Specification describing the `.env.example` file.
+    """
 
     return ExampleSpec(Path(".env.example"), _env_secrets_body(slug))
 
 
 def _app_defaults_body(slug: str) -> str:
-    """Describe baseline application defaults."""
+    """Describe baseline application defaults.
 
-    return f'# Application-wide defaults for {slug}\n[service]\nendpoint = "https://api.example.com"\ntimeout = 10\n'
+    Parameters
+    ----------
+    slug:
+        Configuration slug inserted into the template heading.
+
+    Returns
+    -------
+    str
+        TOML content explaining application-wide defaults.
+    """
+
+    return f"""# Application-wide defaults for {slug}
+[service]
+endpoint = "https://api.example.com"
+timeout = 10
+"""
 
 
 def _host_override_body() -> str:
-    """Describe host-level overrides."""
+    """Describe host-level overrides.
 
-    return "# Host overrides (replace filename with the machine hostname)\n[service]\ntimeout = 15\n"
+    Returns
+    -------
+    str
+        TOML content illustrating host-specific timeout overrides.
+    """
+
+    return """# Host overrides (replace filename with the machine hostname)
+[service]
+timeout = 15
+"""
 
 
 def _user_preferences_body(vendor: str, app: str) -> str:
-    """Describe user-level preferences."""
+    """Describe user-level preferences.
 
-    return f"# User-specific preferences for {vendor} {app}\n[service]\nretry = 2\n"
+    Parameters
+    ----------
+    vendor / app:
+        Metadata interpolated into the template to keep prose friendly.
+
+    Returns
+    -------
+    str
+        TOML content illustrating user-level overrides.
+    """
+
+    return f"""# User-specific preferences for {vendor} {app}
+[service]
+retry = 2
+"""
 
 
 def _split_override_body() -> str:
-    """Describe config.d overrides."""
+    """Describe config.d overrides used for granular layering.
 
-    return "# Split overrides live in config.d/ and apply in lexical order\n[service]\nretry = 3\n"
+    Returns
+    -------
+    str
+        TOML content emphasising lexicographic ordering of split overrides.
+    """
+
+    return """# Split overrides live in config.d/ and apply in lexical order
+[service]
+retry = 3
+"""
 
 
 def _env_secrets_body(slug: str) -> str:
-    """Describe .env secrets guidance."""
+    """Describe .env secrets guidance.
+
+    Parameters
+    ----------
+    slug:
+        Configuration slug converted into an uppercase environment prefix.
+
+    Returns
+    -------
+    str
+        `.env` template content reminding users to provide secrets.
+    """
 
     key = slug.replace("-", "_").upper()
-    return f"# Copy to .env to provide secrets and local overrides\n{key}_SERVICE__PASSWORD=changeme\n"
+    return f"""# Copy to .env to provide secrets and local overrides
+{key}_SERVICE__PASSWORD=changeme
+"""
 
 
 def _normalise_platform(value: str | None) -> str:
-    """Return a canonical platform key for example generation."""
+    """Return a canonical platform key for example generation.
+
+    Parameters
+    ----------
+    value:
+        Optional platform alias supplied by the caller.
+
+    Returns
+    -------
+    str
+        Normalised platform key (``"posix"`` or ``"windows"``).
+
+    Raises
+    ------
+    ValueError
+        When *value* is invalid.
+
+    Examples
+    --------
+    >>> _normalise_platform('posix')
+    'posix'
+    >>> _normalise_platform(None) in {'posix', 'windows'}
+    True
+    """
 
     if value is None:
         return "windows" if os.name == "nt" else "posix"

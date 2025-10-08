@@ -543,10 +543,14 @@ class DefaultPathResolver:
             User-level Windows configuration paths.
         """
 
-        base = self._appdata_root() / self.vendor / self.application
-        if not base.exists():
-            base = self._localappdata_root() / self.vendor / self.application
-        yield from _collect_layer(base)
+        roaming_base = self._appdata_root() / self.vendor / self.application
+        roaming_paths = list(_collect_layer(roaming_base))
+        if roaming_paths:
+            yield from roaming_paths
+            return
+
+        local_base = self._localappdata_root() / self.vendor / self.application
+        yield from _collect_layer(local_base)
 
     def _program_data_root(self) -> Path:
         """Return the base directory for ProgramData lookups.

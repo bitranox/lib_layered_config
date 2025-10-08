@@ -306,6 +306,11 @@ make run -- --help # run the CLI via the repo entrypoint
 
 *Coverage gate:* the maintained test suite must stay ≥90% (see `pyproject.toml`). Add targeted unit tests if you extend functionality.
 
+**Platform notes**
+
+- Windows runners install `pipx` and `uv` automatically in CI; locally ensure `pipx` is on your `PATH` before running `make test` so the wheel verification step succeeds.
+- The journald prerequisite step runs only on Linux; macOS/Windows skips it, so there is no extra setup required on those platforms.
+
 ### Continuous integration
 
 The GitHub Actions workflow executes three jobs:

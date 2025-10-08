@@ -1,9 +1,33 @@
-"""Shared helpers for normalising user-provided platform aliases."""
+"""Shared helpers for normalising user-provided platform aliases.
+
+Purpose
+-------
+Bridge CLI/example inputs with resolver internals by translating human-friendly
+platform strings into the canonical identifiers expected across adapters and
+documentation.
+
+Contents
+--------
+- ``normalise_resolver_platform``: map CLI adapter aliases to ``sys.platform``
+  style identifiers.
+- ``normalise_examples_platform``: map example-generation aliases to the two
+  supported documentation families.
+- ``_sanitize`` plus canonical mapping constants that keep user inputs tidy and
+  predictable.
+
+System Role
+-----------
+Reusable utilities consumed by CLI commands and example tooling to ensure
+terminology matches ``docs/systemdesign/concept.md`` regardless of user input
+quirks.
+"""
 
 from __future__ import annotations
 
 from typing import Final
 
+#: Canonical resolver identifiers used when wiring the path resolver adapter.
+#: Values mirror ``sys.platform`` strings so downstream code can branch safely.
 _CANONICAL_RESOLVER: Final[dict[str, str]] = {
     "linux": "linux",
     "posix": "linux",
@@ -16,6 +40,8 @@ _CANONICAL_RESOLVER: Final[dict[str, str]] = {
     "wine": "win32",
 }
 
+#: Canonical families used by documentation/example helpers. They collapse the
+#: wide variety of aliases into the two supported directory layouts.
 _CANONICAL_EXAMPLES: Final[dict[str, str]] = {
     "posix": "posix",
     "linux": "posix",
@@ -30,6 +56,43 @@ _CANONICAL_EXAMPLES: Final[dict[str, str]] = {
 
 
 def _sanitize(alias: str | None) -> str | None:
+    """Return a lower-cased alias stripped of whitespace when *alias* is truthy.
+
+    Why
+    ----
+    User input may include spacing or mixed casing; sanitising up front keeps the
+    canonical lookup tables compact and dependable.
+
+    Parameters
+    ----------
+    alias:
+        Optional raw alias provided by a user or CLI flag. ``None`` indicates no
+        override.
+
+    Returns
+    -------
+    str | None
+        Lower-case alias when *alias* contains characters, otherwise ``None`` when
+        no override is requested.
+
+    Raises
+    ------
+    ValueError
+        If *alias* contains only whitespace, because such inputs indicate a user
+        error that should surface immediately.
+
+    Examples
+    --------
+    >>> _sanitize('  MacOS  ')
+    'macos'
+    >>> _sanitize(None) is None
+    True
+    >>> _sanitize('   ')
+    Traceback (most recent call last):
+    ...
+    ValueError: Platform alias cannot be empty.
+    """
+
     if alias is None:
         return None
     stripped = alias.strip().lower()
@@ -41,9 +104,41 @@ def _sanitize(alias: str | None) -> str | None:
 def normalise_resolver_platform(alias: str | None) -> str | None:
     """Return canonical resolver platform identifiers for *alias*.
 
-    ``None`` is returned unchanged so callers can fall back to runtime
-    detection. When an alias is provided but unknown, ``ValueError`` is
-    raised with a descriptive message suitable for surfacing to CLI users.
+    Why
+    ----
+    The path resolver adapter expects ``sys.platform`` style identifiers. This
+    helper converts human-friendly values (``"mac"``, ``"win"``) into the canonical
+    tokens documented in the system design.
+
+    Parameters
+    ----------
+    alias:
+        User-provided alias or ``None``. ``None`` preserves auto-detection.
+
+    Returns
+    -------
+    str | None
+        Canonical resolver identifier or ``None`` when auto-detection should be
+        used.
+
+    Raises
+    ------
+    ValueError
+        If *alias* is not recognised. The error message enumerates valid options
+        so CLI tooling can surface helpful guidance.
+
+    Examples
+    --------
+    >>> normalise_resolver_platform('mac')
+    'darwin'
+    >>> normalise_resolver_platform('win32')
+    'win32'
+    >>> normalise_resolver_platform(None) is None
+    True
+    >>> normalise_resolver_platform('beos')
+    Traceback (most recent call last):
+    ...
+    ValueError: Platform must be one of: darwin, linux, mac, macos, posix, win, win32, windows, wine.
     """
 
     sanitized = _sanitize(alias)
@@ -59,9 +154,40 @@ def normalise_resolver_platform(alias: str | None) -> str | None:
 def normalise_examples_platform(alias: str | None) -> str | None:
     """Return the example-generation platform family for *alias*.
 
-    Returns ``None`` when *alias* is ``None`` so callers can defer to their
-    own defaults. Unknown aliases raise ``ValueError`` mirroring the resolver
-    helper.
+    Why
+    ----
+    Documentation and example helpers target two directory layouts (POSIX and
+    Windows). This function collapses a wide variety of synonyms into those
+    families for predictable template generation.
+
+    Parameters
+    ----------
+    alias:
+        User-provided alias or ``None`` to let the caller choose a default.
+
+    Returns
+    -------
+    str | None
+        Canonical example platform (``"posix"`` or ``"windows"``) or ``None`` when
+        the caller should rely on runtime defaults.
+
+    Raises
+    ------
+    ValueError
+        If *alias* is provided but not known.
+
+    Examples
+    --------
+    >>> normalise_examples_platform('darwin')
+    'posix'
+    >>> normalise_examples_platform('windows')
+    'windows'
+    >>> normalise_examples_platform(None) is None
+    True
+    >>> normalise_examples_platform('amiga')
+    Traceback (most recent call last):
+    ...
+    ValueError: Platform must be one of: darwin, linux, mac, macos, posix, win, win32, windows, wine.
     """
 
     sanitized = _sanitize(alias)

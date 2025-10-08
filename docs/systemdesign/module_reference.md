@@ -1011,10 +1011,10 @@ expand supported names consistently.
   `darwin`, `win32`).
 - **Tests:** `tests/unit/test_cli_helpers.py::test_normalise_platform_maps_aliases`.
 
-### `normalise_examples_platform`
-- **Purpose:** Collapse platform aliases into the example generator families
-  (`posix`, `windows`).
-- **Tests:** `tests/unit/test_cli_helpers.py::test_normalise_examples_platform_maps_aliases`.
+### `_sanitize`
+- **Purpose:** Normalise raw alias inputs (strip/normalize case) and reject empty
+  values before delegation so error messages stay descriptive.
+- **Usage:** Shared guard leveraged by both normalisation helpers.
 
 ---
 
@@ -1132,11 +1132,20 @@ trees showcasing layered layout without manual setup.
 
 ## Core Components
 
-### `ExampleSpec`
-- **Purpose:** Dataclass capturing relative path + content.
+### `ExamplePlan`
+- **Purpose:** Frozen plan assembling destination, metadata, and overwrite flags
+  prior to generation.
 
-### `_build_specs`, `_write_examples`, `_should_write`
-- **Purpose:** Generate and materialise template files.
+### `ExampleSpec`
+- **Purpose:** Dataclass capturing relative path + content for a single file.
+
+### `_build_specs`, `_write_examples`, `_should_write`, `_ensure_parent`
+- **Purpose:** Generate platform-aware specs, honour force semantics, and create
+  filesystem paths safely.
+
+### `_normalise_platform`
+- **Purpose:** Collapse user-provided platform aliases into `posix`/`windows`
+  before dispatching to platform-specific spec builders.
 
 ---
 

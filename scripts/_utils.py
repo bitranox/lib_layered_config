@@ -432,10 +432,16 @@ def bootstrap_dev() -> None:
             raise SystemExit("pip upgrade failed; see output above")
     if needs_dev_install:
         print("[bootstrap] Installing dev dependencies via 'pip install -e .[dev]'")
-        run([sys.executable, "-m", "pip", "install", "--break-system-packages", "-e", ".[dev]"])
+        install_cmd = [sys.executable, "-m", "pip", "install", "-e", ".[dev]"]
+        if sys.platform.startswith("linux"):
+            install_cmd.insert(4, "--break-system-packages")
+        run(install_cmd)
     try:
         from importlib import import_module
 
         import_module("sqlite3")
     except Exception:
-        run([sys.executable, "-m", "pip", "install", "--break-system-packages", "pysqlite3-binary"], check=False)
+        sqlite_cmd = [sys.executable, "-m", "pip", "install", "pysqlite3-binary"]
+        if sys.platform.startswith("linux"):
+            sqlite_cmd.insert(4, "--break-system-packages")
+        run(sqlite_cmd, check=False)

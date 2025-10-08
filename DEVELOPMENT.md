@@ -50,6 +50,8 @@ pip-audit
 
 Use `make test` for the full gate; the individual commands help when iterating quickly.
 
+`make test` runs `pip-audit` with the default ignore list `GHSA-4xh5-x5gv-qwph`. Set `PIP_AUDIT_IGNORE=ID1,ID2` if you need to suppress additional advisories temporarily.
+
 ### Formatting
 
 - `make test` runs Ruff in check mode; run `ruff format .` before pushing to avoid formatter failures.
@@ -65,6 +67,12 @@ The `.github/workflows/ci.yml` pipeline mirrors local expectations:
 - `notebooks` job runs the Quickstart notebook to ensure documentation stays runnable.
 
 Legacy packaging jobs (Conda, Nix, and “packaging files in sync”) were removed; `pyproject.toml` remains the single source of truth for packaging metadata.
+
+### Platform specifics
+
+- **Windows** – ensure `pipx` is installed and on your `PATH` so the wheel verification step succeeds; the CI workflow mirrors this by installing pipx before running the job.
+- **Linux** – journald prerequisites are installed automatically in CI; local environments only need this if you plan to exercise the journald adapters manually.
+- **macOS** – no additional tooling beyond the standard dev dependencies is required.
 
 ## Architecture Rules
 

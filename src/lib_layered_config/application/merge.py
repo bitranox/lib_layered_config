@@ -102,9 +102,31 @@ def _weave_layer(
 ) -> None:
     """Clone snapshot payload and fold it into accumulators.
 
+    Why
+    ----
+    Provide a single entry point that ensures each snapshot is processed with
+    defensive cloning before descending into nested structures.
+
+    Parameters
+    ----------
+    target:
+        Mutable mapping accumulating merged configuration values.
+    provenance:
+        Mutable mapping capturing dotted-path provenance entries.
+    snapshot:
+        Layer snapshot being merged into the accumulators.
+
     Side Effects
     ------------
     Mutates *target* and *provenance* in place.
+
+    Examples
+    --------
+    >>> merged, prov = {}, {}
+    >>> snap = LayerSnapshot('env', {'flag': True}, None)
+    >>> _weave_layer(merged, prov, snap)
+    >>> merged['flag'], prov['flag']['layer']
+    (True, 'env')
     """
 
     _descend(target, provenance, snapshot.payload, snapshot, [])
@@ -117,7 +139,30 @@ def _descend(
     snapshot: LayerSnapshot,
     segments: list[str],
 ) -> None:
-    """Walk each key/value pair, updating scalars or branches as needed."""
+    """Walk each key/value pair, updating scalars or branches as needed.
+
+    Why
+    ----
+    Implements the recursive merge algorithm that honours nested structures and
+    ensures provenance stays aligned with the final data.
+
+    Parameters
+    ----------
+    target:
+        Mutable mapping receiving merged values.
+    provenance:
+        Mutable mapping storing provenance per dotted path.
+    incoming:
+        Mapping representing the current layer payload.
+    snapshot:
+        Layer metadata used for provenance entries.
+    segments:
+        Accumulated path segments used to compute dotted keys during recursion.
+
+    Side Effects
+    ------------
+    Mutates *target* and *provenance* as it walks through *incoming*.
+    """
 
     for key, value in incoming.items():
         dotted = _join_segments(segments, key)
@@ -136,7 +181,37 @@ def _store_branch(
     snapshot: LayerSnapshot,
     segments: list[str],
 ) -> None:
-    """Ensure a nested mapping exists, then descend into it."""
+    """Ensure a nested mapping exists before descending into it.
+
+    Parameters
+    ----------
+    target:
+        Mutable mapping currently being merged into.
+    provenance:
+        Provenance accumulator updated as recursion progresses.
+    key:
+        Current key being processed.
+    value:
+        Mapping representing the nested branch from the incoming layer.
+    dotted:
+        Dotted representation of the branch path for provenance updates.
+    snapshot:
+        Metadata describing the active layer.
+    segments:
+        Mutable list containing the path segments of the current recursion.
+
+    Side Effects
+    ------------
+    Mutates *target*, *provenance*, and *segments* while recursing.
+
+    Examples
+    --------
+    >>> target, prov = {}, {}
+    >>> branch_snapshot = LayerSnapshot('env', {'child': {'enabled': True}}, None)
+    >>> _store_branch(target, prov, 'child', {'enabled': True}, 'child', branch_snapshot, [])
+    >>> target['child']['enabled']
+    True
+    """
 
     branch = _ensure_branch(target, key)
     segments.append(key)
@@ -153,7 +228,35 @@ def _store_scalar(
     dotted: str,
     snapshot: LayerSnapshot,
 ) -> None:
-    """Set the scalar value and update provenance in lockstep."""
+    """Set the scalar value and update provenance in lockstep.
+
+    Parameters
+    ----------
+    target:
+        Mutable mapping receiving the scalar value.
+    provenance:
+        Mutable mapping storing provenance metadata.
+    key:
+        Immediate key to update within *target*.
+    value:
+        Value drawn from the incoming layer.
+    dotted:
+        Fully-qualified dotted key for provenance lookups.
+    snapshot:
+        Metadata describing the active layer.
+
+    Side Effects
+    ------------
+    Mutates both *target* and *provenance*.
+
+    Examples
+    --------
+    >>> target, prov = {}, {}
+    >>> snap = LayerSnapshot('env', {'flag': True}, None)
+    >>> _store_scalar(target, prov, 'flag', True, 'flag', snap)
+    >>> target['flag'], prov['flag']['layer']
+    (True, 'env')
+    """
 
     target[key] = _clone_leaf(value)
     provenance[dotted] = {
@@ -164,7 +267,33 @@ def _store_scalar(
 
 
 def _clone_leaf(value: object) -> object:
-    """Return a defensive copy of mutable leaf values."""
+    """Return a defensive copy of mutable leaf values.
+
+    Why
+    ----
+    Prevents callers from mutating adapter-provided data after the merge,
+    preserving immutability guarantees described in the system design.
+
+    Parameters
+    ----------
+    value:
+        Leaf value drawn from the incoming layer.
+
+    Returns
+    -------
+    object
+        Clone of the input value; immutable types are returned unchanged.
+
+    Examples
+    --------
+    >>> original = {'items': [1, 2]}
+    >>> cloned = _clone_leaf(original)
+    >>> cloned is original
+    False
+    >>> cloned['items'][0] = 42
+    >>> original['items'][0]
+    1
+    """
 
     if isinstance(value, dict):
         mapping = cast(dict[str, object], value)
@@ -182,7 +311,33 @@ def _clone_leaf(value: object) -> object:
 
 
 def _ensure_branch(target: MutableMapping[str, object], key: str) -> MutableMapping[str, object]:
-    """Return an existing branch or create a fresh empty one."""
+    """Return an existing branch or create a fresh empty one.
+
+    Parameters
+    ----------
+    target:
+        Mutable mapping holding the current branch.
+    key:
+        Key that should reference a nested mapping.
+
+    Returns
+    -------
+    MutableMapping[str, object]
+        Existing branch when present or a new one inserted into *target*.
+
+    Side Effects
+    ------------
+    Inserts a new mutable mapping into *target* when needed.
+
+    Examples
+    --------
+    >>> branch = _ensure_branch({}, 'child')
+    >>> isinstance(branch, MutableMapping)
+    True
+    >>> second = _ensure_branch({'child': branch}, 'child')
+    >>> second is branch
+    True
+    """
 
     current = target.get(key)
     if _looks_like_mapping(current):
@@ -196,7 +351,28 @@ def _ensure_branch(target: MutableMapping[str, object], key: str) -> MutableMapp
 def _clear_branch_if_empty(
     branch: MutableMapping[str, object], dotted: str, provenance: MutableMapping[str, SourceInfoPayload]
 ) -> None:
-    """Remove empty branches from provenance when overwritten by scalars."""
+    """Remove empty branches from provenance when overwritten by scalars.
+
+    Parameters
+    ----------
+    branch:
+        Mutable mapping representing the nested branch just processed.
+    dotted:
+        Dotted key corresponding to the branch.
+    provenance:
+        Provenance mapping to prune when the branch becomes empty.
+
+    Side Effects
+    ------------
+    Mutates *provenance* by removing entries when the branch no longer has data.
+
+    Examples
+    --------
+    >>> prov = {'a.b': {'layer': 'env', 'path': None, 'key': 'a.b'}}
+    >>> _clear_branch_if_empty({}, 'a.b', prov)
+    >>> 'a.b' in prov
+    False
+    """
 
     if branch:
         return
@@ -204,7 +380,27 @@ def _clear_branch_if_empty(
 
 
 def _join_segments(segments: Sequence[str], key: str) -> str:
-    """Join the current path segments with the new key."""
+    """Join the current path segments with the new key.
+
+    Parameters
+    ----------
+    segments:
+        Tuple of parent path segments accumulated so far.
+    key:
+        Current key being appended to the dotted path.
+
+    Returns
+    -------
+    str
+        Dotted path string combining *segments* and *key*.
+
+    Examples
+    --------
+    >>> _join_segments(('db', 'config'), 'host')
+    'db.config.host'
+    >>> _join_segments((), 'timeout')
+    'timeout'
+    """
 
     if not segments:
         return key
@@ -212,7 +408,29 @@ def _join_segments(segments: Sequence[str], key: str) -> str:
 
 
 def _looks_like_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
-    """Return ``True`` when *value* is a mapping with string keys."""
+    """Return ``True`` when *value* is a mapping with string keys.
+
+    Why
+    ----
+    Guards recursion so scalars are handled separately from nested mappings.
+
+    Parameters
+    ----------
+    value:
+        Candidate object inspected during recursion.
+
+    Returns
+    -------
+    bool
+        ``True`` when *value* behaves like ``Mapping[str, object]``.
+
+    Examples
+    --------
+    >>> _looks_like_mapping({'a': 1})
+    True
+    >>> _looks_like_mapping(['not', 'mapping'])
+    False
+    """
 
     if not isinstance(value, MappingABC):
         return False

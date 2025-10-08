@@ -151,17 +151,44 @@ def read_config_raw(
     start_dir: str | None = None,
     default_file: str | Path | None = None,
 ) -> tuple[dict[str, object], dict[str, SourceInfoPayload]]:
-    """Return raw data and provenance dictionaries for advanced tooling.
+    """Return raw data and provenance mappings for advanced tooling.
 
     Why
     ----
     Some consumers need dictionaries they can mutate or serialise differently
-    without enforcing the `Config` abstraction.
+    without enforcing the :class:`Config` abstraction, while reusing the same
+    precedence pipeline and provenance metadata as the public API.
+
+    Parameters
+    ----------
+    vendor / app / slug:
+        Identifiers passed to the path resolver to compute search roots and
+        prefixes.
+    prefer:
+        Optional ordered sequence of preferred file suffixes (lower precedence
+        when omitted).
+    start_dir:
+        Optional directory seeding the upward `.env` search. ``None`` keeps the
+        resolver default.
+    default_file:
+        Optional path injected as the lowest-precedence layer. Accepts either
+        :class:`pathlib.Path` or string values.
 
     Returns
     -------
     tuple[dict[str, object], dict[str, SourceInfoPayload]]
-        Data and provenance mappings produced directly by the merge policy.
+        Pair of mutable dictionaries mirroring the merge results prior to
+        construction of the domain value object.
+
+    Side Effects
+    ------------
+    Resets the active trace identifier and emits structured logging events via
+    the layer collection helpers.
+
+    Raises
+    ------
+    LayerLoadError
+        When a structured file loader raises :class:`InvalidFormat`.
     """
 
     resolver = _build_resolver(vendor=vendor, app=app, slug=slug, start_dir=start_dir)
@@ -193,12 +220,31 @@ def _compose_config(
 
     Why
     ----
-    Keeps the conversion from plain dictionaries into the domain aggregate in
-    one place, ensuring metadata is cast to :class:`SourceInfo`.
+    Keep the boundary between application-layer dictionaries and the domain
+    value object explicit so provenance typing stays consistent.
+
+    Parameters
+    ----------
+    data:
+        Mutable mapping returned by :func:`merge_layers`.
+    raw_meta:
+        Provenance mapping keyed by dotted path as produced by the merge policy.
+
+    Returns
+    -------
+    Config
+        Immutable configuration aggregate. Returns :data:`EMPTY_CONFIG` when
+        *data* is empty.
 
     Side Effects
     ------------
-    None. Returns ``EMPTY_CONFIG`` when *data* is empty.
+    None beyond constructing the dataclass instance.
+
+    Examples
+    --------
+    >>> cfg = _compose_config({'debug': True}, {'debug': {'layer': 'env', 'path': None, 'key': 'debug'}})
+    >>> cfg['debug'], cfg.origin('debug')['layer']
+    (True, 'env')
     """
 
     if not data:
@@ -214,19 +260,83 @@ def _build_resolver(
     slug: str,
     start_dir: str | None,
 ) -> DefaultPathResolver:
-    """Create a path resolver configured with optional ``start_dir`` context."""
+    """Create a path resolver configured with optional ``start_dir`` context.
+
+    Why
+    ----
+    Reuse the same resolver wiring for CLI and library entry points while
+    keeping construction logic centralised for testing.
+
+    Parameters
+    ----------
+    vendor / app / slug:
+        Identifiers forwarded to :class:`DefaultPathResolver`.
+    start_dir:
+        Optional directory that seeds project-relative resolution (used for
+        `.env` discovery); ``None`` preserves resolver defaults.
+
+    Returns
+    -------
+    DefaultPathResolver
+        Resolver instance ready for layer discovery.
+
+    Examples
+    --------
+    >>> resolver = _build_resolver(vendor='Acme', app='Demo', slug='demo', start_dir=None)
+    >>> resolver.slug
+    'demo'
+    """
 
     return DefaultPathResolver(vendor=vendor, app=app, slug=slug, cwd=Path(start_dir) if start_dir else None)
 
 
 def _build_loaders(resolver: DefaultPathResolver) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
-    """Instantiate dotenv and environment loaders sharing resolver context."""
+    """Instantiate dotenv and environment loaders sharing resolver context.
+
+    Why
+    ----
+    Keeps loader construction aligned with the resolver extras (e.g., additional
+    dotenv directories) and centralises wiring for tests.
+
+    Parameters
+    ----------
+    resolver:
+        Resolver supplying platform-specific extras for dotenv discovery.
+
+    Returns
+    -------
+    tuple[DefaultDotEnvLoader, DefaultEnvLoader]
+        Pair of loader instances ready for layer collection.
+    """
 
     return DefaultDotEnvLoader(extras=resolver.dotenv()), DefaultEnvLoader()
 
 
 def _stringify_path(value: str | Path | None) -> str | None:
-    """Convert ``Path`` or string inputs into plain string values for adapters."""
+    """Convert ``Path`` or string inputs into plain string values for adapters.
+
+    Why
+    ----
+    Adapters expect plain strings while public APIs accept :class:`Path` objects
+    for user convenience. Centralising the conversion avoids duplicate logic.
+
+    Parameters
+    ----------
+    value:
+        Optional path expressed as either a string or :class:`pathlib.Path`.
+
+    Returns
+    -------
+    str | None
+        Stringified path or ``None`` when *value* is ``None``.
+
+    Examples
+    --------
+    >>> _stringify_path(Path('/tmp/config.toml'))
+    '/tmp/config.toml'
+    >>> _stringify_path(None) is None
+    True
+    """
 
     if isinstance(value, Path):
         return str(value)
@@ -234,7 +344,28 @@ def _stringify_path(value: str | Path | None) -> str | None:
 
 
 def _dump_json(payload: object, indent: int | None) -> str:
-    """Serialise *payload* to JSON while preserving non-ASCII characters."""
+    """Serialise *payload* to JSON while preserving non-ASCII characters.
+
+    Parameters
+    ----------
+    payload:
+        JSON-serialisable object to dump.
+    indent:
+        Optional indentation level mirroring :func:`json.dumps`. ``None`` produces
+        the most compact output.
+
+    Returns
+    -------
+    str
+        JSON document encoded as UTF-8 friendly text.
+
+    Examples
+    --------
+    >>> _dump_json({"a": 1}, indent=None)
+    '{"a":1}'
+    >>> "\n" in _dump_json({"a": 1}, indent=2)
+    True
+    """
 
     return json.dumps(payload, indent=indent, separators=(",", ":"), ensure_ascii=False)
 

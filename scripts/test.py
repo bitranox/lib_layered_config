@@ -37,6 +37,7 @@ _toml_module: ModuleType | None = None
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
+_DEFAULT_PIP_AUDIT_IGNORES = ("GHSA-4xh5-x5gv-qwph",)
 
 
 def _build_default_env() -> dict[str, str]:
@@ -52,6 +53,17 @@ def _refresh_default_env() -> None:
     """Recompute cached default env after environment mutations."""
     global _default_env
     _default_env = _build_default_env()
+
+
+def _resolve_pip_audit_ignores() -> list[str]:
+    """Return consolidated list of vulnerability IDs to ignore during pip-audit."""
+
+    extra = [token.strip() for token in os.getenv("PIP_AUDIT_IGNORE", "").split(",") if token.strip()]
+    ignores: list[str] = []
+    for candidate in (*_DEFAULT_PIP_AUDIT_IGNORES, *extra):
+        if candidate and candidate not in ignores:
+            ignores.append(candidate)
+    return ignores
 
 
 def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: bool | None = None) -> None:
@@ -78,9 +90,22 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
                     env_view = " ".join(f"{k}={v}" for k, v in overrides.items())
                     click.echo(f"    env {env_view}")
         merged_env = _default_env if env is None else _default_env | env
-        result = run(cmd, env=merged_env, check=check, capture=capture)  # type: ignore[arg-type]
+        result = run(cmd, env=merged_env, check=False, capture=capture)  # type: ignore[arg-type]
         if verbose and label:
             click.echo(f"    -> {label}: exit={result.code} out={bool(result.out)} err={bool(result.err)}")
+
+        if capture and (verbose or result.code != 0):
+            if result.out:
+                click.echo(result.out, nl=False)
+                if not result.out.endswith("\n"):
+                    click.echo()
+            if result.err:
+                click.echo(result.err, err=True, nl=False)
+                if not result.err.endswith("\n"):
+                    click.echo(err=True)
+
+        if check and result.code != 0:
+            raise SystemExit(result.code)
 
         return result
 
@@ -91,17 +116,11 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
         return _runner
 
     def _pip_audit_guarded() -> None:
-        known_vulnerability = "GHSA-4xh5-x5gv-qwph"
-        _run(
-            [
-                "pip-audit",
-                "--skip-editable",
-                "--ignore-vuln",
-                known_vulnerability,
-            ],
-            label="pip-audit-ignore",
-            capture=False,
-        )
+        ignore_ids = _resolve_pip_audit_ignores()
+        audit_cmd = ["pip-audit", "--skip-editable"]
+        for vuln_id in ignore_ids:
+            audit_cmd.extend(["--ignore-vuln", vuln_id])
+        _run(audit_cmd, label="pip-audit-ignore", capture=False)
 
         result = _run(
             [
@@ -132,6 +151,7 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
         else:  # pragma: no cover - defensive
             dependencies = []
 
+        allowed_vulns = set(ignore_ids)
         unexpected: list[str] = []
         for item in dependencies:
             if not isinstance(item, dict):
@@ -144,7 +164,7 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
                 if not isinstance(vulnerability, dict):
                     continue
                 vuln_id = vulnerability.get("id")
-                if vuln_id != known_vulnerability:
+                if vuln_id not in allowed_vulns:
                     unexpected.append(f"{package}: {vuln_id}")
 
         if unexpected:
@@ -173,33 +193,44 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
             else:
                 raise SystemExit("STRICT_RUFF_FORMAT must be one of {0,1,true,false,yes,no,on,off}.")
 
-    steps.extend(
-        [
+    steps.append(
+        (
+            "Ruff format (apply)",
+            _wrap(cmd=["ruff", "format", "."], label="ruff-format-apply", capture=False),
+        )
+    )
+
+    if resolved_format_strict:
+        steps.append(
             (
-                "Ruff lint",
-                _wrap(cmd=["ruff", "check", "."], label="ruff-check", capture=False),
+                "Ruff format check",
+                _wrap(cmd=["ruff", "format", "--check", "."], label="ruff-format-check", capture=False),
+            )
+        )
+
+    steps.append(
+        (
+            "Ruff lint",
+            _wrap(cmd=["ruff", "check", "."], label="ruff-check", capture=False),
+        )
+    )
+
+    steps.append(
+        (
+            "Import-linter contracts",
+            _wrap(
+                cmd=[sys.executable, "-m", "importlinter.cli", "lint", "--config", "pyproject.toml"],
+                label="import-linter",
+                capture=False,
             ),
-            (
-                "Ruff format check" if resolved_format_strict else "Ruff format (apply)",
-                _wrap(
-                    cmd=["ruff", "format", "--check", "."] if resolved_format_strict else ["ruff", "format", "."],
-                    label="ruff-format",
-                    capture=True,
-                ),
-            ),
-            (
-                "Import-linter contracts",
-                _wrap(
-                    cmd=[sys.executable, "-m", "importlinter.cli", "lint", "--config", "pyproject.toml"],
-                    label="import-linter",
-                    capture=False,
-                ),
-            ),
-            (
-                "Pyright type-check",
-                _wrap(cmd=["pyright"], label="pyright", capture=False),
-            ),
-        ]
+        )
+    )
+
+    steps.append(
+        (
+            "Pyright type-check",
+            _wrap(cmd=["pyright"], label="pyright", capture=False),
+        )
     )
 
     steps.extend(

@@ -10,6 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from lib_layered_config import cli as cli_module
+from lib_layered_config.cli import common as common_module
 
 from tests.support.os_markers import os_agnostic
 
@@ -76,6 +77,59 @@ def test_describe_distribution_omits_blank_summary(monkeypatch: pytest.MonkeyPat
     result = list(cli_module._describe_distribution())
 
     assert "Summary" not in "".join(result)
+
+
+@os_agnostic
+def test_describe_distribution_handles_metadata_without_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    class PlainMeta(dict):
+        pass
+
+    meta = PlainMeta(Name="Example", Version="1.2.3")
+    monkeypatch.setattr(cli_module, "_load_distribution_metadata", lambda: meta)
+
+    result = list(cli_module._describe_distribution())
+
+    assert result == [
+        "Info for Example:",
+        "  Version         : 1.2.3",
+        "  Requires-Python : >=3.13",
+    ]
+
+
+@os_agnostic
+def test_load_distribution_metadata_delegates_to_common(monkeypatch: pytest.MonkeyPatch) -> None:
+    sentinel = object()
+    monkeypatch.setattr(cli_module, "load_distribution_metadata", lambda: sentinel)
+
+    assert cli_module._load_distribution_metadata() is sentinel
+
+
+@os_agnostic
+def test_common_describe_distribution_emits_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    class DummyMeta(dict):
+        def get_all(self, key: str) -> Iterable[str] | None:  # pragma: no cover - protocol tidy
+            return ["Docs, https://example.invalid"] if key == "Project-URL" else None
+
+    meta = DummyMeta(Name="Example", Version="3.4.5", Summary="Shiny")
+    monkeypatch.setattr(common_module, "load_distribution_metadata", lambda: meta)
+
+    result = list(common_module.describe_distribution())
+
+    assert result[-1] == "  Docs, https://example.invalid"
+
+
+@os_agnostic
+def test_common_describe_distribution_skips_blank_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    class PlainMeta(dict):
+        def get_all(self, key: str) -> Iterable[str] | None:  # pragma: no cover - protocol tidy
+            return None
+
+    meta = PlainMeta(Name="Example", Version="3.4.5", Summary="")
+    monkeypatch.setattr(common_module, "load_distribution_metadata", lambda: meta)
+
+    lines = list(common_module.describe_distribution())
+
+    assert "Summary" not in "".join(lines)
 
 
 @os_agnostic
