@@ -1,13 +1,11 @@
 # Changelog
 
-## [Unreleased]
-- _Nothing yet._
+## [1.0.0] - 2025-10-09
 
-## [0.1.1] - 2025-10-07
 - Add optional `default_file` support to the composition root and CLI so baseline configuration files load ahead of layered overrides.
 - Refactor layer orchestration into `lib_layered_config._layers` to keep `core.py` small and more maintainable.
 - Align Windows deployment with runtime path resolution by honouring `LIB_LAYERED_CONFIG_APPDATA` even when the directory is missing and falling back to `%LOCALAPPDATA%` only when necessary.
-- Expand the test suite to cover CLI metadata helpers, layer fallbacks, and default-file precedence; raise the global coverage bar to 90 %.
+- Expand the test suite to cover CLI metadata helpers, layer fallbacks, and default-file precedence; raise the global coverage bar to 90%.
 - Document the `default_file` usage pattern in the README and clarify that deployment respects the same environment overrides as the reader APIs.
 - Raise the minimum supported Python version to 3.13; retire the legacy Conda, Nix, and Homebrew automation in favour of the PyPI-first build (now verified via pipx/uv in CI).
 
