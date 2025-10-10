@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
-from typing import Callable
+from typing import Callable, cast
 
 import click
 
@@ -38,6 +38,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
 _DEFAULT_PIP_AUDIT_IGNORES = ("GHSA-4xh5-x5gv-qwph",)
+_AuditPayload = list[dict[str, object]]
 
 
 def _build_default_env() -> dict[str, str]:
@@ -64,6 +65,28 @@ def _resolve_pip_audit_ignores() -> list[str]:
         if candidate and candidate not in ignores:
             ignores.append(candidate)
     return ignores
+
+
+def _extract_audit_dependencies(payload: object) -> _AuditPayload:
+    """Normalise `pip-audit --format json` output into dictionaries."""
+
+    dependencies: _AuditPayload = []
+    candidate_iter: list[object] = []
+    if isinstance(payload, dict):
+        payload_dict = cast(dict[str, object], payload)
+        raw_candidates = payload_dict.get("dependencies", [])
+        if isinstance(raw_candidates, list):
+            candidate_iter = list(cast(list[object], raw_candidates))
+    elif isinstance(payload, list):  # pragma: no cover - legacy output
+        candidate_iter = list(cast(list[object], payload))
+    else:  # pragma: no cover - defensive
+        return dependencies
+
+    for candidate in candidate_iter:
+        if isinstance(candidate, dict):
+            dependencies.append(cast(dict[str, object], candidate))
+
+    return dependencies
 
 
 def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: bool | None = None) -> None:
@@ -143,29 +166,23 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
             click.echo("pip-audit verification output was not valid JSON", err=True)
             raise SystemExit("pip-audit verification failed") from exc
 
-        dependencies: list[dict[str, object]]
-        if isinstance(payload, dict):
-            dependencies = payload.get("dependencies", [])  # type: ignore[assignment]
-        elif isinstance(payload, list):
-            dependencies = payload  # pragma: no cover - legacy output
-        else:  # pragma: no cover - defensive
-            dependencies = []
-
+        dependencies = _extract_audit_dependencies(payload)
         allowed_vulns = set(ignore_ids)
         unexpected: list[str] = []
         for item in dependencies:
-            if not isinstance(item, dict):
+            name_candidate = item.get("name")
+            package = name_candidate if isinstance(name_candidate, str) else "<unknown>"
+            vulns_candidate = item.get("vulns", [])
+            if not isinstance(vulns_candidate, list):
                 continue
-            package = item.get("name", "<unknown>")
-            vulns = item.get("vulns", [])
-            if not isinstance(vulns, list):
-                continue
-            for vulnerability in vulns:
-                if not isinstance(vulnerability, dict):
+            vuln_objects = list(cast(list[object], vulns_candidate))
+            vuln_entries = [cast(dict[str, object], entry) for entry in vuln_objects if isinstance(entry, dict)]
+            for vuln_payload in vuln_entries:
+                vuln_id_candidate = vuln_payload.get("id")
+                if not isinstance(vuln_id_candidate, str):
                     continue
-                vuln_id = vulnerability.get("id")
-                if vuln_id not in allowed_vulns:
-                    unexpected.append(f"{package}: {vuln_id}")
+                if vuln_id_candidate not in allowed_vulns:
+                    unexpected.append(f"{package}: {vuln_id_candidate}")
 
         if unexpected:
             click.echo("pip-audit reported new vulnerabilities:", err=True)
@@ -358,6 +375,10 @@ def _upload_coverage_report(*, run_command: Callable[..., RunResult]) -> bool:
         return False
 
     branch = _resolve_git_branch()
+    git_service = _resolve_git_service()
+    slug = None
+    if PROJECT.repo_owner and PROJECT.repo_name:
+        slug = f"{PROJECT.repo_owner}/{PROJECT.repo_name}"
     label = "codecov-upload"
     args = [
         uploader,
@@ -375,8 +396,14 @@ def _upload_coverage_report(*, run_command: Callable[..., RunResult]) -> bool:
     ]
     if branch:
         args.extend(["--branch", branch])
+    if git_service:
+        args.extend(["--git-service", git_service])
+    if slug:
+        args.extend(["--slug", slug])
 
     env_overrides = {"CODECOV_NO_COMBINE": "1"}
+    if slug:
+        env_overrides.setdefault("CODECOV_SLUG", slug)
     result = run_command(args, env=env_overrides, check=False, capture=False, label=label)
     if result.code == 0:
         click.echo("[codecov] upload succeeded")
@@ -418,6 +445,16 @@ def _resolve_git_branch() -> str | None:
     if candidate in {"", "HEAD"}:
         return None
     return candidate
+
+
+def _resolve_git_service() -> str | None:
+    host = (PROJECT.repo_host or "").lower()
+    mapping = {
+        "github.com": "github",
+        "gitlab.com": "gitlab",
+        "bitbucket.org": "bitbucket",
+    }
+    return mapping.get(host)
 
 
 def _ensure_codecov_token() -> None:
