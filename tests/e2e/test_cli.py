@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from click.testing import CliRunner
 import lib_cli_exit_tools
 
 from lib_layered_config import cli
+from lib_layered_config.cli import common as cli_common
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 
@@ -295,10 +297,14 @@ def test_cli_env_prefix_echoes_uppercase_slug() -> None:
 
 
 @os_agnostic
-def test_cli_info_falls_back_when_metadata_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli.metadata, "metadata", lambda *_: (_ for _ in ()).throw(cli.metadata.PackageNotFoundError()))
+def test_cli_info_recites_real_metadata() -> None:
+    metadata = importlib.reload(cli_common.package_metadata)
+    expected_lines = _expected_info_lines(metadata)
+
     result = make_runner().invoke(cli.cli, ["info"])
-    assert result.exit_code == 0 and "metadata unavailable" in result.output
+
+    assert result.exit_code == 0
+    assert result.output.splitlines() == list(expected_lines)
 
 
 @os_agnostic
@@ -326,3 +332,19 @@ def test_cli_main_restores_traceback_flag_after_run(sandbox: LayeredSandbox, mon
 def test_cli_fail_command_surfaces_runtime_error() -> None:
     result = make_runner().invoke(cli.cli, ["fail"])
     assert result.exit_code != 0 and isinstance(result.exception, RuntimeError)
+
+
+def _expected_info_lines(metadata: object) -> tuple[str, ...]:
+    fields = (
+        ("name", metadata.name),
+        ("title", metadata.title),
+        ("version", metadata.version),
+        ("homepage", metadata.homepage),
+        ("author", metadata.author),
+        ("author_email", metadata.author_email),
+        ("shell_command", metadata.shell_command),
+    )
+    pad = max(len(label) for label, _ in fields)
+    lines = [f"Info for {metadata.name}:", ""]
+    lines.extend(f"    {label.ljust(pad)} = {value}" for label, value in fields)
+    return tuple(lines)

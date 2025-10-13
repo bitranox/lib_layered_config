@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-from typing import Iterable
+from contextlib import contextmanager
+import importlib
 
-import lib_cli_exit_tools
 import pytest
 from click.testing import CliRunner
 
+from lib_layered_config import __init__conf__ as metadata_module
 from lib_layered_config import cli as cli_module
 from lib_layered_config.cli import common as common_module
 
@@ -16,120 +17,51 @@ from tests.support.os_markers import os_agnostic
 
 
 @os_agnostic
-def test_toggle_traceback_sets_flags_when_enabled() -> None:
-    cli_module._toggle_traceback(True)
-    pairing = (lib_cli_exit_tools.config.traceback, lib_cli_exit_tools.config.traceback_force_color)
-    cli_module._toggle_traceback(False)
-    assert pairing == (True, True)
+def test_version_string_reflects_static_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(common_module.package_metadata, "version", "9.9.9", raising=False)
+    assert cli_module._version_string() == "9.9.9"
 
 
 @os_agnostic
-def test_toggle_traceback_clears_flags_when_disabled() -> None:
-    cli_module._toggle_traceback(True)
-    cli_module._toggle_traceback(False)
-    pairing = (lib_cli_exit_tools.config.traceback, lib_cli_exit_tools.config.traceback_force_color)
-    assert pairing == (False, False)
+def test_common_describe_distribution_returns_info_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    metadata = importlib.reload(metadata_module)
+    expected = list(_expected_info_lines(metadata))
+    assert list(common_module.describe_distribution()) == expected
 
 
 @os_agnostic
-def test_version_string_falls_back_when_distribution_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_describe_distribution_matches_common(monkeypatch: pytest.MonkeyPatch) -> None:
+    metadata = importlib.reload(metadata_module)
+    expected = _expected_info_lines(metadata)
+    assert cli_module._describe_distribution() == expected
+
+
+@os_agnostic
+def test_session_overrides_detect_traceback_flag() -> None:
+    overrides = cli_module._session_overrides(["--traceback"])
+    assert overrides == {"traceback": True}
+
+
+@os_agnostic
+def test_session_overrides_default_to_empty_when_flag_absent() -> None:
+    assert cli_module._session_overrides(["read", "--vendor", "Acme"]) == {}
+
+
+@os_agnostic
+def test_session_overrides_return_empty_for_none() -> None:
+    assert cli_module._session_overrides(None) == {}
+
+
+@os_agnostic
+def test_session_overrides_swallow_click_parse_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        cli_module.metadata, "version", lambda _: (_ for _ in ()).throw(cli_module.metadata.PackageNotFoundError)
+        cli_module.cli,
+        "make_context",
+        lambda *args, **kwargs: (_ for _ in ()).throw(cli_module.click.ClickException("boom")),
+        raising=False,
     )
-    assert cli_module._version_string() == "0.0.0"
 
-
-@os_agnostic
-def test_describe_distribution_yields_metadata_lines(monkeypatch: pytest.MonkeyPatch) -> None:
-    class DummyMeta(dict):
-        def get_all(self, key: str) -> Iterable[str] | None:  # pragma: no cover - interface contract
-            return ["Homepage, https://example.invalid"] if key == "Project-URL" else None
-
-    meta = DummyMeta(Name="Example", Version="1.2.3", Summary="Helpful")
-    monkeypatch.setattr(cli_module, "_load_distribution_metadata", lambda: meta)
-
-    result = list(cli_module._describe_distribution())
-
-    assert result == [
-        "Info for Example:",
-        "  Version         : 1.2.3",
-        "  Requires-Python : >=3.13",
-        "  Summary         : Helpful",
-        "  Homepage, https://example.invalid",
-    ]
-
-
-@os_agnostic
-def test_describe_distribution_handles_missing_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli_module, "_load_distribution_metadata", lambda: None)
-    assert list(cli_module._describe_distribution()) == ["lib_layered_config (metadata unavailable)"]
-
-
-@os_agnostic
-def test_describe_distribution_omits_blank_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    class DummyMeta(dict):
-        def get_all(self, key: str):  # pragma: no cover - interface contract
-            return None
-
-    meta = DummyMeta(Name="Example", Version="1.2.3", Summary="")
-    monkeypatch.setattr(cli_module, "_load_distribution_metadata", lambda: meta)
-
-    result = list(cli_module._describe_distribution())
-
-    assert "Summary" not in "".join(result)
-
-
-@os_agnostic
-def test_describe_distribution_handles_metadata_without_urls(monkeypatch: pytest.MonkeyPatch) -> None:
-    class PlainMeta(dict):
-        pass
-
-    meta = PlainMeta(Name="Example", Version="1.2.3")
-    monkeypatch.setattr(cli_module, "_load_distribution_metadata", lambda: meta)
-
-    result = list(cli_module._describe_distribution())
-
-    assert result == [
-        "Info for Example:",
-        "  Version         : 1.2.3",
-        "  Requires-Python : >=3.13",
-    ]
-
-
-@os_agnostic
-def test_load_distribution_metadata_delegates_to_common(monkeypatch: pytest.MonkeyPatch) -> None:
-    sentinel = object()
-    monkeypatch.setattr(cli_module, "load_distribution_metadata", lambda: sentinel)
-
-    assert cli_module._load_distribution_metadata() is sentinel
-
-
-@os_agnostic
-def test_common_describe_distribution_emits_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    class DummyMeta(dict):
-        def get_all(self, key: str) -> Iterable[str] | None:  # pragma: no cover - protocol tidy
-            return ["Docs, https://example.invalid"] if key == "Project-URL" else None
-
-    meta = DummyMeta(Name="Example", Version="3.4.5", Summary="Shiny")
-    monkeypatch.setattr(common_module, "load_distribution_metadata", lambda: meta)
-
-    result = list(common_module.describe_distribution())
-
-    assert result[-1] == "  Docs, https://example.invalid"
-
-
-@os_agnostic
-def test_common_describe_distribution_skips_blank_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    class PlainMeta(dict):
-        def get_all(self, key: str) -> Iterable[str] | None:  # pragma: no cover - protocol tidy
-            return None
-
-    meta = PlainMeta(Name="Example", Version="3.4.5", Summary="")
-    monkeypatch.setattr(common_module, "load_distribution_metadata", lambda: meta)
-
-    lines = list(common_module.describe_distribution())
-
-    assert "Summary" not in "".join(lines)
+    assert cli_module._session_overrides(["--traceback"]) == {}
 
 
 @os_agnostic
@@ -167,38 +99,36 @@ def test_normalise_examples_platform_raises_on_unknown_words() -> None:
 
 
 @os_agnostic
-def test_main_restores_traceback_flags_even_on_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    class DummyError(RuntimeError):
-        pass
+def test_main_delegates_through_cli_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
 
-    def explode(*_: object, **__: object) -> None:
-        raise DummyError("boom")
+    @contextmanager
+    def fake_session(*, summary_limit, verbose_limit, overrides, restore):
+        captured["summary_limit"] = summary_limit
+        captured["verbose_limit"] = verbose_limit
+        captured["overrides"] = overrides
+        captured["restore"] = restore
 
-    monkeypatch.setattr(lib_cli_exit_tools, "run_cli", explode)
-    monkeypatch.setattr(lib_cli_exit_tools, "get_system_exit_code", lambda exc: 42)
-    monkeypatch.setattr(lib_cli_exit_tools, "print_exception_message", lambda **__: None)
-    lib_cli_exit_tools.config.traceback = True
-    lib_cli_exit_tools.config.traceback_force_color = True
+        def runner(command, *, argv=None, prog_name=None, **kwargs):
+            captured["command"] = command
+            captured["argv"] = argv
+            captured["prog_name"] = prog_name
+            captured["kwargs"] = kwargs
+            return 123
 
-    exit_code = cli_module.main(["read", "--vendor", "Acme", "--app", "Demo", "--slug", "demo"])
+        yield runner
 
-    assert exit_code == 42
+    monkeypatch.setattr(cli_module, "cli_session", fake_session, raising=False)
 
+    exit_code = cli_module.main(["--traceback"], restore_traceback=False)
 
-@os_agnostic
-def test_main_puts_traceback_flags_back_after_runner_mutation(monkeypatch: pytest.MonkeyPatch) -> None:
-    def mutate_and_return_zero(*_: object, **__: object) -> int:
-        lib_cli_exit_tools.config.traceback = True
-        lib_cli_exit_tools.config.traceback_force_color = True
-        return 0
-
-    monkeypatch.setattr(lib_cli_exit_tools, "run_cli", mutate_and_return_zero)
-    lib_cli_exit_tools.config.traceback = False
-    lib_cli_exit_tools.config.traceback_force_color = False
-
-    cli_module.main(["read", "--vendor", "Acme", "--app", "Demo", "--slug", "demo"])
-
-    assert (lib_cli_exit_tools.config.traceback, lib_cli_exit_tools.config.traceback_force_color) == (False, False)
+    assert exit_code == 123
+    assert captured["summary_limit"] == cli_module.TRACEBACK_SUMMARY
+    assert captured["verbose_limit"] == cli_module.TRACEBACK_VERBOSE
+    assert captured["overrides"] == {"traceback": True}
+    assert captured["restore"] is False
+    assert captured["argv"] == ["--traceback"]
+    assert captured["prog_name"] == "lib_layered_config"
 
 
 @os_agnostic
@@ -303,3 +233,21 @@ def test_cli_read_config_json_emits_combined_payload(tmp_path) -> None:
     )
 
     assert result.exit_code == 0 and '"config"' in result.stdout
+
+
+def _expected_info_lines(metadata: object) -> tuple[str, ...]:
+    """Compose the info lines from metadata constants."""
+
+    fields = (
+        ("name", metadata.name),
+        ("title", metadata.title),
+        ("version", metadata.version),
+        ("homepage", metadata.homepage),
+        ("author", metadata.author),
+        ("author_email", metadata.author_email),
+        ("shell_command", metadata.shell_command),
+    )
+    pad = max(len(label) for label, _ in fields)
+    lines = [f"Info for {metadata.name}:", ""]
+    lines.extend(f"    {label.ljust(pad)} = {value}" for label, value in fields)
+    return tuple(lines)

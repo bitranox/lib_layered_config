@@ -57,7 +57,7 @@ class ExampleSpec:
     content: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ExamplePlan:
     """Plan describing how example files should be generated.
 

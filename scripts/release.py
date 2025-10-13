@@ -1,46 +1,28 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 import click
 
 __all__ = ["release"]
 
-try:
-    from ._utils import (
-        bootstrap_dev,
-        get_project_metadata,
-        gh_available,
-        gh_release_create,
-        gh_release_edit,
-        gh_release_exists,
-        git_branch,
-        git_create_annotated_tag,
-        git_delete_tag,
-        git_push,
-        git_tag_exists,
-        read_version_from_pyproject,
-        run,
-    )
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts._utils import (
-        bootstrap_dev,
-        get_project_metadata,
-        gh_available,
-        gh_release_create,
-        gh_release_edit,
-        gh_release_exists,
-        git_branch,
-        git_create_annotated_tag,
-        git_delete_tag,
-        git_push,
-        git_tag_exists,
-        read_version_from_pyproject,
-        run,
-    )
+from ._utils import (
+    bootstrap_dev,
+    get_project_metadata,
+    gh_available,
+    gh_release_create,
+    gh_release_edit,
+    gh_release_exists,
+    git_branch,
+    git_create_annotated_tag,
+    git_delete_tag,
+    git_push,
+    git_tag_exists,
+    read_version_from_pyproject,
+    run,
+)
 
 
 PROJECT = get_project_metadata()
@@ -60,8 +42,8 @@ def release(*, remote: str = "origin") -> None:
     bootstrap_dev()
 
     # Run local checks
-    click.echo("[release] Running validation suite (scripts/test.py)")
-    run(["python", "scripts/test.py"], capture=False)  # type: ignore[list-item]
+    click.echo("[release] Running validation suite (python -m scripts.test)")
+    run(["python", "-m", "scripts.test"], capture=False)
 
     # Remove stray 'v' tag (local and remote)
     git_delete_tag("v", remote=remote)
@@ -103,6 +85,6 @@ def _looks_like_semver(v: str) -> bool:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from scripts.cli import main as cli_main
+    from .cli import main as cli_main
 
     cli_main(["release", *sys.argv[1:]])

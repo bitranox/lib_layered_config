@@ -54,8 +54,8 @@ when writing or refracturing Python scripts, apply those Rules :
 ### Versioning & Releases
 
 - Single source of truth for the package version is `pyproject.toml` (`[project].version`).
-- Runtime code reads metadata via `importlib.metadata`; do not duplicate the version in code files.
-- On a version bump, update only `pyproject.toml` and the `CHANGELOG.md` entry; runtime code should continue to read the version via `importlib.metadata` (no separate `__init__conf__` file).
+- Release automation mirrors the metadata into `src/lib_layered_config/__init__conf__.py`; runtime code imports those constants instead of calling `importlib.metadata`.
+- On a version bump, update `pyproject.toml`, run the metadata sync script (or `make bump`), and record the change in `CHANGELOG.md`.
 - Tag releases `vX.Y.Z` and push tags; CI will build artifacts and publish when configured.
 
 ### Common Make Targets (Alphabetical)

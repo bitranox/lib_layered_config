@@ -3,11 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-try:
-    from .bump import bump
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts.bump import bump
+from .bump import bump
 
 __all__ = ["bump_minor"]
 
@@ -19,6 +15,6 @@ def bump_minor(pyproject: Path = Path("pyproject.toml"), changelog: Path = Path(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from scripts.cli import main as cli_main
+    from .cli import main as cli_main
 
     cli_main(["bump", "--part", "minor", *sys.argv[1:]])

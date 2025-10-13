@@ -145,42 +145,22 @@ jobs:
           PIP_NO_INPUT: "1"
         run: |
           python - << 'PY'
-          import json, sys
           from pathlib import Path
+
           import nbformat
-          try:
-              from nbformat.validator import normalize  # type: ignore
-          except Exception:
-              normalize = None  # type: ignore
           from nbclient import NotebookClient
 
           nb_path = Path('notebooks/Quickstart.ipynb')
           if not nb_path.exists():
               raise SystemExit(f"Notebook not found: {nb_path}")
 
-          with nb_path.open('r', encoding='utf-8') as f:
-              nb = nbformat.read(f, as_version=4)
-          # Normalize to ensure required fields like cell ids are present (supports older nbformat return types)
-          if normalize is not None:
-              nb_norm = normalize(nb)  # may return notebook or a tuple
-              # pick the first element that looks like a notebook
-              cand = nb_norm
-              if isinstance(nb_norm, tuple):
-                  for item in nb_norm:
-                      if hasattr(item, 'cells') and hasattr(item, 'metadata'):
-                          cand = item
-                          break
-              nb = cand
-          # Final guard for robustness
-          if isinstance(nb, tuple) or not (hasattr(nb, 'cells') and hasattr(nb, 'metadata')):
-              raise SystemExit(f"Unexpected notebook object type after normalize: {type(nb)}")
-
-          client = NotebookClient(nb, timeout=900, kernel_name='python3', allow_errors=False)
+          with nb_path.open('r', encoding='utf-8') as handle:
+              notebook = nbformat.read(handle, as_version=4)
+          client = NotebookClient(notebook, timeout=900, kernel_name='python3', allow_errors=False)
           client.execute()
 
-          # Optionally write executed notebook artifact (not committed)
           out_path = Path('notebooks/Quickstart-executed.ipynb')
-          with out_path.open('w', encoding='utf-8') as f:
-              nbformat.write(nb, f)
+          with out_path.open('w', encoding='utf-8') as handle:
+              nbformat.write(notebook, handle)
           print(f"Executed notebook written to: {out_path}")
           PY

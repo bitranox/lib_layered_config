@@ -7,31 +7,24 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, cast
+from typing import cast
 
 import click
 
-try:
-    from ._utils import (
-        RunResult,
-        bootstrap_dev,
-        get_project_metadata,
-        run,
-    )
-except ImportError:  # pragma: no cover - direct execution fallback
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts._utils import (
-        RunResult,
-        bootstrap_dev,
-        get_project_metadata,
-        run,
-    )
+from ._utils import (
+    RunResult,
+    bootstrap_dev,
+    get_project_metadata,
+    run,
+    sync_metadata_module,
+)
 
 PROJECT = get_project_metadata()
 COVERAGE_TARGET = PROJECT.coverage_source
-__all__ = ["run_tests", "COVERAGE_TARGET"]
+__all__ = ["run_tests", "run_coverage", "COVERAGE_TARGET"]
 PACKAGE_SRC = Path("src") / PROJECT.import_package
 _toml_module: ModuleType | None = None
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +49,40 @@ def _refresh_default_env() -> None:
     _default_env = _build_default_env()
 
 
+def run_coverage(*, verbose: bool = False) -> None:
+    """Run pytest under coverage using python modules to avoid PATH shim issues."""
+
+    sync_metadata_module(PROJECT)
+    bootstrap_dev()
+    _prune_coverage_data_files()
+    _remove_report_artifacts()
+    base_env = _build_default_env() | {"COVERAGE_NO_SQL": "1"}
+    with tempfile.TemporaryDirectory() as tmpdir:
+        coverage_file = Path(tmpdir) / ".coverage"
+        env = base_env | {"COVERAGE_FILE": str(coverage_file)}
+        coverage_cmd = [sys.executable, "-m", "coverage", "run", "-m", "pytest", "-vv"]
+        click.echo("[coverage] python -m coverage run -m pytest -vv")
+        result = run(coverage_cmd, env=env, capture=not verbose, check=False)
+        if result.code != 0:
+            if result.out:
+                click.echo(result.out, nl=False)
+            if result.err:
+                click.echo(result.err, err=True, nl=False)
+            raise SystemExit(result.code)
+
+        report_cmd = [sys.executable, "-m", "coverage", "report", "-m"]
+        click.echo("[coverage] python -m coverage report -m")
+        report = run(report_cmd, env=env, capture=not verbose, check=False)
+        if report.code != 0:
+            if report.out:
+                click.echo(report.out, nl=False)
+            if report.err:
+                click.echo(report.err, err=True, nl=False)
+            raise SystemExit(report.code)
+        if report.out and not verbose:
+            click.echo(report.out, nl=False)
+
+
 def _resolve_pip_audit_ignores() -> list[str]:
     """Return consolidated list of vulnerability IDs to ignore during pip-audit."""
 
@@ -70,23 +97,16 @@ def _resolve_pip_audit_ignores() -> list[str]:
 def _extract_audit_dependencies(payload: object) -> _AuditPayload:
     """Normalise `pip-audit --format json` output into dictionaries."""
 
-    dependencies: _AuditPayload = []
-    candidate_iter: list[object] = []
-    if isinstance(payload, dict):
-        payload_dict = cast(dict[str, object], payload)
-        raw_candidates = payload_dict.get("dependencies", [])
-        if isinstance(raw_candidates, list):
-            candidate_iter = list(cast(list[object], raw_candidates))
-    elif isinstance(payload, list):  # pragma: no cover - legacy output
-        candidate_iter = list(cast(list[object], payload))
-    else:  # pragma: no cover - defensive
-        return dependencies
+    if not isinstance(payload, dict):
+        return []
 
-    for candidate in candidate_iter:
-        if isinstance(candidate, dict):
-            dependencies.append(cast(dict[str, object], candidate))
+    payload_dict = cast(dict[str, object], payload)
+    raw_candidates = payload_dict.get("dependencies", [])
+    if not isinstance(raw_candidates, list):
+        return []
 
-    return dependencies
+    candidate_list = cast(list[object], raw_candidates)
+    return [cast(dict[str, object], candidate) for candidate in candidate_list if isinstance(candidate, dict)]
 
 
 def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: bool | None = None) -> None:
@@ -94,8 +114,10 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
     if not verbose and env_verbose in _TRUTHY:
         verbose = True
 
+    sync_metadata_module(PROJECT)
+
     def _run(
-        cmd: list[str] | str,
+        cmd: Sequence[str] | str,
         *,
         env: dict[str, str] | None = None,
         check: bool = True,
@@ -113,7 +135,7 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
                     env_view = " ".join(f"{k}={v}" for k, v in overrides.items())
                     click.echo(f"    env {env_view}")
         merged_env = _default_env if env is None else _default_env | env
-        result = run(cmd, env=merged_env, check=False, capture=capture)  # type: ignore[arg-type]
+        result = run(cmd, env=merged_env, check=False, capture=capture)
         if verbose and label:
             click.echo(f"    -> {label}: exit={result.code} out={bool(result.out)} err={bool(result.err)}")
 
@@ -192,7 +214,6 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
 
     bootstrap_dev()
 
-    # Legacy packaging toggles now no-op intentionally but retained for compatibility.
     steps: list[tuple[str, Callable[[], None]]] = []
 
     if strict_format is not None:
@@ -268,11 +289,8 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
     )
 
     def _run_pytest() -> None:
-        for f in (".coverage", "coverage.xml"):
-            try:
-                Path(f).unlink()
-            except FileNotFoundError:
-                pass
+        for path in (Path(".coverage"), Path("coverage.xml")):
+            path.unlink(missing_ok=True)
 
         if coverage == "on" or (coverage == "auto" and (os.getenv("CI") or os.getenv("CODECOV_TOKEN"))):
             click.echo("[coverage] enabled")
@@ -280,7 +298,7 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
             with tempfile.TemporaryDirectory() as tmp:
                 cov_file = Path(tmp) / ".coverage"
                 click.echo(f"[coverage] file={cov_file}")
-                env = os.environ | {"COVERAGE_FILE": str(cov_file)}
+                env = os.environ | {"COVERAGE_FILE": str(cov_file), "COVERAGE_NO_SQL": "1"}
                 pytest_result = _run(
                     [
                         "python",
@@ -492,6 +510,19 @@ def _prune_coverage_data_files() -> None:
             continue
         except OSError as exc:
             click.echo(f"[coverage] warning: unable to remove {path}: {exc}", err=True)
+
+
+def _remove_report_artifacts() -> None:
+    """Remove coverage reports that might lock the SQLite database on reruns."""
+
+    for name in ("coverage.xml", "codecov.xml"):
+        artifact = Path(name)
+        try:
+            artifact.unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            click.echo(f"[coverage] warning: unable to remove {artifact}: {exc}", err=True)
 
 
 def main() -> None:

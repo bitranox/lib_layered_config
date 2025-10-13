@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 DEFAULT_PATTERNS: tuple[str, ...] = (
     ".hypothesis",
@@ -43,6 +43,6 @@ def clean(patterns: Iterable[str] = DEFAULT_PATTERNS) -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from scripts.cli import main as cli_main
+    from .cli import main as cli_main
 
     cli_main(["clean"])

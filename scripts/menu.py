@@ -4,7 +4,7 @@ import asyncio
 import os
 import signal
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING
 
 import contextlib
 
@@ -82,7 +82,7 @@ class MenuScreen(Screen[None]):
     def __init__(self, targets: list[TargetSpec]) -> None:
         super().__init__()
         self._targets = targets
-        self._param_cache: Dict[str, Dict[str, str]] = {}
+        self._param_cache: dict[str, dict[str, str]] = {}
         self._pending_target: TargetSpec | None = None
         self._should_run_after_edit = False
         self._status: Static | None = None
@@ -214,7 +214,7 @@ class MenuScreen(Screen[None]):
             return
         self._description.update(target.description)
 
-    def _current_target(self) -> Optional[TargetSpec]:
+    def _current_target(self) -> TargetSpec | None:
         if self.selected_index is None:
             return None
         try:
@@ -228,7 +228,7 @@ class MenuScreen(Screen[None]):
         preset = self._param_cache.get(target.name, {})
         self.menu_app.push_screen(ParamScreen(target, preset), self._receive_params)
 
-    def _receive_params(self, values: Optional[Dict[str, str]]) -> None:
+    def _receive_params(self, values: dict[str, str] | None) -> None:
         target = self._pending_target
         should_run = self._should_run_after_edit
         self._pending_target = None
@@ -241,10 +241,10 @@ class MenuScreen(Screen[None]):
         if should_run:
             self._launch_run(target, values)
 
-    def _launch_run(self, target: TargetSpec, env: Dict[str, str]) -> None:
+    def _launch_run(self, target: TargetSpec, env: dict[str, str]) -> None:
         self.menu_app.push_screen(RunScreen(target, env), self._handle_run_result)
 
-    def _handle_run_result(self, exit_code: Optional[int]) -> None:
+    def _handle_run_result(self, exit_code: int | None) -> None:
         if self._status is None:
             return
         if exit_code is None:
@@ -261,16 +261,16 @@ class MenuScreen(Screen[None]):
         return app
 
 
-class ParamScreen(Screen[Dict[str, str] | None]):
+class ParamScreen(Screen[dict[str, str] | None]):
     """Simple whiptail-style form for editing target parameters."""
 
     BINDINGS = [("escape", "cancel", "Cancel"), ("q", "cancel", "Cancel")]
 
-    def __init__(self, target: TargetSpec, preset: Dict[str, str]) -> None:
+    def __init__(self, target: TargetSpec, preset: dict[str, str]) -> None:
         super().__init__()
         self._target = target
         self._preset = preset
-        self._inputs: Dict[str, Input | Select[str]] = {}
+        self._inputs: dict[str, Input | Select[str]] = {}
         self._error: Static | None = None
         self._ok_button: Button | None = None
 
@@ -336,8 +336,8 @@ class ParamScreen(Screen[Dict[str, str] | None]):
             return
         self.dismiss(values)
 
-    def _gather_values(self) -> tuple[Dict[str, str], Optional[str]]:
-        result: Dict[str, str] = {}
+    def _gather_values(self) -> tuple[dict[str, str], str | None]:
+        result: dict[str, str] = {}
         for param in self._target.params:
             widget = self._inputs[param.name]
             if isinstance(widget, Select):
@@ -365,12 +365,12 @@ class ParamScreen(Screen[Dict[str, str] | None]):
         return app
 
 
-class RunScreen(Screen[Optional[int]]):
+class RunScreen(Screen[int | None]):
     """Run the selected make target and stream output inside a whiptail-like window."""
 
     BINDINGS = [("escape", "cancel", "Cancel"), ("q", "cancel", "Cancel")]
 
-    def __init__(self, target: TargetSpec, env: Dict[str, str]) -> None:
+    def __init__(self, target: TargetSpec, env: dict[str, str]) -> None:
         super().__init__()
         self._target = target
         self._env = env
@@ -379,7 +379,7 @@ class RunScreen(Screen[Optional[int]]):
         self._ok_button = Button("OK", id="ok-btn", disabled=True)
         self._proc: asyncio.subprocess.Process | None = None
         self._runner: asyncio.Task[None] | None = None
-        self._exit_code: Optional[int] = None
+        self._exit_code: int | None = None
 
     def compose(self) -> ComposeResult:  # type: ignore[override]
         with Container(id="backdrop"):
@@ -545,14 +545,14 @@ class MenuApp(App[None]):
         self.push_screen(self._menu_screen)
 
 
-def _format_env(env: Dict[str, str]) -> str:
+def _format_env(env: dict[str, str]) -> str:
     if not env:
         return ""
     pairs = [f"{key}={value}" for key, value in env.items() if value]
     return "Environment: " + " ".join(pairs)
 
 
-def _format_command(env: Dict[str, str], cmd: list[str]) -> str:
+def _format_command(env: dict[str, str], cmd: list[str]) -> str:
     preview_env = " ".join(f"{key}={value}" for key, value in env.items() if value)
     formatted_cmd = " ".join(cmd)
     if preview_env:

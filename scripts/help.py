@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Iterable, TextIO
+from collections.abc import Iterable
+from typing import TextIO
 
 from .target_metadata import iter_help_rows
 

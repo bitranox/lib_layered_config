@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import rich_click as click
 
-try:
-    from ._utils import get_project_metadata, run
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts._utils import get_project_metadata, run
+from ._utils import get_project_metadata, run, sync_metadata_module
 
 __all__ = ["build_artifacts"]
 
@@ -27,6 +22,7 @@ def _failure(label: str) -> str:
 def build_artifacts() -> None:
     """Build Python wheel and sdist artifacts."""
 
+    sync_metadata_module(PROJECT)
     click.echo("[build] Building wheel/sdist via python -m build")
     build_result = run(["python", "-m", "build"], check=False, capture=False)
     click.echo(f"[build] {_status('success') if build_result.code == 0 else _failure('failed')}")
@@ -39,7 +35,6 @@ def main() -> None:  # pragma: no cover
 
 
 if __name__ == "__main__":  # pragma: no cover
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts.cli import main as cli_main
+    from .cli import main as cli_main
 
     cli_main(["build", *sys.argv[1:]])

@@ -24,8 +24,8 @@ cohesive across interfaces.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Callable, Iterable, Iterator, Optional, Tuple
 
 __all__ = [
     "ParamSpec",
@@ -41,8 +41,8 @@ class ParamSpec:
 
     name: str
     description: str
-    default: Optional[str] = None
-    choices: Tuple[str, ...] | None = None
+    default: str | None = None
+    choices: tuple[str, ...] | None = None
     validator: Callable[[str], bool] | None = None
 
 
@@ -52,17 +52,17 @@ class TargetSpec:
 
     name: str
     description: str
-    params: Tuple[ParamSpec, ...] = ()
+    params: tuple[ParamSpec, ...] = ()
 
 
-def _env_default(name: str, fallback: Optional[str] = None) -> Optional[str]:
+def _env_default(name: str, fallback: str | None = None) -> str | None:
     """Return the environment variable value when set, otherwise fallback."""
 
     value = os.getenv(name)
     return value if value is not None and value != "" else fallback
 
 
-def _build_targets() -> Tuple[TargetSpec, ...]:
+def _build_targets() -> tuple[TargetSpec, ...]:
     """Create the immutable collection of automation targets."""
 
     return (
@@ -87,6 +87,18 @@ def _build_targets() -> Tuple[TargetSpec, ...]:
                 ParamSpec(
                     "TEST_VERBOSE",
                     "Verbose test runner output (0|1)",
+                    default=_env_default("TEST_VERBOSE", "0"),
+                    choices=("0", "1"),
+                ),
+            ),
+        ),
+        TargetSpec(
+            "coverage",
+            "Run python -m coverage run -m pytest -vv and report",
+            (
+                ParamSpec(
+                    "TEST_VERBOSE",
+                    "Verbose coverage run output (0|1)",
                     default=_env_default("TEST_VERBOSE", "0"),
                     choices=("0", "1"),
                 ),
@@ -148,7 +160,7 @@ def _build_targets() -> Tuple[TargetSpec, ...]:
     )
 
 
-def get_targets() -> Tuple[TargetSpec, ...]:
+def get_targets() -> tuple[TargetSpec, ...]:
     """Return the current automation targets with environment defaults."""
 
     return _build_targets()

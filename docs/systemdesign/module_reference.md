@@ -715,6 +715,9 @@ observability helpers.
 ### Format Loaders
 - **Purpose:** Parse TOML/JSON/YAML into mappings.
 - **Location:** `structured.py`
+- **Supporting Helpers:** `_ensure_yaml_available`, `_require_yaml_module`,
+  `_parse_yaml_bytes` lazily import PyYAML, explain missing dependencies, and
+  wrap parser errors with domain-specific context.
 
 ---
 
@@ -724,6 +727,8 @@ observability helpers.
 - Raises `NotFound` for missing files.
 - Raises `InvalidFormat` for parse failures with format-specific context.
 - Emits `config_file_read` / `config_file_loaded` events.
+- YAML parsing uses `_parse_yaml_bytes` to normalise `None` payloads to empty
+  mappings and translate `YAMLError` into actionable `InvalidFormat`.
 
 ---
 
@@ -915,6 +920,12 @@ generating examples, and surfacing metadata without exposing internal APIs.
 
 - Rich Click command group with subcommands `read`, `read-json`, `deploy`,
   `generate-examples`, `env-prefix`, `info`, and `fail`.
+- Metadata surfaces (`info`, `--version`) read directly from
+  `lib_layered_config.__init__conf__` so automation keeps CLI output in sync
+  with `pyproject.toml` without hitting `importlib.metadata` at runtime.
+- Traceback handling delegates to `lib_cli_exit_tools.cli_session`, which
+  applies the `--traceback` preference via configuration overrides and restores
+  prior settings after each invocation.
 - Helpers to normalise options, render human output, and manage traceback
   preferences.
 - Integrates with ``lib_cli_exit_tools`` for consistent error messaging.
@@ -944,6 +955,24 @@ helpers.
 
 ### Helper Functions (`_render_json`, `_render_human`, `_normalise_*`)
 - **Purpose:** Keep command handlers declarative and reusable.
+
+### Metadata Helpers (`version_string`, `describe_distribution`)
+- **Purpose:** Produce CLI-friendly metadata strings sourced from
+  `lib_layered_config.__init__conf__`.
+- **Input:** Constants exposed via `__init__conf__.info_lines()` and related
+  helpers maintained by release automation.
+- **Output:** Click `--version` banner and `info` command lines.
+- **Location:** `src/lib_layered_config/cli/common.py`
+- **Supporting Docs:** The metadata module also exports
+  `metadata_fields()`/`info_lines()` for structured and human rendering.
+
+### Traceback Support Helpers (`_session_overrides`)
+- **Purpose:** Derive `lib_cli_exit_tools.cli_session` overrides from parsed CLI
+  arguments so the global `--traceback` flag works across entry points.
+- **Input:** Raw argument sequences passed to the root CLI.
+- **Output:** Mapping containing `{"traceback": True}` when verbose tracebacks
+  were requested; empty mapping otherwise.
+- **Location:** `src/lib_layered_config/cli/__init__.py`
 
 ---
 

@@ -2,21 +2,16 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
 
-try:
-    from ._utils import run
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts._utils import run
+from ._utils import run
 
 __all__ = ["bump"]
 
 
 def bump(
     *,
-    version: Optional[str] = None,
-    part: Optional[str] = None,
+    version: str | None = None,
+    part: str | None = None,
     pyproject: Path = Path("pyproject.toml"),
     changelog: Path = Path("CHANGELOG.md"),
 ) -> None:
@@ -32,6 +27,6 @@ def bump(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from scripts.cli import main as cli_main
+    from .cli import main as cli_main
 
     cli_main(["bump", *sys.argv[1:]])

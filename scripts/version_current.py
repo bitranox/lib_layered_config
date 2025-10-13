@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-try:
-    from ._utils import read_version_from_pyproject
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts._utils import read_version_from_pyproject
+from ._utils import read_version_from_pyproject
 
 __all__ = ["print_current_version"]
 

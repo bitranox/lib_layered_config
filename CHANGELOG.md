@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0] - 2025-10-13
+
+- Refactor CLI metadata commands (`info`, `--version`) to read from the
+  statically generated `__init__conf__` module, removing runtime
+  `importlib.metadata` lookups.
+- Update CLI entrypoint to use `lib_cli_exit_tools.cli_session` for traceback
+  management, keeping the shared configuration in sync with the newer
+  `lib_cli_exit_tools` API without manual state restoration.
+- Retire the `lib_layered_config.cli._default_env_prefix` compatibility export;
+  import `default_env_prefix` from `lib_layered_config.core` instead.
+- Refresh dependency baselines to the latest stable releases (rich-click 1.9.3,
+  codecov-cli 11.2.3, PyYAML 6.0.3, ruff 0.14.0, etc.) and mark dataclasses with
+  `slots=True` where appropriate to embrace Python 3.13 idioms.
+- Simplify the CI notebook smoke test to rely on upstream nbformat behaviour,
+  dropping compatibility shims for older notebook metadata schemas.
+
 ## [1.0.0] - 2025-10-09
 
 - Add optional `default_file` support to the composition root and CLI so baseline configuration files load ahead of layered overrides.

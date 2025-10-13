@@ -4,7 +4,7 @@ Purpose
 -------
 Collect helper functions used by the ``scripts/`` entry points (build, test,
 release) so git helpers and subprocess wrappers live in one place. The behaviour mirrors the operational guidance described in
-``docs/systemdesign/concept_architecture_plan.md`` and ``DEVELOPMENT.md``.
+``docs/systemdesign/module_reference.md`` and ``DEVELOPMENT.md``.
 
 Contents
 --------
@@ -21,16 +21,19 @@ avoid duplication and keep CI/CD behaviour consistent with documentation.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tomllib
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import CompletedProcess
-from typing import Any, Callable, Mapping, Sequence, cast
+from typing import Any, Mapping, Sequence, cast
 from urllib.parse import urlparse
 
 
@@ -54,6 +57,12 @@ class ProjectMetadata:
     import_package: str
     coverage_source: str
     scripts: dict[str, str]
+    metadata_module: Path
+    version: str
+    summary: str
+    author_name: str
+    author_email: str
+    shell_command: str
 
     def github_tarball_url(self, version: str) -> str:
         if self.repo_host == "github.com" and self.repo_owner and self.repo_name:
@@ -90,6 +99,7 @@ class ProjectMetadata:
             summary.append(f"repository={self.repo_url}")
         if self.homepage:
             summary.append(f"homepage={self.homepage}")
+        summary.append(f"version={self.version}")
         return tuple(summary)
 
 
@@ -131,14 +141,7 @@ def run(
 
 
 def cmd_exists(name: str) -> bool:
-    return (
-        subprocess.call(
-            ["bash", "-lc", f"command -v {shlex.quote(name)} >/dev/null 2>&1"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        == 0
-    )
+    return shutil.which(name) is not None
 
 
 def _normalize_slug(value: str) -> str:
@@ -185,12 +188,11 @@ def _load_pyproject(pyproject: Path) -> dict[str, object]:
     if cached is not None:
         return cached
     raw_text = path.read_text(encoding="utf-8")
-    data: dict[str, object] = {}
     try:
-        load_toml = cast(Callable[[str], dict[str, Any]], getattr(tomllib, "loads"))
-        parsed_obj = load_toml(raw_text)
-    except Exception:
-        parsed_obj = {}
+        parsed_obj = tomllib.loads(raw_text)
+    except tomllib.TOMLDecodeError as exc:  # pragma: no cover - invalid pyproject fails fast
+        msg = f"Unable to parse {path}: {exc}"
+        raise ValueError(msg) from exc
     data = {str(key): value for key, value in parsed_obj.items()}
     _PYPROJECT_DATA_CACHE[path] = data
     return data
@@ -314,6 +316,47 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
     coverage_source = _derive_coverage_source(data, import_package)
     scripts = _derive_scripts(data)
 
+    version = read_version_from_pyproject(pyproject)
+    summary = description.strip() if description else ""
+    if not summary:
+        summary_candidate = project_table.get("summary")
+        summary = summary_candidate.strip() if isinstance(summary_candidate, str) else ""
+    if not summary:
+        summary = name
+
+    author_name = ""
+    author_email = ""
+    authors_value = project_table.get("authors")
+    if isinstance(authors_value, list):
+        authors_list = cast(list[object], authors_value)
+        for author_entry in authors_list:
+            if not isinstance(author_entry, dict):
+                continue
+            author_dict = cast(dict[str, object], author_entry)
+            name_field = author_dict.get("name")
+            email_field = author_dict.get("email")
+            if not author_name and isinstance(name_field, str) and name_field.strip():
+                author_name = name_field.strip()
+            if not author_email and isinstance(email_field, str) and email_field.strip():
+                author_email = email_field.strip()
+    if not author_name:
+        author_name = repo_owner or name
+
+    shell_command = slug.replace("_", "-")
+    preferred_entry = _select_cli_entry(
+        scripts,
+        (
+            slug,
+            name,
+            import_package,
+            import_package.replace("_", "-"),
+        ),
+    )
+    if preferred_entry is not None:
+        shell_command = preferred_entry[0]
+
+    metadata_module = (Path("src") / import_package / "__init__conf__.py").resolve()
+
     meta = ProjectMetadata(
         name=name,
         description=description,
@@ -326,9 +369,107 @@ def get_project_metadata(pyproject: Path = Path("pyproject.toml")) -> ProjectMet
         import_package=import_package,
         coverage_source=coverage_source,
         scripts=scripts,
+        metadata_module=metadata_module,
+        version=version,
+        summary=summary,
+        author_name=author_name,
+        author_email=author_email,
+        shell_command=shell_command,
     )
     _METADATA_CACHE[path] = meta
     return meta
+
+
+def _quote(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _render_metadata_module(project: ProjectMetadata) -> str:
+    homepage = project.homepage or project.repo_url or ""
+    body = f'''"""Static package metadata surfaced to CLI commands and documentation.
+
+Purpose
+-------
+Expose the current project metadata as simple constants. These values are kept
+in sync with ``pyproject.toml`` by development automation (tests, push
+pipelines), so runtime code does not query packaging metadata.
+
+Contents
+--------
+* Module-level constants describing the published package.
+* :func:`print_info` rendering the constants for the CLI ``info`` command.
+
+System Role
+-----------
+Lives in the adapters/platform layer; CLI transports import these constants to
+present authoritative project information without invoking packaging APIs.
+"""
+
+from __future__ import annotations
+
+#: Distribution name declared in ``pyproject.toml``.
+name = {_quote(project.name)}
+#: Human-readable summary shown in CLI help output.
+title = {_quote(project.summary)}
+#: Current release version pulled from ``pyproject.toml`` by automation.
+version = {_quote(project.version)}
+#: Repository homepage presented to users.
+homepage = {_quote(homepage)}
+#: Author attribution surfaced in CLI output.
+author = {_quote(project.author_name)}
+#: Contact email surfaced in CLI output.
+author_email = {_quote(project.author_email)}
+#: Console-script name published by the package.
+shell_command = {_quote(project.shell_command)}
+
+
+def print_info() -> None:
+    """Print the summarised metadata block used by the CLI ``info`` command.
+
+    Why
+        Provides a single, auditable rendering function so documentation and
+        CLI output always match the system design reference.
+
+    Side Effects
+        Writes to ``stdout``.
+
+    Examples
+    --------
+    >>> print_info()  # doctest: +ELLIPSIS
+    Info for {project.name}:
+    ...
+    """
+
+    fields = [
+        ("name", name),
+        ("title", title),
+        ("version", version),
+        ("homepage", homepage),
+        ("author", author),
+        ("author_email", author_email),
+        ("shell_command", shell_command),
+    ]
+    pad = max(len(label) for label, _ in fields)
+    lines = [f"Info for {{name}}:", ""]
+    lines.extend(f"    {{label.ljust(pad)}} = {{value}}" for label, value in fields)
+    print("\\n".join(lines))
+'''
+    return textwrap.dedent(body)
+
+
+def sync_metadata_module(project: ProjectMetadata) -> None:
+    """Write ``__init__conf__.py`` so the constants mirror ``pyproject.toml``."""
+
+    content = _render_metadata_module(project)
+    module_path = project.metadata_module
+    module_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing = module_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        existing = ""
+    if existing == content:
+        return
+    module_path.write_text(content, encoding="utf-8")
 
 
 def read_version_from_pyproject(pyproject: Path = Path("pyproject.toml")) -> str:

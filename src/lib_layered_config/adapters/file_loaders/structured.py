@@ -25,18 +25,17 @@ before passing the results to the merge policy.
 from __future__ import annotations
 
 import json
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Mapping, NoReturn
+from types import ModuleType
 
 import tomllib
 
 from ...domain.errors import InvalidFormat, NotFound
 from ...observability import log_debug, log_error
 
-try:
-    import yaml  # type: ignore[import-not-found]
-except ModuleNotFoundError:  # pragma: no cover - optional dependency
-    yaml = None  # type: ignore[assignment]
+yaml: ModuleType | None = None
 
 
 FILE_LAYER = "file"
@@ -139,12 +138,12 @@ def _raise_invalid_format(path: str, format_name: str, exc: Exception) -> NoRetu
 
 
 def _ensure_yaml_available() -> None:
-    """Raise :class:`NotFound` when optional YAML support is missing.
+    """Announce clearly whether PyYAML can be reached.
 
     Why
     ----
-    Fail fast with a friendly message when YAML parsing is requested without the
-    optional dependency.
+    YAML support is optional; the loader must fail fast with guidance when the
+    dependency is absent so callers can install the expected extra.
 
     Returns
     -------
@@ -153,11 +152,59 @@ def _ensure_yaml_available() -> None:
     Raises
     ------
     NotFound
+        When the PyYAML package cannot be imported.
+    """
+
+    _require_yaml_module()
+
+
+def _require_yaml_module() -> ModuleType:
+    """Fetch the PyYAML module or explain its absence.
+
+    Why
+    ----
+    Downstream helpers need the module object for access to both ``safe_load``
+    and the package-specific ``YAMLError`` type.
+
+    Returns
+    -------
+    ModuleType
+        The imported PyYAML module.
+
+    Raises
+    ------
+    NotFound
         When PyYAML is not installed.
     """
 
-    if yaml is None:
+    module = _load_yaml_module()
+    if module is None:
         raise NotFound("PyYAML is required for YAML configuration support")
+    return module
+
+
+def _load_yaml_module() -> ModuleType | None:
+    """Import PyYAML on demand, caching the result for future readers.
+
+    Why
+    ----
+    Avoid importing optional dependencies unless they are genuinely needed,
+    while still ensuring subsequent calls reuse the same module object.
+
+    Returns
+    -------
+    ModuleType | None
+        The PyYAML module when available; otherwise ``None``.
+    """
+
+    global yaml
+    if yaml is not None:
+        return yaml
+    try:
+        yaml = import_module("yaml")
+    except ModuleNotFoundError:  # pragma: no cover - optional dependency
+        yaml = None
+    return yaml
 
 
 class BaseFileLoader:
@@ -390,7 +437,7 @@ class YAMLFileLoader(BaseFileLoader):
 
         Examples
         --------
-        >>> if yaml is not None:  # doctest: +SKIP
+        >>> if _load_yaml_module() is not None:  # doctest: +SKIP
         ...     from tempfile import NamedTemporaryFile
         ...     tmp = NamedTemporaryFile('w', delete=False, encoding='utf-8')
         ...     _ = tmp.write('key: 1')
@@ -400,11 +447,51 @@ class YAMLFileLoader(BaseFileLoader):
         """
 
         _ensure_yaml_available()
-        try:
-            payload: Any = yaml.safe_load(self._read(path))  # type: ignore[operator]
-        except yaml.YAMLError as exc:  # type: ignore[attr-defined]
-            _raise_invalid_format(path, "yaml", exc)
-        data: object = dict[str, object]() if payload is None else payload
-        result = self._ensure_mapping(data, path=path)
+        yaml_module = _require_yaml_module()
+        raw_bytes = self._read(path)
+        parsed = _parse_yaml_bytes(raw_bytes, yaml_module, path)
+        mapping = self._ensure_mapping(parsed, path=path)
         _log_file_loaded(path, "yaml")
-        return result
+        return mapping
+
+
+def _parse_yaml_bytes(payload: bytes, module: ModuleType, path: str) -> object:
+    """Turn YAML bytes into a Python shape that mirrors the file.
+
+    Why
+    ----
+    Normalise the PyYAML parsing contract so callers always receive a mapping,
+    raising a domain-specific error when the parser signals invalid syntax.
+
+    Parameters
+    ----------
+    payload:
+        Raw YAML document supplied as bytes.
+    module:
+        PyYAML module providing ::func:`safe_load` and the ``YAMLError`` base class.
+    path:
+        Source identifier used to enrich error messages.
+
+    Returns
+    -------
+    object
+        Parsed document; an empty dict when the YAML payload evaluates to ``None``.
+
+    Raises
+    ------
+    InvalidFormat
+        When PyYAML raises ``YAMLError`` while parsing the payload.
+
+    Examples
+    --------
+    >>> from types import SimpleNamespace
+    >>> fake = SimpleNamespace(safe_load=lambda data: {"key": data.decode("utf-8")}, YAMLError=Exception)
+    >>> _parse_yaml_bytes(b"value", fake, "memory.yaml")  # doctest: +ELLIPSIS
+    {'key': 'value'}
+    """
+
+    try:
+        document = module.safe_load(payload)
+    except module.YAMLError as exc:  # type: ignore[attr-defined]
+        _raise_invalid_format(path, "yaml", exc)
+    return {} if document is None else document
