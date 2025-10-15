@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import shutil
 import sys
+from pathlib import Path
 
 import rich_click as click
 
@@ -9,6 +11,7 @@ from ._utils import get_project_metadata, run, sync_metadata_module
 __all__ = ["build_artifacts"]
 
 PROJECT = get_project_metadata()
+DIST_DIR = Path("dist")
 
 
 def _status(label: str) -> str:
@@ -19,9 +22,18 @@ def _failure(label: str) -> str:
     return click.style(label, fg="red")
 
 
+def _purge_dist(dist_dir: Path = DIST_DIR) -> None:
+    """Remove the dist directory so stale artifacts never reach PyPI."""
+    if not dist_dir.exists():
+        return
+    click.echo(f"[build] Removing stale artifacts in {dist_dir.as_posix()}/")
+    shutil.rmtree(dist_dir)
+
+
 def build_artifacts() -> None:
     """Build Python wheel and sdist artifacts."""
 
+    _purge_dist()
     sync_metadata_module(PROJECT)
     click.echo("[build] Building wheel/sdist via python -m build")
     build_result = run(["python", "-m", "build"], check=False, capture=False)
