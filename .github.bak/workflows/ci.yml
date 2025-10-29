@@ -22,16 +22,10 @@ jobs:
     env:
       PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-          cache: 'pip'
-          cache-dependency-path: 'pyproject.toml'
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
       - name: Extract project metadata
         shell: python
         run: |
@@ -70,28 +64,13 @@ jobs:
       - name: Install dev deps
         shell: bash
         run: |
-          uv pip install -e .[dev] --system
+          pip install -e .[dev]
 
       - name: Install Windows Event Log prerequisites
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          uv pip install pywin32 --system
-      - name: Cache ruff
-        uses: actions/cache@v4
-        with:
-          path: .ruff_cache
-          key: ruff-${{ runner.os }}-${{ hashFiles('**/*.py') }}
-          restore-keys: |
-            ruff-${{ runner.os }}-
-      - name: Cache pyright
-        uses: actions/cache@v4
-        with:
-          path: .pyright
-          key: pyright-${{ runner.os }}-py${{ matrix.python }}-${{ hashFiles('**/*.py', 'pyproject.toml') }}
-          restore-keys: |
-            pyright-${{ runner.os }}-py${{ matrix.python }}-
-            pyright-${{ runner.os }}-
+          pip install pywin32
       - name: Run full test suite (lint, types, tests, coverage, codecov)
         shell: bash
         env:
@@ -112,12 +91,10 @@ jobs:
     name: pipx/uv verification (ubuntu)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: 'pip'
-          cache-dependency-path: 'pyproject.toml'
       - name: Extract project metadata
         shell: python
         run: |
@@ -158,12 +135,10 @@ jobs:
     name: Execute notebooks (ubuntu, Python 3.13)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: 'pip'
-          cache-dependency-path: 'pyproject.toml'
       - name: Install notebook runner deps
         run: |
           python -m pip install --upgrade pip
@@ -184,16 +159,13 @@ jobs:
           if not nb_path.exists():
               raise SystemExit(f"Notebook not found: {nb_path}")
 
-          notebook = nbformat.read(nb_path, as_version=4)
-          client = NotebookClient(
-              notebook,
-              timeout=900,
-              kernel_name='python3',
-              allow_errors=False,
-          )
+          with nb_path.open('r', encoding='utf-8') as handle:
+              notebook = nbformat.read(handle, as_version=4)
+          client = NotebookClient(notebook, timeout=900, kernel_name='python3', allow_errors=False)
           client.execute()
 
           out_path = Path('notebooks/Quickstart-executed.ipynb')
-          nbformat.write(notebook, out_path)
+          with out_path.open('w', encoding='utf-8') as handle:
+              nbformat.write(notebook, handle)
           print(f"Executed notebook written to: {out_path}")
           PY

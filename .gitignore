@@ -184,3 +184,7 @@ result
 poetry.lock
 pdm.lock
 uv.lock
+/.github_bak/
+/.github_bak/
+/.github.bak/
+/.github.bak/
