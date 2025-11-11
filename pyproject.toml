@@ -66,6 +66,7 @@ line-length = 120
 target-version = "py313"
 extend-exclude = [
   "notebooks/Quickstart.ipynb",
+  "tests/benchmark",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -87,7 +88,7 @@ exclude = [
 ]
 
 [tool.pytest.ini_options]
-addopts = ["--maxfail=1", "--cov=lib_layered_config", "--cov-report=term-missing", "--cov-fail-under=90", "--doctest-modules", "--ignore=scripts/menu.py"]
+addopts = ["--maxfail=1", "--cov=lib_layered_config", "--cov-report=term-missing", "--cov-fail-under=90", "--doctest-modules", "--ignore=scripts/menu.py", "--ignore=tests/benchmark"]
 pythonpath = ["src"]
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 testpaths = ["tests"]
@@ -109,6 +110,7 @@ source = ["src/lib_layered_config"]
 [tool.coverage.report]
 omit = [
   "tests/*",
+  "tests/benchmark/*",
 ]
 fail_under = 90
 show_missing = true
