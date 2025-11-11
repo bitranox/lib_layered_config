@@ -149,6 +149,19 @@ def _normalize_slug(value: str) -> str:
     return slug or value.replace("_", "-").lower()
 
 
+def _package_name_to_display(value: str) -> str:
+    """Convert package name to display-friendly app name.
+
+    Examples:
+        "check_zpool_status" -> "Check ZPool Status"
+        "my-cool-app" -> "My Cool App"
+    """
+    # Replace underscores and hyphens with spaces
+    normalized = value.replace("_", " ").replace("-", " ")
+    # Title case each word
+    return " ".join(word.capitalize() for word in normalized.split())
+
+
 def _as_str_mapping(value: object) -> dict[str, object]:
     """Return a shallow copy of mapping entries with string keys."""
 
@@ -422,6 +435,13 @@ author_email = {_quote(project.author_email)}
 #: Console-script name published by the package.
 shell_command = {_quote(project.shell_command)}
 
+#: Vendor identifier for lib_layered_config paths (macOS/Windows)
+LAYEREDCONF_VENDOR: str = {_quote(project.author_name)}
+#: Application display name for lib_layered_config paths (macOS/Windows)
+LAYEREDCONF_APP: str = {_quote(_package_name_to_display(project.name))}
+#: Configuration slug for lib_layered_config Linux paths and environment variables
+LAYEREDCONF_SLUG: str = {_quote(project.shell_command)}
+
 
 def print_info() -> None:
     """Print the summarised metadata block used by the CLI ``info`` command.
@@ -484,9 +504,7 @@ def read_version_from_pyproject(pyproject: Path = Path("pyproject.toml")) -> str
 
 
 def ensure_clean_git_tree() -> None:
-    dirty = subprocess.call(
-        ["bash", "-lc", "! git diff --quiet || ! git diff --cached --quiet"], stdout=subprocess.DEVNULL
-    )
+    dirty = subprocess.call(["bash", "-lc", "! git diff --quiet || ! git diff --cached --quiet"], stdout=subprocess.DEVNULL)
     if dirty == 0:
         print("[release] Working tree not clean. Commit or stash changes first.", file=sys.stderr)
         raise SystemExit(1)
@@ -525,12 +543,7 @@ def gh_available() -> bool:
 
 
 def gh_release_exists(tag: str) -> bool:
-    return (
-        subprocess.call(
-            ["bash", "-lc", f"gh release view {shlex.quote(tag)} >/dev/null 2>&1"], stdout=subprocess.DEVNULL
-        )
-        == 0
-    )
+    return subprocess.call(["bash", "-lc", f"gh release view {shlex.quote(tag)} >/dev/null 2>&1"], stdout=subprocess.DEVNULL) == 0
 
 
 def gh_release_create(tag: str, title: str, body: str) -> None:
