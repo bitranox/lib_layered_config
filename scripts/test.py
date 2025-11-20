@@ -116,14 +116,8 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
 
     sync_metadata_module(PROJECT)
 
-    def _run(
-        cmd: Sequence[str] | str,
-        *,
-        env: dict[str, str] | None = None,
-        check: bool = True,
-        capture: bool = True,
-        label: str | None = None,
-    ) -> RunResult:
+    def _display_command(cmd: Sequence[str] | str, label: str | None, env: dict[str, str] | None) -> None:
+        """Display command being executed with optional label and environment."""
         display = cmd if isinstance(cmd, str) else " ".join(cmd)
         if label and not verbose:
             click.echo(f"[{label}] $ {display}")
@@ -134,24 +128,42 @@ def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: boo
                 if overrides:
                     env_view = " ".join(f"{k}={v}" for k, v in overrides.items())
                     click.echo(f"    env {env_view}")
-        merged_env = _default_env if env is None else _default_env | env
-        result = run(cmd, env=merged_env, check=False, capture=capture)
+
+    def _display_result(result: RunResult, label: str | None) -> None:
+        """Display verbose result information."""
         if verbose and label:
             click.echo(f"    -> {label}: exit={result.code} out={bool(result.out)} err={bool(result.err)}")
 
+    def _echo_output(output: str, *, to_stderr: bool = False) -> None:
+        """Echo output ensuring proper newline handling."""
+        click.echo(output, err=to_stderr, nl=False)
+        if not output.endswith("\n"):
+            click.echo(err=to_stderr)
+
+    def _display_captured_output(result: RunResult, capture: bool) -> None:
+        """Display captured stdout/stderr if verbose or on error."""
         if capture and (verbose or result.code != 0):
             if result.out:
-                click.echo(result.out, nl=False)
-                if not result.out.endswith("\n"):
-                    click.echo()
+                _echo_output(result.out)
             if result.err:
-                click.echo(result.err, err=True, nl=False)
-                if not result.err.endswith("\n"):
-                    click.echo(err=True)
+                _echo_output(result.err, to_stderr=True)
 
+    def _run(
+        cmd: Sequence[str] | str,
+        *,
+        env: dict[str, str] | None = None,
+        check: bool = True,
+        capture: bool = True,
+        label: str | None = None,
+    ) -> RunResult:
+        """Execute command with optional display, capture, and error handling."""
+        _display_command(cmd, label, env)
+        merged_env = _default_env if env is None else _default_env | env
+        result = run(cmd, env=merged_env, check=False, capture=capture)
+        _display_result(result, label)
+        _display_captured_output(result, capture)
         if check and result.code != 0:
             raise SystemExit(result.code)
-
         return result
 
     def _wrap(*, cmd: list[str] | str, label: str, capture: bool = True) -> Callable[[], None]:
