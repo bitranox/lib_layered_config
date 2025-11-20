@@ -321,7 +321,7 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platfor
     --------
     >>> specs = list(_build_specs(Path('.'), slug='demo', vendor='Acme', app='ConfigKit', platform='posix'))
     >>> specs[0].relative_path.as_posix()
-    'etc/demo/config.toml'
+    'xdg/demo/config.toml'
     """
 
     yield from _platform_specs(slug=slug, vendor=vendor, app=app, platform=platform)
@@ -373,7 +373,7 @@ def _windows_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]
 
 
 def _posix_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
-    """Yield POSIX layout examples.
+    """Yield POSIX layout examples following XDG Base Directory specification.
 
     Parameters
     ----------
@@ -386,10 +386,12 @@ def _posix_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
         Specification for each POSIX example file.
     """
 
-    slug_root = Path("etc") / slug
-    yield ExampleSpec(slug_root / "config.toml", _app_defaults_body(slug))
-    yield ExampleSpec(slug_root / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml", _host_override_body())
-    user_root = Path("xdg") / slug
+    # System-wide app configuration (XDG-compliant)
+    app_root = Path("xdg") / slug
+    yield ExampleSpec(app_root / "config.toml", _app_defaults_body(slug))
+    yield ExampleSpec(app_root / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml", _host_override_body())
+    # User-level configuration
+    user_root = Path("home") / slug
     yield ExampleSpec(user_root / "config.toml", _user_preferences_body(vendor, app))
     yield ExampleSpec(user_root / "config.d" / "10-override.toml", _split_override_body())
 

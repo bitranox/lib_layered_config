@@ -33,7 +33,7 @@ class LayeredSandbox:
     ...     app='Demo',
     ...     slug='demo',
     ...     platform='linux',
-    ...     roots={'app': Path('etc/demo'), 'host': Path('etc/demo/hosts'), 'user': Path('xdg/demo')},
+    ...     roots={'app': Path('etc/xdg/demo'), 'host': Path('etc/xdg/demo/hosts'), 'user': Path('xdg/demo')},
     ...     env={'LIB_LAYERED_CONFIG_ETC': 'etc', 'XDG_CONFIG_HOME': 'xdg'},
     ...     start_dir=Path('xdg/demo'),
     ... )
@@ -70,10 +70,10 @@ class LayeredSandbox:
         >>> with TemporaryDirectory() as tmp:
         ...     root = Path(tmp)
         ...     sandbox = LayeredSandbox('Acme', 'Demo', 'demo', 'linux',
-        ...         {'app': root / 'etc' / 'demo', 'host': root / 'etc' / 'demo' / 'hosts', 'user': root / 'xdg' / 'demo'},
+        ...         {'app': root / 'etc' / 'xdg' / 'demo', 'host': root / 'etc' / 'xdg' / 'demo' / 'hosts', 'user': root / 'xdg' / 'demo'},
         ...         {}, root / 'xdg' / 'demo')
         ...     created = sandbox.write('app', 'config.toml', content='payload')
-        ...     assert created.relative_to(root).as_posix() == 'etc/demo/config.toml'
+        ...     assert created.relative_to(root).as_posix() == 'etc/xdg/demo/config.toml'
         ...     assert created.read_text().strip() == 'payload'
         """
 
@@ -96,11 +96,11 @@ class LayeredSandbox:
         ...         self.captured[key] = value
         >>> patch = DummyPatch()
         >>> sandbox = LayeredSandbox('Acme', 'Demo', 'demo', 'linux',
-        ...     {'app': Path('etc/demo'), 'host': Path('etc/demo/hosts'), 'user': Path('xdg/demo')},
-        ...     {'LIB_LAYERED_CONFIG_ETC': '/etc/demo'}, Path('xdg/demo'))
+        ...     {'app': Path('etc/xdg/demo'), 'host': Path('etc/xdg/demo/hosts'), 'user': Path('xdg/demo')},
+        ...     {'LIB_LAYERED_CONFIG_ETC': '/etc'}, Path('xdg/demo'))
         >>> sandbox.apply_env(patch)
         >>> patch.captured['LIB_LAYERED_CONFIG_ETC']
-        '/etc/demo'
+        '/etc'
         """
 
         for key, value in self.env.items():
@@ -136,7 +136,7 @@ def create_layered_sandbox(
     >>> with TemporaryDirectory() as tmp:
     ...     sandbox = create_layered_sandbox(Path(tmp), vendor='Acme', app='Demo', slug='demo', platform='linux')
     ...     sandbox.roots['app'].relative_to(Path(tmp)).as_posix()
-    'etc/demo'
+    'etc/xdg/demo'
     >>> with TemporaryDirectory() as tmp:
     ...     win = create_layered_sandbox(Path(tmp), vendor='Acme', app='Demo', slug='demo', platform='win32')
     ...     win.roots['host'].relative_to(Path(tmp)).as_posix().endswith('ProgramData/Acme/Demo/hosts')
@@ -179,8 +179,8 @@ def create_layered_sandbox(
         etc_root = tmp_path / "etc"
         xdg_root = tmp_path / "xdg"
         roots = {
-            "app": etc_root / slug,
-            "host": etc_root / slug / "hosts",
+            "app": etc_root / "xdg" / slug,
+            "host": etc_root / "xdg" / slug / "hosts",
             "user": xdg_root / slug,
         }
         env = {

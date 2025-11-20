@@ -57,10 +57,10 @@ class LinuxDeployment(DeploymentStrategy):
         return Path(self.resolver.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
 
     def _app_path(self) -> Path:
-        return self._etc_root() / self.resolver.slug / "config.toml"
+        return self._etc_root() / "xdg" / self.resolver.slug / "config.toml"
 
     def _host_path(self) -> Path:
-        return self._etc_root() / self.resolver.slug / "hosts" / f"{self.resolver.hostname}.toml"
+        return self._etc_root() / "xdg" / self.resolver.slug / "hosts" / f"{self.resolver.hostname}.toml"
 
     def _user_path(self) -> Path:
         candidate = self.resolver.env.get("XDG_CONFIG_HOME")

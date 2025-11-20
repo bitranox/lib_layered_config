@@ -149,11 +149,13 @@ config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit")
 
 #### 1. **Linux/UNIX Paths**
 ```bash
-/etc/myapp/config.toml                    # System-wide
-/etc/myapp/hosts/server-01.toml          # Host-specific
+/etc/xdg/myapp/config.toml               # System-wide (XDG-compliant)
+/etc/xdg/myapp/hosts/server-01.toml      # Host-specific (XDG-compliant)
 ~/.config/myapp/config.toml              # User-specific
 ~/.config/myapp/.env                      # Environment variables
 ```
+
+Note: For backwards compatibility, the library also checks `/etc/myapp/` if `/etc/xdg/myapp/` is not found.
 
 #### 2. **Environment Variable Prefix**
 The slug is converted to uppercase with underscores:
@@ -174,7 +176,7 @@ The slug provides a consistent identifier regardless of platform:
 # Same slug works on all platforms
 config = read_config(vendor="Acme", app="My App", slug="myapp")
 
-# Linux:   /etc/myapp/config.toml
+# Linux:   /etc/xdg/myapp/config.toml
 # macOS:   /Library/Application Support/Acme/My App/config.toml
 # Windows: C:\ProgramData\Acme\My App\config.toml
 # Env vars: MYAPP_DATABASE__HOST (all platforms)
@@ -215,7 +217,7 @@ config = read_config(
 
 **On Linux:**
 ```
-/etc/db-manager/config.toml              # System-wide (uses slug)
+/etc/xdg/db-manager/config.toml          # System-wide (uses slug, XDG-compliant)
 ~/.config/db-manager/config.toml         # User-specific (uses slug)
 Environment: DB_MANAGER_*                 # Env prefix (slug → uppercase)
 ```
@@ -826,13 +828,13 @@ lib_layered_config read --vendor Acme --app MyApp --slug myapp
 **Output:**
 ```
 service.timeout: 30
-  provenance: layer=app, path=/etc/myapp/config.toml
+  provenance: layer=app, path=/etc/xdg/myapp/config.toml
 service.endpoint: https://api.example.com
   provenance: layer=user, path=/home/alice/.config/myapp/config.toml
 database.host: localhost
   provenance: layer=env, path=None
 database.port: 5432
-  provenance: layer=app, path=/etc/myapp/config.toml
+  provenance: layer=app, path=/etc/xdg/myapp/config.toml
 ```
 
 **Explanation:** The default format shows each configuration value with its source layer and file path (or "None" for environment variables). Perfect for quick debugging.
@@ -878,7 +880,7 @@ cat config-audit.json
   "provenance": {
     "service.timeout": {
       "layer": "app",
-      "path": "/etc/myapp/config.toml",
+      "path": "/etc/xdg/myapp/config.toml",
       "key": "service.timeout"
     },
     "service.endpoint": {
@@ -1081,7 +1083,7 @@ sudo lib_layered_config deploy \
   --target app
 
 # ✅ Result: File created
-# Output: ["/etc/myapp/config.toml"]
+# Output: ["/etc/xdg/myapp/config.toml"]
 ```
 
 #### **Scenario 2: User Has Customizations (Protected)**
@@ -1121,7 +1123,7 @@ lib_layered_config deploy \
   --target app --target user
 
 # 📋 Result: App created, user skipped
-# Output: ["/etc/myapp/config.toml"]
+# Output: ["/etc/xdg/myapp/config.toml"]
 # Note: User config not in output because it was skipped
 ```
 
@@ -1246,10 +1248,10 @@ sudo lib_layered_config deploy \
 
 **Output:**
 ```json
-["/etc/myapp/config.toml"]
+["/etc/xdg/myapp/config.toml"]
 ```
 
-**Explanation:** This copies your configuration file to the system-wide location (`/etc/myapp/config.toml` on Linux, `/Library/Application Support/Acme/MyApp/config.toml` on macOS, etc.). This is typically done during package installation.
+**Explanation:** This copies your configuration file to the system-wide location (`/etc/xdg/myapp/config.toml` on Linux, `/Library/Application Support/Acme/MyApp/config.toml` on macOS, etc.). This is typically done during package installation.
 
 **Example 2: Deploy user-specific configuration**
 ```bash
@@ -1280,7 +1282,7 @@ lib_layered_config deploy \
 **Output:**
 ```json
 [
-  "/etc/myapp/config.toml",
+  "/etc/xdg/myapp/config.toml",
   "/home/alice/.config/myapp/config.toml"
 ]
 ```
@@ -1316,7 +1318,7 @@ lib_layered_config deploy \
 
 **Output:**
 ```json
-["/etc/myapp/hosts/server-01.toml"]
+["/etc/xdg/myapp/hosts/server-01.toml"]
 ```
 
 **Explanation:** Host-specific configurations are stored in the `hosts/` subdirectory with the hostname as the filename. They override app defaults but only on machines with matching hostnames.
@@ -1382,17 +1384,17 @@ lib_layered_config generate-examples \
 **Output:**
 ```json
 [
-  "/path/to/docs/configuration-examples/etc/myapp/config.toml",
-  "/path/to/docs/configuration-examples/etc/myapp/hosts/your-hostname.toml",
   "/path/to/docs/configuration-examples/xdg/myapp/config.toml",
+  "/path/to/docs/configuration-examples/xdg/myapp/hosts/your-hostname.toml",
   "/path/to/docs/configuration-examples/xdg/myapp/config.d/10-override.toml",
+  "/path/to/docs/configuration-examples/home/myapp/config.toml",
   "/path/to/docs/configuration-examples/.env.example"
 ]
 ```
 
 **File contents preview:**
 ```toml
-# docs/configuration-examples/etc/myapp/config.toml
+# docs/configuration-examples/xdg/myapp/config.toml
 # Application-wide defaults for myapp
 [service]
 endpoint = "https://api.example.com"
@@ -1416,7 +1418,7 @@ lib_layered_config generate-examples \
   --platform windows
 ```
 
-**Explanation:** Generate platform-specific examples for comprehensive documentation. Windows examples use paths like `ProgramData\Acme\MyApp\config.toml`, while POSIX examples use `/etc/myapp/config.toml`.
+**Explanation:** Generate platform-specific examples for comprehensive documentation. Windows examples use paths like `ProgramData\Acme\MyApp\config.toml`, while POSIX examples use `/etc/xdg/myapp/config.toml`.
 
 **Example 3: Update examples after configuration changes**
 ```bash

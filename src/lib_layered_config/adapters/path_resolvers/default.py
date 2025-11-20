@@ -396,15 +396,20 @@ class DefaultPathResolver:
 
         Why
         ----
-        Provide deterministic discovery for `/etc/<slug>` layouts.
+        Provide deterministic discovery following XDG Base Directory specification.
+        Checks `/etc/xdg/<slug>` first (XDG system-wide default), then falls back
+        to `/etc/<slug>` for backwards compatibility.
 
         Returns
         -------
         Iterable[str]
-            Paths under `/etc` (or overridden root) relevant to the app layer.
+            Paths under `/etc/xdg` and `/etc` (or overridden root) relevant to the app layer.
         """
 
         etc_root = Path(self.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
+        # Check XDG-compliant location first
+        yield from _collect_layer(etc_root / "xdg" / self.slug)
+        # Fall back to traditional /etc location for backwards compatibility
         yield from _collect_layer(etc_root / self.slug)
 
     def _linux_host_paths(self) -> Iterable[str]:
@@ -412,7 +417,8 @@ class DefaultPathResolver:
 
         Why
         ----
-        Allow installations to override defaults per hostname using `/etc/<slug>/hosts`.
+        Allow installations to override defaults per hostname following XDG specification.
+        Checks `/etc/xdg/<slug>/hosts` first, then falls back to `/etc/<slug>/hosts`.
 
         Returns
         -------
@@ -421,6 +427,11 @@ class DefaultPathResolver:
         """
 
         etc_root = Path(self.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
+        # Check XDG-compliant location first
+        xdg_candidate = etc_root / "xdg" / self.slug / "hosts" / f"{self.hostname}.toml"
+        if xdg_candidate.is_file():
+            yield str(xdg_candidate)
+        # Fall back to traditional /etc location for backwards compatibility
         candidate = etc_root / self.slug / "hosts" / f"{self.hostname}.toml"
         if candidate.is_file():
             yield str(candidate)

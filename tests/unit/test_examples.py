@@ -35,10 +35,10 @@ def test_generate_examples_emits_posix_layout(tmp_path: Path) -> None:
     paths = generate_examples(tmp_path, slug="demo-config", vendor="Acme", app="ConfigKit", platform="posix")
     relative = {p.relative_to(tmp_path).as_posix() for p in paths}
     expected = {
-        "etc/demo-config/config.toml",
-        "etc/demo-config/hosts/your-hostname.toml",
         "xdg/demo-config/config.toml",
-        "xdg/demo-config/config.d/10-override.toml",
+        "xdg/demo-config/hosts/your-hostname.toml",
+        "home/demo-config/config.toml",
+        "home/demo-config/config.d/10-override.toml",
         ".env.example",
     }
     assert relative == expected

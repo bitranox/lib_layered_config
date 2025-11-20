@@ -33,31 +33,31 @@ def _write_tree(tmp_path: Path, platform: str, *, force: bool = False) -> tuple[
 @os_agnostic
 def test_when_posix_tree_is_written_the_app_config_file_waits(tmp_path: Path) -> None:
     destination, _ = _write_tree(tmp_path, "posix")
-    assert (destination / "etc" / SLUG / "config.toml").exists()
+    assert (destination / "xdg" / SLUG / "config.toml").exists()
 
 
 @os_agnostic
 def test_when_posix_tree_is_written_the_return_list_mentions_app_config(tmp_path: Path) -> None:
     destination, written = _write_tree(tmp_path, "posix")
-    assert destination / "etc" / SLUG / "config.toml" in written
+    assert destination / "xdg" / SLUG / "config.toml" in written
 
 
 @os_agnostic
 def test_when_posix_tree_is_written_the_host_template_arrives(tmp_path: Path) -> None:
     destination, _ = _write_tree(tmp_path, "posix")
-    assert (destination / "etc" / SLUG / "hosts" / "your-hostname.toml").exists()
+    assert (destination / "xdg" / SLUG / "hosts" / "your-hostname.toml").exists()
 
 
 @os_agnostic
 def test_when_posix_tree_is_written_the_user_config_arrives(tmp_path: Path) -> None:
     destination, _ = _write_tree(tmp_path, "posix")
-    assert (destination / "xdg" / SLUG / "config.toml").exists()
+    assert (destination / "home" / SLUG / "config.toml").exists()
 
 
 @os_agnostic
 def test_when_posix_tree_is_written_the_split_override_waits(tmp_path: Path) -> None:
     destination, _ = _write_tree(tmp_path, "posix")
-    assert (destination / "xdg" / SLUG / "config.d" / "10-override.toml").exists()
+    assert (destination / "home" / SLUG / "config.d" / "10-override.toml").exists()
 
 
 @os_agnostic
@@ -69,7 +69,7 @@ def test_when_posix_tree_is_written_the_env_example_resting(tmp_path: Path) -> N
 @os_agnostic
 def test_when_force_is_true_the_app_config_is_listed_again(tmp_path: Path) -> None:
     _write_tree(tmp_path, "posix")
-    target = tmp_path / "posix" / "etc" / SLUG / "config.toml"
+    target = tmp_path / "posix" / "xdg" / SLUG / "config.toml"
     target.write_text("old", encoding="utf-8")
     _, refreshed = _write_tree(tmp_path, "posix", force=True)
     assert target in refreshed
@@ -78,7 +78,7 @@ def test_when_force_is_true_the_app_config_is_listed_again(tmp_path: Path) -> No
 @os_agnostic
 def test_when_force_is_true_the_app_config_receives_fresh_content(tmp_path: Path) -> None:
     _write_tree(tmp_path, "posix")
-    target = tmp_path / "posix" / "etc" / SLUG / "config.toml"
+    target = tmp_path / "posix" / "xdg" / SLUG / "config.toml"
     target.write_text("old", encoding="utf-8")
     _write_tree(tmp_path, "posix", force=True)
     assert target.read_text(encoding="utf-8") != "old"

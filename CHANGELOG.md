@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.0.0] - 2025-11-20
+
+### Breaking Changes
+
+- **XDG Base Directory Specification compliance on Linux** - System-wide application configuration now defaults to `/etc/xdg/{slug}/` instead of `/etc/{slug}/` to follow the XDG Base Directory Specification.
+
+### Changed
+
+- **Path resolution (Linux)**: The path resolver now checks both `/etc/xdg/{slug}/` (XDG-compliant, checked first) and `/etc/{slug}/` (legacy, fallback) when reading configuration. This provides backward compatibility with existing installations.
+- **Deployment (Linux)**: The `deploy_config()` function and `deploy` CLI command now deploy application-level configuration to `/etc/xdg/{slug}/config.toml` by default on Linux systems.
+- **Host configuration (Linux)**: Host-specific configuration now deploys to `/etc/xdg/{slug}/hosts/{hostname}.toml` instead of `/etc/{slug}/hosts/{hostname}.toml`.
+- **Example generation (Linux/POSIX)**: The `generate_examples()` function now creates example files in `xdg/{slug}/` for system-wide configuration and `home/{slug}/` for user-level configuration.
+
+### Migration Guide
+
+**For existing installations:**
+- Configurations in `/etc/{slug}/` will continue to work (backward compatibility)
+- New deployments will use `/etc/xdg/{slug}/`
+- To migrate: move existing files from `/etc/{slug}/` to `/etc/xdg/{slug}/`
+- Both locations are checked during reading, with `/etc/xdg/{slug}/` taking precedence
+
+**Platform-specific behavior:**
+- Linux: Uses `/etc/xdg/{slug}/` (system-wide) and `~/.config/{slug}/` (user-level)
+- macOS: No change, continues to use `/Library/Application Support/{vendor}/{app}/`
+- Windows: No change, continues to use `%ProgramData%\{vendor}\{app}\`
+
+### Documentation
+
+- Updated README.md with XDG-compliant paths throughout all examples
+- Added backward compatibility notes explaining dual-path checking
+- Updated all CLI command examples to reflect new default paths
+
 ## [1.1.1] - 2025-11-11
 
 ### Documentation

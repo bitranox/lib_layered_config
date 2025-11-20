@@ -539,7 +539,9 @@ def read_version_from_pyproject(pyproject: Path = Path("pyproject.toml")) -> str
 
 
 def ensure_clean_git_tree() -> None:
-    dirty = subprocess.call(["bash", "-lc", "! git diff --quiet || ! git diff --cached --quiet"], stdout=subprocess.DEVNULL)
+    dirty = subprocess.call(
+        ["bash", "-lc", "! git diff --quiet || ! git diff --cached --quiet"], stdout=subprocess.DEVNULL
+    )
     if dirty == 0:
         print("[release] Working tree not clean. Commit or stash changes first.", file=sys.stderr)
         raise SystemExit(1)
@@ -578,7 +580,12 @@ def gh_available() -> bool:
 
 
 def gh_release_exists(tag: str) -> bool:
-    return subprocess.call(["bash", "-lc", f"gh release view {shlex.quote(tag)} >/dev/null 2>&1"], stdout=subprocess.DEVNULL) == 0
+    return (
+        subprocess.call(
+            ["bash", "-lc", f"gh release view {shlex.quote(tag)} >/dev/null 2>&1"], stdout=subprocess.DEVNULL
+        )
+        == 0
+    )
 
 
 def gh_release_create(tag: str, title: str, body: str) -> None:
