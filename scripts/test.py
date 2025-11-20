@@ -366,7 +366,10 @@ def _get_toml_module() -> ModuleType:
     if _toml_module is not None:
         return _toml_module
 
-    import tomllib as module
+    try:
+        import tomllib as module  # type: ignore[import-not-found]
+    except ImportError:
+        import tomli as module  # type: ignore[import-not-found,no-redef]
 
     _toml_module = module
     return module
