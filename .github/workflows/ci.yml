@@ -81,14 +81,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ruff_cache
-          key: ruff-${{ runner.os }}-${{ hashFiles('**/*.py') }}
+          key: ruff-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
             ruff-${{ runner.os }}-
       - name: Cache pyright
         uses: actions/cache@v4
         with:
           path: .pyright
-          key: pyright-${{ runner.os }}-py${{ matrix.python }}-${{ hashFiles('**/*.py', 'pyproject.toml') }}
+          key: pyright-${{ runner.os }}-py${{ matrix.python }}-${{ github.sha }}
           restore-keys: |
             pyright-${{ runner.os }}-py${{ matrix.python }}-
             pyright-${{ runner.os }}-
