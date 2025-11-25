@@ -32,7 +32,9 @@ def default_env_prefix(slug: str) -> str:
     Why
     ----
     Namespacing prevents unrelated environment variables from leaking into the
-    configuration payload.
+    configuration payload. The triple underscore (``___``) separator clearly
+    distinguishes the application prefix from section/key separators which use
+    double underscores (``__``).
 
     Parameters
     ----------
@@ -42,15 +44,16 @@ def default_env_prefix(slug: str) -> str:
     Returns
     -------
     str
-        Upper-case prefix with dashes converted to underscores.
+        Upper-case prefix with dashes converted to underscores, ending with
+        triple underscore separator.
 
     Examples
     --------
     >>> default_env_prefix('lib-layered-config')
-    'LIB_LAYERED_CONFIG'
+    'LIB_LAYERED_CONFIG___'
     """
 
-    return slug.replace("-", "_").upper()
+    return slug.replace("-", "_").upper() + "___"
 
 
 class DefaultEnvLoader:
@@ -98,7 +101,7 @@ class DefaultEnvLoader:
         Parameters
         ----------
         prefix:
-            Prefix filter (upper-case). The loader appends ``_`` if missing.
+            Prefix filter (upper-case). The loader appends ``___`` if missing.
 
         Returns
         -------
@@ -113,8 +116,8 @@ class DefaultEnvLoader:
         Examples
         --------
         >>> env = {
-        ...     'DEMO_SERVICE__ENABLED': 'true',
-        ...     'DEMO_SERVICE__RETRIES': '3',
+        ...     'DEMO___SERVICE__ENABLED': 'true',
+        ...     'DEMO___SERVICE__RETRIES': '3',
         ... }
         >>> loader = DefaultEnvLoader(environ=env)
         >>> payload = loader.load('DEMO')
@@ -133,11 +136,13 @@ class DefaultEnvLoader:
 
 
 def _normalize_prefix(prefix: str) -> str:
-    """Ensure the prefix ends with an underscore when non-empty.
+    """Ensure the prefix ends with triple underscore when non-empty.
 
     Why
     ----
     Aligns environment variable filtering semantics regardless of user input.
+    The triple underscore (``___``) separator clearly distinguishes the
+    application prefix from section/key separators (``__``).
 
     Parameters
     ----------
@@ -147,20 +152,20 @@ def _normalize_prefix(prefix: str) -> str:
     Returns
     -------
     str
-        Prefix guaranteed to end with ``_`` when non-empty.
+        Prefix guaranteed to end with ``___`` when non-empty.
 
     Examples
     --------
     >>> _normalize_prefix('DEMO')
-    'DEMO_'
-    >>> _normalize_prefix('DEMO_')
-    'DEMO_'
+    'DEMO___'
+    >>> _normalize_prefix('DEMO___')
+    'DEMO___'
     >>> _normalize_prefix('')
     ''
     """
 
-    if prefix and not prefix.endswith("_"):
-        return f"{prefix}_"
+    if prefix and not prefix.endswith("___"):
+        return f"{prefix}___"
     return prefix
 
 
@@ -179,7 +184,7 @@ def _iter_namespace_entries(
     items:
         Iterable of environment items to examine.
     prefix:
-        Normalised prefix (including trailing underscore) to filter on.
+        Normalised prefix (including trailing triple underscore) to filter on.
 
     Returns
     -------
@@ -188,9 +193,9 @@ def _iter_namespace_entries(
 
     Examples
     --------
-    >>> list(_iter_namespace_entries([('DEMO_FLAG', '1'), ('OTHER', '0')], 'DEMO_'))
+    >>> list(_iter_namespace_entries([('DEMO___FLAG', '1'), ('OTHER', '0')], 'DEMO___'))
     [('FLAG', '1')]
-    >>> list(_iter_namespace_entries([('DEMO', '1')], 'DEMO_'))
+    >>> list(_iter_namespace_entries([('DEMO', '1')], 'DEMO___'))
     []
     """
 

@@ -80,8 +80,8 @@ def test_default_path_resolver_dotenv_iteration_is_listable(resolver_context) ->
 def _env_loader_context() -> tuple[DefaultEnvLoader, str]:
     prefix = default_env_prefix("demo")
     environ = {
-        f"{prefix}_SERVICE__ENABLED": "true",
-        f"{prefix}_SERVICE__RETRIES": "3",
+        f"{prefix}SERVICE__ENABLED": "true",
+        f"{prefix}SERVICE__RETRIES": "3",
         "IRRELEVANT": "ignored",
     }
     return DefaultEnvLoader(environ=environ), prefix

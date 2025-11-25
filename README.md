@@ -158,16 +158,16 @@ config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit")
 Note: For backwards compatibility, the library also checks `/etc/myapp/` if `/etc/xdg/myapp/` is not found.
 
 #### 2. **Environment Variable Prefix**
-The slug is converted to uppercase with underscores:
+The slug is converted to uppercase with underscores, followed by a triple underscore (`___`) separator to clearly distinguish the prefix from section/key separators (which use double underscores `__`):
 ```bash
-# Slug: "myapp" → Environment prefix: "MYAPP_"
-MYAPP_DATABASE__HOST=localhost
-MYAPP_DATABASE__PORT=5432
-MYAPP_SERVICE__TIMEOUT=30
+# Slug: "myapp" → Environment prefix: "MYAPP___"
+MYAPP___DATABASE__HOST=localhost
+MYAPP___DATABASE__PORT=5432
+MYAPP___SERVICE__TIMEOUT=30
 
-# Slug: "config-kit" → Environment prefix: "CONFIG_KIT_"
-CONFIG_KIT_API__KEY=secret
-CONFIG_KIT_DEBUG__ENABLED=true
+# Slug: "config-kit" → Environment prefix: "CONFIG_KIT___"
+CONFIG_KIT___API__KEY=secret
+CONFIG_KIT___DEBUG__ENABLED=true
 ```
 
 #### 3. **Cross-Platform Consistency**
@@ -179,7 +179,7 @@ config = read_config(vendor="Acme", app="My App", slug="myapp")
 # Linux:   /etc/xdg/myapp/config.toml
 # macOS:   /Library/Application Support/Acme/My App/config.toml
 # Windows: C:\ProgramData\Acme\My App\config.toml
-# Env vars: MYAPP_DATABASE__HOST (all platforms)
+# Env vars: MYAPP___DATABASE__HOST (all platforms)
 ```
 
 ---
@@ -219,21 +219,21 @@ config = read_config(
 ```
 /etc/xdg/db-manager/config.toml          # System-wide (uses slug, XDG-compliant)
 ~/.config/db-manager/config.toml         # User-specific (uses slug)
-Environment: DB_MANAGER_*                 # Env prefix (slug → uppercase)
+Environment: DB_MANAGER___*              # Env prefix (slug → uppercase + ___)
 ```
 
 **On macOS:**
 ```
 /Library/Application Support/Acme/DatabaseManager/config.toml   # System-wide (vendor + app)
 ~/Library/Application Support/Acme/DatabaseManager/config.toml  # User-specific (vendor + app)
-Environment: DB_MANAGER_*                                         # Env prefix (slug → uppercase)
+Environment: DB_MANAGER___*                                      # Env prefix (slug → uppercase + ___)
 ```
 
 **On Windows:**
 ```
 C:\ProgramData\Acme\DatabaseManager\config.toml     # System-wide (vendor + app)
 %APPDATA%\Acme\DatabaseManager\config.toml          # User-specific (vendor + app)
-Environment: DB_MANAGER_*                            # Env prefix (slug → uppercase)
+Environment: DB_MANAGER___*                         # Env prefix (slug → uppercase + ___)
 ```
 
 ---
@@ -256,7 +256,7 @@ This library uses three identifiers so your application can follow **native conv
 |------------|--------|---------|---------|
 | **vendor** | Mixed case, spaces OK | `"Acme Corp"` | macOS, Windows paths |
 | **app** | Mixed case, spaces OK | `"Database Manager"` | macOS, Windows paths |
-| **slug** | lowercase-with-hyphens | `"db-manager"` | Linux paths, env var prefix (becomes `DB_MANAGER_`) |
+| **slug** | lowercase-with-hyphens | `"db-manager"` | Linux paths, env var prefix (becomes `DB_MANAGER___`) |
 
 ---
 
@@ -274,7 +274,7 @@ Configuration files use TOML, JSON, or YAML format. Here's a comprehensive examp
 # ============================================================================
 # Access in Python: config.get("debug")
 # Access in CLI: config["debug"]
-# Environment variable: MYAPP_DEBUG=true
+# Environment variable: MYAPP___DEBUG=true
 
 debug = false
 environment = "production"
@@ -286,7 +286,7 @@ version = "1.0.0"
 # ============================================================================
 # Sections group related configuration values
 # Access in Python: config.get("database.host")
-# Environment variable: MYAPP_DATABASE__HOST=localhost
+# Environment variable: MYAPP___DATABASE__HOST=localhost
 
 [database]
 host = "localhost"
@@ -294,7 +294,7 @@ port = 5432
 name = "myapp_db"
 username = "admin"
 # Passwords should come from environment variables or .env files!
-# Set via: MYAPP_DATABASE__PASSWORD=secret
+# Set via: MYAPP___DATABASE__PASSWORD=secret
 
 
 # ============================================================================
@@ -302,7 +302,7 @@ username = "admin"
 # ============================================================================
 # Use dot notation for nested sections
 # Access in Python: config.get("database.pool.size")
-# Environment variable: MYAPP_DATABASE__POOL__SIZE=20
+# Environment variable: MYAPP___DATABASE__POOL__SIZE=20
 
 [database.pool]
 size = 10
@@ -428,7 +428,7 @@ default_ttl = 300  # seconds
 host = "localhost"
 port = 6379
 db = 0
-password = ""  # Set via MYAPP_CACHE__REDIS__PASSWORD
+password = ""  # Set via MYAPP___CACHE__REDIS__PASSWORD
 
 
 # ============================================================================
@@ -446,7 +446,7 @@ host = "smtp.gmail.com"
 port = 587
 use_tls = true
 username = "notifications@example.com"
-# Password should come from environment: MYAPP_EMAIL__SMTP__PASSWORD
+# Password should come from environment: MYAPP___EMAIL__SMTP__PASSWORD
 
 
 # ============================================================================
@@ -487,7 +487,7 @@ environment = "production"
 **Access:**
 - Python: `config.get("debug")` or `config["debug"]`
 - CLI: Value appears as `debug: false`
-- Environment: `MYAPP_DEBUG=true`
+- Environment: `MYAPP___DEBUG=true`
 
 ---
 
@@ -501,7 +501,7 @@ port = 5432
 **Access:**
 - Python: `config.get("database.host")` → `"localhost"`
 - Python: `config["database"]` → `{"host": "localhost", "port": 5432}`
-- Environment: `MYAPP_DATABASE__HOST=postgres.local`
+- Environment: `MYAPP___DATABASE__HOST=postgres.local`
 
 ---
 
@@ -519,8 +519,8 @@ verify = true
 **Access:**
 - Python: `config.get("database.pool.size")` → `10`
 - Python: `config.get("database.ssl.enabled")` → `true`
-- Environment: `MYAPP_DATABASE__POOL__SIZE=20`
-- Environment: `MYAPP_DATABASE__SSL__ENABLED=false`
+- Environment: `MYAPP___DATABASE__POOL__SIZE=20`
+- Environment: `MYAPP___DATABASE__SSL__ENABLED=false`
 
 **Structure visualization:**
 ```python
@@ -633,37 +633,37 @@ cache_ttl = config.get("cache.default_ttl", default=300)  # 300
 
 ### Environment Variable Mapping
 
-The slug is converted to an environment prefix, and nested keys use double underscores (`__`):
+The slug is converted to an environment prefix (uppercase with triple underscore `___` separator), and nested keys use double underscores (`__`):
 
 ```bash
-# Slug: "myapp" → Prefix: "MYAPP_"
+# Slug: "myapp" → Prefix: "MYAPP___"
 
 # Top-level keys
-MYAPP_DEBUG=true
-MYAPP_ENVIRONMENT=staging
+MYAPP___DEBUG=true
+MYAPP___ENVIRONMENT=staging
 
-# Section keys (single underscore after prefix, double for nesting)
-MYAPP_DATABASE__HOST=postgres.production.local
-MYAPP_DATABASE__PORT=5433
+# Section keys (triple underscore after prefix, double for nesting)
+MYAPP___DATABASE__HOST=postgres.production.local
+MYAPP___DATABASE__PORT=5433
 
 # Nested sections (each level separated by __)
-MYAPP_DATABASE__POOL__SIZE=50
-MYAPP_DATABASE__SSL__ENABLED=true
+MYAPP___DATABASE__POOL__SIZE=50
+MYAPP___DATABASE__SSL__ENABLED=true
 
 # Deep nesting
-MYAPP_SERVICE__RETRY__MAX_ATTEMPTS=5
-MYAPP_EMAIL__SMTP__PASSWORD=secret123
-MYAPP_FEATURES__ANALYTICS__SAMPLING_RATE=0.5
+MYAPP___SERVICE__RETRY__MAX_ATTEMPTS=5
+MYAPP___EMAIL__SMTP__PASSWORD=secret123
+MYAPP___FEATURES__ANALYTICS__SAMPLING_RATE=0.5
 
 # Arrays (JSON format for complex types)
-MYAPP_DATABASE__REPLICAS='["replica1", "replica2"]'
+MYAPP___DATABASE__REPLICAS='["replica1", "replica2"]'
 ```
 
 **Key Pattern:**
-- Prefix: `SLUG` in uppercase
-- Separator: Single underscore after prefix
+- Prefix: `SLUG` in uppercase followed by `___`
+- Separator: Triple underscore (`___`) after prefix to distinguish from nesting
 - Nesting: Double underscores (`__`) for each level
-- Format: `PREFIX_SECTION__SUBSECTION__KEY=value`
+- Format: `PREFIX___SECTION__SUBSECTION__KEY=value`
 
 ---
 
@@ -924,7 +924,7 @@ lib_layered_config read \
 **Example 6: Debugging configuration issues**
 ```bash
 # Check if environment variables are overriding your config
-MYAPP_SERVICE__TIMEOUT=5 lib_layered_config read \
+MYAPP___SERVICE__TIMEOUT=5 lib_layered_config read \
   --vendor Acme --app MyApp --slug myapp \
   --format human | grep -A1 "service.timeout"
 ```
@@ -1533,10 +1533,10 @@ lib_layered_config env-prefix myapp
 
 **Output:**
 ```
-MYAPP
+MYAPP___
 ```
 
-**Explanation:** This shows the environment variable prefix for your application. Use this prefix with double underscores for nested keys: `MYAPP_DATABASE__HOST`, `MYAPP_SERVICE__TIMEOUT`.
+**Explanation:** This shows the environment variable prefix for your application (including the `___` separator). Use this prefix with double underscores for nested keys: `MYAPP___DATABASE__HOST`, `MYAPP___SERVICE__TIMEOUT`.
 
 **Example 2: Generate documentation for users**
 ```bash
@@ -1550,13 +1550,13 @@ cat << EOF
 Environment Variables for $app_slug
 ====================================
 
-All environment variables must be prefixed with: ${prefix}_
+All environment variables must be prefixed with: ${prefix}
 
 Examples:
-  ${prefix}_DATABASE__HOST=localhost
-  ${prefix}_DATABASE__PORT=5432
-  ${prefix}_SERVICE__TIMEOUT=30
-  ${prefix}_SERVICE__RETRY__MAX_ATTEMPTS=3
+  ${prefix}DATABASE__HOST=localhost
+  ${prefix}DATABASE__PORT=5432
+  ${prefix}SERVICE__TIMEOUT=30
+  ${prefix}SERVICE__RETRY__MAX_ATTEMPTS=3
 
 Note: Use double underscores (__) to denote nesting in configuration keys.
 EOF
@@ -1567,13 +1567,13 @@ EOF
 Environment Variables for myapp
 ====================================
 
-All environment variables must be prefixed with: MYAPP_
+All environment variables must be prefixed with: MYAPP___
 
 Examples:
-  MYAPP_DATABASE__HOST=localhost
-  MYAPP_DATABASE__PORT=5432
-  MYAPP_SERVICE__TIMEOUT=30
-  MYAPP_SERVICE__RETRY__MAX_ATTEMPTS=3
+  MYAPP___DATABASE__HOST=localhost
+  MYAPP___DATABASE__PORT=5432
+  MYAPP___SERVICE__TIMEOUT=30
+  MYAPP___SERVICE__RETRY__MAX_ATTEMPTS=3
 
 Note: Use double underscores (__) to denote nesting in configuration keys.
 ```
@@ -1589,9 +1589,9 @@ app_slug="config-kit"
 prefix=$(lib_layered_config env-prefix "$app_slug")
 
 required_vars=(
-  "${prefix}_DATABASE__HOST"
-  "${prefix}_DATABASE__PASSWORD"
-  "${prefix}_API__SECRET_KEY"
+  "${prefix}DATABASE__HOST"
+  "${prefix}DATABASE__PASSWORD"
+  "${prefix}API__SECRET_KEY"
 )
 
 missing=()
@@ -1617,9 +1617,9 @@ echo "✓ All required environment variables are set"
 # In a test script, set environment variables with the correct prefix
 prefix=$(lib_layered_config env-prefix myapp)
 
-export ${prefix}_DATABASE__HOST="test-db.local"
-export ${prefix}_DATABASE__PORT="5432"
-export ${prefix}_SERVICE__TIMEOUT="5"
+export ${prefix}DATABASE__HOST="test-db.local"
+export ${prefix}DATABASE__PORT="5432"
+export ${prefix}SERVICE__TIMEOUT="5"
 
 # Run tests
 python -m pytest tests/
@@ -2352,11 +2352,11 @@ prefix = default_env_prefix(slug)
 
 print(f"Environment Variables for {slug}:")
 print(f"=" * 50)
-print(f"\n{prefix}_<SECTION>__<KEY>=<value>\n")
+print(f"\n{prefix}<SECTION>__<KEY>=<value>\n")
 print("Examples:")
-print(f"  {prefix}_DATABASE__HOST=localhost")
-print(f"  {prefix}_DATABASE__PORT=5432")
-print(f"  {prefix}_SERVICE__TIMEOUT=30")
+print(f"  {prefix}DATABASE__HOST=localhost")
+print(f"  {prefix}DATABASE__PORT=5432")
+print(f"  {prefix}SERVICE__TIMEOUT=30")
 print(f"\nNote: Use double underscores (__) for nested keys")
 ```
 **Explanation:** Use this to generate documentation showing users how to set environment variables for your application.
@@ -2370,9 +2370,9 @@ from lib_layered_config import default_env_prefix
 prefix = default_env_prefix("myapp")
 
 # Set environment variables programmatically (useful in tests)
-os.environ[f"{prefix}_DATABASE__HOST"] = "test-db.example.com"
-os.environ[f"{prefix}_DATABASE__PORT"] = "5432"
-os.environ[f"{prefix}_SERVICE__TIMEOUT"] = "5"
+os.environ[f"{prefix}DATABASE__HOST"] = "test-db.example.com"
+os.environ[f"{prefix}DATABASE__PORT"] = "5432"
+os.environ[f"{prefix}SERVICE__TIMEOUT"] = "5"
 
 # Now when you load configuration, these will be picked up
 from lib_layered_config import read_config

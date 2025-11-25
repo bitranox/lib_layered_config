@@ -24,14 +24,14 @@ from tests.support.os_markers import os_agnostic
 
 @os_agnostic
 def test_default_env_prefix_turns_slug_into_uppercase_snake() -> None:
-    assert default_env_prefix("lib-layered-config") == "LIB_LAYERED_CONFIG"
+    assert default_env_prefix("lib-layered-config") == "LIB_LAYERED_CONFIG___"
 
 
 def _sample_payload() -> dict[str, object]:
     environ = {
-        "LIB_LAYERED_CONFIG_DB__HOST": "db.example.com",
-        "LIB_LAYERED_CONFIG_DB__PORT": "5432",
-        "LIB_LAYERED_CONFIG_FEATURE__ENABLED": "true",
+        "LIB_LAYERED_CONFIG___DB__HOST": "db.example.com",
+        "LIB_LAYERED_CONFIG___DB__PORT": "5432",
+        "LIB_LAYERED_CONFIG___FEATURE__ENABLED": "true",
         "OTHER": "ignored",
     }
     loader = DefaultEnvLoader(environ=environ)
@@ -71,7 +71,7 @@ NAMESPACE_KEYS = st.sampled_from(["SERVICE__TIMEOUT", "SERVICE__ENDPOINT", "LOGG
 @given(st.dictionaries(NAMESPACE_KEYS, SCALAR_VALUES, max_size=3))
 def test_env_loader_handles_random_namespace(entries) -> None:
     prefix = "DEMO"
-    environ = {f"{prefix}_" + key: value for key, value in entries.items()}
+    environ = {f"{prefix}___" + key: value for key, value in entries.items()}
     environ["IGNORED"] = "1"
     payload = DefaultEnvLoader(environ=environ).load(prefix)
 
@@ -113,12 +113,12 @@ def test_env_loader_respects_explicit_empty_environment() -> None:
 
 @os_agnostic
 def test_normalize_prefix_preserves_existing_suffix() -> None:
-    assert _normalize_prefix("DEMO_") == "DEMO_"
+    assert _normalize_prefix("DEMO___") == "DEMO___"
 
 
 @os_agnostic
 def test_iter_namespace_entries_ignores_empty_suffix() -> None:
-    entries = list(_iter_namespace_entries([("DEMO_", "value")], "DEMO_"))
+    entries = list(_iter_namespace_entries([("DEMO___", "value")], "DEMO___"))
     assert entries == []
 
 

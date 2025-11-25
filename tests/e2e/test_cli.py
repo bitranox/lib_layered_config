@@ -293,7 +293,7 @@ def test_cli_generate_examples_force_overwrites_payload(tmp_path: Path) -> None:
 @os_agnostic
 def test_cli_env_prefix_echoes_uppercase_slug() -> None:
     result = make_runner().invoke(cli.cli, ["env-prefix", "config-kit"])
-    assert result.exit_code == 0 and result.output.strip() == "CONFIG_KIT"
+    assert result.exit_code == 0 and result.output.strip() == "CONFIG_KIT___"
 
 
 @os_agnostic

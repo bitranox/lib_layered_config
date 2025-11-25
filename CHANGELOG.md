@@ -1,5 +1,71 @@
 # Changelog
 
+## [3.0.0] - 2025-11-25
+
+### Breaking Changes
+
+- **Environment variable prefix format changed** - The environment variable prefix now uses triple underscore (`___`) as the separator between the slug prefix and configuration keys, instead of a single underscore. This change clearly distinguishes the application prefix from section/key separators (which use double underscores `__`).
+
+  **Before (v2.x):**
+  ```bash
+  # Slug: "myapp" → Prefix: "MYAPP_"
+  MYAPP_DATABASE__HOST=localhost
+  MYAPP_DATABASE__PORT=5432
+  MYAPP_SERVICE__TIMEOUT=30
+  ```
+
+  **After (v3.0):**
+  ```bash
+  # Slug: "myapp" → Prefix: "MYAPP___"
+  MYAPP___DATABASE__HOST=localhost
+  MYAPP___DATABASE__PORT=5432
+  MYAPP___SERVICE__TIMEOUT=30
+  ```
+
+### Why This Change?
+
+The new format makes it unambiguous where the prefix ends and the configuration path begins:
+- `PREFIX___SECTION__SUBSECTION__KEY=value`
+- Triple underscore (`___`) = prefix separator
+- Double underscore (`__`) = nesting separator
+
+This eliminates potential confusion when slugs contain underscores (e.g., `my_app` would have been `MY_APP_DATABASE__HOST`, making it unclear if `APP` was part of the prefix or a section name).
+
+### Migration Guide
+
+1. **Update all environment variables** - Add an extra two underscores after your prefix:
+   - `MYAPP_DATABASE__HOST` → `MYAPP___DATABASE__HOST`
+   - `CONFIG_KIT_SERVICE__TIMEOUT` → `CONFIG_KIT___SERVICE__TIMEOUT`
+
+2. **Update shell scripts** - If you use `env-prefix` CLI command, note that it now returns the prefix with the trailing `___`:
+   ```bash
+   # Before: returns "MYAPP"
+   # After: returns "MYAPP___"
+   prefix=$(lib_layered_config env-prefix myapp)
+   export ${prefix}DATABASE__HOST=localhost  # No extra underscore needed
+   ```
+
+3. **Update Python code** - If you use `default_env_prefix()`:
+   ```python
+   from lib_layered_config import default_env_prefix
+
+   prefix = default_env_prefix("myapp")  # Returns "MYAPP___"
+   os.environ[f"{prefix}DATABASE__HOST"] = "localhost"  # No extra underscore
+   ```
+
+### Changed
+
+- `default_env_prefix()` now returns the slug in uppercase followed by `___` (e.g., `"MYAPP___"`)
+- `_normalize_prefix()` ensures prefixes end with `___` instead of `_`
+- CLI `env-prefix` command output now includes the `___` suffix
+- Example `.env` templates now use the new format
+
+### Documentation
+
+- Updated README.md with new prefix format throughout all examples
+- Updated all environment variable examples to use `PREFIX___SECTION__KEY` format
+- Added explanation of why triple underscore was chosen as the separator
+
 ## [2.0.0] - 2025-11-20
 
 ### Breaking Changes

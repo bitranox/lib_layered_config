@@ -72,8 +72,8 @@ def arrange_precedence_story(
         ".env",
         content="SERVICE__TIMEOUT=15\n",
     )
-    monkeypatch.setenv("CONFIG_KIT_SERVICE__TIMEOUT", "20")
-    monkeypatch.setenv("CONFIG_KIT_SERVICE__MODE", "debug")
+    monkeypatch.setenv("CONFIG_KIT___SERVICE__TIMEOUT", "20")
+    monkeypatch.setenv("CONFIG_KIT___SERVICE__MODE", "debug")
     result = read_config_raw(
         vendor=VENDOR,
         app=APP,

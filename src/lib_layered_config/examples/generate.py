@@ -500,7 +500,7 @@ def _env_secrets_body(slug: str) -> str:
 
     key = slug.replace("-", "_").upper()
     return f"""# Copy to .env to provide secrets and local overrides
-{key}_SERVICE__PASSWORD=changeme
+{key}___SERVICE__PASSWORD=changeme
 """
 
 
