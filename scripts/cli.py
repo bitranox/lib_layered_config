@@ -18,6 +18,7 @@ from . import release as release_module
 from . import run_cli as run_cli_module
 from . import test as test_module
 from . import version_current as version_module
+from ._utils import get_default_remote
 from .bump_major import bump_major
 from .bump_minor import bump_minor
 from .bump_patch import bump_patch
@@ -26,6 +27,7 @@ __all__ = ["main"]
 
 _COVERAGE_MODES = {"on", "auto", "off"}
 _BUMP_PARTS = {"major", "minor", "patch"}
+_DEFAULT_REMOTE = get_default_remote()
 
 
 def env_token(name: str) -> str | None:
@@ -86,7 +88,7 @@ def part_choice(option: str | None) -> str:
 def remote_choice(option: str | None) -> str:
     """Resolve the git remote for push-like workflows."""
 
-    return option or env_token("REMOTE") or "origin"
+    return option or env_token("REMOTE") or _DEFAULT_REMOTE
 
 
 click.rich_click.GROUP_ARGUMENTS_OPTIONS = True

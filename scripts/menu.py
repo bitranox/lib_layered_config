@@ -4,7 +4,7 @@ import asyncio
 import os
 import signal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import contextlib
 
@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts._utils import get_project_metadata  # noqa: E402
-from scripts.target_metadata import TargetSpec, get_targets  # noqa: E402
+from scripts.target_metadata import ParamSpec, TargetSpec, get_targets  # noqa: E402
 
 PROJECT = get_project_metadata()
 
@@ -59,9 +59,7 @@ else:  # pragma: no cover
 
         print("[menu-tui] Failed to import Textual components:", file=sys.stderr)
         traceback.print_exc()
-        raise SystemExit(
-            "textual is not installed or incompatible in this environment. Install dev extras: pip install -e .[dev]"
-        ) from exc
+        raise SystemExit("textual is not installed or incompatible in this environment. Install dev extras: pip install -e .[dev]") from exc
 
 
 TARGETS: tuple[TargetSpec, ...] = tuple(target for target in get_targets() if target.name != "menu")
@@ -261,7 +259,7 @@ class MenuScreen(Screen[None]):
         return app
 
 
-class ParamScreen(Screen[dict[str, str] | None]):
+class ParamScreen(Screen[Optional[dict[str, str]]]):
     """Simple whiptail-style form for editing target parameters."""
 
     BINDINGS = [("escape", "cancel", "Cancel"), ("q", "cancel", "Cancel")]
@@ -339,24 +337,38 @@ class ParamScreen(Screen[dict[str, str] | None]):
     def _gather_values(self) -> tuple[dict[str, str], str | None]:
         result: dict[str, str] = {}
         for param in self._target.params:
-            widget = self._inputs[param.name]
-            if isinstance(widget, Select):
-                selection = widget.value
-                raw_value = selection if isinstance(selection, str) else ""
-            else:
-                raw_value = widget.value.strip()
-            raw_value = raw_value or ""
-            if param.validator is not None and raw_value:
-                try:
-                    valid = param.validator(raw_value)
-                except Exception:
-                    valid = False
-                if not valid:
-                    return result, f"Invalid value for {param.name}"
+            raw_value = self._extract_widget_value(param.name)
+            error = self._validate_param_value(param, raw_value)
+            if error:
+                return result, error
             result[param.name] = raw_value
+        self._apply_bump_defaults(result)
+        return result, None
+
+    def _extract_widget_value(self, param_name: str) -> str:
+        """Extract the string value from a widget (Input or Select)."""
+        widget = self._inputs[param_name]
+        if isinstance(widget, Select):
+            selection = widget.value
+            return selection if isinstance(selection, str) else ""
+        return widget.value.strip() or ""
+
+    def _validate_param_value(self, param: "ParamSpec", value: str) -> str | None:
+        """Validate a parameter value, returning error message if invalid."""
+        if param.validator is None or not value:
+            return None
+        try:
+            valid = param.validator(value)
+        except Exception:
+            valid = False
+        if not valid:
+            return f"Invalid value for {param.name}"
+        return None
+
+    def _apply_bump_defaults(self, result: dict[str, str]) -> None:
+        """Apply default PART value for bump target when VERSION is empty."""
         if self._target.name == "bump" and not result.get("VERSION"):
             result["PART"] = result.get("PART") or "patch"
-        return result, None
 
     @property
     def menu_app(self) -> MenuApp:
@@ -365,7 +377,7 @@ class ParamScreen(Screen[dict[str, str] | None]):
         return app
 
 
-class RunScreen(Screen[int | None]):
+class RunScreen(Screen[Optional[int]]):
     """Run the selected make target and stream output inside a whiptail-like window."""
 
     BINDINGS = [("escape", "cancel", "Cancel"), ("q", "cancel", "Cancel")]

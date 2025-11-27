@@ -10,6 +10,7 @@ __all__ = ["release"]
 
 from ._utils import (
     bootstrap_dev,
+    get_default_remote,
     get_project_metadata,
     gh_available,
     gh_release_create,
@@ -26,9 +27,10 @@ from ._utils import (
 
 
 PROJECT = get_project_metadata()
+_DEFAULT_REMOTE = get_default_remote()
 
 
-def release(*, remote: str = "origin") -> None:
+def release(*, remote: str = _DEFAULT_REMOTE) -> None:
     version = read_version_from_pyproject(Path("pyproject.toml"))
     if not version or not _looks_like_semver(version):
         raise SystemExit("[release] Could not read version X.Y.Z from pyproject.toml")

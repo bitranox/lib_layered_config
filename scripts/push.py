@@ -7,6 +7,7 @@ from pathlib import Path
 import rich_click as click
 
 from ._utils import (
+    get_default_remote,
     get_project_metadata,
     git_branch,
     read_version_from_pyproject,
@@ -16,8 +17,10 @@ from ._utils import (
 
 __all__ = ["push"]
 
+_DEFAULT_REMOTE = get_default_remote()
 
-def push(*, remote: str = "origin", message: str | None = None) -> None:
+
+def push(*, remote: str = _DEFAULT_REMOTE, message: str | None = None) -> None:
     """Run checks, commit changes, and push the current branch."""
 
     metadata = get_project_metadata()

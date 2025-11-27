@@ -27,6 +27,8 @@ import os
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
+from ._utils import get_default_remote
+
 __all__ = [
     "ParamSpec",
     "TargetSpec",
@@ -34,8 +36,10 @@ __all__ = [
     "iter_help_rows",
 ]
 
+_DEFAULT_REMOTE = get_default_remote()
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True)
 class ParamSpec:
     """Describe a configurable environment variable for an automation target."""
 
@@ -46,7 +50,7 @@ class ParamSpec:
     validator: Callable[[str], bool] | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class TargetSpec:
     """Describe a Make/CLI target exposed by the automation toolbox."""
 
@@ -134,7 +138,7 @@ def _build_targets() -> tuple[TargetSpec, ...]:
                 ParamSpec(
                     "REMOTE",
                     "Git remote",
-                    default=_env_default("REMOTE", "origin"),
+                    default=_env_default("REMOTE", _DEFAULT_REMOTE),
                 ),
                 ParamSpec(
                     "COMMIT_MESSAGE",
@@ -151,7 +155,7 @@ def _build_targets() -> tuple[TargetSpec, ...]:
                 ParamSpec(
                     "REMOTE",
                     "Git remote",
-                    default=_env_default("REMOTE", "origin"),
+                    default=_env_default("REMOTE", _DEFAULT_REMOTE),
                 ),
             ),
         ),
