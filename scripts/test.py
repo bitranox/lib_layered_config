@@ -8,6 +8,9 @@ This module provides a unified test runner that:
 - Audits dependencies with pip-audit
 - Executes pytest with optional coverage
 - Uploads coverage to Codecov
+
+Parallel execution is supported for independent checks (ruff, pyright, bandit,
+import-linter) to reduce total execution time.
 """
 
 from __future__ import annotations
@@ -19,10 +22,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import ModuleType
 from typing import cast
 
 import click
@@ -34,6 +38,7 @@ from ._utils import (
     run,
     sync_metadata_module,
 )
+from .toml_config import load_pyproject_config
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -48,70 +53,172 @@ __all__ = ["run_tests", "run_coverage", "COVERAGE_TARGET"]
 
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
-_AuditPayload = list[dict[str, object]]
+
+# Thread-safe lock for console output
+_output_lock = threading.Lock()
+
+
+@dataclass(frozen=True)
+class StepResult:
+    """Result of a test step execution."""
+
+    name: str
+    success: bool
+    output: str = ""
+    error: str = ""
+    duration: float = 0.0
+    command: str = ""
 
 
 # ---------------------------------------------------------------------------
-# TOML Configuration Reader
+# Pip-Audit Data Structures
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class ProjectConfig:
-    """Configuration values read from pyproject.toml."""
+@dataclass(frozen=True)
+class AuditVulnerability:
+    """A single vulnerability from pip-audit output."""
 
-    fail_under: int = 80
-    bandit_skips: list[str] = field(default_factory=list)
-    pip_audit_ignores: list[str] = field(default_factory=list)
-    pytest_verbosity: str = "-vv"
-    coverage_report_file: str = "coverage.xml"
-    src_path: str = "src"
+    vuln_id: str
+    fix_versions: tuple[str, ...] = ()
+    aliases: tuple[str, ...] = ()
+    description: str = ""
 
     @classmethod
-    def from_pyproject(cls, pyproject_path: Path) -> ProjectConfig:
-        """Load configuration from pyproject.toml."""
+    def from_dict(cls, data: dict[str, object]) -> AuditVulnerability:
+        """Parse a vulnerability entry from pip-audit JSON."""
+        vuln_id = data.get("id")
+        if not isinstance(vuln_id, str):
+            vuln_id = "<unknown>"
+
+        fix_versions: tuple[str, ...] = ()
+        raw_fix = data.get("fix_versions")
+        if isinstance(raw_fix, list):
+            typed_fix = cast(list[object], raw_fix)
+            fix_versions = tuple(str(v) for v in typed_fix if v is not None)
+
+        aliases: tuple[str, ...] = ()
+        raw_aliases = data.get("aliases")
+        if isinstance(raw_aliases, list):
+            typed_aliases = cast(list[object], raw_aliases)
+            aliases = tuple(str(a) for a in typed_aliases if a is not None)
+
+        description = data.get("description", "")
+        if not isinstance(description, str):
+            description = ""
+
+        return cls(
+            vuln_id=vuln_id,
+            fix_versions=fix_versions,
+            aliases=aliases,
+            description=description,
+        )
+
+
+@dataclass(frozen=True)
+class AuditDependency:
+    """A dependency entry from pip-audit output."""
+
+    name: str
+    version: str = ""
+    vulns: tuple[AuditVulnerability, ...] = ()
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> AuditDependency:
+        """Parse a dependency entry from pip-audit JSON."""
+        name = data.get("name")
+        if not isinstance(name, str):
+            name = "<unknown>"
+
+        version = data.get("version", "")
+        if not isinstance(version, str):
+            version = ""
+
+        vulns: tuple[AuditVulnerability, ...] = ()
+        raw_vulns = data.get("vulns")
+        if isinstance(raw_vulns, list):
+            typed_vulns = cast(list[object], raw_vulns)
+            parsed_vulns: list[AuditVulnerability] = []
+            for entry in typed_vulns:
+                if isinstance(entry, dict):
+                    parsed_vulns.append(AuditVulnerability.from_dict(cast(dict[str, object], entry)))
+            vulns = tuple(parsed_vulns)
+
+        return cls(name=name, version=version, vulns=vulns)
+
+    def vuln_ids(self) -> tuple[str, ...]:
+        """Return all vulnerability IDs for this dependency."""
+        return tuple(v.vuln_id for v in self.vulns)
+
+
+@dataclass(frozen=True)
+class AuditResult:
+    """Parsed pip-audit JSON output."""
+
+    dependencies: tuple[AuditDependency, ...] = ()
+
+    @classmethod
+    def from_json(cls, json_output: str) -> AuditResult:
+        """Parse pip-audit JSON output into structured data."""
         try:
-            toml = _get_toml_module()
-            data = toml.loads(pyproject_path.read_text())
-            tool = data.get("tool", {})
-
-            fail_under = int(tool.get("coverage", {}).get("report", {}).get("fail_under", 80))
-            bandit_skips = list(tool.get("bandit", {}).get("skips", []))
-            pip_audit_ignores = list(tool.get("pip-audit", {}).get("ignore-vulns", []))
-
-            scripts_test = tool.get("scripts", {}).get("test", {})
-            pytest_verbosity = str(scripts_test.get("pytest-verbosity", "-vv"))
-            coverage_report_file = str(scripts_test.get("coverage-report-file", "coverage.xml"))
-            src_path = str(scripts_test.get("src-path", "src"))
-
-            return cls(
-                fail_under=fail_under,
-                bandit_skips=bandit_skips,
-                pip_audit_ignores=pip_audit_ignores,
-                pytest_verbosity=pytest_verbosity,
-                coverage_report_file=coverage_report_file,
-                src_path=src_path,
-            )
-        except Exception:
+            payload: object = json.loads(json_output or "{}")
+        except json.JSONDecodeError:
             return cls()
 
+        if not isinstance(payload, dict):
+            return cls()
 
-_toml_module: ModuleType | None = None
+        typed_payload = cast(dict[str, object], payload)
+        raw_deps = typed_payload.get("dependencies")
+        if not isinstance(raw_deps, list):
+            return cls()
+
+        typed_deps = cast(list[object], raw_deps)
+        parsed_deps: list[AuditDependency] = []
+        for entry in typed_deps:
+            if isinstance(entry, dict):
+                parsed_deps.append(AuditDependency.from_dict(cast(dict[str, object], entry)))
+
+        return cls(dependencies=tuple(parsed_deps))
+
+    def find_unexpected_vulns(self, ignore_ids: set[str]) -> list[str]:
+        """Find vulnerabilities not in the ignore set."""
+        unexpected: list[str] = []
+        for dep in self.dependencies:
+            for vuln_id in dep.vuln_ids():
+                if vuln_id not in ignore_ids:
+                    unexpected.append(f"{dep.name}: {vuln_id}")
+        return unexpected
 
 
-def _get_toml_module() -> ModuleType:
-    """Return the TOML parsing module (tomllib or tomli fallback)."""
-    global _toml_module
-    if _toml_module is not None:
-        return _toml_module
+# ---------------------------------------------------------------------------
+# Project Configuration
+# ---------------------------------------------------------------------------
 
-    try:
-        import tomllib as module  # type: ignore[import-not-found]
-    except ImportError:
-        import tomli as module  # type: ignore[import-not-found,no-redef]
 
-    _toml_module = module
-    return module
+@dataclass(frozen=True)
+class TestConfig:
+    """Consolidated test configuration from pyproject.toml."""
+
+    fail_under: int
+    bandit_skips: tuple[str, ...]
+    pip_audit_ignores: tuple[str, ...]
+    pytest_verbosity: str
+    coverage_report_file: str
+    src_path: str
+
+    @classmethod
+    def from_pyproject(cls, pyproject_path: Path) -> TestConfig:
+        """Load test configuration from pyproject.toml."""
+        config = load_pyproject_config(pyproject_path)
+        return cls(
+            fail_under=config.tool.coverage.fail_under,
+            bandit_skips=config.tool.bandit.skips,
+            pip_audit_ignores=config.tool.pip_audit.ignore_vulns,
+            pytest_verbosity=config.tool.scripts.pytest_verbosity,
+            coverage_report_file=config.tool.scripts.coverage_report_file,
+            src_path=config.tool.scripts.src_path,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +550,7 @@ def _handle_codecov_result(result: RunResult) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_pip_audit_ignores(config: ProjectConfig) -> list[str]:
+def _resolve_pip_audit_ignores(config: TestConfig) -> list[str]:
     """Return consolidated list of vulnerability IDs to ignore during pip-audit."""
     extra = [token.strip() for token in os.getenv("PIP_AUDIT_IGNORE", "").split(",") if token.strip()]
     ignores: list[str] = []
@@ -453,21 +560,7 @@ def _resolve_pip_audit_ignores(config: ProjectConfig) -> list[str]:
     return ignores
 
 
-def _extract_audit_dependencies(payload: object) -> _AuditPayload:
-    """Normalise `pip-audit --format json` output into dictionaries."""
-    if not isinstance(payload, dict):
-        return []
-
-    payload_dict = cast(dict[str, object], payload)
-    raw_candidates = payload_dict.get("dependencies", [])
-    if not isinstance(raw_candidates, list):
-        return []
-
-    candidate_list = cast(list[object], raw_candidates)
-    return [cast(dict[str, object], candidate) for candidate in candidate_list if isinstance(candidate, dict)]
-
-
-def _run_pip_audit_guarded(config: ProjectConfig, run_fn: Callable[..., RunResult]) -> None:
+def _run_pip_audit_guarded(config: TestConfig, run_fn: Callable[..., RunResult]) -> None:
     """Run pip-audit with configured ignore list and verify results."""
     ignore_ids = _resolve_pip_audit_ignores(config)
     _run_pip_audit_with_ignores(run_fn, ignore_ids)
@@ -476,8 +569,8 @@ def _run_pip_audit_guarded(config: ProjectConfig, run_fn: Callable[..., RunResul
     if result.code == 0:
         return
 
-    payload = _parse_audit_json(result.out)
-    unexpected = _find_unexpected_vulns(payload, ignore_ids)
+    audit_result = AuditResult.from_json(result.out)
+    unexpected = audit_result.find_unexpected_vulns(set(ignore_ids))
     _report_unexpected_vulns(unexpected)
 
 
@@ -497,51 +590,6 @@ def _run_pip_audit_json(run_fn: Callable[..., RunResult]) -> RunResult:
         capture=True,
         check=False,
     )
-
-
-def _parse_audit_json(output: str) -> object:
-    """Parse pip-audit JSON output, raising SystemExit on failure."""
-    try:
-        return json.loads(output or "{}")
-    except json.JSONDecodeError as exc:
-        click.echo("pip-audit verification output was not valid JSON", err=True)
-        raise SystemExit("pip-audit verification failed") from exc
-
-
-def _find_unexpected_vulns(payload: object, ignore_ids: list[str]) -> list[str]:
-    """Find vulnerabilities not in the ignore list."""
-    dependencies = _extract_audit_dependencies(payload)
-    allowed_vulns = set(ignore_ids)
-    unexpected: list[str] = []
-
-    for item in dependencies:
-        package = _extract_package_name(item)
-        for vuln_id in _extract_vuln_ids(item):
-            if vuln_id not in allowed_vulns:
-                unexpected.append(f"{package}: {vuln_id}")
-
-    return unexpected
-
-
-def _extract_package_name(item: dict[str, object]) -> str:
-    """Extract package name from audit dependency item."""
-    name_candidate = item.get("name")
-    return name_candidate if isinstance(name_candidate, str) else "<unknown>"
-
-
-def _extract_vuln_ids(item: dict[str, object]) -> list[str]:
-    """Extract vulnerability IDs from audit dependency item."""
-    vulns_candidate = item.get("vulns", [])
-    if not isinstance(vulns_candidate, list):
-        return []
-    vuln_objects = list(cast(list[object], vulns_candidate))
-    vuln_entries = [cast(dict[str, object], entry) for entry in vuln_objects if isinstance(entry, dict)]
-    vuln_ids: list[str] = []
-    for vuln_payload in vuln_entries:
-        vuln_id = vuln_payload.get("id")
-        if isinstance(vuln_id, str):
-            vuln_ids.append(vuln_id)
-    return vuln_ids
 
 
 def _report_unexpected_vulns(unexpected: list[str]) -> None:
@@ -576,54 +624,197 @@ def _resolve_strict_format(strict_format: bool | None) -> bool:
     raise SystemExit("STRICT_RUFF_FORMAT must be one of {0,1,true,false,yes,no,on,off}.")
 
 
+_StepList = list[tuple[str, Callable[[], None]]]
+
+
+def _empty_step_list() -> _StepList:
+    """Return an empty step list with proper typing."""
+    return []
+
+
+@dataclass
+class TestSteps:
+    """Categorized test steps for sequential and parallel execution."""
+
+    sequential_pre: _StepList = field(default_factory=_empty_step_list)
+    parallel: _StepList = field(default_factory=_empty_step_list)
+    sequential_post: _StepList = field(default_factory=_empty_step_list)
+
+
+@dataclass
+class ParallelStep:
+    """A step configured for parallel execution with its command."""
+
+    name: str
+    command: list[str]
+
+
 def _build_test_steps(
-    config: ProjectConfig,
+    config: TestConfig,
     *,
     strict_format: bool,
     verbose: bool,
-) -> list[tuple[str, Callable[[], None]]]:
-    """Build the list of test steps to execute."""
-    steps: list[tuple[str, Callable[[], None]]] = []
+) -> TestSteps:
+    """Build categorized test steps for sequential and parallel execution."""
     run_fn = _make_run_fn(verbose)
 
-    def make(cmd: list[str], label: str, capture: bool = False) -> Callable[[], None]:
+    def make(cmd: list[str], label: str, capture: bool = True) -> Callable[[], None]:
         return _make_step(cmd, label, capture=capture, verbose=verbose)
 
-    # Ruff format
-    steps.append(("Ruff format (apply)", make(["ruff", "format", "."], "ruff-format-apply")))
+    steps = TestSteps()
 
+    # Sequential pre-steps: must run before parallel checks
+    # Ruff format modifies files, so it must run first and alone
+    steps.sequential_pre.append(("Ruff format (apply)", make(["ruff", "format", "."], "ruff-format-apply")))
+
+    # Parallel steps: can run concurrently after formatting
     if strict_format:
-        steps.append(("Ruff format check", make(["ruff", "format", "--check", "."], "ruff-format-check")))
+        steps.parallel.append(("Ruff format check", make(["ruff", "format", "--check", "."], "ruff-format-check")))
 
-    # Ruff lint
-    steps.append(("Ruff lint", make(["ruff", "check", "."], "ruff-check")))
+    steps.parallel.append(("Ruff lint", make(["ruff", "check", "."], "ruff-check")))
 
-    # Import-linter
-    steps.append(
+    steps.parallel.append(
         (
             "Import-linter contracts",
             make([sys.executable, "-m", "importlinter.cli", "lint", "--config", "pyproject.toml"], "import-linter"),
         )
     )
 
-    # Pyright
-    steps.append(("Pyright type-check", make(["pyright"], "pyright")))
+    steps.parallel.append(("Pyright type-check", make(["pyright"], "pyright")))
 
-    # Bandit
     bandit_cmd = ["bandit", "-q", "-r"]
     if config.bandit_skips:
         bandit_cmd.extend(["-s", ",".join(config.bandit_skips)])
     bandit_cmd.append(str(PACKAGE_SRC))
-    steps.append(("Bandit security scan", make(bandit_cmd, "bandit")))
+    steps.parallel.append(("Bandit security scan", make(bandit_cmd, "bandit")))
 
-    # Pip-audit
-    steps.append(("pip-audit (guarded)", lambda: _run_pip_audit_guarded(config, run_fn)))
+    # Sequential post-steps: must run after parallel checks
+    # pip-audit has network calls and complex output, better sequential
+    steps.sequential_post.append(("pip-audit (guarded)", lambda: _run_pip_audit_guarded(config, run_fn)))
 
     return steps
 
 
+def _build_parallel_commands(config: TestConfig, *, strict_format: bool) -> list[ParallelStep]:
+    """Build the list of commands for parallel execution."""
+    commands: list[ParallelStep] = []
+
+    if strict_format:
+        commands.append(ParallelStep("Ruff format check", ["ruff", "format", "--check", "."]))
+
+    commands.append(ParallelStep("Ruff lint", ["ruff", "check", "."]))
+
+    commands.append(
+        ParallelStep(
+            "Import-linter contracts",
+            [sys.executable, "-m", "importlinter.cli", "lint", "--config", "pyproject.toml"],
+        )
+    )
+
+    commands.append(ParallelStep("Pyright type-check", ["pyright"]))
+
+    bandit_cmd = ["bandit", "-q", "-r"]
+    if config.bandit_skips:
+        bandit_cmd.extend(["-s", ",".join(config.bandit_skips)])
+    bandit_cmd.append(str(PACKAGE_SRC))
+    commands.append(ParallelStep("Bandit security scan", bandit_cmd))
+
+    return commands
+
+
+def _run_step_subprocess(step: ParallelStep) -> StepResult:
+    """Run a step as a subprocess and capture its output."""
+    import time
+
+    start_time = time.perf_counter()
+    cmd_str = " ".join(step.command)
+
+    result = run(step.command, env=_default_env, check=False, capture=True)
+
+    duration = time.perf_counter() - start_time
+    success = result.code == 0
+
+    return StepResult(
+        name=step.name,
+        success=success,
+        output=result.out,
+        error=result.err,
+        duration=duration,
+        command=cmd_str,
+    )
+
+
+def _run_parallel_steps_subprocess(
+    steps: list[ParallelStep],
+    *,
+    max_workers: int | None = None,
+) -> list[StepResult]:
+    """Run multiple steps in parallel using subprocesses and collect results."""
+    if not steps:
+        return []
+
+    # Default to number of steps or 4, whichever is smaller
+    if max_workers is None:
+        max_workers = min(len(steps), 4)
+
+    results: list[StepResult] = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_step = {executor.submit(_run_step_subprocess, step): step.name for step in steps}
+
+        for future in as_completed(future_to_step):
+            result = future.result()
+            results.append(result)
+
+    # Sort results by original order
+    step_order = {step.name: i for i, step in enumerate(steps)}
+    results.sort(key=lambda r: step_order.get(r.name, 999))
+
+    return results
+
+
+def _display_parallel_results(
+    results: list[StepResult],
+    start_index: int,
+    total: int,
+    *,
+    verbose: bool = False,
+) -> bool:
+    """Display results from parallel execution. Returns True if all passed."""
+    all_passed = True
+
+    for i, result in enumerate(results):
+        status = "PASS" if result.success else "FAIL"
+        step_num = start_index + i
+        duration_str = f" ({result.duration:.1f}s)" if result.duration >= 0.1 else ""
+
+        # Show command and status
+        click.echo(f"[{step_num}/{total}] {result.name} [{status}]{duration_str}")
+
+        # Show output based on success and verbosity
+        show_output = not result.success or verbose
+
+        if show_output and result.command:
+            click.echo(f"  $ {result.command}")
+
+        if not result.success:
+            all_passed = False
+
+        # Always show output for failures, optionally for success in verbose mode
+        if show_output:
+            if result.output:
+                # Indent output for readability
+                for line in result.output.rstrip().split("\n"):
+                    click.echo(f"    {line}")
+            if result.error:
+                for line in result.error.rstrip().split("\n"):
+                    click.echo(f"    {line}", err=True)
+
+    return all_passed
+
+
 def _run_pytest_step(
-    config: ProjectConfig,
+    config: TestConfig,
     coverage_mode: str,
     verbose: bool,
 ) -> None:
@@ -632,7 +823,9 @@ def _run_pytest_step(
         path.unlink(missing_ok=True)
 
     run_fn = _make_run_fn(verbose)
-    enable_coverage = coverage_mode == "on" or (coverage_mode == "auto" and (os.getenv("CI") or os.getenv("CODECOV_TOKEN")))
+    enable_coverage = coverage_mode == "on" or (
+        coverage_mode == "auto" and (os.getenv("CI") or os.getenv("CODECOV_TOKEN"))
+    )
 
     if enable_coverage:
         click.echo("[coverage] enabled")
@@ -680,7 +873,7 @@ def run_coverage(*, verbose: bool = False) -> None:
     sync_metadata_module(PROJECT)
     bootstrap_dev()
 
-    config = ProjectConfig.from_pyproject(PROJECT_ROOT / "pyproject.toml")
+    config = TestConfig.from_pyproject(PROJECT_ROOT / "pyproject.toml")
     _prune_coverage_data_files()
     _remove_report_artifacts(config.coverage_report_file)
     base_env = _build_default_env(config.src_path) | {"COVERAGE_NO_SQL": "1"}
@@ -712,26 +905,85 @@ def run_coverage(*, verbose: bool = False) -> None:
             click.echo(report.out, nl=False)
 
 
-def run_tests(*, coverage: str = "on", verbose: bool = False, strict_format: bool | None = None) -> None:
-    """Run the complete test suite with all quality checks."""
+def run_tests(
+    *,
+    coverage: str = "on",
+    verbose: bool = False,
+    strict_format: bool | None = None,
+    parallel: bool = True,
+) -> None:
+    """Run the complete test suite with all quality checks.
+
+    Args:
+        coverage: Coverage mode - "on", "off", or "auto"
+        verbose: Enable verbose output
+        strict_format: Enforce strict ruff format checking
+        parallel: Run independent checks in parallel (default: True)
+    """
     env_verbose = os.getenv("TEST_VERBOSE", "").lower()
     if not verbose and env_verbose in _TRUTHY:
         verbose = True
 
+    # Check for PARALLEL env override
+    env_parallel = os.getenv("TEST_PARALLEL", "").lower()
+    if env_parallel in _FALSY:
+        parallel = False
+    elif env_parallel in _TRUTHY:
+        parallel = True
+
     sync_metadata_module(PROJECT)
     bootstrap_dev()
 
-    config = ProjectConfig.from_pyproject(PROJECT_ROOT / "pyproject.toml")
+    config = TestConfig.from_pyproject(PROJECT_ROOT / "pyproject.toml")
     resolved_strict_format = _resolve_strict_format(strict_format)
 
     steps = _build_test_steps(config, strict_format=resolved_strict_format, verbose=verbose)
-    pytest_label = "Pytest with coverage" if coverage != "off" else "Pytest"
-    steps.append((pytest_label, lambda: _run_pytest_step(config, coverage, verbose)))
 
-    total = len(steps)
-    for index, (description, action) in enumerate(steps, start=1):
-        click.echo(f"[{index}/{total}] {description}")
+    # Calculate total steps
+    total_steps = (
+        len(steps.sequential_pre) + len(steps.parallel) + len(steps.sequential_post) + 1  # pytest
+    )
+    current_step = 0
+
+    # Phase 1: Sequential pre-steps (ruff format)
+    for description, action in steps.sequential_pre:
+        current_step += 1
+        click.echo(f"[{current_step}/{total_steps}] {description}")
         action()
+
+    # Phase 2: Parallel checks (or sequential if parallel=False)
+    if parallel and len(steps.parallel) > 1:
+        parallel_commands = _build_parallel_commands(config, strict_format=resolved_strict_format)
+        click.echo(
+            f"[{current_step + 1}-{current_step + len(parallel_commands)}/{total_steps}] Running {len(parallel_commands)} checks in parallel..."
+        )
+        results = _run_parallel_steps_subprocess(parallel_commands)
+        all_passed = _display_parallel_results(results, current_step + 1, total_steps, verbose=verbose)
+        current_step += len(parallel_commands)
+
+        if not all_passed:
+            # Show which checks failed
+            failed = [r.name for r in results if not r.success]
+            click.echo(f"Failed checks: {', '.join(failed)}", err=True)
+            raise SystemExit(1)
+    else:
+        # Run sequentially
+        for description, action in steps.parallel:
+            current_step += 1
+            click.echo(f"[{current_step}/{total_steps}] {description}")
+            action()
+
+    # Phase 3: Sequential post-steps (pip-audit)
+    for description, action in steps.sequential_post:
+        current_step += 1
+        click.echo(f"[{current_step}/{total_steps}] {description}")
+        action()
+
+    # Phase 4: Pytest (always sequential)
+    current_step += 1
+    pytest_label = "Pytest with coverage" if coverage != "off" else "Pytest"
+    click.echo(f"[{current_step}/{total_steps}] {pytest_label}")
+    _run_pytest_step(config, coverage, verbose)
 
     _ensure_codecov_token()
 

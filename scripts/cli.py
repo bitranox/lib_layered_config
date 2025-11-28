@@ -9,6 +9,7 @@ import rich_click as click
 from . import build as build_module
 from . import bump as bump_module
 from . import clean as clean_module
+from . import dependencies as dependencies_module
 from . import dev as dev_module
 from . import help as help_module
 from . import install as install_module
@@ -204,6 +205,22 @@ def bump_minor_command() -> None:
 @main.command(name="bump-patch", help="Convenience wrapper to bump patch version")
 def bump_patch_command() -> None:
     bump_patch()
+
+
+@main.command(name="dependencies", help="Check dependencies against latest PyPI versions")
+@click.option("--verbose", "-v", is_flag=True, help="Show all dependencies, not just outdated")
+@click.option("--update", "-u", is_flag=True, help="Update outdated dependencies to latest versions")
+@click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
+@click.option("--pyproject", type=click.Path(path_type=Path), default=Path("pyproject.toml"))
+def dependencies_command(verbose: bool, update: bool, dry_run: bool, pyproject: Path) -> None:
+    raise SystemExit(dependencies_module.main(verbose=verbose, update=update, dry_run=dry_run, pyproject=pyproject))
+
+
+@main.command(name="dependencies-update", help="Update all outdated dependencies to latest versions")
+@click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
+@click.option("--pyproject", type=click.Path(path_type=Path), default=Path("pyproject.toml"))
+def dependencies_update_command(dry_run: bool, pyproject: Path) -> None:
+    raise SystemExit(dependencies_module.main(verbose=False, update=True, dry_run=dry_run, pyproject=pyproject))
 
 
 @main.command(name="menu", help="Launch interactive TUI menu")

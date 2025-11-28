@@ -159,6 +159,30 @@ def _build_targets() -> tuple[TargetSpec, ...]:
                 ),
             ),
         ),
+        TargetSpec(
+            "dependencies",
+            "Check dependencies against latest PyPI versions",
+            (
+                ParamSpec(
+                    "VERBOSE",
+                    "Show all dependencies (0|1)",
+                    default=_env_default("VERBOSE", "0"),
+                    choices=("0", "1"),
+                ),
+            ),
+        ),
+        TargetSpec(
+            "dependencies-update",
+            "Update all outdated dependencies to latest versions",
+            (
+                ParamSpec(
+                    "DRY_RUN",
+                    "Preview changes without modifying (0|1)",
+                    default=_env_default("DRY_RUN", "0"),
+                    choices=("0", "1"),
+                ),
+            ),
+        ),
         TargetSpec("menu", "Interactive TUI automation menu", ()),
         TargetSpec("help", "Show automation command summary", ()),
     )

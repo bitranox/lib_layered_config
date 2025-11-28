@@ -3,7 +3,7 @@ SHELL := /bin/bash
 PYTHON ?= python3
 SCRIPTS ?= $(PYTHON) -m scripts
 
-.PHONY: help install dev test run clean build push release version-current bump bump-patch bump-minor bump-major menu
+.PHONY: help install dev test run clean build push release coverage version-current bump bump-patch bump-minor bump-major dependencies dependencies-update menu
 
 help:
 	$(SCRIPTS) help
@@ -38,6 +38,9 @@ bump-major:
 clean:
 	$(SCRIPTS) clean
 
+coverage:
+	$(SCRIPTS) coverage
+
 push:
 	$(SCRIPTS) push
 
@@ -46,6 +49,12 @@ build:
 
 release:
 	$(SCRIPTS) release
+
+dependencies:
+	$(SCRIPTS) dependencies
+
+dependencies-update:
+	$(SCRIPTS) dependencies-update
 
 menu:
 	$(SCRIPTS) menu

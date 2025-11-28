@@ -8,7 +8,8 @@ from __future__ import annotations
 import shutil
 from collections.abc import Iterable
 from pathlib import Path
-from types import ModuleType
+
+from .toml_config import load_pyproject_config
 
 _FALLBACK_PATTERNS: tuple[str, ...] = (
     ".hypothesis",
@@ -33,34 +34,13 @@ _FALLBACK_PATTERNS: tuple[str, ...] = (
 
 __all__ = ["clean", "get_clean_patterns"]
 
-_toml_module: ModuleType | None = None
-
-
-def _get_toml_module() -> ModuleType:
-    """Return the TOML parsing module (tomllib or tomli fallback)."""
-    global _toml_module
-    if _toml_module is not None:
-        return _toml_module
-
-    try:
-        import tomllib as module  # type: ignore[import-not-found]
-    except ImportError:
-        import tomli as module  # type: ignore[import-not-found,no-redef]
-
-    _toml_module = module
-    return module
-
 
 def get_clean_patterns(pyproject: Path = Path("pyproject.toml")) -> tuple[str, ...]:
     """Read clean patterns from pyproject.toml [tool.clean].patterns."""
-    try:
-        toml = _get_toml_module()
-        data = toml.loads(pyproject.read_text())
-        patterns = data.get("tool", {}).get("clean", {}).get("patterns", [])
-        if patterns and isinstance(patterns, list):
-            return tuple(str(p) for p in patterns if p)
-    except Exception:
-        pass
+    config = load_pyproject_config(pyproject)
+    patterns = config.tool.clean.patterns
+    if patterns:
+        return patterns
     return _FALLBACK_PATTERNS
 
 
