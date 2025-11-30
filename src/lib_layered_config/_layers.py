@@ -24,12 +24,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping, Sequence
 
-from .application.merge import LayerSnapshot, SourceInfoPayload, merge_layers
+from .application.merge import LayerSnapshot, MergeResult, merge_layers
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from .adapters.path_resolvers.default import DefaultPathResolver
 from .domain.errors import InvalidFormat, NotFound
+from .domain.identifiers import Layer
 from .observability import log_debug, log_info, make_event
 
 #: Mapping from file suffix to loader instance. The ordering preserves the
@@ -55,80 +56,11 @@ def collect_layers(
     slug: str,
     start_dir: str | None,
 ) -> list[LayerSnapshot]:
-    """Return layer snapshots in precedence order.
+    """Return layer snapshots in precedence order (defaults → app → host → user → dotenv → env).
 
-    Why
-    ----
-    Centralises discovery so :func:`lib_layered_config.core.read_config_raw`
-    stays focused on error handling and orchestration while keeping precedence
-    logic self-contained.
-
-    Parameters
-    ----------
-    resolver:
-        Path resolver supplying filesystem candidates for ``app``/``host``/``user``
-        layers.
-    prefer:
-        Optional ordered list of preferred suffixes (e.g. ``["toml", "json"]``)
-        influencing filesystem candidate sorting.
-    default_file:
-        Optional lowest-precedence configuration file injected before filesystem
-        layers.
-    dotenv_loader:
-        Loader used to parse ``.env`` files.
-    env_loader:
-        Loader used to translate environment variables using the documented
-        prefix rules.
-    slug:
-        Slug identifying the configuration family (used for environment prefix
-        construction when no ``default_file`` is provided).
-    start_dir:
-        Optional directory that seeds the ``.env`` upward search.
-
-    Returns
-    -------
-    list[LayerSnapshot]
-        Snapshot sequence ordered from lowest to highest precedence.
-
-    Side Effects
-    ------------
-    Emits structured logging events via ``_note_layer_loaded`` when layers are
-    discovered.
-
-    Examples
-    --------
-    >>> from tempfile import TemporaryDirectory
-    >>> class StubResolver:
-    ...     def app(self):
-    ...         return ()
-    ...     def host(self):
-    ...         return ()
-    ...     def user(self):
-    ...         return ()
-    >>> class StubDotenv:
-    ...     last_loaded_path = None
-    ...     def load(self, start_dir):
-    ...         return {}
-    >>> class StubEnv:
-    ...     def load(self, prefix):
-    ...         return {}
-    >>> tmp = TemporaryDirectory()
-    >>> defaults = Path(tmp.name) / 'defaults.toml'
-    >>> _ = defaults.write_text('value = 1', encoding='utf-8')
-    >>> snapshots = collect_layers(
-    ...     resolver=StubResolver(),
-    ...     prefer=None,
-    ...     default_file=str(defaults),
-    ...     dotenv_loader=StubDotenv(),
-    ...     env_loader=StubEnv(),
-    ...     slug='demo',
-    ...     start_dir=None,
-    ... )
-    >>> [(snap.name, snap.origin.endswith('defaults.toml')) for snap in snapshots]
-    [('defaults', True)]
-    >>> tmp.cleanup()
+    Centralises discovery so callers stay focused on error handling.
+    Emits structured logging events when layers are discovered.
     """
-
     return list(
         _snapshots_in_merge_sequence(
             resolver=resolver,
@@ -176,8 +108,8 @@ def _snapshots_in_merge_sequence(
     yield from _env_snapshots(env_loader, slug)
 
 
-def merge_or_empty(layers: list[LayerSnapshot]) -> tuple[dict[str, object], dict[str, SourceInfoPayload]]:
-    """Merge collected layers or return empty dictionaries when none exist.
+def merge_or_empty(layers: list[LayerSnapshot]) -> MergeResult:
+    """Merge collected layers or return empty result when none exist.
 
     Why
     ----
@@ -190,8 +122,8 @@ def merge_or_empty(layers: list[LayerSnapshot]) -> tuple[dict[str, object], dict
 
     Returns
     -------
-    tuple[dict[str, object], dict[str, SourceInfoPayload]]
-        Pair containing merged configuration data and provenance mappings.
+    MergeResult
+        Dataclass containing merged configuration data and provenance mappings.
 
     Side Effects
     ------------
@@ -201,11 +133,11 @@ def merge_or_empty(layers: list[LayerSnapshot]) -> tuple[dict[str, object], dict
 
     if not layers:
         _note_configuration_empty()
-        return {}, {}
+        return MergeResult(data={}, provenance={})
 
-    merged = merge_layers(layers)
+    result = merge_layers(layers)
     _note_merge_complete(len(layers))
-    return merged
+    return result
 
 
 def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
@@ -229,7 +161,7 @@ def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
     if not default_file:
         return
 
-    snapshot = _load_entry("defaults", default_file)
+    snapshot = _load_entry(Layer.DEFAULTS, default_file)
     if snapshot is None:
         return
 
@@ -254,9 +186,9 @@ def _filesystem_snapshots(resolver: DefaultPathResolver, prefer: Sequence[str] |
     """
 
     for layer, paths in (
-        ("app", resolver.app()),
-        ("host", resolver.host()),
-        ("user", resolver.user()),
+        (Layer.APP, resolver.app()),
+        (Layer.HOST, resolver.host()),
+        (Layer.USER, resolver.user()),
     ):
         snapshots = list(_snapshots_from_paths(layer, paths, prefer))
         if snapshots:
@@ -283,8 +215,8 @@ def _dotenv_snapshots(loader: DefaultDotEnvLoader, start_dir: str | None) -> Ite
     data = loader.load(start_dir)
     if not data:
         return
-    _note_layer_loaded("dotenv", loader.last_loaded_path, {"keys": len(data)})
-    yield LayerSnapshot("dotenv", data, loader.last_loaded_path)
+    _note_layer_loaded(Layer.DOTENV, loader.last_loaded_path, {"keys": len(data)})
+    yield LayerSnapshot(Layer.DOTENV, data, loader.last_loaded_path)
 
 
 def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapshot]:
@@ -307,8 +239,8 @@ def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapsho
     data = loader.load(prefix)
     if not data:
         return
-    _note_layer_loaded("env", None, {"keys": len(data)})
-    yield LayerSnapshot("env", data, None)
+    _note_layer_loaded(Layer.ENV, None, {"keys": len(data)})
+    yield LayerSnapshot(Layer.ENV, data, None)
 
 
 def _snapshots_from_paths(layer: str, paths: Iterable[str], prefer: Sequence[str] | None) -> Iterator[LayerSnapshot]:

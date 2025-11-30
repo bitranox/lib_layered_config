@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import rich_click as click
 
-from .common import default_env_prefix, describe_distribution
+from ..core import default_env_prefix
+from .common import describe_distribution
 from .constants import CLICK_CONTEXT_SETTINGS
 
 

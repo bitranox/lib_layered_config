@@ -28,7 +28,30 @@ from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from typing import Iterable, Mapping as TypingMapping, Sequence, TypeGuard, cast
 
+from ..observability import log_warn
 from .ports import SourceInfoPayload
+
+
+@dataclass(frozen=True, slots=True)
+class MergeResult:
+    """Result of merging configuration layers.
+
+    Why
+    ----
+    Provides a structured return type instead of raw tuples, improving
+    code readability and enabling better IDE support.
+
+    Attributes
+    ----------
+    data:
+        The merged configuration tree with all layers applied.
+    provenance:
+        Provenance metadata keyed by dotted path, explaining which layer
+        contributed each final value.
+    """
+
+    data: dict[str, object]
+    provenance: dict[str, SourceInfoPayload]
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -57,7 +80,7 @@ class LayerSnapshot:
     origin: str | None
 
 
-def merge_layers(layers: Iterable[LayerSnapshot]) -> tuple[dict[str, object], dict[str, SourceInfoPayload]]:
+def merge_layers(layers: Iterable[LayerSnapshot]) -> MergeResult:
     """Merge ordered layers into data and provenance dictionaries.
 
     Why
@@ -73,16 +96,16 @@ def merge_layers(layers: Iterable[LayerSnapshot]) -> tuple[dict[str, object], di
 
     Returns
     -------
-    tuple[dict[str, object], dict[str, SourceInfoPayload]]
-        The merged configuration mapping and provenance mapping keyed by dotted
-        path.
+    MergeResult
+        Dataclass containing the merged configuration mapping and provenance
+        mapping keyed by dotted path.
 
     Examples
     --------
     >>> base = LayerSnapshot("app", {"db": {"host": "localhost"}}, "/etc/app.toml")
     >>> override = LayerSnapshot("env", {"db": {"host": "prod"}}, None)
-    >>> data, provenance = merge_layers([base, override])
-    >>> data["db"]["host"], provenance["db.host"]["layer"]
+    >>> result = merge_layers([base, override])
+    >>> result.data["db"]["host"], result.provenance["db.host"]["layer"]
     ('prod', 'env')
     """
 
@@ -92,7 +115,7 @@ def merge_layers(layers: Iterable[LayerSnapshot]) -> tuple[dict[str, object], di
     for snapshot in layers:
         _weave_layer(merged, provenance, snapshot)
 
-    return merged, provenance
+    return MergeResult(data=merged, provenance=provenance)
 
 
 def _weave_layer(
@@ -213,7 +236,7 @@ def _store_branch(
     True
     """
 
-    branch = _ensure_branch(target, key)
+    branch = _ensure_branch(target, key, dotted, snapshot)
     segments.append(key)
     _descend(branch, provenance, value, snapshot, segments)
     segments.pop()
@@ -230,33 +253,13 @@ def _store_scalar(
 ) -> None:
     """Set the scalar value and update provenance in lockstep.
 
-    Parameters
-    ----------
-    target:
-        Mutable mapping receiving the scalar value.
-    provenance:
-        Mutable mapping storing provenance metadata.
-    key:
-        Immediate key to update within *target*.
-    value:
-        Value drawn from the incoming layer.
-    dotted:
-        Fully-qualified dotted key for provenance lookups.
-    snapshot:
-        Metadata describing the active layer.
-
-    Side Effects
-    ------------
-    Mutates both *target* and *provenance*.
-
-    Examples
-    --------
-    >>> target, prov = {}, {}
-    >>> snap = LayerSnapshot('env', {'flag': True}, None)
-    >>> _store_scalar(target, prov, 'flag', True, 'flag', snap)
-    >>> target['flag'], prov['flag']['layer']
-    (True, 'env')
+    Warns when a mapping is being replaced by a scalar, as this may indicate
+    a configuration schema mismatch between layers.
     """
+
+    current = target.get(key)
+    if _looks_like_mapping(current):
+        _warn_type_conflict(dotted, snapshot, "mapping", "scalar")
 
     target[key] = _clone_leaf(value)
     provenance[dotted] = {
@@ -264,6 +267,26 @@ def _store_scalar(
         "path": snapshot.origin,
         "key": dotted,
     }
+
+
+def _clone_dict(value: dict[str, object]) -> dict[str, object]:
+    """Clone a dictionary recursively."""
+    return {k: _clone_leaf(i) for k, i in value.items()}
+
+
+def _clone_list(value: list[object]) -> list[object]:
+    """Clone a list recursively."""
+    return [_clone_leaf(i) for i in value]
+
+
+def _clone_set(value: set[object]) -> set[object]:
+    """Clone a set recursively."""
+    return {_clone_leaf(i) for i in value}
+
+
+def _clone_tuple(value: tuple[object, ...]) -> tuple[object, ...]:
+    """Clone a tuple recursively."""
+    return tuple(_clone_leaf(i) for i in value)
 
 
 def _clone_leaf(value: object) -> object:
@@ -294,54 +317,35 @@ def _clone_leaf(value: object) -> object:
     >>> original['items'][0]
     1
     """
-
     if isinstance(value, dict):
-        mapping = cast(dict[str, object], value)
-        return {key: _clone_leaf(item) for key, item in mapping.items()}
+        return _clone_dict(cast(dict[str, object], value))
     if isinstance(value, list):
-        sequence = cast(list[object], value)
-        return [_clone_leaf(item) for item in sequence]
+        return _clone_list(cast(list[object], value))
     if isinstance(value, set):
-        members = cast(set[object], value)
-        return {_clone_leaf(item) for item in members}
+        return _clone_set(cast(set[object], value))
     if isinstance(value, tuple):
-        items = cast(tuple[object, ...], value)
-        return tuple(_clone_leaf(item) for item in items)
+        return _clone_tuple(cast(tuple[object, ...], value))
     return value
 
 
-def _ensure_branch(target: MutableMapping[str, object], key: str) -> MutableMapping[str, object]:
+def _ensure_branch(
+    target: MutableMapping[str, object],
+    key: str,
+    dotted: str,
+    snapshot: LayerSnapshot,
+) -> MutableMapping[str, object]:
     """Return an existing branch or create a fresh empty one.
 
-    Parameters
-    ----------
-    target:
-        Mutable mapping holding the current branch.
-    key:
-        Key that should reference a nested mapping.
-
-    Returns
-    -------
-    MutableMapping[str, object]
-        Existing branch when present or a new one inserted into *target*.
-
-    Side Effects
-    ------------
-    Inserts a new mutable mapping into *target* when needed.
-
-    Examples
-    --------
-    >>> branch = _ensure_branch({}, 'child')
-    >>> isinstance(branch, MutableMapping)
-    True
-    >>> second = _ensure_branch({'child': branch}, 'child')
-    >>> second is branch
-    True
+    Warns when a scalar value is being replaced by a mapping, as this may
+    indicate a configuration schema mismatch between layers.
     """
 
     current = target.get(key)
     if _looks_like_mapping(current):
         return cast(MutableMapping[str, object], current)
+
+    if current is not None:
+        _warn_type_conflict(dotted, snapshot, "scalar", "mapping")
 
     new_branch: MutableMapping[str, object] = {}
     target[key] = new_branch
@@ -439,4 +443,21 @@ def _looks_like_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
     return all(isinstance(k, str) for k in keys)
 
 
-__all__ = ["LayerSnapshot", "merge_layers"]
+def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: str, new_type: str) -> None:
+    """Emit a warning when a type conflict occurs during merge.
+
+    This indicates a potential configuration schema mismatch where one layer
+    defines a key as a scalar and another defines it as a mapping.
+    """
+
+    log_warn(
+        "type_conflict",
+        key=dotted,
+        layer=snapshot.name,
+        path=snapshot.origin,
+        old_type=old_type,
+        new_type=new_type,
+    )
+
+
+__all__ = ["LayerSnapshot", "MergeResult", "merge_layers"]

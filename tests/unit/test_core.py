@@ -43,7 +43,9 @@ def test_read_config_json_honours_indent_argument(tmp_path) -> None:
 
 @os_agnostic
 def test_read_config_returns_empty_config_when_nothing_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(core, "read_config_raw", lambda **_: ({}, {}))
+    from lib_layered_config.application.merge import MergeResult
+
+    monkeypatch.setattr(core, "read_config_raw", lambda **_: MergeResult(data={}, provenance={}))
 
     result = core.read_config(vendor="Acme", app="Demo", slug="demo")
 

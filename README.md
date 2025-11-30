@@ -197,6 +197,8 @@ config = read_config(vendor="Acme", app="My App", slug="myapp")
 - Use uppercase: `"MyApp"` → use `"myapp"`
 - Use underscores in the slug: `"my_app"` → use `"my-app"` (underscores are added automatically for env vars)
 - Mix naming conventions across your codebase
+- Use path separators (`/` or `\`): `"../etc"` will raise `ValueError`
+- Start with a dot: `".hidden"` will raise `ValueError`
 
 ---
 
@@ -1672,6 +1674,7 @@ lib_layered_config fail
 ```python
 from lib_layered_config import (
     Config,
+    Layer,
     read_config,
     read_config_json,
     read_config_raw,
@@ -1680,6 +1683,27 @@ from lib_layered_config import (
     generate_examples,
     i_should_fail,
 )
+```
+
+### `Layer` Enum
+
+The `Layer` enum provides type-safe constants for configuration layer names:
+
+```python
+from lib_layered_config import Layer
+
+# Available layers (in precedence order, lowest to highest):
+Layer.DEFAULTS  # "defaults" - bundled application defaults
+Layer.APP       # "app" - system-wide application config
+Layer.HOST      # "host" - machine-specific overrides
+Layer.USER      # "user" - per-user preferences
+Layer.DOTENV    # "dotenv" - project-local .env file
+Layer.ENV       # "env" - environment variables (highest precedence)
+
+# Layer values are strings, so they work seamlessly with provenance:
+origin = config.origin("service.timeout")
+if origin and origin["layer"] == Layer.ENV:
+    print("Value comes from environment variable")
 ```
 
 ### `Config` Class
@@ -2757,8 +2781,24 @@ examples = generate_examples(Path("./examples"), slug="config-kit", vendor="Acme
 ## Provenance & Observability
 
 - Every merged key stores metadata (`layer`, `path`, `key`).
-- Structured logging lives in `lib_layered_config.observability` (trace-aware `log_debug`, `log_info`, `log_error`).
+- Structured logging lives in `lib_layered_config.observability` (trace-aware `log_debug`, `log_info`, `log_warn`, `log_error`).
 - Use `bind_trace_id("abc123")` to correlate CLI/log events with your own tracing.
+
+### Type Conflict Warnings
+
+When a later layer overwrites a scalar value with a mapping (or vice versa), a warning is emitted:
+
+```python
+import logging
+logging.basicConfig(level=logging.WARNING)
+
+# If user.toml has: service = "disabled"
+# And app.toml has:  [service]
+#                    timeout = 30
+# A WARNING log is emitted: "type_conflict" with details about the key, layers, and types involved
+```
+
+This helps identify configuration mismatches where a key changes from a simple value to a nested structure (or the reverse) across layers.
 
 ## Further documentation
 

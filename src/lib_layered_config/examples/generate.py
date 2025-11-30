@@ -94,45 +94,12 @@ def generate_examples(
     force: bool = False,
     platform: str | None = None,
 ) -> list[Path]:
-    """Write the canonical example files for each configuration layer.
+    """Write canonical example files for each configuration layer.
 
-    Why
-    ----
-    Quickly bootstrap demos, tests, or documentation assets that mirror the
-    recommended filesystem layout.
-
-    Parameters
-    ----------
-    destination:
-        Directory that will receive the generated structure.
-    slug / vendor / app:
-        Metadata used to fill placeholders so examples read naturally.
-    force:
-        When ``True`` existing files are overwritten; otherwise the function
-        skips files that already exist.
-    platform:
-        Optional override for the OS layout (``"posix"`` or ``"windows"``).
-        When ``None`` it follows the running interpreter platform.
-
-    Returns
-    -------
-    list[Path]
-        Absolute file paths written during this invocation.
-
-    Side Effects
-    ------------
-    Creates directories and writes files under ``destination``.
-
-    Examples
-    --------
-    >>> from tempfile import TemporaryDirectory
-    >>> tmp = TemporaryDirectory()
-    >>> generated = generate_examples(tmp.name, slug='demo', vendor='Acme', app='ConfigKit')
-    >>> any(path.name == 'config.toml' for path in generated)
-    True
-    >>> tmp.cleanup()
+    Creates directories and files under *destination* mirroring the recommended
+    filesystem layout. Returns paths of files written. Use *force=True* to
+    overwrite existing files; *platform* overrides OS detection ("posix"/"windows").
     """
-
     plan = _build_example_plan(
         destination=destination,
         slug=slug,
@@ -504,6 +471,11 @@ def _env_secrets_body(slug: str) -> str:
 """
 
 
+def _default_platform() -> str:
+    """Return the default platform based on OS."""
+    return "windows" if os.name == "nt" else "posix"
+
+
 def _normalise_platform(value: str | None) -> str:
     """Return a canonical platform key for example generation.
 
@@ -529,11 +501,10 @@ def _normalise_platform(value: str | None) -> str:
     >>> _normalise_platform(None) in {'posix', 'windows'}
     True
     """
-
     if value is None:
-        return "windows" if os.name == "nt" else "posix"
+        return _default_platform()
     try:
         resolved = normalise_examples_platform(value)
     except ValueError as exc:  # pragma: no cover - validated via CLI helpers
         raise ValueError(str(exc)) from exc
-    return resolved or ("windows" if os.name == "nt" else "posix")
+    return resolved or _default_platform()

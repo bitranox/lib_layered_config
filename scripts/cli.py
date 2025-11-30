@@ -120,7 +120,7 @@ def dev_command(dry_run: bool) -> None:
 @main.command(name="clean", help="Remove caches and build artefacts")
 @click.option("--pattern", "patterns", multiple=True, help="Additional glob patterns to delete")
 def clean_command(patterns: tuple[str, ...]) -> None:
-    target_patterns = clean_module.DEFAULT_PATTERNS + tuple(patterns)
+    target_patterns = clean_module.get_clean_patterns() + tuple(patterns)
     clean_module.clean(target_patterns)
 
 

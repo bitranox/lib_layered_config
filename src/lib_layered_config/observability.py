@@ -9,8 +9,8 @@ Contents
     - ``TRACE_ID``: context variable storing the active trace identifier.
     - ``get_logger``: returns the shared package logger (quiet by default).
     - ``bind_trace_id``: binds or clears the active trace identifier.
-    - ``log_debug`` / ``log_info`` / ``log_error``: emit structured entries via a
-      single private emitter.
+    - ``log_debug`` / ``log_info`` / ``log_warn`` / ``log_error``: emit structured
+      entries via a single private emitter.
     - ``make_event``: convenience builder for structured event payloads.
 
 System Integration
@@ -142,27 +142,24 @@ def log_info(message: str, **fields: Any) -> None:
     _emit(logging.INFO, message, fields)
 
 
+def log_warn(message: str, **fields: Any) -> None:
+    """Emit a structured warning log entry that includes the trace context.
+
+    Why
+    ----
+    Surface potential configuration issues (e.g., type conflicts) that don't prevent
+    loading but may indicate user error.
+    """
+
+    _emit(logging.WARNING, message, fields)
+
+
 def log_error(message: str, **fields: Any) -> None:
     """Emit a structured error log entry that includes the trace context.
 
     Why
     ----
     Surface recoverable adapter failures (e.g., invalid files) with enough context for diagnosis.
-
-    Parameters
-    ----------
-    message:
-        Event name rendered by the logger.
-    **fields:
-        Structured context merged into the payload.
-
-    Returns
-    -------
-    None
-
-    Side Effects
-    ------------
-    Calls :func:`_emit` with ``logging.ERROR``.
     """
 
     _emit(logging.ERROR, message, fields)
@@ -191,7 +188,7 @@ def make_event(
     Returns
     -------
     dict[str, Any]
-        Data safe to unpack into :func:`log_debug`, :func:`log_info`, or :func:`log_error`.
+        Data safe to unpack into :func:`log_debug`, :func:`log_info`, :func:`log_warn`, or :func:`log_error`.
 
     Examples
     --------

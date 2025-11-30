@@ -27,14 +27,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Sequence, cast
+from typing import Sequence
 
 from ._layers import collect_layers, merge_or_empty
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.path_resolvers.default import DefaultPathResolver
-from .application.merge import SourceInfoPayload
-from .domain.config import Config, EMPTY_CONFIG, SourceInfo
+from .application.merge import MergeResult
+from .application.ports import SourceInfoPayload
+from .domain.config import Config, EMPTY_CONFIG
 from .domain.errors import ConfigError, InvalidFormat, NotFound, ValidationError
 from .observability import bind_trace_id
 
@@ -91,7 +92,7 @@ def read_config(
     True
     """
 
-    data, raw_meta = read_config_raw(
+    result = read_config_raw(
         vendor=vendor,
         app=app,
         slug=slug,
@@ -99,7 +100,7 @@ def read_config(
         start_dir=start_dir,
         default_file=_stringify_path(default_file),
     )
-    return _compose_config(data, raw_meta)
+    return _compose_config(result.data, result.provenance)
 
 
 def read_config_json(
@@ -131,7 +132,7 @@ def read_config_json(
         JSON document containing ``{"config": ..., "provenance": ...}``.
     """
 
-    data, meta = read_config_raw(
+    result = read_config_raw(
         vendor=vendor,
         app=app,
         slug=slug,
@@ -139,7 +140,7 @@ def read_config_json(
         start_dir=_stringify_path(start_dir),
         default_file=_stringify_path(default_file),
     )
-    return _dump_json({"config": data, "provenance": meta}, indent)
+    return _dump_json({"config": result.data, "provenance": result.provenance}, indent)
 
 
 def read_config_raw(
@@ -150,47 +151,13 @@ def read_config_raw(
     prefer: Sequence[str] | None = None,
     start_dir: str | None = None,
     default_file: str | Path | None = None,
-) -> tuple[dict[str, object], dict[str, SourceInfoPayload]]:
-    """Return raw data and provenance mappings for advanced tooling.
+) -> MergeResult:
+    """Return raw merged data and provenance for advanced tooling.
 
-    Why
-    ----
-    Some consumers need dictionaries they can mutate or serialise differently
-    without enforcing the :class:`Config` abstraction, while reusing the same
-    precedence pipeline and provenance metadata as the public API.
-
-    Parameters
-    ----------
-    vendor / app / slug:
-        Identifiers passed to the path resolver to compute search roots and
-        prefixes.
-    prefer:
-        Optional ordered sequence of preferred file suffixes (lower precedence
-        when omitted).
-    start_dir:
-        Optional directory seeding the upward `.env` search. ``None`` keeps the
-        resolver default.
-    default_file:
-        Optional path injected as the lowest-precedence layer. Accepts either
-        :class:`pathlib.Path` or string values.
-
-    Returns
-    -------
-    tuple[dict[str, object], dict[str, SourceInfoPayload]]
-        Pair of mutable dictionaries mirroring the merge results prior to
-        construction of the domain value object.
-
-    Side Effects
-    ------------
-    Resets the active trace identifier and emits structured logging events via
-    the layer collection helpers.
-
-    Raises
-    ------
-    LayerLoadError
-        When a structured file loader raises :class:`InvalidFormat`.
+    Unlike :func:`read_config`, returns mutable dictionaries instead of the
+    immutable :class:`Config` abstraction. Raises :class:`LayerLoadError`
+    when a structured file loader encounters invalid content.
     """
-
     resolver = _build_resolver(vendor=vendor, app=app, slug=slug, start_dir=start_dir)
     dotenv_loader, env_loader = _build_loaders(resolver)
 
@@ -249,8 +216,7 @@ def _compose_config(
 
     if not data:
         return EMPTY_CONFIG
-    meta = {key: cast(SourceInfo, details) for key, details in raw_meta.items()}
-    return Config(data, meta)
+    return Config(data, raw_meta)
 
 
 def _build_resolver(

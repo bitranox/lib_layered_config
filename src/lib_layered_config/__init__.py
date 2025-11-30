@@ -37,6 +37,7 @@ from .core import (
     read_config_json,
     read_config_raw,
 )
+from .domain.identifiers import Layer
 from .observability import bind_trace_id, get_logger
 from .examples import deploy_config, generate_examples
 from .testing import i_should_fail
@@ -48,6 +49,7 @@ __all__ = [
     "ValidationError",
     "NotFound",
     "LayerLoadError",
+    "Layer",
     "read_config",
     "read_config_json",
     "read_config_raw",

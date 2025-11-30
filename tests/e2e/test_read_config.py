@@ -25,7 +25,7 @@ def sandbox(tmp_path: Path) -> LayeredSandbox:
 def arrange_precedence_story(
     monkeypatch: pytest.MonkeyPatch,
     sandbox: LayeredSandbox,
-) -> tuple[dict[str, object], dict[str, dict[str, str]]]:
+):
     sandbox.apply_env(monkeypatch)
     sandbox.write(
         "app",
@@ -85,8 +85,8 @@ def arrange_precedence_story(
 
 @os_agnostic
 def test_read_config_returns_highest_precedence_value(monkeypatch: pytest.MonkeyPatch, sandbox: LayeredSandbox) -> None:
-    data, _ = arrange_precedence_story(monkeypatch, sandbox)
-    timeout = data["service"]["timeout"]  # type: ignore[index]
+    result = arrange_precedence_story(monkeypatch, sandbox)
+    timeout = result.data["service"]["timeout"]  # type: ignore[index]
     assert int(timeout) == 20
 
 
@@ -94,20 +94,20 @@ def test_read_config_returns_highest_precedence_value(monkeypatch: pytest.Monkey
 def test_read_config_preserves_lower_precedence_scalars(
     monkeypatch: pytest.MonkeyPatch, sandbox: LayeredSandbox
 ) -> None:
-    data, _ = arrange_precedence_story(monkeypatch, sandbox)
-    assert data["service"]["retries"] == 1  # type: ignore[index]
+    result = arrange_precedence_story(monkeypatch, sandbox)
+    assert result.data["service"]["retries"] == 1  # type: ignore[index]
 
 
 @os_agnostic
 def test_read_config_provenance_records_env_layer(monkeypatch: pytest.MonkeyPatch, sandbox: LayeredSandbox) -> None:
-    _, provenance = arrange_precedence_story(monkeypatch, sandbox)
-    assert provenance["service.timeout"]["layer"] == "env"
+    result = arrange_precedence_story(monkeypatch, sandbox)
+    assert result.provenance["service.timeout"]["layer"] == "env"
 
 
 @os_agnostic
 def test_read_config_provenance_records_app_layer(monkeypatch: pytest.MonkeyPatch, sandbox: LayeredSandbox) -> None:
-    _, provenance = arrange_precedence_story(monkeypatch, sandbox)
-    assert provenance["service.retries"]["layer"] == "app"
+    result = arrange_precedence_story(monkeypatch, sandbox)
+    assert result.provenance["service.retries"]["layer"] == "app"
 
 
 @os_agnostic

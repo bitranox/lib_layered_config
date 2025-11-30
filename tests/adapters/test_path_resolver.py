@@ -7,12 +7,20 @@ setup declarative and aligned with the documented precedence rules.
 
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 
-from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
+from lib_layered_config.adapters.path_resolvers import (
+    DefaultPathResolver,
+    LinuxStrategy,
+    MacOSStrategy,
+    PlatformContext,
+    WindowsStrategy,
+    collect_layer,
+)
+from lib_layered_config.adapters.path_resolvers._dotenv import DotenvPathFinder
 from tests.support import create_layered_sandbox
-from tests.support.os_markers import mac_only, posix_only, windows_only, os_agnostic
+from tests.support.os_markers import mac_only, os_agnostic, posix_only, windows_only
 
 
 def _linux_context(tmp_path: Path):
@@ -206,6 +214,33 @@ def _make_resolver(
     return resolver, sandbox.roots
 
 
+def _make_context(
+    tmp_path: Path,
+    *,
+    platform: str,
+    hostname: str = "example-host",
+    env_override: dict[str, str] | None = None,
+) -> tuple[PlatformContext, dict[str, Path]]:
+    """Create a PlatformContext and sandbox roots for strategy testing."""
+    sandbox = create_layered_sandbox(
+        tmp_path,
+        vendor="Acme",
+        app="ConfigKit",
+        slug="config-kit",
+        platform=platform,
+    )
+    env = {**sandbox.env, **(env_override or {})}
+    ctx = PlatformContext(
+        vendor="Acme",
+        app="ConfigKit",
+        slug="config-kit",
+        cwd=sandbox.start_dir,
+        env=env,
+        hostname=hostname,
+    )
+    return ctx, sandbox.roots
+
+
 @windows_only
 def test_windows_resolver_app_path_points_to_programdata(tmp_path: Path) -> None:
     resolver, _ = _windows_context(tmp_path)
@@ -232,13 +267,13 @@ def test_windows_resolver_user_paths_cover_roaming_appdata(tmp_path: Path) -> No
 @os_agnostic
 def test_platform_paths_returns_empty_for_unknown_platform(tmp_path: Path) -> None:
     resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, platform="plan9")
-    assert resolver._platform_paths("app") == []
+    assert resolver._iter_layer("app") == []
 
 
 @os_agnostic
 def test_platform_dotenv_path_returns_none_for_unknown_platform(tmp_path: Path) -> None:
     resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, platform="plan9")
-    assert resolver._platform_dotenv_path() is None
+    assert resolver._dotenv_finder._platform_path() is None
 
 
 @windows_only
@@ -252,48 +287,54 @@ def test_windows_user_paths_fall_back_to_localappdata(tmp_path: Path) -> None:
     local_base.mkdir(parents=True, exist_ok=True)
     target = local_base / "config.toml"
     target.write_text("[service]\nvalue=1\n", encoding="utf-8")
-    resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", env=env, platform="win32", hostname="HOST")
-    user_paths = list(resolver._windows_user_paths())
+    ctx = PlatformContext(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, env=env, hostname="HOST")
+    strategy = WindowsStrategy(ctx)
+    user_paths = list(strategy.user_paths())
     assert str(target) in user_paths
 
 
 @os_agnostic
 def test_mac_paths_fall_silent_for_unknown_layer(tmp_path: Path) -> None:
     resolver, _ = _make_resolver(tmp_path, platform="darwin")
-    assert list(resolver._mac_paths("shadow")) == []
+    # Test that unknown layers return empty via the resolver's internal dispatch
+    assert resolver._iter_layer("shadow") == []
 
 
 @os_agnostic
 def test_mac_host_paths_ignore_missing_candidates(tmp_path: Path) -> None:
-    resolver, _ = _make_resolver(tmp_path, platform="darwin", hostname="mac-host")
-    host_paths = list(resolver._mac_host_paths())
+    ctx, _ = _make_context(tmp_path, platform="darwin", hostname="mac-host")
+    strategy = MacOSStrategy(ctx)
+    host_paths = list(strategy.host_paths())
     assert host_paths == []
 
 
 @os_agnostic
 def test_mac_host_paths_return_file_when_present(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="darwin", hostname="mac-host")
+    ctx, roots = _make_context(tmp_path, platform="darwin", hostname="mac-host")
     target = roots["host"] / "mac-host.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[host]\nvalue=2\n", encoding="utf-8")
-    host_paths = list(resolver._mac_host_paths())
+    strategy = MacOSStrategy(ctx)
+    host_paths = list(strategy.host_paths())
     assert host_paths == [str(target)]
 
 
 @os_agnostic
 def test_mac_user_paths_collect_config_directory(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="darwin")
+    ctx, roots = _make_context(tmp_path, platform="darwin")
     config = roots["user"] / "config.toml"
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text("[user]\nvalue=3\n", encoding="utf-8")
-    user_paths = list(resolver._mac_user_paths())
+    strategy = MacOSStrategy(ctx)
+    user_paths = list(strategy.user_paths())
     assert user_paths == [str(config)]
 
 
 @os_agnostic
 def test_windows_paths_fall_silent_for_unknown_layer(tmp_path: Path) -> None:
     resolver, _ = _make_resolver(tmp_path, platform="win32")
-    assert list(resolver._windows_paths("shadow")) == []
+    # Test that unknown layers return empty via the resolver's internal dispatch
+    assert resolver._iter_layer("shadow") == []
 
 
 @os_agnostic
@@ -302,7 +343,7 @@ def test_platform_paths_route_to_mac_helpers(tmp_path: Path) -> None:
     target = roots["app"] / "config.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[app]\nvalue=1\n", encoding="utf-8")
-    paths = resolver._platform_paths("app")
+    paths = resolver.app()
     assert str(target) in paths
 
 
@@ -312,128 +353,140 @@ def test_platform_paths_route_to_windows_helpers(tmp_path: Path) -> None:
     target = roots["app"] / "config.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[windows]\nvalue=1\n", encoding="utf-8")
-    paths = resolver._platform_paths("app")
+    paths = resolver.app()
     assert str(target) in paths
 
 
 @os_agnostic
 def test_mac_app_paths_collect_layer_entries(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="darwin")
+    ctx, roots = _make_context(tmp_path, platform="darwin")
     target = roots["app"] / "config.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[app]\nvalue=1\n", encoding="utf-8")
-    app_paths = list(resolver._mac_app_paths())
+    strategy = MacOSStrategy(ctx)
+    app_paths = list(strategy.app_paths())
     assert app_paths == [str(target)]
 
 
 @os_agnostic
 def test_windows_app_paths_collect_layer_entries(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="win32")
+    ctx, roots = _make_context(tmp_path, platform="win32")
     target = roots["app"] / "config.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[app]\nvalue=1\n", encoding="utf-8")
-    app_paths = list(resolver._windows_app_paths())
+    strategy = WindowsStrategy(ctx)
+    app_paths = list(strategy.app_paths())
     assert app_paths == [str(target)]
 
 
 @os_agnostic
 def test_windows_host_paths_ignore_missing_candidates(tmp_path: Path) -> None:
-    resolver, _ = _make_resolver(tmp_path, platform="win32", hostname="HOST")
-    assert list(resolver._windows_host_paths()) == []
+    ctx, _ = _make_context(tmp_path, platform="win32", hostname="HOST")
+    strategy = WindowsStrategy(ctx)
+    assert list(strategy.host_paths()) == []
 
 
 @os_agnostic
 def test_windows_host_paths_return_file_when_present(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="win32", hostname="HOST")
+    ctx, roots = _make_context(tmp_path, platform="win32", hostname="HOST")
     target = roots["app"] / "hosts" / "HOST.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[host]\nvalue=2\n", encoding="utf-8")
-    host_paths = list(resolver._windows_host_paths())
+    strategy = WindowsStrategy(ctx)
+    host_paths = list(strategy.host_paths())
     assert [Path(entry) for entry in host_paths] == [target]
 
 
 @os_agnostic
 def test_windows_user_paths_fall_back_to_local_when_roaming_absent(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="win32", hostname="HOST")
+    ctx, roots = _make_context(tmp_path, platform="win32", hostname="HOST")
     roaming = roots["user"]
     if roaming.exists():
         shutil.rmtree(roaming)
-    local_root = Path(resolver.env["LIB_LAYERED_CONFIG_LOCALAPPDATA"])
-    config = local_root / resolver.vendor / resolver.application / "config.toml"
+    local_root = Path(ctx.env["LIB_LAYERED_CONFIG_LOCALAPPDATA"])
+    config = local_root / ctx.vendor / ctx.app / "config.toml"
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text("[user]\nvalue=7\n", encoding="utf-8")
-    user_paths = list(resolver._windows_user_paths())
+    strategy = WindowsStrategy(ctx)
+    user_paths = list(strategy.user_paths())
     assert user_paths == [str(config)]
 
 
 @os_agnostic
 def test_windows_user_paths_return_roaming_when_present(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="win32", hostname="HOST")
+    ctx, roots = _make_context(tmp_path, platform="win32", hostname="HOST")
     roaming = roots["user"]
     config = roaming / "config.toml"
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text("[user]\nvalue=9\n", encoding="utf-8")
-    user_paths = list(resolver._windows_user_paths())
+    strategy = WindowsStrategy(ctx)
+    user_paths = list(strategy.user_paths())
     assert user_paths == [str(config)]
 
 
 @os_agnostic
 def test_program_data_root_honours_environment_override(tmp_path: Path) -> None:
     override = tmp_path / "CustomProgramData"
-    resolver, _ = _make_resolver(
+    ctx, _ = _make_context(
         tmp_path,
         platform="win32",
         env_override={"LIB_LAYERED_CONFIG_PROGRAMDATA": str(override)},
     )
-    assert resolver._program_data_root() == override
+    strategy = WindowsStrategy(ctx)
+    assert strategy._program_data_root() == override
 
 
 @os_agnostic
 def test_appdata_root_prefers_explicit_override(tmp_path: Path) -> None:
     override = tmp_path / "Roaming"
-    resolver, _ = _make_resolver(
+    ctx, _ = _make_context(
         tmp_path,
         platform="win32",
         env_override={"LIB_LAYERED_CONFIG_APPDATA": str(override)},
     )
-    assert resolver._appdata_root() == override
+    strategy = WindowsStrategy(ctx)
+    assert strategy._appdata_root() == override
 
 
 @os_agnostic
 def test_localappdata_root_prefers_explicit_override(tmp_path: Path) -> None:
     override = tmp_path / "Local"
-    resolver, _ = _make_resolver(
+    ctx, _ = _make_context(
         tmp_path,
         platform="win32",
         env_override={"LIB_LAYERED_CONFIG_LOCALAPPDATA": str(override)},
     )
-    assert resolver._localappdata_root() == override
+    strategy = WindowsStrategy(ctx)
+    assert strategy._localappdata_root() == override
 
 
 @os_agnostic
 def test_platform_dotenv_path_returns_linux_candidate(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="linux")
-    expected = Path(resolver._platform_dotenv_path())
-    assert expected == Path(resolver.env["XDG_CONFIG_HOME"]) / resolver.slug / ".env"
+    ctx, _ = _make_context(tmp_path, platform="linux")
+    strategy = LinuxStrategy(ctx)
+    expected = strategy.dotenv_path()
+    assert expected == Path(ctx.env["XDG_CONFIG_HOME"]) / ctx.slug / ".env"
 
 
 @os_agnostic
 def test_platform_dotenv_path_returns_mac_candidate(tmp_path: Path) -> None:
-    resolver, _ = _make_resolver(tmp_path, platform="darwin")
-    expected = Path(resolver._platform_dotenv_path())
+    ctx, _ = _make_context(tmp_path, platform="darwin")
+    strategy = MacOSStrategy(ctx)
+    expected = strategy.dotenv_path()
     assert expected.as_posix().endswith("Application Support/Acme/ConfigKit/.env")
 
 
 @os_agnostic
 def test_platform_dotenv_path_returns_windows_candidate(tmp_path: Path) -> None:
-    resolver, _ = _make_resolver(tmp_path, platform="win32")
-    expected = Path(resolver._platform_dotenv_path())
+    ctx, _ = _make_context(tmp_path, platform="win32")
+    strategy = WindowsStrategy(ctx)
+    expected = strategy.dotenv_path()
     assert expected.as_posix().endswith("AppData/Roaming/Acme/ConfigKit/.env")
 
 
 @os_agnostic
 def test_dotenv_paths_append_platform_file_when_present(tmp_path: Path) -> None:
-    resolver, roots = _make_resolver(tmp_path, platform="linux")
+    resolver, _ = _make_resolver(tmp_path, platform="linux")
     fallback = Path(resolver.env["XDG_CONFIG_HOME"]) / resolver.slug / ".env"
     fallback.parent.mkdir(parents=True, exist_ok=True)
     fallback.write_text("KEY=value\n", encoding="utf-8")
@@ -443,10 +496,12 @@ def test_dotenv_paths_append_platform_file_when_present(tmp_path: Path) -> None:
 
 @os_agnostic
 def test_project_dotenv_paths_skip_duplicate_candidates(tmp_path: Path) -> None:
-    resolver, _ = _make_resolver(tmp_path, platform="linux")
+    ctx, _ = _make_context(tmp_path, platform="linux")
+    strategy = LinuxStrategy(ctx)
+    finder = DotenvPathFinder(tmp_path, strategy)
     duplicate = _RepeatingDirectory(tmp_path)
-    resolver.cwd = duplicate  # type: ignore[assignment]
-    paths = list(resolver._project_dotenv_paths())
+    finder.cwd = duplicate  # type: ignore[assignment]
+    paths = list(finder._project_paths())
     assert paths == []
 
 
@@ -503,6 +558,5 @@ def test_collect_layer_discards_unknown_extensions(tmp_path: Path) -> None:
     base.mkdir()
     (base / "config.d").mkdir()
     (base / "config.d" / "10-extra.txt").write_text("ignored", encoding="utf-8")
-    from lib_layered_config.adapters.path_resolvers.default import _collect_layer
 
-    assert list(_collect_layer(base)) == []
+    assert list(collect_layer(base)) == []

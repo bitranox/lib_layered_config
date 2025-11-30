@@ -1,5 +1,29 @@
 # Changelog
 
+## [3.0.1] - 2025-11-30
+
+### Added
+
+- **`Layer` enum** - New type-safe enumeration for configuration layer names (`Layer.DEFAULTS`, `Layer.APP`, `Layer.HOST`, `Layer.USER`, `Layer.DOTENV`, `Layer.ENV`). The enum values are strings, so they work seamlessly with existing code and provenance dictionaries.
+
+- **Type conflict warnings** - When a later configuration layer overwrites a scalar value with a mapping (or vice versa), a warning is now logged. This helps identify configuration mismatches where a key changes type across layers.
+
+- **Input validation for identifiers** - The `vendor`, `app`, and `slug` parameters are now validated to prevent path traversal attacks. Values containing `/`, `\`, or starting with `.` will raise `ValueError`.
+
+- **Hostname sanitization** - Hostnames used in path resolution are now validated to prevent path traversal via malicious hostname values.
+
+### Changed
+
+- **`MergeResult` dataclass** - The merge function now returns a `MergeResult` dataclass with `data` and `provenance` attributes instead of a tuple, improving code clarity.
+
+- **Observability module** - Added `log_warn()` function for structured warning logs with trace context.
+
+### Internal
+
+- Consolidated duplicate nested-key iteration logic into `adapters/_nested_keys.py`.
+- Reduced cyclomatic complexity in `DefaultPathResolver` using Strategy pattern.
+- Trimmed verbose docstrings to improve maintainability index scores.
+
 ## [3.0.0] - 2025-11-25
 
 ### Breaking Changes

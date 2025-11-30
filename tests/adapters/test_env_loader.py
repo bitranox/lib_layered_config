@@ -10,9 +10,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from lib_layered_config.adapters._nested_keys import assign_nested
 from lib_layered_config.adapters.env.default import (
     DefaultEnvLoader,
-    assign_nested,
     default_env_prefix,
     _normalize_prefix,
     _iter_namespace_entries,
@@ -58,9 +58,9 @@ def test_env_loader_turns_true_into_boolean() -> None:
 
 @os_agnostic
 def test_assign_nested_overwrites_scalar_raises_value_error() -> None:
-    container: dict[str, object] = {"A": "value"}
+    container: dict[str, object] = {"a": "value"}
     with pytest.raises(ValueError):
-        assign_nested(container, "A__B", 1)
+        assign_nested(container, "A__B", 1, error_cls=ValueError)
 
 
 SCALAR_VALUES = st.sampled_from(["0", "1", "true", "false", "3.5", "none", "debug"])

@@ -2,23 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Callable, Iterable, Mapping, Optional, Sequence, cast
+from typing import Callable, Optional, Sequence, cast
 
 import rich_click as click
 from lib_cli_exit_tools import cli_session
 
-from ..application.ports import SourceInfoPayload
-from .common import (
-    describe_distribution,
-    format_scalar,
-    json_paths,
-    normalise_examples_platform_option,
-    normalise_platform_option,
-    normalise_prefer,
-    render_human,
-    version_string,
-)
+from .common import version_string
 from .constants import CLICK_CONTEXT_SETTINGS, TRACEBACK_SUMMARY, TRACEBACK_VERBOSE
 from .read import read_command as cli_read_config, read_json_command as cli_read_config_json
 
@@ -95,50 +84,10 @@ def _register_commands() -> None:
 
 _register_commands()
 
-_version_string = version_string
-
-
-def _normalise_platform(value: str | None) -> str | None:  # pyright: ignore[reportUnusedFunction]
-    return normalise_platform_option(value)
-
-
-def _normalise_examples_platform(value: str | None) -> str | None:  # pyright: ignore[reportUnusedFunction]
-    return normalise_examples_platform_option(value)
-
-
-def _json_paths(paths: Iterable[Path]) -> str:  # pyright: ignore[reportUnusedFunction]
-    return json_paths(paths)
-
-
-def _render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfoPayload]) -> str:  # pyright: ignore[reportUnusedFunction]
-    return render_human(data, provenance)
-
-
-def _format_scalar(value: object) -> str:  # pyright: ignore[reportUnusedFunction]
-    return format_scalar(value)
-
-
-def _normalise_prefer(values: Sequence[str]) -> tuple[str, ...] | None:  # pyright: ignore[reportUnusedFunction]
-    return normalise_prefer(values)
-
-
-def _describe_distribution() -> tuple[str, ...]:
-    """Expose CLI metadata lines for backwards-compatible tests."""
-
-    return tuple(describe_distribution())
-
 
 __all__ = [
     "cli",
     "main",
-    "_version_string",
-    "_describe_distribution",
-    "_normalise_platform",
-    "_normalise_examples_platform",
-    "_json_paths",
-    "_render_human",
-    "_format_scalar",
-    "_normalise_prefer",
     "cli_read_config",
     "cli_read_config_json",
 ]

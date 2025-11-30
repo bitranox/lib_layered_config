@@ -9,8 +9,6 @@ and forms the final precedence layer in ``lib_layered_config``.
 Contents
     - ``default_env_prefix``: canonical prefix builder for a slug.
     - ``DefaultEnvLoader``: orchestrates filtering, coercion, and nesting.
-    - ``assign_nested`` / ``_ensure_child_mapping`` / ``_resolve_key``: shared
-      helpers re-used by dotenv parsing to keep shapes aligned.
     - ``_coerce`` plus tiny predicate helpers that translate strings into
       Python primitives.
     - ``_normalize_prefix`` / ``_iter_namespace_entries`` / ``_collect_keys``:
@@ -21,8 +19,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable, Iterator
-from typing import cast
 
+from .._nested_keys import assign_nested
 from ...observability import log_debug
 
 
@@ -130,7 +128,7 @@ class DefaultEnvLoader:
         normalized_prefix = _normalize_prefix(prefix)
         collected: dict[str, object] = {}
         for raw_key, value in _iter_namespace_entries(self._environ.items(), normalized_prefix):
-            assign_nested(collected, raw_key, _coerce(value))
+            assign_nested(collected, raw_key, _coerce(value), error_cls=ValueError)
         log_debug("env_variables_loaded", layer="env", path=None, keys=_collect_keys(collected))
         return collected
 
@@ -232,143 +230,6 @@ def _collect_keys(mapping: dict[str, object]) -> list[str]:
     """
 
     return sorted(mapping.keys())
-
-
-def assign_nested(target: dict[str, object], key: str, value: object) -> None:
-    """Assign ``value`` inside ``target`` using ``__`` as a nesting delimiter.
-
-    Why
-    ----
-    Reuse the same semantics as dotenv parsing so callers see consistent shapes.
-
-    What
-    ----
-    Splits the key on ``__``, ensures intermediate mappings exist, resolves
-    case-insensitive keys, and assigns the final value.
-
-    Parameters
-    ----------
-    target:
-        Mapping being mutated in place.
-    key:
-        Namespaced key using ``__`` separators.
-    value:
-        Value to store at the resolved path.
-
-    Returns
-    -------
-    None
-
-    Side Effects
-    ------------
-    Mutates ``target``.
-
-    Examples
-    --------
-    >>> data: dict[str, object] = {}
-    >>> assign_nested(data, 'SERVICE__TIMEOUT', 5)
-    >>> data
-    {'service': {'timeout': 5}}
-    """
-
-    parts = key.split("__")
-    cursor = target
-    for part in parts[:-1]:
-        cursor = _ensure_child_mapping(cursor, part, error_cls=ValueError)
-    final_key = _resolve_key(cursor, parts[-1])
-    cursor[final_key] = value
-
-
-def _resolve_key(mapping: dict[str, object], key: str) -> str:
-    """Return an existing key that matches ``key`` (case-insensitive) or a new lowercase key.
-
-    Why
-    ----
-    Preserve case stability while avoiding duplicates that differ only by case.
-
-    Parameters
-    ----------
-    mapping:
-        Mutable mapping being inspected.
-    key:
-        Incoming key to resolve.
-
-    Returns
-    -------
-    str
-        Existing key name or newly normalised lowercase variant.
-
-    Examples
-    --------
-    >>> target = {'timeout': 5}
-    >>> _resolve_key(target, 'TIMEOUT')
-    'timeout'
-    >>> _resolve_key({}, 'Endpoint')
-    'endpoint'
-    """
-
-    lower = key.lower()
-    for existing in mapping.keys():
-        if existing.lower() == lower:
-            return existing
-    return lower
-
-
-def _ensure_child_mapping(mapping: dict[str, object], key: str, *, error_cls: type[Exception]) -> dict[str, object]:
-    """Ensure ``mapping[key]`` is a ``dict`` (creating or validating as necessary).
-
-    Why
-    ----
-    Prevent accidental overwrites of scalar values when nested keys are
-    introduced.
-
-    What
-    ----
-    Resolves the key case-insensitively, creates an empty mapping when missing,
-    or raises ``error_cls`` if a scalar already occupies the slot.
-
-    Parameters
-    ----------
-    mapping:
-        Mutable mapping being mutated.
-    key:
-        Candidate key to ensure.
-    error_cls:
-        Exception type raised when a scalar collision occurs.
-
-    Returns
-    -------
-    dict[str, object]
-        Child mapping stored at the resolved key.
-
-    Side Effects
-    ------------
-    Mutates ``mapping`` by inserting a new child mapping when missing.
-
-    Examples
-    --------
-    >>> target = {}
-    >>> child = _ensure_child_mapping(target, 'SERVICE', error_cls=ValueError)
-    >>> child == {}
-    True
-    >>> target
-    {'service': {}}
-    >>> target['service'] = 1
-    >>> _ensure_child_mapping(target, 'SERVICE', error_cls=ValueError)
-    Traceback (most recent call last):
-    ...
-    ValueError: Cannot override scalar with mapping for key SERVICE
-    """
-
-    resolved = _resolve_key(mapping, key)
-    if resolved not in mapping:
-        mapping[resolved] = dict[str, object]()
-    child = mapping[resolved]
-    if not isinstance(child, dict):
-        raise error_cls(f"Cannot override scalar with mapping for key {key}")
-    typed_child = cast(dict[str, object], child)
-    mapping[resolved] = typed_child
-    return typed_child
 
 
 def _coerce(value: str) -> object:

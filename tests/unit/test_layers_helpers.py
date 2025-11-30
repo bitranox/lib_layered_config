@@ -20,8 +20,8 @@ from tests.support.os_markers import os_agnostic
 
 @os_agnostic
 def test_merge_or_empty_reports_empty_when_no_layers() -> None:
-    merged, provenance = merge_or_empty([])
-    assert merged == {} and provenance == {}
+    result = merge_or_empty([])
+    assert result.data == {} and result.provenance == {}
 
 
 @os_agnostic

@@ -35,7 +35,6 @@ from .. import __init__conf__
 from .._platform import normalise_examples_platform as _normalise_examples_platform
 from .._platform import normalise_resolver_platform as _normalise_resolver_platform
 from ..application.ports import SourceInfoPayload
-from ..core import default_env_prefix as compute_default_env_prefix
 from .constants import DEFAULT_JSON_INDENT
 from ..core import read_config, read_config_json, read_config_raw
 
@@ -396,7 +395,7 @@ def human_payload(query: ReadQuery) -> str:
     Offer a human-first view that mirrors the JSON content yet remains readable.
     """
 
-    data, meta = read_config_raw(
+    result = read_config_raw(
         vendor=query.vendor,
         app=query.app,
         slug=query.slug,
@@ -404,18 +403,7 @@ def human_payload(query: ReadQuery) -> str:
         start_dir=query.start_dir,
         default_file=query.default_file,
     )
-    return render_human(data, meta)
-
-
-def default_env_prefix(slug: str) -> str:
-    """Expose the canonical environment prefix for CLI/commands.
-
-    Why
-    ----
-    Sustain backward compatibility for callers that relied on the CLI proxy.
-    """
-
-    return compute_default_env_prefix(slug)
+    return render_human(result.data, result.provenance)
 
 
 def _fallback_info_lines() -> tuple[str, ...]:

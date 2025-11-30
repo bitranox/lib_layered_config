@@ -7,9 +7,9 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from lib_layered_config.adapters._nested_keys import assign_nested as assign
 from lib_layered_config.adapters.dotenv.default import (
     DefaultDotEnvLoader,
-    _assign_nested as assign,
     _parse_dotenv as parse,
 )
 from lib_layered_config.domain.errors import InvalidFormat
@@ -119,6 +119,6 @@ def test_parse_dotenv_interprets_inline_hash_as_empty(tmp_path: Path) -> None:
 
 @os_agnostic
 def test_assign_nested_raises_invalid_format_on_scalar_collision() -> None:
-    target = {"service": "scalar"}
+    target: dict[str, object] = {"service": "scalar"}
     with pytest.raises(InvalidFormat):
-        assign(target, "SERVICE__TOKEN", "value")
+        assign(target, "SERVICE__TOKEN", "value", error_cls=InvalidFormat)

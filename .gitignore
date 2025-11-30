@@ -60,6 +60,7 @@ coverage.xml
 .hypothesis/
 .tox/
 .nox/
+.devcontainer/
 
 # general cache directories (any project-level caching)
 .cache/
@@ -87,6 +88,7 @@ sdist/
 wheels/
 downloads/
 var/
+
 
 # pip logs & installer leftovers
 pip-log.txt
@@ -188,3 +190,9 @@ uv.lock
 /.github_bak/
 /.github.bak/
 /.github.bak/
+
+# LLM Related
+LLM-CONTEXT/
+.claude/
+.gemini/
+.codex/
