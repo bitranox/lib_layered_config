@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from .cli import main
 
 
 def run_module(arguments: Sequence[str] | None = None) -> int:
     """Forward *arguments* to :func:`lib_layered_config.cli.main` and return the exit code."""
-
     return main(arguments, restore_traceback=True)
 
 

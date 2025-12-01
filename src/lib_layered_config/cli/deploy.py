@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 import rich_click as click
 
@@ -22,6 +22,7 @@ from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
 @click.option("--vendor", required=True, help="Vendor namespace")
 @click.option("--app", required=True, help="Application name")
 @click.option("--slug", required=True, help="Slug identifying the configuration set")
+@click.option("--profile", default=None, help="Configuration profile name (e.g., 'test', 'production')")
 @click.option(
     "--target",
     "targets",
@@ -46,17 +47,18 @@ def deploy_command(
     vendor: str,
     app: str,
     slug: str,
+    profile: str | None,
     targets: Sequence[str],
-    platform: Optional[str],
+    platform: str | None,
     force: bool,
 ) -> None:
     """Copy a source file into the requested layered directories."""
-
     created = deploy_config_impl(
         source,
         vendor=vendor,
         app=app,
         slug=slug,
+        profile=profile,
         targets=normalise_targets(targets),
         platform=normalise_platform_option(platform),
         force=force,
@@ -66,5 +68,4 @@ def deploy_command(
 
 def register(cli_group: click.Group) -> None:
     """Register the deploy command with the root CLI group."""
-
     cli_group.add_command(deploy_command)

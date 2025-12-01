@@ -22,6 +22,7 @@ A cross-platform configuration loader that deep-merges application defaults, hos
 3. [Installation](#installation)
 4. [Quick Start](#quick-start)
 5. [Understanding Key Identifiers: Vendor, App, and Slug](#understanding-key-identifiers-vendor-app-and-slug)
+   - [Configuration Profiles](#configuration-profiles)
 6. [Configuration File Structure](#configuration-file-structure)
 7. [Configuration Sources & Precedence](#configuration-sources--precedence)
 8. [CLI Usage](#cli-usage)
@@ -37,6 +38,7 @@ A cross-platform configuration loader that deep-merges application defaults, hos
 - **Immutable value object** — returned `Config` prevents accidental mutation and exposes dotted-path helpers.
 - **Provenance tracking** — every key reports the layer and path that produced it.
 - **Cross-platform path discovery** — Linux (XDG), macOS, and Windows layouts with environment overrides for tests.
+- **Configuration profiles** — organize environment-specific configs (test, staging, production) into isolated subdirectories.
 - **Extensible formats** — TOML and JSON are built-in; YAML is available via the optional `yaml` extra.
 - **Automation-friendly CLI** — inspect, deploy, or scaffold configurations without writing Python.
 - **Structured logging** — adapters emit trace-aware events without polluting the domain layer.
@@ -95,9 +97,9 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit --format
 lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit
 ```
 
-## Understanding Key Identifiers: Vendor, App, and Slug
+## Understanding Key Identifiers: Vendor, App, Slug, and Profile
 
-Before diving into configuration sources, it's important to understand the three key identifiers used throughout this library:
+Before diving into configuration sources, it's important to understand the four key identifiers used throughout this library:
 
 ### Vendor
 
@@ -190,15 +192,112 @@ config = read_config(vendor="Acme", app="My App", slug="myapp")
 - Use lowercase letters: `"myapp"`, `"database-tool"`
 - Use hyphens for word separation: `"config-kit"`, `"db-manager"`
 - Keep it short and memorable: `"myapp"` not `"my-super-awesome-application"`
+- Use ASCII characters only: `"myapp"` not `"my-àpp"`
 - Use the same slug everywhere in your application
 
 ❌ **DON'T:**
 - Use spaces: `"my app"` → use `"myapp"` or `"my-app"`
-- Use uppercase: `"MyApp"` → use `"myapp"`
+- Use uppercase: `"MyApp"` → use `"myapp"` (uppercase works but isn't recommended)
 - Use underscores in the slug: `"my_app"` → use `"my-app"` (underscores are added automatically for env vars)
+- Use non-ASCII characters: `"café"` → will raise `ValueError`
+- Use Windows reserved names: `"CON"`, `"PRN"`, `"NUL"` → will raise `ValueError`
 - Mix naming conventions across your codebase
 - Use path separators (`/` or `\`): `"../etc"` will raise `ValueError`
 - Start with a dot: `".hidden"` will raise `ValueError`
+
+---
+
+### Profile (Optional)
+
+**What it is:** An optional identifier for environment-specific configurations (e.g., `"test"`, `"staging"`, `"production"`).
+
+**Why it exists:** Profiles allow you to organize separate configuration sets for different environments (development, testing, staging, production) without mixing files or relying solely on environment variables.
+
+**Where it's used:**
+When a profile is specified, a `profile/<name>/` subdirectory is inserted into all configuration paths:
+
+#### 1. **Linux/UNIX Paths (with profile)**
+```bash
+# Without profile:
+/etc/xdg/myapp/config.toml
+~/.config/myapp/config.toml
+
+# With profile="production":
+/etc/xdg/myapp/profile/production/config.toml
+~/.config/myapp/profile/production/config.toml
+```
+
+#### 2. **macOS Paths (with profile)**
+```bash
+# Without profile:
+/Library/Application Support/Acme/MyApp/config.toml
+
+# With profile="production":
+/Library/Application Support/Acme/MyApp/profile/production/config.toml
+```
+
+#### 3. **Windows Paths (with profile)**
+```bash
+# Without profile:
+C:\ProgramData\Acme\MyApp\config.toml
+
+# With profile="production":
+C:\ProgramData\Acme\MyApp\profile\production\config.toml
+```
+
+#### 4. **Usage Example**
+```python
+from lib_layered_config import read_config
+
+# Load production configuration
+prod_config = read_config(
+    vendor="Acme",
+    app="MyApp",
+    slug="myapp",
+    profile="production"
+)
+
+# Load test configuration (different paths, completely isolated)
+test_config = read_config(
+    vendor="Acme",
+    app="MyApp",
+    slug="myapp",
+    profile="test"
+)
+
+# Load default configuration (no profile, original paths)
+default_config = read_config(
+    vendor="Acme",
+    app="MyApp",
+    slug="myapp"
+    # profile=None (default)
+)
+```
+
+#### 5. **CLI Usage**
+```bash
+# Read production profile
+lib_layered_config read --vendor Acme --app MyApp --slug myapp --profile production
+
+# Deploy to test profile
+lib_layered_config deploy --source config.toml --vendor Acme --app MyApp --slug myapp --profile test --target app
+```
+
+---
+
+### Profile Naming Best Practices
+
+✅ **DO:**
+- Use lowercase letters: `"test"`, `"production"`
+- Use hyphens for word separation: `"staging-v2"`, `"dev-local"`
+- Keep it short and descriptive: `"prod"` or `"production"`
+- Use consistent profile names across your infrastructure
+
+❌ **DON'T:**
+- Use spaces: `"my profile"` → use `"my-profile"`
+- Use non-ASCII characters: `"tëst"` → will raise `ValueError`
+- Use Windows reserved names: `"CON"`, `"NUL"` → will raise `ValueError`
+- Use path separators: `"../etc"` → will raise `ValueError`
 
 ---
 
@@ -207,15 +306,23 @@ config = read_config(vendor="Acme", app="My App", slug="myapp")
 ```python
 from lib_layered_config import read_config
 
-# Define your application identity
+# Define your application identity (without profile)
 config = read_config(
     vendor="Acme",           # Your company name
     app="DatabaseManager",   # Your application's display name
     slug="db-manager"        # Filesystem/environment-friendly identifier
 )
+
+# Or with a profile for environment-specific configuration
+prod_config = read_config(
+    vendor="Acme",
+    app="DatabaseManager",
+    slug="db-manager",
+    profile="production"     # Optional: isolates config in profile subdirectory
+)
 ```
 
-**This creates the following structure:**
+**This creates the following structure (without profile):**
 
 **On Linux:**
 ```
@@ -238,17 +345,26 @@ C:\ProgramData\Acme\DatabaseManager\config.toml     # System-wide (vendor + app)
 Environment: DB_MANAGER___*                         # Env prefix (slug → uppercase + ___)
 ```
 
+**With `profile="production"`:**
+
+| Platform | Path |
+|----------|------|
+| Linux | `/etc/xdg/db-manager/profile/production/config.toml` |
+| macOS | `/Library/Application Support/Acme/DatabaseManager/profile/production/config.toml` |
+| Windows | `C:\ProgramData\Acme\DatabaseManager\profile\production\config.toml` |
+
 ---
 
-### Why Three Identifiers?
+### Why Four Identifiers?
 
 **Different platforms have different conventions:**
 
 - **Windows/macOS:** Prefer human-readable names with spaces and mixed case (`"Acme Corp"`, `"My Application"`)
 - **Linux/UNIX:** Prefer lowercase with hyphens (`myapp`, `config-kit`)
 - **Environment variables:** Must use uppercase with underscores (`MYAPP_`, `CONFIG_KIT_`)
+- **Profiles:** Allow environment-specific configuration isolation (`test`, `staging`, `production`)
 
-This library uses three identifiers so your application can follow **native conventions on each platform** while maintaining a **consistent configuration identity**.
+This library uses four identifiers so your application can follow **native conventions on each platform** while maintaining a **consistent configuration identity** and supporting **environment-specific configurations**.
 
 ---
 
@@ -256,9 +372,133 @@ This library uses three identifiers so your application can follow **native conv
 
 | Identifier | Format | Example | Used In |
 |------------|--------|---------|---------|
-| **vendor** | Mixed case, spaces OK | `"Acme Corp"` | macOS, Windows paths |
-| **app** | Mixed case, spaces OK | `"Database Manager"` | macOS, Windows paths |
-| **slug** | lowercase-with-hyphens | `"db-manager"` | Linux paths, env var prefix (becomes `DB_MANAGER___`) |
+| **vendor** | ASCII, spaces allowed | `"Acme"`, `"Acme Corp"` | macOS, Windows paths |
+| **app** | ASCII, spaces allowed | `"My App"`, `"Btx Fix Mcp"` | macOS, Windows paths |
+| **slug** | lowercase-with-hyphens (recommended) | `"db-manager"` | Linux paths, env var prefix (becomes `DB_MANAGER___`) |
+| **profile** | lowercase-with-hyphens (recommended) | `"production"` | Optional subdirectory for environment-specific configs |
+
+**All identifiers are validated** to ensure cross-platform filesystem safety. See [Identifier Validation Rules](#identifier-validation-rules) below.
+
+---
+
+### Configuration Profiles
+
+Profiles allow you to organize environment-specific configurations (e.g., `test`, `staging`, `production`) into isolated subdirectories. When a profile is specified, all configuration paths include a `profile/<name>/` segment.
+
+#### How Profiles Work
+
+**Without profile:**
+```
+/etc/xdg/myapp/config.toml
+/etc/xdg/myapp/hosts/server-01.toml
+~/.config/myapp/config.toml
+```
+
+**With `profile="production"`:**
+```
+/etc/xdg/myapp/profile/production/config.toml
+/etc/xdg/myapp/profile/production/hosts/server-01.toml
+~/.config/myapp/profile/production/config.toml
+```
+
+#### Using Profiles in Python
+
+```python
+from lib_layered_config import read_config
+
+# Load production configuration
+config = read_config(
+    vendor="Acme",
+    app="ConfigKit",
+    slug="config-kit",
+    profile="production"
+)
+
+# Load test configuration
+test_config = read_config(
+    vendor="Acme",
+    app="ConfigKit",
+    slug="config-kit",
+    profile="test"
+)
+```
+
+#### Using Profiles in CLI
+
+```bash
+# Read configuration for production profile
+lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit --profile production
+
+# Deploy configuration to production profile paths
+lib_layered_config deploy --source config.toml --vendor Acme --app ConfigKit --slug config-kit --profile production --target app
+```
+
+#### Profile Path Examples
+
+| Platform | Without Profile | With `profile="test"` |
+|----------|-----------------|----------------------|
+| **Linux (app)** | `/etc/xdg/<slug>/config.toml` | `/etc/xdg/<slug>/profile/test/config.toml` |
+| **Linux (host)** | `/etc/xdg/<slug>/hosts/<hostname>.toml` | `/etc/xdg/<slug>/profile/test/hosts/<hostname>.toml` |
+| **Linux (user)** | `~/.config/<slug>/config.toml` | `~/.config/<slug>/profile/test/config.toml` |
+| **macOS (app)** | `/Library/Application Support/<vendor>/<app>/config.toml` | `/Library/Application Support/<vendor>/<app>/profile/test/config.toml` |
+| **Windows (app)** | `C:\ProgramData\<vendor>\<app>\config.toml` | `C:\ProgramData\<vendor>\<app>\profile\test\config.toml` |
+
+#### Profile Naming Rules
+
+Profile names follow the same validation as other identifiers (see below).
+
+**Valid:** `test`, `production`, `staging-v2`, `dev_local`
+**Invalid:** `../etc`, `.hidden`, `my profile`, `CON`
+
+---
+
+### Identifier Validation Rules
+
+All identifiers are validated to ensure they are safe for use as filesystem directory names on both Windows and Linux.
+
+#### Validation by Identifier Type
+
+| Identifier | Spaces Allowed | Used For |
+|------------|----------------|----------|
+| **vendor** | ✅ Yes | macOS/Windows paths (`/Library/Application Support/Acme Corp/`) |
+| **app** | ✅ Yes | macOS/Windows paths (`/Library/Application Support/.../My App/`) |
+| **slug** | ❌ No | Linux paths, environment variable prefix |
+| **profile** | ❌ No | Profile subdirectory name |
+| **hostname** | ❌ No | Host-specific config files |
+
+#### Common Validation Rules (All Identifiers)
+
+| Rule | Description | Example Invalid Value |
+|------|-------------|----------------------|
+| **ASCII-only** | No Unicode/UTF-8 special characters | `café`, `日本語`, `app🚀` |
+| **Must start with alphanumeric** | Cannot start with dot, hyphen, underscore, or space | `.hidden`, `-app`, `_private` |
+| **No path separators** | Prevents path traversal attacks | `../etc`, `foo/bar`, `C:\Windows` |
+| **No Windows-invalid chars** | `<`, `>`, `:`, `"`, `\|`, `?`, `*` are forbidden | `app<test>`, `file:name` |
+| **No Windows reserved names** | CON, PRN, AUX, NUL, COM1-9, LPT1-9 | `CON`, `prn`, `NUL.txt` |
+| **Cannot end with dot/space** | Windows restriction | `app.`, `name ` |
+
+#### Examples
+
+```python
+from lib_layered_config import read_config
+
+# ✅ Valid identifiers
+config = read_config(
+    vendor="Acme Corp",      # OK: spaces allowed in vendor
+    app="Btx Fix Mcp",       # OK: spaces allowed in app
+    slug="db-manager",       # OK: lowercase with hyphens (no spaces)
+    profile="production"     # OK: lowercase (no spaces)
+)
+
+# ❌ These will raise ValueError
+read_config(vendor="../etc", ...)      # Path traversal
+read_config(app="café", ...)           # Non-ASCII character
+read_config(slug="CON", ...)           # Windows reserved name
+read_config(slug="my slug", ...)       # Slug cannot have spaces
+read_config(profile="my profile", ...) # Profile cannot have spaces
+read_config(vendor=".hidden", ...)     # Starts with dot
+read_config(app="app<test>", ...)      # Windows-invalid character
+```
 
 ---
 
@@ -750,29 +990,75 @@ Use the optional defaults layer when you want one explicitly-provided file to se
 Important directories (overridable via environment variables):
 
 ### Linux
-- `/etc/<slug>/config.toml`
+- `/etc/xdg/<slug>/config.toml` (XDG system-wide, checked first)
+- `/etc/xdg/<slug>/config.d/*.{toml,json,yaml,yml}`
+- `/etc/<slug>/config.toml` (legacy fallback)
 - `/etc/<slug>/config.d/*.{toml,json,yaml,yml}`
-- `/etc/<slug>/hosts/<hostname>.toml`
-- `$XDG_CONFIG_HOME/<slug>/config.toml` (the resolver reads `$XDG_CONFIG_HOME`; if it is missing it falls back to `~/.config/<slug>/config.toml`)
+- `/etc/xdg/<slug>/hosts/<hostname>.toml` or `/etc/<slug>/hosts/<hostname>.toml`
+- `$XDG_CONFIG_HOME/<slug>/config.toml` (user; falls back to `~/.config/<slug>/config.toml`)
+- `$XDG_CONFIG_HOME/<slug>/config.d/*.{toml,json,yaml,yml}`
 - `.env` search: current directory upwards + `$XDG_CONFIG_HOME/<slug>/.env`
 
 ### macOS
-- `/Library/Application Support/<Vendor>/<App>/config.toml`
-- `/Library/Application Support/<Vendor>/<App>/config.d/`
+- `/Library/Application Support/<Vendor>/<App>/config.toml` (system-wide app layer)
+- `/Library/Application Support/<Vendor>/<App>/config.d/*.{toml,json,yaml,yml}`
 - `/Library/Application Support/<Vendor>/<App>/hosts/<hostname>.toml`
-- `~/Library/Application Support/<Vendor>/<App>/config.toml`
+- `~/Library/Application Support/<Vendor>/<App>/config.toml` (user layer)
+- `~/Library/Application Support/<Vendor>/<App>/config.d/*.{toml,json,yaml,yml}`
 - `.env` search: current directory upwards + `~/Library/Application Support/<Vendor>/<App>/.env`
 
 ### Windows
-- `%ProgramData%\<Vendor>\<App>\config.toml`
-- `%ProgramData%\<Vendor>\<App>\config.d\*`
+- `%ProgramData%\<Vendor>\<App>\config.toml` (system-wide app layer)
+- `%ProgramData%\<Vendor>\<App>\config.d\*.{toml,json,yaml,yml}`
 - `%ProgramData%\<Vendor>\<App>\hosts\%COMPUTERNAME%.toml`
-- `%APPDATA%\<Vendor>\<App>\config.toml` (resolver order: `LIB_LAYERED_CONFIG_APPDATA` → `%APPDATA%`; if neither yields an existing directory it tries `LIB_LAYERED_CONFIG_LOCALAPPDATA` → `%LOCALAPPDATA%`)
+- `%APPDATA%\<Vendor>\<App>\config.toml` (user layer; resolver order: `LIB_LAYERED_CONFIG_APPDATA` → `%APPDATA%`; falls back to `%LOCALAPPDATA%`)
+- `%APPDATA%\<Vendor>\<App>\config.d\*.{toml,json,yaml,yml}`
 - `.env` search: current directory upwards + `%APPDATA%\<Vendor>\<App>\.env`
 
 Environment overrides: `LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_PROGRAMDATA`, `LIB_LAYERED_CONFIG_APPDATA`, `LIB_LAYERED_CONFIG_LOCALAPPDATA`, `LIB_LAYERED_CONFIG_MAC_APP_ROOT`, `LIB_LAYERED_CONFIG_MAC_HOME_ROOT`. Both the runtime readers and the `deploy` helper honour these variables so generated files land in the same directories that `read_config` inspects.
 
 **Fallback note:** Whenever a path is marked as a fallback, the resolver first consults the documented environment overrides (`LIB_LAYERED_CONFIG_*`, `$XDG_CONFIG_HOME`, `%APPDATA%`, etc.). If those variables are unset or the computed directory does not exist, it switches to the stated fallback location (`~/.config`, `%LOCALAPPDATA%`, ...). This keeps local installs working without additional environment configuration while still allowing operators to steer resolution explicitly.
+
+### The `config.d` Directory
+
+Each layer can include a `config.d/` directory for split configuration files. This follows the common Linux pattern (similar to `/etc/apt/sources.list.d/` or `/etc/sudoers.d/`).
+
+**How it works:**
+1. The resolver first loads `config.toml` (if present)
+2. Then loads all files from `config.d/` in **lexicographic order**
+3. Only files with supported extensions are loaded: `.toml`, `.json`, `.yaml`, `.yml`
+4. Files are merged in order, so later files override earlier ones
+
+**Naming convention:** Use numeric prefixes to control ordering:
+```
+config.d/
+├── 10-base.toml        # Loaded first
+├── 20-database.toml    # Loaded second
+├── 30-logging.toml     # Loaded third
+└── 99-overrides.toml   # Loaded last (highest precedence within config.d)
+```
+
+**Use cases:**
+- **Package managers** can drop configuration snippets without modifying the main file
+- **Automation tools** can add/remove specific settings independently
+- **Team workflows** can split configuration by concern (database, logging, features)
+
+**Example:**
+```bash
+# Main config defines defaults
+/etc/myapp/config.toml:
+  [database]
+  host = "localhost"
+  port = 5432
+
+# Ops team adds production overrides
+/etc/myapp/config.d/50-production.toml:
+  [database]
+  host = "db.prod.example.com"
+  pool_size = 20
+
+# Result: database.host = "db.prod.example.com", database.port = 5432, database.pool_size = 20
+```
 
 ## CLI Usage
 
@@ -982,6 +1268,7 @@ Copy a source configuration file into one or more layer directories.
 lib_layered_config deploy --source ./config/app.toml \
   --vendor Acme --app ConfigKit --slug config-kit \
   --target app [--target host] [--target user] \
+  [--profile production] \
   [--platform linux|darwin|windows] \
   [--force | --no-force]
 ```
@@ -994,11 +1281,28 @@ lib_layered_config deploy --source ./config/app.toml \
 | `--vendor` | string | Yes | - | Vendor namespace |
 | `--app` | string | Yes | - | Application name |
 | `--slug` | string | Yes | - | Configuration slug |
+| `--profile` | string | No | - | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths |
 | `--target` | choice | Yes | - | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user` |
 | `--platform` | string | No | auto-detect | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win` |
 | `--force` / `--no-force` | flag | No | `--no-force` | Overwrite existing files at destinations |
 
 **Returns:** JSON array of file paths created or overwritten.
+
+**Profile Examples:**
+```bash
+# Deploy to production profile
+lib_layered_config deploy --source ./configs/prod.toml \
+  --vendor Acme --app MyApp --slug myapp \
+  --profile production --target app
+# Linux: /etc/xdg/myapp/profile/production/config.toml
+
+# Deploy to test profile
+lib_layered_config deploy --source ./configs/test.toml \
+  --vendor Acme --app MyApp --slug myapp \
+  --profile test --target app --target user
+# Linux: /etc/xdg/myapp/profile/test/config.toml
+#        ~/.config/myapp/profile/test/config.toml
+```
 
 ---
 
@@ -2037,6 +2341,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `vendor` (str, required): Vendor namespace used to compute filesystem paths (e.g., `"Acme"`).
 - `app` (str, required): Application name used to compute filesystem paths (e.g., `"ConfigKit"`).
 - `slug` (str, required): Configuration slug used for file paths and environment variable prefix (e.g., `"config-kit"`).
+- `profile` (str | None, optional): Configuration profile name (e.g., `"test"`, `"production"`). When specified, adds a `profile/<name>/` segment to all configuration paths. Default: `None` (no profile).
 - `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes (e.g., `["toml", "json", "yaml"]`). Files matching earlier suffixes take precedence. Default: `None` (accepts all supported formats with default ordering).
 - `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search. Default: `None` (uses current working directory).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
@@ -2163,6 +2468,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `vendor` (str, required): Vendor namespace.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
+- `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
 - `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
@@ -2253,6 +2559,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `vendor` (str, required): Vendor namespace.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
+- `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
 - `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes. Default: `None`.
 - `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
@@ -2445,6 +2752,7 @@ Copy a source configuration file into one or more layer directories.
 - `app` (str, required): Application name.
 - `targets` (Sequence[str], required): Layer targets to deploy to. Valid values: `"app"`, `"host"`, `"user"`.
 - `slug` (str | None, optional): Configuration slug. Default: `None` (uses `app` as slug).
+- `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to deployment paths. Default: `None`.
 - `platform` (str | None, optional): Override auto-detected platform. Valid values: `"linux"`, `"darwin"`, `"windows"`, or any value starting with `"win"`. Default: `None` (auto-detects from current platform).
 - `force` (bool, optional): Overwrite existing files at destinations. Default: `False`.
 
@@ -2569,6 +2877,68 @@ except FileNotFoundError:
     sys.exit(1)
 ```
 **Explanation:** The function automatically detects the platform and deploys to the appropriate directories. Perfect for cross-platform installation scripts.
+
+**Example 6: Deploy to a specific profile (environment-specific)**
+```python
+from lib_layered_config import deploy_config
+
+# Deploy production configuration to the production profile
+created_paths = deploy_config(
+    source="./configs/production.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["app"],
+    slug="myapp",
+    profile="production"  # Deploy to profile-specific subdirectory
+)
+
+# On Linux: /etc/xdg/myapp/profile/production/config.toml
+# On macOS: /Library/Application Support/Acme/MyApp/profile/production/config.toml
+# On Windows: C:\ProgramData\Acme\MyApp\profile\production\config.toml
+
+print(f"Production config deployed to: {created_paths[0]}")
+
+# Deploy test configuration to a separate profile
+test_paths = deploy_config(
+    source="./configs/test.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["app", "user"],
+    slug="myapp",
+    profile="test"  # Completely isolated from production
+)
+
+# On Linux: /etc/xdg/myapp/profile/test/config.toml
+#           ~/.config/myapp/profile/test/config.toml
+```
+**Explanation:** Use the `profile` parameter to deploy environment-specific configurations to isolated subdirectories. This keeps production, staging, and test configurations completely separate, preventing accidental cross-environment configuration leaks.
+
+**Example 7: Deploy multiple profiles in a CI/CD pipeline**
+```python
+from lib_layered_config import deploy_config
+from pathlib import Path
+
+# Deploy configurations for all environments
+environments = ["development", "staging", "production"]
+
+for env in environments:
+    config_file = Path(f"./environments/{env}.toml")
+    if not config_file.exists():
+        print(f"⚠ Skipping {env}: config file not found")
+        continue
+
+    paths = deploy_config(
+        source=config_file,
+        vendor="Acme",
+        app="MyApp",
+        targets=["app"],
+        slug="myapp",
+        profile=env,
+        force=True  # Update existing configs
+    )
+    print(f"✓ Deployed {env} config to: {paths[0]}")
+```
+**Explanation:** Profiles are ideal for CI/CD pipelines where you need to deploy different configurations for each environment. Each profile is isolated, so you can safely deploy all environments to the same system.
 
 ---
 

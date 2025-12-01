@@ -1,17 +1,17 @@
 """Dotenv path discovery utilities.
 
-Purpose
-    Provide reusable helpers for discovering ``.env`` files via upward
-    directory traversal and platform-specific fallback locations.
+Provide reusable helpers for discovering ``.env`` files via upward
+directory traversal and platform-specific fallback locations.
 
-Contents
+Contents:
     - ``DotenvPathFinder``: encapsulates dotenv discovery logic.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ._base import PlatformStrategy
@@ -20,8 +20,6 @@ if TYPE_CHECKING:
 class DotenvPathFinder:
     """Discover ``.env`` files by walking upward and checking platform fallbacks.
 
-    Why
-    ----
     ``.env`` files may live near the project root or in OS-specific config
     directories. This class provides unified discovery respecting precedence rules.
     """
@@ -29,12 +27,9 @@ class DotenvPathFinder:
     def __init__(self, cwd: Path, strategy: PlatformStrategy | None) -> None:
         """Store context for dotenv discovery.
 
-        Parameters
-        ----------
-        cwd:
-            Starting directory for upward traversal.
-        strategy:
-            Platform strategy providing the fallback ``.env`` location.
+        Args:
+            cwd: Starting directory for upward traversal.
+            strategy: Platform strategy providing the fallback ``.env`` location.
         """
         self.cwd = cwd
         self.strategy = strategy
@@ -42,14 +37,10 @@ class DotenvPathFinder:
     def find_paths(self) -> Iterable[str]:
         """Yield candidate ``.env`` paths in precedence order.
 
-        Why
-        ----
         Projects often co-locate ``.env`` files near the repository root;
         walking upward mirrors ``dotenv`` tooling semantics.
 
-        Returns
-        -------
-        Iterable[str]
+        Returns:
             Ordered ``.env`` path strings.
         """
         yield from self._project_paths()
@@ -60,9 +51,7 @@ class DotenvPathFinder:
     def _project_paths(self) -> Iterable[str]:
         """Yield ``.env`` files discovered by walking upward from cwd.
 
-        Returns
-        -------
-        Iterable[str]
+        Returns:
             ``.env`` paths discovered while traversing parent directories.
         """
         seen: set[Path] = set()
@@ -77,9 +66,7 @@ class DotenvPathFinder:
     def _platform_path(self) -> Path | None:
         """Return the platform-specific ``.env`` fallback location.
 
-        Returns
-        -------
-        Path | None
+        Returns:
             Platform fallback path or ``None`` if no strategy is set.
         """
         if self.strategy is None:

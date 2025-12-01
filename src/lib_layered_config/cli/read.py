@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 import rich_click as click
 
@@ -21,6 +21,7 @@ from .constants import CLICK_CONTEXT_SETTINGS
 @click.option("--vendor", required=True, help="Vendor namespace")
 @click.option("--app", required=True, help="Application name")
 @click.option("--slug", required=True, help="Slug identifying the configuration set")
+@click.option("--profile", default=None, help="Configuration profile name (e.g., 'test', 'production')")
 @click.option("--prefer", multiple=True, help="Preferred file suffix ordering (repeatable)")
 @click.option(
     "--start-dir",
@@ -58,16 +59,16 @@ def read_command(
     vendor: str,
     app: str,
     slug: str,
+    profile: str | None,
     prefer: Sequence[str],
-    start_dir: Optional[Path],
-    default_file: Optional[Path],
+    start_dir: Path | None,
+    default_file: Path | None,
     output_format: str,
     indent: bool,
     provenance: bool,
 ) -> None:
     """Read configuration and print either human prose or JSON."""
-
-    query = build_read_query(vendor, app, slug, prefer, start_dir, default_file)
+    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file)
     if wants_json(output_format):
         click.echo(json_payload(query, resolve_indent(indent), provenance))
         return
@@ -78,6 +79,7 @@ def read_command(
 @click.option("--vendor", required=True)
 @click.option("--app", required=True)
 @click.option("--slug", required=True)
+@click.option("--profile", default=None, help="Configuration profile name")
 @click.option("--prefer", multiple=True)
 @click.option(
     "--start-dir",
@@ -99,19 +101,18 @@ def read_json_command(
     vendor: str,
     app: str,
     slug: str,
+    profile: str | None,
     prefer: Sequence[str],
-    start_dir: Optional[Path],
-    default_file: Optional[Path],
+    start_dir: Path | None,
+    default_file: Path | None,
     indent: bool,
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
-
-    query = build_read_query(vendor, app, slug, prefer, start_dir, default_file)
+    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file)
     click.echo(json_payload(query, resolve_indent(indent), include_provenance=True))
 
 
 def register(cli_group: click.Group) -> None:
     """Register CLI commands defined in this module."""
-
     cli_group.add_command(read_command)
     cli_group.add_command(read_json_command)

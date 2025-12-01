@@ -8,7 +8,7 @@ import pytest
 
 from lib_layered_config.adapters.file_loaders import structured as structured_module
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
-from lib_layered_config.domain.errors import InvalidFormat, NotFound
+from lib_layered_config.domain.errors import InvalidFormatError, NotFoundError
 
 from tests.support.os_markers import os_agnostic
 
@@ -23,14 +23,14 @@ def test_toml_loader_recites_the_port_number(tmp_path: Path) -> None:
 @os_agnostic
 def test_toml_loader_laments_when_the_file_is_missing(tmp_path: Path) -> None:
     missing = tmp_path / "missing.toml"
-    with pytest.raises(NotFound):
+    with pytest.raises(NotFoundError):
         TOMLFileLoader().load(str(missing))
 
 
 @os_agnostic
 def test_json_loader_rejects_broken_braces(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.json", "{invalid}")
-    with pytest.raises(InvalidFormat):
+    with pytest.raises(InvalidFormatError):
         JSONFileLoader().load(str(path))
 
 
@@ -45,7 +45,7 @@ def test_json_loader_affirms_boolean_truth(tmp_path: Path) -> None:
 @os_agnostic
 def test_toml_loader_refuses_unfinished_lists(tmp_path: Path) -> None:
     path = _write(tmp_path / "broken.toml", "not = ['valid'", encoding="utf-8")
-    with pytest.raises(InvalidFormat):
+    with pytest.raises(InvalidFormatError):
         TOMLFileLoader().load(str(path))
 
 
@@ -61,13 +61,13 @@ def test_yaml_loader_whispers_only_silence_for_empty_files(tmp_path: Path) -> No
 def test_yaml_guard_explains_when_dependency_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(structured_module, "_load_yaml_module", lambda: None)
     monkeypatch.setattr(structured_module, "yaml", None)
-    with pytest.raises(NotFound):
+    with pytest.raises(NotFoundError):
         structured_module._ensure_yaml_available()
 
 
 @os_agnostic
 def test_loader_mapping_guard_rejects_naked_scalars() -> None:
-    with pytest.raises(InvalidFormat):
+    with pytest.raises(InvalidFormatError):
         structured_module.BaseFileLoader._ensure_mapping(7, path="demo.toml")
 
 
@@ -75,7 +75,7 @@ def test_loader_mapping_guard_rejects_naked_scalars() -> None:
 @os_agnostic
 def test_yaml_loader_cries_out_on_illegal_syntax(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.yaml", "key: : :\n", encoding="utf-8")
-    with pytest.raises(InvalidFormat):
+    with pytest.raises(InvalidFormatError):
         YAMLFileLoader().load(str(path))
 
 
@@ -95,7 +95,7 @@ def test_yaml_parser_wraps_yaml_errors_with_context(monkeypatch: pytest.MonkeyPa
         raise Boom("boom")
 
     fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=Boom)
-    with pytest.raises(InvalidFormat) as exc:
+    with pytest.raises(InvalidFormatError) as exc:
         structured_module._parse_yaml_bytes(b"", fake_yaml, "memory.yaml")
     assert "memory.yaml" in str(exc.value)
 

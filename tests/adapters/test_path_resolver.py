@@ -560,3 +560,231 @@ def test_collect_layer_discards_unknown_extensions(tmp_path: Path) -> None:
     (base / "config.d" / "10-extra.txt").write_text("ignored", encoding="utf-8")
 
     assert list(collect_layer(base)) == []
+
+
+# ---------------------------------------------------------------------------
+# Profile path tests
+# ---------------------------------------------------------------------------
+
+
+def _make_context_with_profile(
+    tmp_path: Path,
+    *,
+    platform: str,
+    profile: str | None = None,
+    hostname: str = "example-host",
+) -> tuple[PlatformContext, dict[str, Path]]:
+    """Create a PlatformContext with profile and sandbox roots for strategy testing."""
+    sandbox = create_layered_sandbox(
+        tmp_path,
+        vendor="Acme",
+        app="ConfigKit",
+        slug="config-kit",
+        platform=platform,
+    )
+    ctx = PlatformContext(
+        vendor="Acme",
+        app="ConfigKit",
+        slug="config-kit",
+        cwd=sandbox.start_dir,
+        env=sandbox.env,
+        hostname=hostname,
+        profile=profile,
+    )
+    return ctx, sandbox.roots
+
+
+@os_agnostic
+def test_linux_profile_app_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="linux", profile="test")
+    # Create config in profile path
+    profile_dir = roots["app"] / "profile" / "test"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    config = profile_dir / "config.toml"
+    config.write_text("[profile]\nenv = 'test'\n", encoding="utf-8")
+
+    strategy = LinuxStrategy(ctx)
+    app_paths = list(strategy.app_paths())
+    assert str(config) in app_paths
+
+
+@os_agnostic
+def test_linux_profile_host_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="linux", profile="staging", hostname="test-host")
+    # Create host config in profile path
+    profile_dir = roots["app"] / "profile" / "staging" / "hosts"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    host_config = profile_dir / "test-host.toml"
+    host_config.write_text("[host]\nenv = 'staging'\n", encoding="utf-8")
+
+    strategy = LinuxStrategy(ctx)
+    host_paths = list(strategy.host_paths())
+    assert str(host_config) in host_paths
+
+
+@os_agnostic
+def test_linux_profile_user_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="linux", profile="prod")
+    # Create user config in profile path
+    profile_dir = roots["user"] / "profile" / "prod"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    config = profile_dir / "config.toml"
+    config.write_text("[user]\nenv = 'prod'\n", encoding="utf-8")
+
+    strategy = LinuxStrategy(ctx)
+    user_paths = list(strategy.user_paths())
+    assert str(config) in user_paths
+
+
+@os_agnostic
+def test_linux_profile_dotenv_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, _ = _make_context_with_profile(tmp_path, platform="linux", profile="dev")
+    strategy = LinuxStrategy(ctx)
+    dotenv = strategy.dotenv_path()
+    assert dotenv is not None
+    assert "profile/dev/.env" in dotenv.as_posix()
+
+
+@os_agnostic
+def test_linux_no_profile_paths_unchanged(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="linux", profile=None)
+    # Create config in non-profile path
+    config = roots["app"] / "config.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("[app]\nvalue = 1\n", encoding="utf-8")
+
+    strategy = LinuxStrategy(ctx)
+    app_paths = list(strategy.app_paths())
+    # Without profile, the config.toml should be directly in the slug dir, not in profile/<name>/
+    assert str(config) in app_paths
+    # Verify the config path ends with /<slug>/config.toml (not profile/<name>/config.toml)
+    assert str(config).replace("\\", "/").endswith(f"/{ctx.slug}/config.toml")
+
+
+@os_agnostic
+def test_macos_profile_app_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="darwin", profile="test")
+    # Create config in profile path
+    profile_dir = roots["app"] / "profile" / "test"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    config = profile_dir / "config.toml"
+    config.write_text("[profile]\nenv = 'test'\n", encoding="utf-8")
+
+    strategy = MacOSStrategy(ctx)
+    app_paths = list(strategy.app_paths())
+    assert str(config) in app_paths
+
+
+@os_agnostic
+def test_macos_profile_host_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="darwin", profile="staging", hostname="mac-host")
+    # Create host config in profile path
+    profile_dir = roots["app"] / "profile" / "staging" / "hosts"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    host_config = profile_dir / "mac-host.toml"
+    host_config.write_text("[host]\nenv = 'staging'\n", encoding="utf-8")
+
+    strategy = MacOSStrategy(ctx)
+    host_paths = list(strategy.host_paths())
+    assert str(host_config) in host_paths
+
+
+@os_agnostic
+def test_macos_profile_user_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="darwin", profile="prod")
+    # Create user config in profile path
+    profile_dir = roots["user"] / "profile" / "prod"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    config = profile_dir / "config.toml"
+    config.write_text("[user]\nenv = 'prod'\n", encoding="utf-8")
+
+    strategy = MacOSStrategy(ctx)
+    user_paths = list(strategy.user_paths())
+    assert str(config) in user_paths
+
+
+@os_agnostic
+def test_macos_profile_dotenv_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, _ = _make_context_with_profile(tmp_path, platform="darwin", profile="dev")
+    strategy = MacOSStrategy(ctx)
+    dotenv = strategy.dotenv_path()
+    assert dotenv is not None
+    assert "profile/dev/.env" in dotenv.as_posix()
+
+
+@os_agnostic
+def test_windows_profile_app_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="win32", profile="test")
+    # Create config in profile path
+    profile_dir = roots["app"] / "profile" / "test"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    config = profile_dir / "config.toml"
+    config.write_text("[profile]\nenv = 'test'\n", encoding="utf-8")
+
+    strategy = WindowsStrategy(ctx)
+    app_paths = list(strategy.app_paths())
+    assert str(config) in app_paths
+
+
+@os_agnostic
+def test_windows_profile_host_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="win32", profile="staging", hostname="WIN-HOST")
+    # Create host config in profile path
+    profile_dir = roots["app"] / "profile" / "staging" / "hosts"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    host_config = profile_dir / "WIN-HOST.toml"
+    host_config.write_text("[host]\nenv = 'staging'\n", encoding="utf-8")
+
+    strategy = WindowsStrategy(ctx)
+    host_paths = list(strategy.host_paths())
+    assert str(host_config) in host_paths
+
+
+@os_agnostic
+def test_windows_profile_user_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, roots = _make_context_with_profile(tmp_path, platform="win32", profile="prod")
+    # Create user config in profile path
+    profile_dir = roots["user"] / "profile" / "prod"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    config = profile_dir / "config.toml"
+    config.write_text("[user]\nenv = 'prod'\n", encoding="utf-8")
+
+    strategy = WindowsStrategy(ctx)
+    user_paths = list(strategy.user_paths())
+    assert str(config) in user_paths
+
+
+@os_agnostic
+def test_windows_profile_dotenv_path_includes_profile_segment(tmp_path: Path) -> None:
+    ctx, _ = _make_context_with_profile(tmp_path, platform="win32", profile="dev")
+    strategy = WindowsStrategy(ctx)
+    dotenv = strategy.dotenv_path()
+    assert dotenv is not None
+    assert "profile/dev/.env" in dotenv.as_posix()
+
+
+@os_agnostic
+def test_resolver_with_profile_creates_correct_context(tmp_path: Path) -> None:
+    resolver = DefaultPathResolver(
+        vendor="Acme",
+        app="Demo",
+        slug="demo",
+        profile="test",
+        cwd=tmp_path,
+        platform="linux",
+    )
+    assert resolver.profile == "test"
+    assert resolver._ctx.profile == "test"
+
+
+@os_agnostic
+def test_resolver_without_profile_has_none_context(tmp_path: Path) -> None:
+    resolver = DefaultPathResolver(
+        vendor="Acme",
+        app="Demo",
+        slug="demo",
+        cwd=tmp_path,
+        platform="linux",
+    )
+    assert resolver.profile is None
+    assert resolver._ctx.profile is None

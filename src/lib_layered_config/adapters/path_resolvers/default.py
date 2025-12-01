@@ -1,14 +1,13 @@
 """Filesystem path resolution using platform-specific strategies.
 
-Purpose
-    Implement the :class:`lib_layered_config.application.ports.PathResolver`
-    port using the Strategy pattern for clean platform-specific handling.
+Implement the :class:`lib_layered_config.application.ports.PathResolver`
+port using the Strategy pattern for clean platform-specific handling.
 
-Contents
+Contents:
     - ``DefaultPathResolver``: public adapter consumed by the composition root.
     - Platform strategies in ``_linux.py``, ``_macos.py``, ``_windows.py``.
 
-System Integration
+System Integration:
     Produces ordered path lists for the core merge pipeline. All filesystem
     knowledge stays here so inner layers remain filesystem-agnostic.
 """
@@ -18,10 +17,15 @@ from __future__ import annotations
 import os
 import socket
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List
 
-from ...domain.identifiers import validate_hostname, validate_identifier
+from ...domain.identifiers import (
+    validate_hostname,
+    validate_identifier,
+    validate_profile,
+    validate_vendor_app,
+)
 from ...observability import log_debug
 from ._base import PlatformContext, PlatformStrategy
 from ._dotenv import DotenvPathFinder
@@ -33,16 +37,13 @@ from ._windows import WindowsStrategy
 class DefaultPathResolver:
     """Resolve candidate paths for each configuration layer.
 
-    Why
-    ----
     Centralise path discovery so the composition root stays platform-agnostic
     and easy to test.
 
-    Architecture
-    ------------
-    Uses the Strategy pattern to delegate platform-specific logic to dedicated
-    classes (``LinuxStrategy``, ``MacOSStrategy``, ``WindowsStrategy``),
-    keeping the main resolver focused on orchestration.
+    Architecture:
+        Uses the Strategy pattern to delegate platform-specific logic to dedicated
+        classes (``LinuxStrategy``, ``MacOSStrategy``, ``WindowsStrategy``),
+        keeping the main resolver focused on orchestration.
     """
 
     def __init__(
@@ -51,6 +52,7 @@ class DefaultPathResolver:
         vendor: str,
         app: str,
         slug: str,
+        profile: str | None = None,
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
         platform: str | None = None,
@@ -58,29 +60,25 @@ class DefaultPathResolver:
     ) -> None:
         """Store context required to resolve filesystem locations.
 
-        Parameters
-        ----------
-        vendor / app / slug:
-            Naming context injected into platform-specific directory structures.
-        cwd:
-            Working directory to use when searching for ``.env`` files.
-        env:
-            Optional environment mapping that overrides ``os.environ`` values
-            (useful for deterministic tests).
-        platform:
-            Platform identifier (``sys.platform`` clone). Defaults to the
-            current interpreter platform.
-        hostname:
-            Hostname used for host-specific configuration lookups.
+        Args:
+            vendor / app / slug: Naming context injected into platform-specific directory structures.
+            profile: Optional profile name for environment-specific configurations
+                (e.g., "test", "production"). When set, paths include a
+                ``profile/<name>/`` subdirectory.
+            cwd: Working directory to use when searching for ``.env`` files.
+            env: Optional environment mapping that overrides ``os.environ`` values
+                (useful for deterministic tests).
+            platform: Platform identifier (``sys.platform`` clone). Defaults to the
+                current interpreter platform.
+            hostname: Hostname used for host-specific configuration lookups.
 
-        Raises
-        ------
-        ValueError
-            When vendor, app, slug, or hostname contain invalid path characters.
+        Raises:
+            ValueError: When vendor, app, slug, profile, or hostname contain invalid path characters.
         """
-        self.vendor = validate_identifier(vendor, "vendor")
-        self.application = validate_identifier(app, "app")
+        self.vendor = validate_vendor_app(vendor, "vendor")
+        self.application = validate_vendor_app(app, "app")
         self.slug = validate_identifier(slug, "slug")
+        self.profile = validate_profile(profile)
         self.cwd = cwd or Path.cwd()
         self.env = {**os.environ, **(env or {})}
         self.platform = platform or sys.platform
@@ -94,6 +92,7 @@ class DefaultPathResolver:
             cwd=self.cwd,
             env=self.env,
             hostname=self.hostname,
+            profile=self.profile,
         )
         self._strategy = self._select_strategy()
         self._dotenv_finder = DotenvPathFinder(self.cwd, self._strategy)
@@ -121,43 +120,34 @@ class DefaultPathResolver:
     def app(self) -> Iterable[str]:
         """Return candidate system-wide configuration paths.
 
-        Why
-        ----
         Provide the lowest-precedence defaults shared across machines.
 
-        Returns
-        -------
-        Iterable[str]
+        Returns:
             Ordered path strings for the application defaults layer.
 
-        Examples
-        --------
-        >>> import os
-        >>> from pathlib import Path
-        >>> from tempfile import TemporaryDirectory
-        >>> tmp = TemporaryDirectory()
-        >>> root = Path(tmp.name)
-        >>> (root / 'demo').mkdir(parents=True, exist_ok=True)
-        >>> body = os.linesep.join(['[settings]', 'value=1'])
-        >>> _ = (root / 'demo' / 'config.toml').write_text(body, encoding='utf-8')
-        >>> resolver = DefaultPathResolver(vendor='Acme', app='Demo', slug='demo', env={'LIB_LAYERED_CONFIG_ETC': str(root)}, platform='linux')
-        >>> [Path(p).name for p in resolver.app()]
-        ['config.toml']
-        >>> tmp.cleanup()
+        Examples:
+            >>> import os
+            >>> from pathlib import Path
+            >>> from tempfile import TemporaryDirectory
+            >>> tmp = TemporaryDirectory()
+            >>> root = Path(tmp.name)
+            >>> (root / 'demo').mkdir(parents=True, exist_ok=True)
+            >>> body = os.linesep.join(['[settings]', 'value=1'])
+            >>> _ = (root / 'demo' / 'config.toml').write_text(body, encoding='utf-8')
+            >>> resolver = DefaultPathResolver(vendor='Acme', app='Demo', slug='demo', env={'LIB_LAYERED_CONFIG_ETC': str(root)}, platform='linux')
+            >>> [Path(p).name for p in resolver.app()]
+            ['config.toml']
+            >>> tmp.cleanup()
         """
         return self._iter_layer("app")
 
     def host(self) -> Iterable[str]:
         """Return host-specific overrides.
 
-        Why
-        ----
         Allow operators to tailor configuration to individual hosts (e.g.
         ``demo-host.toml``).
 
-        Returns
-        -------
-        Iterable[str]
+        Returns:
             Ordered host-level configuration paths.
         """
         return self._iter_layer("host")
@@ -165,14 +155,10 @@ class DefaultPathResolver:
     def user(self) -> Iterable[str]:
         """Return user-level configuration locations.
 
-        Why
-        ----
         Capture per-user preferences stored in XDG/macOS/Windows user config
         directories.
 
-        Returns
-        -------
-        Iterable[str]
+        Returns:
             Ordered user-level configuration paths.
         """
         return self._iter_layer("user")
@@ -180,19 +166,15 @@ class DefaultPathResolver:
     def dotenv(self) -> Iterable[str]:
         """Return candidate ``.env`` locations discovered during path resolution.
 
-        Why
-        ----
         `.env` files often live near the project root; this helper provides the
         ordered search list for the dotenv adapter.
 
-        Returns
-        -------
-        Iterable[str]
+        Returns:
             Ordered `.env` path strings.
         """
         return list(self._dotenv_finder.find_paths())
 
-    def _iter_layer(self, layer: str) -> List[str]:
+    def _iter_layer(self, layer: str) -> list[str]:
         """Dispatch to the strategy for *layer* with logging."""
         if self._strategy is None:
             return []

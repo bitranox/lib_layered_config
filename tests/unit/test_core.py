@@ -15,7 +15,7 @@ from tests.support.os_markers import os_agnostic
 @os_agnostic
 def test_read_config_raw_wraps_invalid_format_in_layer_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def raise_invalid(**_: object) -> None:  # pragma: no cover - executed via wrapper
-        raise core.InvalidFormat("bad payload")
+        raise core.InvalidFormatError("bad payload")
 
     monkeypatch.setattr(core, "collect_layers", raise_invalid)
 

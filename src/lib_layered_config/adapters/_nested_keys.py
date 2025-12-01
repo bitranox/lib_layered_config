@@ -1,19 +1,14 @@
 """Shared helpers for assigning nested keys using ``__`` delimiters.
 
-Purpose
--------
 Both dotenv and environment adapters need identical logic for converting
 ``SERVICE__TIMEOUT`` style keys into nested ``{"service": {"timeout": ...}}``
 structures. This module centralises that logic to eliminate duplication.
 
-Contents
---------
-- ``assign_nested``: public function to assign a value at a nested key path.
-- ``resolve_key``: case-insensitive key resolution.
-- ``ensure_child_mapping``: ensure intermediate mappings exist.
+Contents:
+    - ``assign_nested``: public function to assign a value at a nested key path.
+    - ``resolve_key``: case-insensitive key resolution.
+    - ``ensure_child_mapping``: ensure intermediate mappings exist.
 
-System Role
------------
 Used by ``adapters.dotenv.default`` and ``adapters.env.default`` to share
 the nested key assignment algorithm.
 """
@@ -32,27 +27,20 @@ def assign_nested(
 ) -> None:
     """Assign ``value`` in ``target`` using case-insensitive ``__`` delimited syntax.
 
-    Parameters
-    ----------
-    target:
-        Mapping being mutated.
-    key:
-        Key using ``__`` separators (e.g., ``SERVICE__TIMEOUT``).
-    value:
-        Value to assign at the nested location.
-    error_cls:
-        Exception type raised on scalar collisions.
+    Args:
+        target: Mapping being mutated.
+        key: Key using ``__`` separators (e.g., ``SERVICE__TIMEOUT``).
+        value: Value to assign at the nested location.
+        error_cls: Exception type raised on scalar collisions.
 
-    Side Effects
-    ------------
-    Mutates ``target`` in place.
+    Side Effects:
+        Mutates ``target`` in place.
 
-    Examples
-    --------
-    >>> data: dict[str, object] = {}
-    >>> assign_nested(data, 'SERVICE__TOKEN', 'secret', error_cls=ValueError)
-    >>> data
-    {'service': {'token': 'secret'}}
+    Examples:
+        >>> data: dict[str, object] = {}
+        >>> assign_nested(data, 'SERVICE__TOKEN', 'secret', error_cls=ValueError)
+        >>> data
+        {'service': {'token': 'secret'}}
     """
     parts = key.split("__")
     cursor = target
@@ -65,31 +53,23 @@ def assign_nested(
 def resolve_key(mapping: dict[str, object], key: str) -> str:
     """Return an existing key matching ``key`` case-insensitively, or a new lowercase key.
 
-    Why
-    ----
     Preserve case stability while avoiding duplicates that differ only by case.
 
-    Parameters
-    ----------
-    mapping:
-        Mutable mapping being inspected.
-    key:
-        Incoming key to resolve.
+    Args:
+        mapping: Mutable mapping being inspected.
+        key: Incoming key to resolve.
 
-    Returns
-    -------
-    str
+    Returns:
         Existing key name or newly normalised lowercase variant.
 
-    Examples
-    --------
-    >>> resolve_key({'timeout': 5}, 'TIMEOUT')
-    'timeout'
-    >>> resolve_key({}, 'Endpoint')
-    'endpoint'
+    Examples:
+        >>> resolve_key({'timeout': 5}, 'TIMEOUT')
+        'timeout'
+        >>> resolve_key({}, 'Endpoint')
+        'endpoint'
     """
     lower = key.lower()
-    for existing in mapping.keys():
+    for existing in mapping:
         if existing.lower() == lower:
             return existing
     return lower
@@ -103,36 +83,26 @@ def ensure_child_mapping(
 ) -> dict[str, object]:
     """Ensure ``mapping[key]`` is a ``dict``, creating or validating as necessary.
 
-    Why
-    ----
     Prevent accidental overwrites of scalar values when nested keys are introduced.
 
-    Parameters
-    ----------
-    mapping:
-        Mutable mapping being mutated.
-    key:
-        Candidate key to ensure.
-    error_cls:
-        Exception type raised when a scalar collision occurs.
+    Args:
+        mapping: Mutable mapping being mutated.
+        key: Candidate key to ensure.
+        error_cls: Exception type raised when a scalar collision occurs.
 
-    Returns
-    -------
-    dict[str, object]
+    Returns:
         Child mapping stored at the resolved key.
 
-    Side Effects
-    ------------
-    Mutates ``mapping`` by inserting a new child mapping when missing.
+    Side Effects:
+        Mutates ``mapping`` by inserting a new child mapping when missing.
 
-    Examples
-    --------
-    >>> target: dict[str, object] = {}
-    >>> child = ensure_child_mapping(target, 'SERVICE', error_cls=ValueError)
-    >>> child == {}
-    True
-    >>> target
-    {'service': {}}
+    Examples:
+        >>> target: dict[str, object] = {}
+        >>> child = ensure_child_mapping(target, 'SERVICE', error_cls=ValueError)
+        >>> child == {}
+        True
+        >>> target
+        {'service': {}}
     """
     resolved = resolve_key(mapping, key)
     if resolved not in mapping:

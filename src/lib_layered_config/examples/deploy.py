@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Iterator, Sequence
 
 from ..adapters.path_resolvers.default import DefaultPathResolver
 
@@ -28,9 +28,17 @@ class DeploymentStrategy:
     """Base class for computing deployment destinations on a specific platform."""
 
     def __init__(self, resolver: DefaultPathResolver) -> None:
+        """Initialise strategy with a path resolver providing identifiers."""
         self.resolver = resolver
 
+    def _profile_segment(self) -> Path:
+        """Return the profile path segment or an empty path."""
+        if self.resolver.profile:
+            return Path("profile") / self.resolver.profile
+        return Path()
+
     def iter_destinations(self, targets: Sequence[str]) -> Iterator[Path]:
+        """Yield destination paths for each valid target in *targets*."""
         for raw_target in targets:
             target = raw_target.lower()
             if target not in _VALID_TARGETS:
@@ -40,11 +48,15 @@ class DeploymentStrategy:
                 yield destination
 
     def destination_for(self, target: str) -> Path | None:  # pragma: no cover - abstract
+        """Return the destination path for *target*, or None if unsupported."""
         raise NotImplementedError
 
 
 class LinuxDeployment(DeploymentStrategy):
+    """Linux deployment using XDG Base Directory paths."""
+
     def destination_for(self, target: str) -> Path | None:
+        """Return Linux-specific destination path for *target*."""
         mapping = {
             "app": self._app_path,
             "host": self._host_path,
@@ -57,19 +69,25 @@ class LinuxDeployment(DeploymentStrategy):
         return Path(self.resolver.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
 
     def _app_path(self) -> Path:
-        return self._etc_root() / "xdg" / self.resolver.slug / "config.toml"
+        profile_seg = self._profile_segment()
+        return self._etc_root() / "xdg" / self.resolver.slug / profile_seg / "config.toml"
 
     def _host_path(self) -> Path:
-        return self._etc_root() / "xdg" / self.resolver.slug / "hosts" / f"{self.resolver.hostname}.toml"
+        profile_seg = self._profile_segment()
+        return self._etc_root() / "xdg" / self.resolver.slug / profile_seg / "hosts" / f"{self.resolver.hostname}.toml"
 
     def _user_path(self) -> Path:
         candidate = self.resolver.env.get("XDG_CONFIG_HOME")
         base = Path(candidate) if candidate else Path.home() / ".config"
-        return base / self.resolver.slug / "config.toml"
+        profile_seg = self._profile_segment()
+        return base / self.resolver.slug / profile_seg / "config.toml"
 
 
 class MacDeployment(DeploymentStrategy):
+    """macOS deployment using Application Support paths."""
+
     def destination_for(self, target: str) -> Path | None:
+        """Return macOS-specific destination path for *target*."""
         mapping = {
             "app": self._app_path,
             "host": self._host_path,
@@ -88,17 +106,23 @@ class MacDeployment(DeploymentStrategy):
         return Path(self.resolver.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
 
     def _app_path(self) -> Path:
-        return self._app_root() / "config.toml"
+        profile_seg = self._profile_segment()
+        return self._app_root() / profile_seg / "config.toml"
 
     def _host_path(self) -> Path:
-        return self._app_root() / "hosts" / f"{self.resolver.hostname}.toml"
+        profile_seg = self._profile_segment()
+        return self._app_root() / profile_seg / "hosts" / f"{self.resolver.hostname}.toml"
 
     def _user_path(self) -> Path:
-        return self._home_root() / self.resolver.vendor / self.resolver.application / "config.toml"
+        profile_seg = self._profile_segment()
+        return self._home_root() / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
 
 
 class WindowsDeployment(DeploymentStrategy):
+    """Windows deployment using ProgramData and AppData paths."""
+
     def destination_for(self, target: str) -> Path | None:
+        """Return Windows-specific destination path for *target*."""
         mapping = {
             "app": self._app_path,
             "host": self._host_path,
@@ -111,7 +135,7 @@ class WindowsDeployment(DeploymentStrategy):
         return Path(
             self.resolver.env.get(
                 "LIB_LAYERED_CONFIG_PROGRAMDATA",
-                self.resolver.env.get("ProgramData", os.environ.get("ProgramData", r"C:\\ProgramData")),
+                self.resolver.env.get("ProgramData", os.environ.get("ProgramData", r"C:\\ProgramData")),  # noqa: SIM112
             )
         )
 
@@ -138,18 +162,23 @@ class WindowsDeployment(DeploymentStrategy):
         )
 
     def _app_path(self) -> Path:
-        return self._program_data_root() / self.resolver.vendor / self.resolver.application / "config.toml"
+        profile_seg = self._profile_segment()
+        return (
+            self._program_data_root() / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
+        )
 
     def _host_path(self) -> Path:
-        host_root = self._program_data_root() / self.resolver.vendor / self.resolver.application / "hosts"
+        profile_seg = self._profile_segment()
+        host_root = self._program_data_root() / self.resolver.vendor / self.resolver.application / profile_seg / "hosts"
         return host_root / f"{self.resolver.hostname}.toml"
 
     def _user_path(self) -> Path:
+        profile_seg = self._profile_segment()
         appdata_root = self._appdata_root()
         chosen_root = appdata_root
         if "LIB_LAYERED_CONFIG_APPDATA" not in self.resolver.env and not appdata_root.exists():
             chosen_root = self._localappdata_root()
-        return chosen_root / self.resolver.vendor / self.resolver.application / "config.toml"
+        return chosen_root / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
 
 
 def deploy_config(
@@ -159,16 +188,16 @@ def deploy_config(
     app: str,
     targets: Sequence[str],
     slug: str | None = None,
+    profile: str | None = None,
     platform: str | None = None,
     force: bool = False,
 ) -> list[Path]:
-    """Copy *source* into the requested configuration layers without overwriting existing files."""
-
+    """Copy source into the requested configuration layers without overwriting existing files."""
     source_path = Path(source)
     if not source_path.is_file():
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
 
-    resolver = _prepare_resolver(vendor=vendor, app=app, slug=slug or app, platform=platform)
+    resolver = _prepare_resolver(vendor=vendor, app=app, slug=slug or app, profile=profile, platform=platform)
     payload = source_path.read_bytes()
     created: list[Path] = []
     for destination in _destinations_for(resolver, targets):
@@ -184,11 +213,12 @@ def _prepare_resolver(
     vendor: str,
     app: str,
     slug: str,
+    profile: str | None,
     platform: str | None,
 ) -> DefaultPathResolver:
     if platform is None:
-        return DefaultPathResolver(vendor=vendor, app=app, slug=slug)
-    return DefaultPathResolver(vendor=vendor, app=app, slug=slug, platform=platform)
+        return DefaultPathResolver(vendor=vendor, app=app, slug=slug, profile=profile)
+    return DefaultPathResolver(vendor=vendor, app=app, slug=slug, profile=profile, platform=platform)
 
 
 def _platform_family(platform: str) -> str:
@@ -291,9 +321,7 @@ def _mac_home_root(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[re
 def _should_copy(source: Path, destination: Path, force: bool) -> bool:
     if destination.resolve() == source.resolve():
         return False
-    if destination.exists() and not force:
-        return False
-    return True
+    return not (destination.exists() and not force)
 
 
 def _copy_payload(destination: Path, payload: bytes) -> None:

@@ -1,5 +1,129 @@
 # Changelog
 
+## [4.0.0] - 2025-12-01
+
+### Changed
+
+- **Exception names follow PEP 8 convention** - Exception classes now use the `Error` suffix as recommended by PEP 8:
+  - `InvalidFormat` → `InvalidFormatError`
+  - `NotFound` → `NotFoundError`
+
+  **Breaking Change:** The old names (`InvalidFormat`, `NotFound`) have been removed. Update your imports:
+
+  ```python
+  # Before
+  from lib_layered_config import InvalidFormat, NotFound
+
+  # After
+  from lib_layered_config import InvalidFormatError, NotFoundError
+  ```
+
+- **Docstring style changed to Google format** - All docstrings throughout the codebase have been converted from NumPy style to Google style for consistency and wider compatibility.
+
+  **Before (NumPy style):**
+  ```python
+  def func(value):
+      """Short summary.
+
+      Parameters
+      ----------
+      value : str
+          Description of value.
+
+      Returns
+      -------
+      bool
+          Description of return value.
+      """
+  ```
+
+  **After (Google style):**
+  ```python
+  def func(value):
+      """Short summary.
+
+      Args:
+          value: Description of value.
+
+      Returns:
+          Description of return value.
+      """
+  ```
+
+- **Configured `pydocstyle` convention** - Added `[tool.ruff.lint.pydocstyle]` with `convention = "google"` to `pyproject.toml` to enforce consistent docstring formatting.
+
+### Internal
+
+- Reduced cyclomatic complexity in `domain/identifiers.py` by extracting validation helper functions (`_check_not_empty`, `_check_ascii_only`, `_check_no_invalid_chars`, etc.).
+- Modernized type annotations: replaced `typing.List`, `typing.Tuple`, `typing.Optional` with built-in `list`, `tuple`, and `X | None` syntax.
+- Moved `Iterable`, `Iterator`, `Mapping`, `Sequence` imports from `typing` to `collections.abc`.
+- Added docstrings to all Protocol methods in `application/ports.py`.
+- Added docstrings to deployment strategy classes and methods in `examples/deploy.py`.
+- Simplified `_should_copy()` function in `examples/deploy.py` (SIM103).
+- Removed unused imports across CLI modules.
+
+## [3.1.0] - 2025-12-01
+
+### Added
+
+- **Configuration profiles** - New `profile` parameter for `read_config()`, `read_config_json()`, `read_config_raw()`, and `deploy_config()` functions. Profiles allow organizing environment-specific configurations (e.g., `test`, `staging`, `production`) into isolated subdirectories. When specified, all configuration paths include a `profile/<name>/` segment.
+
+  **Example paths with `profile="production"`:**
+  - Linux: `/etc/xdg/<slug>/profile/production/config.toml`
+  - macOS: `/Library/Application Support/<vendor>/<app>/profile/production/config.toml`
+  - Windows: `C:\ProgramData\<vendor>\<app>\profile\production\config.toml`
+
+- **CLI `--profile` option** - Added `--profile` option to `read`, `read-json`, and `deploy` commands.
+
+  ```bash
+  lib_layered_config read --vendor Acme --app MyApp --slug myapp --profile production
+  lib_layered_config deploy --source config.toml --vendor Acme --app MyApp --slug myapp --profile test --target app
+  ```
+
+- **`validate_profile()` function** - New validation function in `domain/identifiers.py` for sanitizing profile names.
+
+- **`validate_path_segment()` function** - New centralized validation function for all filesystem path segments.
+
+- **`validate_vendor_app()` function** - New validation function for vendor/app that allows spaces (for macOS/Windows paths like `/Library/Application Support/Acme Corp/My App/`).
+
+### Changed
+
+- **Enhanced identifier validation** - All identifiers are now validated with comprehensive cross-platform filesystem safety rules:
+
+  **Validation by Type:**
+  | Identifier | Spaces Allowed | Notes |
+  |------------|----------------|-------|
+  | `vendor` | ✅ Yes | For macOS/Windows paths |
+  | `app` | ✅ Yes | For macOS/Windows paths |
+  | `slug` | ❌ No | Linux paths, env var prefix |
+  | `profile` | ❌ No | Profile subdirectory |
+  | `hostname` | ❌ No | Host-specific files |
+
+  **Common Rules (All Identifiers):**
+  - ASCII-only characters (no UTF-8/Unicode)
+  - Must start with alphanumeric character (a-z, A-Z, 0-9)
+  - No path separators (`/`, `\`)
+  - No Windows-invalid characters (`<`, `>`, `:`, `"`, `|`, `?`, `*`)
+  - No Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+  - Cannot end with dot or space (Windows restriction)
+
+  **Examples:**
+  ```python
+  # ✅ Valid
+  vendor="Acme Corp"    # Spaces OK in vendor
+  app="Btx Fix Mcp"     # Spaces OK in app
+  slug="my-app"         # No spaces in slug
+  profile="production"  # No spaces in profile
+
+  # ❌ Invalid (raises ValueError)
+  "../etc"      # Path traversal
+  "café"        # Non-ASCII
+  "CON"         # Windows reserved
+  slug="my app" # Slug cannot have spaces
+  ".hidden"     # Starts with dot
+  "app<test>"   # Windows-invalid character
+  ```
+
 ## [3.0.1] - 2025-11-30
 
 ### Added

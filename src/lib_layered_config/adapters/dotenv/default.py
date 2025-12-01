@@ -1,32 +1,27 @@
 """`.env` adapter.
 
-Purpose
--------
 Implement the :class:`lib_layered_config.application.ports.DotEnvLoader`
 protocol by scanning for `.env` files using the search discipline captured in
 ``docs/systemdesign/module_reference.md``.
 
-Contents
+Contents:
     - ``DefaultDotEnvLoader``: public loader that composes the helpers.
     - ``_iter_candidates`` / ``_build_search_list``: gather candidate paths.
     - ``_parse_dotenv``: strict parser converting dotenv files into nested dicts.
     - ``_log_dotenv_*``: logging helpers that narrate discovery and parsing outcomes.
 
-System Role
------------
 Feeds `.env` key/value pairs into the merge pipeline using the same nesting
 semantics as the environment adapter.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Iterable
 
-from .._nested_keys import assign_nested
-from ...domain.errors import InvalidFormat
+from ...domain.errors import InvalidFormatError
 from ...observability import log_debug, log_error
+from .._nested_keys import assign_nested
 
 DOTENV_LAYER = "dotenv"
 """Layer name for structured logging calls."""
@@ -91,7 +86,7 @@ def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
 
 
 def _parse_dotenv(path: Path) -> Mapping[str, object]:
-    """Parse dotenv file into nested dict. Raises InvalidFormat on malformed lines."""
+    """Parse dotenv file into nested dict. Raises InvalidFormatError on malformed lines."""
     result: dict[str, object] = {}
     with path.open("r", encoding="utf-8") as handle:
         for line_number, raw_line in enumerate(handle, start=1):
@@ -116,9 +111,9 @@ def _process_line(
         return
     if "=" not in line:
         _log_dotenv_error(path, line_number)
-        raise InvalidFormat(f"Malformed line {line_number} in {path}")
+        raise InvalidFormatError(f"Malformed line {line_number} in {path}")
     key, value = line.split("=", 1)
-    assign_nested(result, key.strip(), _strip_quotes(value.strip()), error_cls=InvalidFormat)
+    assign_nested(result, key.strip(), _strip_quotes(value.strip()), error_cls=InvalidFormatError)
 
 
 def _is_quoted(value: str) -> bool:

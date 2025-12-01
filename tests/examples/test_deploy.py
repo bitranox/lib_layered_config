@@ -285,7 +285,7 @@ def test_destinations_skip_none(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @os_agnostic
 def test_prepare_resolver_uses_platform_override() -> None:
-    resolver = deploy_module._prepare_resolver(vendor=VENDOR, app=APP, slug=SLUG, platform="macos")
+    resolver = deploy_module._prepare_resolver(vendor=VENDOR, app=APP, slug=SLUG, profile=None, platform="macos")
     assert resolver.platform == "macos"
 
 
@@ -676,3 +676,182 @@ def test_copy_payload_creates_parent_directories(tmp_path: Path) -> None:
     deploy_module._copy_payload(destination, payload)
 
     assert destination.read_bytes() == payload
+
+
+# ---------------------------------------------------------------------------
+# Profile deployment tests
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+def test_deploy_with_profile_creates_profile_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
+    sandbox.apply_env(monkeypatch)
+
+    source = tmp_path / "source.toml"
+    _write_payload(source)
+
+    created = deploy_config(
+        source,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        profile="test",
+        platform="linux",
+    )
+
+    assert len(created) == 1
+    assert "profile/test/config.toml" in created[0].as_posix()
+
+
+@os_agnostic
+def test_deploy_with_profile_host_includes_profile_segment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
+    sandbox.apply_env(monkeypatch)
+    monkeypatch.setattr("socket.gethostname", lambda: "profile-host")
+
+    source = tmp_path / "source.toml"
+    _write_payload(source)
+
+    created = deploy_config(
+        source,
+        vendor=VENDOR,
+        app=APP,
+        targets=["host"],
+        slug=SLUG,
+        profile="staging",
+        platform="linux",
+    )
+
+    assert len(created) == 1
+    assert "profile/staging/hosts/profile-host.toml" in created[0].as_posix()
+
+
+@os_agnostic
+def test_deploy_with_profile_user_includes_profile_segment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
+    sandbox.apply_env(monkeypatch)
+
+    source = tmp_path / "source.toml"
+    _write_payload(source)
+
+    created = deploy_config(
+        source,
+        vendor=VENDOR,
+        app=APP,
+        targets=["user"],
+        slug=SLUG,
+        profile="production",
+        platform="linux",
+    )
+
+    assert len(created) == 1
+    assert "profile/production/config.toml" in created[0].as_posix()
+
+
+@os_agnostic
+def test_prepare_resolver_with_profile_sets_profile(tmp_path: Path) -> None:
+    resolver = deploy_module._prepare_resolver(
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        profile="test",
+        platform="linux",
+    )
+    assert resolver.profile == "test"
+
+
+@os_agnostic
+def test_deploy_strategy_profile_segment_returns_path_when_set(tmp_path: Path) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
+    resolver = DefaultPathResolver(
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        profile="test",
+        env=sandbox.env,
+        platform="linux",
+        hostname="host",
+    )
+    strategy = deploy_module.LinuxDeployment(resolver)
+
+    segment = strategy._profile_segment()
+    assert segment == Path("profile/test")
+
+
+@os_agnostic
+def test_deploy_strategy_profile_segment_returns_empty_when_none(tmp_path: Path) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
+    resolver = DefaultPathResolver(
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        profile=None,
+        env=sandbox.env,
+        platform="linux",
+        hostname="host",
+    )
+    strategy = deploy_module.LinuxDeployment(resolver)
+
+    segment = strategy._profile_segment()
+    assert segment == Path()
+
+
+@os_agnostic
+def test_deploy_mac_with_profile_includes_profile_segment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
+    sandbox.apply_env(monkeypatch)
+
+    source = tmp_path / "source.toml"
+    _write_payload(source)
+
+    created = deploy_config(
+        source,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        profile="dev",
+        platform="darwin",
+    )
+
+    assert len(created) == 1
+    assert "profile/dev/config.toml" in created[0].as_posix()
+
+
+@os_agnostic
+def test_deploy_windows_with_profile_includes_profile_segment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
+    sandbox.apply_env(monkeypatch)
+
+    source = tmp_path / "source.toml"
+    _write_payload(source)
+
+    created = deploy_config(
+        source,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        profile="prod",
+        platform="win32",
+    )
+
+    assert len(created) == 1
+    assert "profile/prod/config.toml" in created[0].as_posix()

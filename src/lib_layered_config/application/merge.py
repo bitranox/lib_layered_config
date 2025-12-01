@@ -1,32 +1,29 @@
 """Merge ordered configuration layers while keeping provenance crystal clear.
 
-Purpose
--------
 Implement the merge policy described in ``docs/systemdesign/concept.md`` by
 folding a sequence of layer snapshots into a single mapping plus provenance.
 Preserves the "last writer wins" rule without mutating caller-provided data.
 
-Contents
---------
-- ``LayerSnapshot``: immutable record describing a layer name, payload, and
-  origin path.
-- ``merge_layers``: public API returning merged data and provenance mappings.
-- Internal helpers (``_weave_layer``, ``_descend`` …) that manage recursive
-  merging, branch clearing, and dotted-key generation.
+Contents:
+    - ``LayerSnapshot``: immutable record describing a layer name, payload, and
+      origin path.
+    - ``merge_layers``: public API returning merged data and provenance mappings.
+    - Internal helpers (``_weave_layer``, ``_descend`` …) that manage recursive
+      merging, branch clearing, and dotted-key generation.
 
-System Role
------------
-The composition root assembles layer snapshots and delegates to
-``merge_layers`` before building the domain ``Config`` value object.
-Adapters and CLI code depend on the provenance structure to explain precedence.
+System Role:
+    The composition root assembles layer snapshots and delegates to
+    ``merge_layers`` before building the domain ``Config`` value object.
+    Adapters and CLI code depend on the provenance structure to explain precedence.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from collections.abc import Mapping as MappingABC
+from collections.abc import Mapping as TypingMapping
 from dataclasses import dataclass
-from typing import Iterable, Mapping as TypingMapping, Sequence, TypeGuard, cast
+from typing import TypeGuard, cast
 
 from ..observability import log_warn
 from .ports import SourceInfoPayload
@@ -36,18 +33,13 @@ from .ports import SourceInfoPayload
 class MergeResult:
     """Result of merging configuration layers.
 
-    Why
-    ----
     Provides a structured return type instead of raw tuples, improving
     code readability and enabling better IDE support.
 
-    Attributes
-    ----------
-    data:
-        The merged configuration tree with all layers applied.
-    provenance:
-        Provenance metadata keyed by dotted path, explaining which layer
-        contributed each final value.
+    Attributes:
+        data: The merged configuration tree with all layers applied.
+        provenance: Provenance metadata keyed by dotted path, explaining which layer
+            contributed each final value.
     """
 
     data: dict[str, object]
@@ -58,21 +50,15 @@ class MergeResult:
 class LayerSnapshot:
     """Immutable description of a configuration layer.
 
-    Why
-    ----
     Keeps layer metadata compact and explicit so merge logic can reason about
     precedence without coupling to adapter implementations.
 
-    Attributes
-    ----------
-    name:
-        Logical name of the layer (``"defaults"``, ``"app"``, ``"host"``,
-        ``"user"``, ``"dotenv"``, ``"env"``).
-    payload:
-        Mapping produced by adapters; expected to contain only JSON-serialisable
-        types.
-    origin:
-        Optional filesystem path (or ``None`` for in-memory sources).
+    Attributes:
+        name: Logical name of the layer (``"defaults"``, ``"app"``, ``"host"``,
+            ``"user"``, ``"dotenv"``, ``"env"``).
+        payload: Mapping produced by adapters; expected to contain only JSON-serialisable
+            types.
+        origin: Optional filesystem path (or ``None`` for in-memory sources).
     """
 
     name: str
@@ -83,32 +69,24 @@ class LayerSnapshot:
 def merge_layers(layers: Iterable[LayerSnapshot]) -> MergeResult:
     """Merge ordered layers into data and provenance dictionaries.
 
-    Why
-    ----
     Central policy point for layered configuration. Ensures later layers may
     override earlier ones and that provenance stays aligned with the final data.
 
-    Parameters
-    ----------
-    layers:
-        Iterable of :class:`LayerSnapshot` instances in merge order (lowest to
-        highest precedence).
+    Args:
+        layers: Iterable of :class:`LayerSnapshot` instances in merge order (lowest to
+            highest precedence).
 
-    Returns
-    -------
-    MergeResult
+    Returns:
         Dataclass containing the merged configuration mapping and provenance
         mapping keyed by dotted path.
 
-    Examples
-    --------
-    >>> base = LayerSnapshot("app", {"db": {"host": "localhost"}}, "/etc/app.toml")
-    >>> override = LayerSnapshot("env", {"db": {"host": "prod"}}, None)
-    >>> result = merge_layers([base, override])
-    >>> result.data["db"]["host"], result.provenance["db.host"]["layer"]
-    ('prod', 'env')
+    Examples:
+        >>> base = LayerSnapshot("app", {"db": {"host": "localhost"}}, "/etc/app.toml")
+        >>> override = LayerSnapshot("env", {"db": {"host": "prod"}}, None)
+        >>> result = merge_layers([base, override])
+        >>> result.data["db"]["host"], result.provenance["db.host"]["layer"]
+        ('prod', 'env')
     """
-
     merged: dict[str, object] = {}
     provenance: dict[str, SourceInfoPayload] = {}
 
@@ -125,33 +103,24 @@ def _weave_layer(
 ) -> None:
     """Clone snapshot payload and fold it into accumulators.
 
-    Why
-    ----
     Provide a single entry point that ensures each snapshot is processed with
     defensive cloning before descending into nested structures.
 
-    Parameters
-    ----------
-    target:
-        Mutable mapping accumulating merged configuration values.
-    provenance:
-        Mutable mapping capturing dotted-path provenance entries.
-    snapshot:
-        Layer snapshot being merged into the accumulators.
+    Args:
+        target: Mutable mapping accumulating merged configuration values.
+        provenance: Mutable mapping capturing dotted-path provenance entries.
+        snapshot: Layer snapshot being merged into the accumulators.
 
-    Side Effects
-    ------------
-    Mutates *target* and *provenance* in place.
+    Side Effects:
+        Mutates *target* and *provenance* in place.
 
-    Examples
-    --------
-    >>> merged, prov = {}, {}
-    >>> snap = LayerSnapshot('env', {'flag': True}, None)
-    >>> _weave_layer(merged, prov, snap)
-    >>> merged['flag'], prov['flag']['layer']
-    (True, 'env')
+    Examples:
+        >>> merged, prov = {}, {}
+        >>> snap = LayerSnapshot('env', {'flag': True}, None)
+        >>> _weave_layer(merged, prov, snap)
+        >>> merged['flag'], prov['flag']['layer']
+        (True, 'env')
     """
-
     _descend(target, provenance, snapshot.payload, snapshot, [])
 
 
@@ -164,29 +133,19 @@ def _descend(
 ) -> None:
     """Walk each key/value pair, updating scalars or branches as needed.
 
-    Why
-    ----
     Implements the recursive merge algorithm that honours nested structures and
     ensures provenance stays aligned with the final data.
 
-    Parameters
-    ----------
-    target:
-        Mutable mapping receiving merged values.
-    provenance:
-        Mutable mapping storing provenance per dotted path.
-    incoming:
-        Mapping representing the current layer payload.
-    snapshot:
-        Layer metadata used for provenance entries.
-    segments:
-        Accumulated path segments used to compute dotted keys during recursion.
+    Args:
+        target: Mutable mapping receiving merged values.
+        provenance: Mutable mapping storing provenance per dotted path.
+        incoming: Mapping representing the current layer payload.
+        snapshot: Layer metadata used for provenance entries.
+        segments: Accumulated path segments used to compute dotted keys during recursion.
 
-    Side Effects
-    ------------
-    Mutates *target* and *provenance* as it walks through *incoming*.
+    Side Effects:
+        Mutates *target* and *provenance* as it walks through *incoming*.
     """
-
     for key, value in incoming.items():
         dotted = _join_segments(segments, key)
         if _looks_like_mapping(value):
@@ -206,36 +165,25 @@ def _store_branch(
 ) -> None:
     """Ensure a nested mapping exists before descending into it.
 
-    Parameters
-    ----------
-    target:
-        Mutable mapping currently being merged into.
-    provenance:
-        Provenance accumulator updated as recursion progresses.
-    key:
-        Current key being processed.
-    value:
-        Mapping representing the nested branch from the incoming layer.
-    dotted:
-        Dotted representation of the branch path for provenance updates.
-    snapshot:
-        Metadata describing the active layer.
-    segments:
-        Mutable list containing the path segments of the current recursion.
+    Args:
+        target: Mutable mapping currently being merged into.
+        provenance: Provenance accumulator updated as recursion progresses.
+        key: Current key being processed.
+        value: Mapping representing the nested branch from the incoming layer.
+        dotted: Dotted representation of the branch path for provenance updates.
+        snapshot: Metadata describing the active layer.
+        segments: Mutable list containing the path segments of the current recursion.
 
-    Side Effects
-    ------------
-    Mutates *target*, *provenance*, and *segments* while recursing.
+    Side Effects:
+        Mutates *target*, *provenance*, and *segments* while recursing.
 
-    Examples
-    --------
-    >>> target, prov = {}, {}
-    >>> branch_snapshot = LayerSnapshot('env', {'child': {'enabled': True}}, None)
-    >>> _store_branch(target, prov, 'child', {'enabled': True}, 'child', branch_snapshot, [])
-    >>> target['child']['enabled']
-    True
+    Examples:
+        >>> target, prov = {}, {}
+        >>> branch_snapshot = LayerSnapshot('env', {'child': {'enabled': True}}, None)
+        >>> _store_branch(target, prov, 'child', {'enabled': True}, 'child', branch_snapshot, [])
+        >>> target['child']['enabled']
+        True
     """
-
     branch = _ensure_branch(target, key, dotted, snapshot)
     segments.append(key)
     _descend(branch, provenance, value, snapshot, segments)
@@ -256,7 +204,6 @@ def _store_scalar(
     Warns when a mapping is being replaced by a scalar, as this may indicate
     a configuration schema mismatch between layers.
     """
-
     current = target.get(key)
     if _looks_like_mapping(current):
         _warn_type_conflict(dotted, snapshot, "mapping", "scalar")
@@ -292,30 +239,23 @@ def _clone_tuple(value: tuple[object, ...]) -> tuple[object, ...]:
 def _clone_leaf(value: object) -> object:
     """Return a defensive copy of mutable leaf values.
 
-    Why
-    ----
     Prevents callers from mutating adapter-provided data after the merge,
     preserving immutability guarantees described in the system design.
 
-    Parameters
-    ----------
-    value:
-        Leaf value drawn from the incoming layer.
+    Args:
+        value: Leaf value drawn from the incoming layer.
 
-    Returns
-    -------
-    object
+    Returns:
         Clone of the input value; immutable types are returned unchanged.
 
-    Examples
-    --------
-    >>> original = {'items': [1, 2]}
-    >>> cloned = _clone_leaf(original)
-    >>> cloned is original
-    False
-    >>> cloned['items'][0] = 42
-    >>> original['items'][0]
-    1
+    Examples:
+        >>> original = {'items': [1, 2]}
+        >>> cloned = _clone_leaf(original)
+        >>> cloned is original
+        False
+        >>> cloned['items'][0] = 42
+        >>> original['items'][0]
+        1
     """
     if isinstance(value, dict):
         return _clone_dict(cast(dict[str, object], value))
@@ -339,7 +279,6 @@ def _ensure_branch(
     Warns when a scalar value is being replaced by a mapping, as this may
     indicate a configuration schema mismatch between layers.
     """
-
     current = target.get(key)
     if _looks_like_mapping(current):
         return cast(MutableMapping[str, object], current)
@@ -357,27 +296,20 @@ def _clear_branch_if_empty(
 ) -> None:
     """Remove empty branches from provenance when overwritten by scalars.
 
-    Parameters
-    ----------
-    branch:
-        Mutable mapping representing the nested branch just processed.
-    dotted:
-        Dotted key corresponding to the branch.
-    provenance:
-        Provenance mapping to prune when the branch becomes empty.
+    Args:
+        branch: Mutable mapping representing the nested branch just processed.
+        dotted: Dotted key corresponding to the branch.
+        provenance: Provenance mapping to prune when the branch becomes empty.
 
-    Side Effects
-    ------------
-    Mutates *provenance* by removing entries when the branch no longer has data.
+    Side Effects:
+        Mutates *provenance* by removing entries when the branch no longer has data.
 
-    Examples
-    --------
-    >>> prov = {'a.b': {'layer': 'env', 'path': None, 'key': 'a.b'}}
-    >>> _clear_branch_if_empty({}, 'a.b', prov)
-    >>> 'a.b' in prov
-    False
+    Examples:
+        >>> prov = {'a.b': {'layer': 'env', 'path': None, 'key': 'a.b'}}
+        >>> _clear_branch_if_empty({}, 'a.b', prov)
+        >>> 'a.b' in prov
+        False
     """
-
     if branch:
         return
     provenance.pop(dotted, None)
@@ -386,26 +318,19 @@ def _clear_branch_if_empty(
 def _join_segments(segments: Sequence[str], key: str) -> str:
     """Join the current path segments with the new key.
 
-    Parameters
-    ----------
-    segments:
-        Tuple of parent path segments accumulated so far.
-    key:
-        Current key being appended to the dotted path.
+    Args:
+        segments: Tuple of parent path segments accumulated so far.
+        key: Current key being appended to the dotted path.
 
-    Returns
-    -------
-    str
+    Returns:
         Dotted path string combining *segments* and *key*.
 
-    Examples
-    --------
-    >>> _join_segments(('db', 'config'), 'host')
-    'db.config.host'
-    >>> _join_segments((), 'timeout')
-    'timeout'
+    Examples:
+        >>> _join_segments(('db', 'config'), 'host')
+        'db.config.host'
+        >>> _join_segments((), 'timeout')
+        'timeout'
     """
-
     if not segments:
         return key
     return ".".join((*segments, key))
@@ -414,28 +339,20 @@ def _join_segments(segments: Sequence[str], key: str) -> str:
 def _looks_like_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
     """Return ``True`` when *value* is a mapping with string keys.
 
-    Why
-    ----
     Guards recursion so scalars are handled separately from nested mappings.
 
-    Parameters
-    ----------
-    value:
-        Candidate object inspected during recursion.
+    Args:
+        value: Candidate object inspected during recursion.
 
-    Returns
-    -------
-    bool
+    Returns:
         ``True`` when *value* behaves like ``Mapping[str, object]``.
 
-    Examples
-    --------
-    >>> _looks_like_mapping({'a': 1})
-    True
-    >>> _looks_like_mapping(['not', 'mapping'])
-    False
+    Examples:
+        >>> _looks_like_mapping({'a': 1})
+        True
+        >>> _looks_like_mapping(['not', 'mapping'])
+        False
     """
-
     if not isinstance(value, MappingABC):
         return False
     mapping = cast(TypingMapping[object, object], value)
@@ -449,7 +366,6 @@ def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: str, new
     This indicates a potential configuration schema mismatch where one layer
     defines a key as a scalar and another defines it as a mapping.
     """
-
     log_warn(
         "type_conflict",
         key=dotted,

@@ -12,7 +12,7 @@ from lib_layered_config.adapters.dotenv.default import (
     DefaultDotEnvLoader,
     _parse_dotenv as parse,
 )
-from lib_layered_config.domain.errors import InvalidFormat
+from lib_layered_config.domain.errors import InvalidFormatError
 
 from tests.support.os_markers import os_agnostic
 
@@ -104,7 +104,7 @@ def test_dotenv_loader_reports_invalid_line(tmp_path: Path, caplog: pytest.LogCa
     env_file = tmp_path / ".env"
     env_file.write_text("INVALID", encoding="utf-8")
     loader = DefaultDotEnvLoader()
-    with pytest.raises(InvalidFormat):
+    with pytest.raises(InvalidFormatError):
         loader.load(str(tmp_path))
     assert any(record.message == "dotenv_invalid_line" for record in caplog.records)
 
@@ -120,5 +120,5 @@ def test_parse_dotenv_interprets_inline_hash_as_empty(tmp_path: Path) -> None:
 @os_agnostic
 def test_assign_nested_raises_invalid_format_on_scalar_collision() -> None:
     target: dict[str, object] = {"service": "scalar"}
-    with pytest.raises(InvalidFormat):
-        assign(target, "SERVICE__TOKEN", "value", error_cls=InvalidFormat)
+    with pytest.raises(InvalidFormatError):
+        assign(target, "SERVICE__TOKEN", "value", error_cls=InvalidFormatError)

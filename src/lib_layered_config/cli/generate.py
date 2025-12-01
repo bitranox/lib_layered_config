@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import rich_click as click
 
@@ -38,11 +37,10 @@ def generate_examples_command(
     slug: str,
     vendor: str,
     app: str,
-    platform: Optional[str],
+    platform: str | None,
     force: bool,
 ) -> None:
     """Create reference example trees for documentation or onboarding."""
-
     created = generate_examples_impl(
         destination,
         slug=slug,
@@ -56,5 +54,4 @@ def generate_examples_command(
 
 def register(cli_group: click.Group) -> None:
     """Register the generate-examples command."""
-
     cli_group.add_command(generate_examples_command)
