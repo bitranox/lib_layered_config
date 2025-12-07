@@ -21,6 +21,7 @@ jobs:
         python: ["3.13", "3.x"]
     env:
       PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
