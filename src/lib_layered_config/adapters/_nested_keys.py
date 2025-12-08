@@ -8,6 +8,7 @@ Contents:
     - ``assign_nested``: public function to assign a value at a nested key path.
     - ``resolve_key``: case-insensitive key resolution.
     - ``ensure_child_mapping``: ensure intermediate mappings exist.
+    - ``NESTED_KEY_DELIMITER``: constant for the ``__`` separator.
 
 Used by ``adapters.dotenv.default`` and ``adapters.env.default`` to share
 the nested key assignment algorithm.
@@ -15,7 +16,14 @@ the nested key assignment algorithm.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Final, cast
+
+NESTED_KEY_DELIMITER: Final[str] = "__"
+"""Delimiter used to separate nested key segments in environment variables.
+
+Environment variables like ``SERVICE__TIMEOUT`` are split on this delimiter
+to create nested structures like ``{"service": {"timeout": ...}}``.
+"""
 
 
 def assign_nested(
@@ -42,7 +50,7 @@ def assign_nested(
         >>> data
         {'service': {'token': 'secret'}}
     """
-    parts = key.split("__")
+    parts = key.split(NESTED_KEY_DELIMITER)
     cursor = target
     for part in parts[:-1]:
         cursor = ensure_child_mapping(cursor, part, error_cls=error_cls)

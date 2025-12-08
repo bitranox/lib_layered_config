@@ -1,5 +1,24 @@
 # Changelog
 
+## [4.0.1] - 2025-12-08
+
+### Changed
+
+- **Data architecture enforcement** - Replaced magic string literals with named constants and enums throughout the codebase:
+  - Added `OutputFormat` enum in CLI for type-safe output format selection (`json` vs `human`)
+  - Added `_BOOL_TRUE`, `_BOOL_FALSE`, `_BOOL_LITERALS`, `_NULL_LITERALS` constants in env adapter
+  - Added `_QUOTE_CHARS`, `_COMMENT_CHAR`, `_INLINE_COMMENT_DELIMITER`, `_KEY_VALUE_DELIMITER` constants in dotenv adapter
+  - Added `NESTED_KEY_DELIMITER` constant for the `__` separator in nested key parsing
+
+### Internal
+
+- **Test suite refactoring** - Enhanced test architecture following clean code principles:
+  - Centralized shared fixtures in `tests/conftest.py` (sandbox variants, CLI runner, source file fixtures)
+  - Added `tests/unit/test_coverage_edge_cases.py` with 11 new laser-focused edge case tests
+  - Improved test coverage from 97.88% to 98.49%
+  - All tests now use real behavior over mocks where possible
+  - Consistent OS-specific marking throughout (`@os_agnostic`, `@windows_only`, etc.)
+
 ## [4.0.0] - 2025-12-01
 
 ### Changed

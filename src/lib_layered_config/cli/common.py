@@ -6,6 +6,7 @@ and surface metadata drawn from ``__init__conf__``.
 
 Contents:
     * :class:`ReadQuery` — frozen bundle capturing the parameters for configuration reads.
+    * :class:`OutputFormat` — enum for CLI output format selection.
     * Metadata helpers (:func:`version_string`, :func:`describe_distribution`).
     * Query shaping (:func:`build_read_query`, :func:`normalise_prefer`, :func:`stringify`).
     * Output shaping (:func:`json_payload`, :func:`human_payload`, :func:`render_human`).
@@ -23,6 +24,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -57,6 +59,16 @@ class _PackageMetadata(Protocol):
 
 
 package_metadata: _PackageMetadata = cast(_PackageMetadata, __init__conf__)
+
+
+class OutputFormat(str, Enum):
+    """Output format options for CLI commands.
+
+    Provides type-safe selection between human-readable and machine-readable output.
+    """
+
+    HUMAN = "human"
+    JSON = "json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,7 +225,7 @@ def wants_json(output_format: str) -> bool:
 
     Commands toggle between human and JSON representations; clarity matters.
     """
-    return output_format.strip().lower() == "json"
+    return output_format.strip().lower() == OutputFormat.JSON.value
 
 
 def resolve_indent(enabled: bool) -> int | None:

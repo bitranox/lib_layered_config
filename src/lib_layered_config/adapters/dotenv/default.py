@@ -9,6 +9,7 @@ Contents:
     - ``_iter_candidates`` / ``_build_search_list``: gather candidate paths.
     - ``_parse_dotenv``: strict parser converting dotenv files into nested dicts.
     - ``_log_dotenv_*``: logging helpers that narrate discovery and parsing outcomes.
+    - Constants for parsing quote characters and delimiters.
 
 Feeds `.env` key/value pairs into the merge pipeline using the same nesting
 semantics as the environment adapter.
@@ -18,10 +19,17 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Final
 
 from ...domain.errors import InvalidFormatError
 from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
+
+# Constants for dotenv parsing
+_QUOTE_CHARS: Final[frozenset[str]] = frozenset({'"', "'"})
+_COMMENT_CHAR: Final[str] = "#"
+_INLINE_COMMENT_DELIMITER: Final[str] = " #"
+_KEY_VALUE_DELIMITER: Final[str] = "="
 
 DOTENV_LAYER = "dotenv"
 """Layer name for structured logging calls."""
@@ -96,7 +104,7 @@ def _parse_dotenv(path: Path) -> Mapping[str, object]:
 
 def _is_ignorable(line: str) -> bool:
     """Return True if line is empty or a comment."""
-    return not line or line.startswith("#")
+    return not line or line.startswith(_COMMENT_CHAR)
 
 
 def _process_line(
@@ -109,27 +117,27 @@ def _process_line(
     line = raw_line.strip()
     if _is_ignorable(line):
         return
-    if "=" not in line:
+    if _KEY_VALUE_DELIMITER not in line:
         _log_dotenv_error(path, line_number)
         raise InvalidFormatError(f"Malformed line {line_number} in {path}")
-    key, value = line.split("=", 1)
+    key, value = line.split(_KEY_VALUE_DELIMITER, 1)
     assign_nested(result, key.strip(), _strip_quotes(value.strip()), error_cls=InvalidFormatError)
 
 
 def _is_quoted(value: str) -> bool:
     """Check if value is wrapped in matching quotes."""
-    return len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}
+    return len(value) >= 2 and value[0] == value[-1] and value[0] in _QUOTE_CHARS
 
 
 def _strip_inline_comment(value: str) -> str:
     """Remove trailing inline comment from value."""
-    return value.split(" #", 1)[0].strip() if " #" in value else value
+    return value.split(_INLINE_COMMENT_DELIMITER, 1)[0].strip() if _INLINE_COMMENT_DELIMITER in value else value
 
 
 def _strip_quotes(value: str) -> str:
     """Remove surrounding quotes and trailing inline comments from value."""
     if _is_quoted(value):
         return value[1:-1]
-    if value.startswith("#"):
+    if value.startswith(_COMMENT_CHAR):
         return ""
     return _strip_inline_comment(value)

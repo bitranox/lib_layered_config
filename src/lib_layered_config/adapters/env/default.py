@@ -11,15 +11,23 @@ Contents:
       Python primitives.
     - ``_normalize_prefix`` / ``_iter_namespace_entries`` / ``_collect_keys``:
       small verbs that keep the loader body declarative.
+    - Constants for boolean and null literal detection.
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import Iterable, Iterator
+from typing import Final
 
 from ...observability import log_debug
 from .._nested_keys import assign_nested
+
+# Constants for environment variable value coercion
+_BOOL_TRUE: Final[str] = "true"
+_BOOL_FALSE: Final[str] = "false"
+_BOOL_LITERALS: Final[frozenset[str]] = frozenset({_BOOL_TRUE, _BOOL_FALSE})
+_NULL_LITERALS: Final[frozenset[str]] = frozenset({"null", "none"})
 
 
 def default_env_prefix(slug: str) -> str:
@@ -195,7 +203,7 @@ def _coerce(value: str) -> object:
     """
     lowered = value.lower()
     if _looks_like_bool(lowered):
-        return lowered == "true"
+        return lowered == _BOOL_TRUE
     if _looks_like_null(lowered):
         return None
     if _looks_like_int(value):
@@ -218,7 +226,7 @@ def _looks_like_bool(value: str) -> bool:
         >>> _looks_like_bool('true'), _looks_like_bool('false'), _looks_like_bool('maybe')
         (True, True, False)
     """
-    return value in {"true", "false"}
+    return value in _BOOL_LITERALS
 
 
 def _looks_like_null(value: str) -> bool:
@@ -236,7 +244,7 @@ def _looks_like_null(value: str) -> bool:
         >>> _looks_like_null('null'), _looks_like_null('none'), _looks_like_null('nil')
         (True, True, False)
     """
-    return value in {"null", "none"}
+    return value in _NULL_LITERALS
 
 
 def _looks_like_int(value: str) -> bool:
