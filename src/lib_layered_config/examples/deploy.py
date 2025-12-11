@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator, Sequence
+import shutil
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from ..adapters.path_resolvers.default import DefaultPathResolver
@@ -11,10 +14,97 @@ from ..adapters.path_resolvers.default import DefaultPathResolver
 _VALID_TARGETS = {"app", "host", "user"}
 
 
-def _ensure_path(path: Path | None, target: str) -> Path:
-    if path is None:
-        raise ValueError(f"No destination available for {target!r}")
-    return path
+class DeployAction(Enum):
+    """Action taken during deployment for a single destination."""
+
+    CREATED = "created"  # New file, no conflict
+    OVERWRITTEN = "overwritten"  # Backed up and replaced
+    KEPT = "kept"  # Existing kept, new saved as .ucf
+    SKIPPED = "skipped"  # No action taken
+
+
+@dataclass
+class DeployResult:
+    """Result of a single file deployment."""
+
+    destination: Path
+    action: DeployAction
+    backup_path: Path | None = None  # Set if action is OVERWRITTEN
+    ucf_path: Path | None = None  # Set if action is KEPT
+
+
+# Type alias for conflict resolution callback
+ConflictResolver = Callable[[Path], DeployAction]
+
+
+def _next_available_path(base: Path, suffix: str) -> Path:
+    """Find next available path with numbered suffix if needed.
+
+    Examples:
+        >>> import tempfile
+        >>> from pathlib import Path
+        >>> with tempfile.TemporaryDirectory() as td:
+        ...     p = Path(td) / "config.toml"
+        ...     _next_available_path(p, ".bak").name
+        'config.toml.bak'
+    """
+    candidate = base.parent / (base.name + suffix)
+    if not candidate.exists():
+        return candidate
+    n = 1
+    while True:
+        candidate = base.parent / f"{base.name}{suffix}.{n}"
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
+def _backup_file(path: Path) -> Path:
+    """Create backup of existing file as path.bak (with numbered suffix if needed).
+
+    Args:
+        path: Path to the file to back up.
+
+    Returns:
+        Path to the created backup file.
+    """
+    backup = _next_available_path(path, ".bak")
+    shutil.copy2(path, backup)
+    return backup
+
+
+def _write_ucf(destination: Path, payload: bytes) -> Path:
+    """Write new config as .ucf variant (with numbered suffix if needed).
+
+    Args:
+        destination: Original destination path.
+        payload: File content to write.
+
+    Returns:
+        Path to the created .ucf file.
+    """
+    ucf_path = _next_available_path(destination, ".ucf")
+    ucf_path.parent.mkdir(parents=True, exist_ok=True)
+    ucf_path.write_bytes(payload)
+    return ucf_path
+
+
+def _content_matches(destination: Path, payload: bytes) -> bool:
+    """Check if the destination file has the same content as the payload.
+
+    Args:
+        destination: Path to the existing file.
+        payload: New content to compare against.
+
+    Returns:
+        True if the file exists and has identical content, False otherwise.
+    """
+    if not destination.exists():
+        return False
+    try:
+        return destination.read_bytes() == payload
+    except OSError:
+        return False
 
 
 def _validate_target(target: str) -> str:
@@ -191,21 +281,126 @@ def deploy_config(
     profile: str | None = None,
     platform: str | None = None,
     force: bool = False,
-) -> list[Path]:
-    """Copy source into the requested configuration layers without overwriting existing files."""
+    batch: bool = False,
+    conflict_resolver: ConflictResolver | None = None,
+) -> list[DeployResult]:
+    """Copy source into the requested configuration layers with conflict handling.
+
+    Args:
+        source: Path to the configuration file to deploy.
+        vendor: Vendor namespace.
+        app: Application name.
+        targets: Layer targets to deploy to (app, host, user).
+        slug: Slug identifying the configuration set.
+        profile: Configuration profile name.
+        platform: Override auto-detected platform.
+        force: If True, backup existing files and overwrite (no prompt).
+        batch: If True, keep existing files and write new as .ucf for review (CI/scripts).
+        conflict_resolver: Callback to resolve conflicts interactively.
+            Called with destination Path, should return DeployAction.
+
+    Returns:
+        List of DeployResult objects describing what was done for each destination.
+    """
     source_path = Path(source)
     if not source_path.is_file():
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
 
     resolver = _prepare_resolver(vendor=vendor, app=app, slug=slug or app, profile=profile, platform=platform)
     payload = source_path.read_bytes()
-    created: list[Path] = []
+    results: list[DeployResult] = []
+
     for destination in _destinations_for(resolver, targets):
-        if not _should_copy(source_path, destination, force):
+        # Skip if source and destination are the same
+        if destination.resolve() == source_path.resolve():
             continue
+
+        result = _deploy_single(
+            destination=destination,
+            payload=payload,
+            force=force,
+            batch=batch,
+            conflict_resolver=conflict_resolver,
+        )
+        results.append(result)
+
+    return results
+
+
+def _deploy_single(
+    *,
+    destination: Path,
+    payload: bytes,
+    force: bool,
+    batch: bool,
+    conflict_resolver: ConflictResolver | None,
+) -> DeployResult:
+    """Deploy to a single destination with conflict handling."""
+    # New file - no conflict
+    if not destination.exists():
         _copy_payload(destination, payload)
-        created.append(destination)
-    return created
+        return DeployResult(destination=destination, action=DeployAction.CREATED)
+
+    # File exists but content is identical - skip (smart skipping)
+    if _content_matches(destination, payload):
+        return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+
+    # File exists with different content - determine action
+    if force:
+        # Force mode: backup and overwrite
+        backup_path = _backup_file(destination)
+        _copy_payload(destination, payload)
+        return DeployResult(
+            destination=destination,
+            action=DeployAction.OVERWRITTEN,
+            backup_path=backup_path,
+        )
+
+    if batch:
+        # Batch mode: keep existing, write new as .ucf for review
+        ucf_path = _write_ucf(destination, payload)
+        return DeployResult(
+            destination=destination,
+            action=DeployAction.KEPT,
+            ucf_path=ucf_path,
+        )
+
+    # Interactive mode: ask callback
+    if conflict_resolver is not None:
+        action = conflict_resolver(destination)
+        return _execute_action(destination, payload, action)
+
+    # No resolver provided, default to skip
+    return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+
+
+def _execute_action(destination: Path, payload: bytes, action: DeployAction) -> DeployResult:
+    """Execute the chosen action for a conflict."""
+    if action == DeployAction.OVERWRITTEN:
+        # Smart skip if content is identical
+        if _content_matches(destination, payload):
+            return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+        backup_path = _backup_file(destination)
+        _copy_payload(destination, payload)
+        return DeployResult(
+            destination=destination,
+            action=DeployAction.OVERWRITTEN,
+            backup_path=backup_path,
+        )
+
+    if action == DeployAction.KEPT:
+        # Smart skip if content is identical (no need for UCF)
+        if _content_matches(destination, payload):
+            return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+        ucf_path = _write_ucf(destination, payload)
+        return DeployResult(
+            destination=destination,
+            action=DeployAction.KEPT,
+            ucf_path=ucf_path,
+        )
+
+    # SKIPPED or CREATED (shouldn't happen here, but handle gracefully)
+    return DeployResult(destination=destination, action=DeployAction.SKIPPED)
 
 
 def _prepare_resolver(
@@ -248,80 +443,6 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
 def _resolve_destination(resolver: DefaultPathResolver, target: str) -> Path | None:
     normalised = _validate_target(target)
     return _strategy_for(resolver).destination_for(normalised)
-
-
-def _linux_destination_for(resolver: DefaultPathResolver, target: str) -> Path | None:  # pyright: ignore[reportUnusedFunction]
-    return LinuxDeployment(resolver).destination_for(_validate_target(target))
-
-
-def _mac_destination_for(resolver: DefaultPathResolver, target: str) -> Path | None:  # pyright: ignore[reportUnusedFunction]
-    return MacDeployment(resolver).destination_for(_validate_target(target))
-
-
-def _windows_destination_for(resolver: DefaultPathResolver, target: str) -> Path | None:  # pyright: ignore[reportUnusedFunction]
-    return WindowsDeployment(resolver).destination_for(_validate_target(target))
-
-
-def _linux_app_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_linux_destination_for(resolver, "app"), "app")
-
-
-def _linux_host_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_linux_destination_for(resolver, "host"), "host")
-
-
-def _linux_user_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_linux_destination_for(resolver, "user"), "user")
-
-
-def _mac_app_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_mac_destination_for(resolver, "app"), "app")
-
-
-def _mac_host_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_mac_destination_for(resolver, "host"), "host")
-
-
-def _mac_user_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_mac_destination_for(resolver, "user"), "user")
-
-
-def _windows_app_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_windows_destination_for(resolver, "app"), "app")
-
-
-def _windows_host_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_windows_destination_for(resolver, "host"), "host")
-
-
-def _windows_user_path(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return _ensure_path(_windows_destination_for(resolver, "user"), "user")
-
-
-def _windows_program_data(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return WindowsDeployment(resolver)._program_data_root()  # pyright: ignore[reportPrivateUsage]
-
-
-def _windows_appdata(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return WindowsDeployment(resolver)._appdata_root()  # pyright: ignore[reportPrivateUsage]
-
-
-def _windows_localappdata(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return WindowsDeployment(resolver)._localappdata_root()  # pyright: ignore[reportPrivateUsage]
-
-
-def _mac_app_root(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return MacDeployment(resolver)._app_root()  # pyright: ignore[reportPrivateUsage]
-
-
-def _mac_home_root(resolver: DefaultPathResolver) -> Path:  # pyright: ignore[reportUnusedFunction]
-    return MacDeployment(resolver)._home_root()  # pyright: ignore[reportPrivateUsage]
-
-
-def _should_copy(source: Path, destination: Path, force: bool) -> bool:
-    if destination.resolve() == source.resolve():
-        return False
-    return not (destination.exists() and not force)
 
 
 def _copy_payload(destination: Path, payload: bytes) -> None:

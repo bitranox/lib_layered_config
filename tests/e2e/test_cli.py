@@ -173,12 +173,13 @@ def test_cli_deploy_first_run_creates_requested_targets(tmp_path: Path, sandbox:
         "user",
     ]
     result = make_runner().invoke(cli.cli, command, env=sandbox.env)
-    created = {Path(item) for item in json.loads(result.output)}
-    assert result.exit_code == 0 and all(path.exists() for path in created)
+    output = json.loads(result.output)
+    created = {Path(item) for item in output.get("created", [])}
+    assert result.exit_code == 0 and len(created) == 2 and all(path.exists() for path in created)
 
 
 @os_agnostic
-def test_cli_deploy_rerun_without_force_returns_empty(tmp_path: Path, sandbox: LayeredSandbox) -> None:
+def test_cli_deploy_rerun_without_force_skips_existing(tmp_path: Path, sandbox: LayeredSandbox) -> None:
     source = tmp_path / "source.toml"
     source.write_text("[service]\nv = 1\n", encoding="utf-8")
     command = [
@@ -193,11 +194,13 @@ def test_cli_deploy_rerun_without_force_returns_empty(tmp_path: Path, sandbox: L
         SLUG,
         "--target",
         "app",
+        "--batch",  # Non-interactive mode (identical content smart-skipped)
     ]
     runner = make_runner()
     runner.invoke(cli.cli, command, env=sandbox.env)
     repeat = runner.invoke(cli.cli, command, env=sandbox.env)
-    assert repeat.exit_code == 0 and json.loads(repeat.output) == []
+    output = json.loads(repeat.output)
+    assert repeat.exit_code == 0 and output.get("skipped", []) != []
 
 
 @os_agnostic

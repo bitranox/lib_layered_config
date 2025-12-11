@@ -1091,19 +1091,23 @@ Complete
 
 - `src/lib_layered_config/examples/deploy.py`
 - `tests/examples/test_deploy.py`
+- `tests/e2e/test_deploy_behavior.py`
 
 ---
 
 ## Problem Statement
 
 Operators need to copy configuration templates into the same layered structure
-the runtime expects, without accidentally overwriting existing files.
+the runtime expects, with clear options for handling conflicts when files
+already exist at the destination.
 
 ## Solution Overview
 
 - `deploy_config` validates targets, computes destinations using
-  ``DefaultPathResolver``, and writes files respecting the `force` flag.
-- Helpers handle platform overrides, file comparison, and byte writing.
+  `DefaultPathResolver`, and deploys files with conflict handling.
+- Three conflict resolution strategies: interactive prompts, `--force` for
+  automatic backup-and-overwrite, `--batch` for keep-and-write-UCF (CI/scripts).
+- Results tracked via `DeployResult` dataclass with backup/UCF paths.
 
 ---
 
@@ -1111,32 +1115,81 @@ the runtime expects, without accidentally overwriting existing files.
 
 **Layer Fit:** Optional tooling layer reused by the CLI `deploy` command.
 
-**System Dependencies:** Path resolver adapter, `pathlib`, `os`.
+**System Dependencies:** Path resolver adapter, `pathlib`, `os`, `shutil`.
 
 ---
 
 ## Core Components
 
 ### `deploy_config`
-- **Purpose:** Public API for copying configuration artefacts.
+- **Purpose:** Public API for copying configuration artefacts with conflict handling.
+- **Input:** Source path, vendor/app/slug identifiers, targets, and optional
+  `force`, `batch`, and `conflict_resolver` parameters.
+- **Output:** `list[DeployResult]` describing the action taken for each destination.
 
-### `_prepare_resolver`, `_destinations_for`, `_copy_payload`, `_should_copy`
-- **Purpose:** Internal helpers to compute destinations and enforce overwrite
-  policy.
+### `DeployAction` (Enum)
+- **Purpose:** Track deployment outcomes: `CREATED`, `OVERWRITTEN`, `KEPT`, `SKIPPED`.
+- **Location:** `examples/deploy.py`
+
+### `DeployResult` (Dataclass)
+- **Purpose:** Rich result object containing:
+  - `destination`: Target file path
+  - `action`: What action was taken (`DeployAction`)
+  - `backup_path`: Path to `.bak` backup file (if overwritten)
+  - `ucf_path`: Path to `.ucf` file (if kept existing)
+- **Location:** `examples/deploy.py`
+
+### `ConflictResolver` (Type Alias)
+- **Purpose:** Callback type for custom conflict resolution: `Callable[[Path], DeployAction]`.
+- **Usage:** Called when destination exists and neither `--force` nor `--batch` is set.
+
+### Conflict Handling Helpers
+- `_content_matches`: Compare destination content with payload for smart skipping.
+- `_next_available_path`: Find non-conflicting path with numbered suffix (`.bak.1`, `.bak.2`).
+- `_backup_file`: Create `.bak` backup of existing file.
+- `_write_ucf`: Write new content as `.ucf` variant when keeping existing.
+- `_deploy_single`: Handle conflict resolution for a single destination.
+- `_execute_action`: Perform the chosen action (overwrite/keep/skip).
+
+### Path Resolution Helpers
+- `_prepare_resolver`, `_destinations_for`, `_copy_payload`:
+  Internal helpers to compute destinations and enforce deployment policy.
+
+---
+
+## Conflict Handling Behavior
+
+| Scenario | Behavior |
+|----------|----------|
+| New file (no conflict) | File created, action = `CREATED` |
+| File exists + identical content | Skip silently (smart skip), action = `SKIPPED` |
+| File exists + different content + `--force` | Backup to `.bak`, overwrite, action = `OVERWRITTEN` |
+| File exists + different content + `--batch` | Keep existing, write new as `.ucf`, action = `KEPT` |
+| File exists + different content + interactive | Prompt user: Keep (`.ucf`, default) / Overwrite (`.bak`) |
+| Existing `.bak`/`.ucf` | Use numbered suffix (`.bak.1`, `.bak.2`, etc.) |
+
+**Smart Skipping:** When the destination file already exists with identical content
+to the source, deployment is skipped without creating backups. This avoids
+unnecessary `.bak` file proliferation and is applied regardless of `--force`
+or `--batch` flags.
 
 ---
 
 ## Testing Approach
 
-- `tests/examples/test_deploy.py` covers POSIX/Windows behaviour, force/no-force
-  semantics, and CLI integration paths.
+- `tests/examples/test_deploy.py` covers unit-level behavior: backup creation,
+  UCF generation, numbered suffixes, conflict resolver callbacks, and
+  POSIX/Windows paths.
+- `tests/e2e/test_deploy_behavior.py` covers end-to-end CLI scenarios:
+  first-run creation, batch UCF creation, force overwriting, JSON output format,
+  multiple sequential deploys with numbered backups, and smart skipping
+  when content is identical.
 
 ---
 
 ## Known Issues & Future Improvements
 
-- Future work may add checksum-based skipping; current logic only compares file
-  contents when ``force`` is enabled.
+- Interactive prompts require a TTY; use `--batch` for non-interactive environments.
 
 ---
 
@@ -1380,22 +1433,25 @@ notebooks.
 
 ### Module: `lib_layered_config/examples/deploy.py`
 - **Purpose:** Copy an existing configuration file into the canonical layer
-  directories (app, host, user) discovered by the path resolver.
+  directories (app, host, user) discovered by the path resolver, with
+  interactive conflict handling, backup creation, and UCF file support.
 - **Responsibilities:**
   - Instantiate a path resolver via `_prepare_resolver`.
-  - Compute destination paths with `_destinations_for` and conditionally copy
-    via `_should_copy` and `_copy_payload`.
-  - Honour the `force` flag to control overwrites and skip existing files.
-- **Dependencies:** `pathlib`, environment variables for overrides, adapters.
-- **Public API:** `deploy_config`.
-- **Verification:** `tests/examples/test_deploy.py` covers deployments across
-  targets, skip/force semantics, invalid inputs, and Windows-specific paths.
+  - Compute destination paths with `_destinations_for`.
+  - Handle conflicts via `--force` (backup and overwrite), `--batch` (keep
+    and write `.ucf`), or interactive prompt (keep as `.ucf` or overwrite with `.bak`).
+  - Track results via `DeployResult` dataclass with action, backup, and UCF paths.
+  - Use numbered suffixes (`.bak.1`, `.bak.2`) when backup/UCF files exist.
+- **Dependencies:** `pathlib`, `shutil`, environment variables for overrides, adapters.
+- **Public API:** `deploy_config`, `DeployAction`, `DeployResult`, `ConflictResolver`.
+- **Verification:** `tests/examples/test_deploy.py` covers unit-level behavior;
+  `tests/e2e/test_deploy_behavior.py` covers end-to-end CLI scenarios.
 
 ### Module: `lib_layered_config/examples/__init__.py`
 - **Purpose:** Present a single namespace for example helpers consumed by
   documentation and notebooks.
-- **Public API:** Re-exports `deploy_config`, `generate_examples`,
-  `ExampleSpec`, `DEFAULT_HOST_PLACEHOLDER`.
+- **Public API:** Re-exports `deploy_config`, `DeployAction`, `DeployResult`,
+  `ConflictResolver`, `generate_examples`, `ExampleSpec`, `DEFAULT_HOST_PLACEHOLDER`.
 - **Verification:** Covered indirectly by the example tests above.
 
 ---

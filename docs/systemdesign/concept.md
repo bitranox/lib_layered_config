@@ -31,6 +31,8 @@ Use this checklist as a living reference; extend it as the solution grows.
 * [x] Trace-aware structured logging provided by `observability` helpers, consumed by adapters/composition.
 * [x] Rich Click CLI (`lib_layered_config`) with commands for read/read-json, deploy, generate-examples, env-prefix, info, fail.
 * [x] Example tree generator and deployment helpers for docs/onboarding (`examples/generate`, `examples/deploy`).
+* [x] Interactive conflict handling for `deploy` command with backup (`.bak`) and UCF (`.ucf`) file support.
+* [x] Smart skipping for `deploy` when destination content is identical (avoids unnecessary backups).
 
 2. **Non-Goals** *(still out of scope)*
 
@@ -59,15 +61,17 @@ Use this checklist as a living reference; extend it as the solution grows.
 
 5. **Presentation & Tooling**
    - Rich Click CLI with commands: `info`, `env-prefix`, `read`, `read-json`, `deploy`, `generate-examples`, `fail`.
+   - Deploy command with conflict handling: `--force` (backup and overwrite), `--batch` (keep and write `.ucf` for CI), or interactive prompt (keep/overwrite).
    - Example and deployment helpers mirrored by CLI commands and used in documentation.
    - Testing helper (`i_should_fail`) and notebooks for deterministic failure-path demonstrations.
 
 ## C) Tests & Quality
 
 * Unit tests for domain, adapters, merge logic, observability, and example/deployment helpers.
-* Property-based tests (Hypothesis) verifying merge associativity and “last layer wins”.
+* Property-based tests (Hypothesis) verifying merge associativity and "last layer wins".
 * Adapter contract tests ensuring runtime adherence to ports.
 * E2E CLI tests exercising commands, provenance output, deployment flows, and failure handling.
+* Behavior tests for deploy conflict handling (backup creation, UCF files, numbered suffixes).
 * Notebook execution test for `notebooks/Quickstart.ipynb` (CI smoke test).
 * Import-Linter contracts enforcing layer boundaries.
 * Coverage gate configured at ≥90% in `pyproject.toml` and enforced via `make test`.

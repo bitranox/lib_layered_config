@@ -1,5 +1,99 @@
 # Changelog
 
+## [5.0.0] - 2025-12-11
+
+### Added
+
+- **5x faster TOML parsing with rtoml** - Switched from stdlib `tomllib` to `rtoml` (Rust-based TOML parser) as the default parser. Benchmarks show ~5x faster parsing across all config sizes:
+  - 1KB config: 0.15ms → 0.03ms
+  - 17KB config: 2.9ms → 0.55ms
+  - 60KB config: 8.3ms → 1.6ms
+
+- **LRU caching for identifier validation** - Added `@lru_cache` to validation functions (`validate_identifier`, `validate_vendor_app`, `validate_hostname`) to avoid redundant validation when reading config multiple times with the same identifiers.
+
+- **Smart skipping for `deploy` command** - When deploying a configuration file, the command now compares the source content with the existing destination file byte-by-byte. If the content is identical, the deployment is skipped without creating backup files. This prevents unnecessary `.bak` file proliferation when repeatedly deploying unchanged configurations.
+
+  **Behavior:**
+  - Applies to all modes: `--force`, `--batch`, and interactive
+  - Uses exact byte comparison (whitespace differences are detected)
+  - File modification time is preserved when skipped
+  - JSON output reports `"skipped"` for identical content
+
+  **Example:**
+  ```bash
+  # First deploy creates the file
+  $ lib_layered_config deploy --source config.toml --vendor Acme --app Demo --slug demo --target app
+  {"created": ["/etc/xdg/demo/config.toml"]}
+
+  # Second deploy with same content skips (no backup created)
+  $ lib_layered_config deploy --source config.toml --vendor Acme --app Demo --slug demo --target app --force
+  {"skipped": ["/etc/xdg/demo/config.toml"]}
+
+  # Deploy with different content creates backup and overwrites
+  $ lib_layered_config deploy --source config-v2.toml --vendor Acme --app Demo --slug demo --target app --force
+  {"overwritten": ["/etc/xdg/demo/config.toml"], "backups": ["/etc/xdg/demo/config.toml.bak"]}
+  ```
+
+- **`_content_matches()` helper** - New internal function in `examples/deploy.py` for byte-exact content comparison between source payload and destination file.
+
+### Changed
+
+- **TOML parser dependency** - Replaced `tomllib`/`tomli` with `rtoml` as the default TOML parser. This is a Rust-based parser that provides significant performance improvements while maintaining full TOML 1.0 compatibility.
+
+### Removed
+
+- **Deprecated internal shim functions** - Removed unused compatibility shims from `examples/deploy.py`:
+  - Platform-specific destination helpers (`_linux_destination_for`, `_mac_destination_for`, `_windows_destination_for`)
+  - Platform-specific path helpers (`_linux_app_path`, `_mac_app_path`, `_windows_app_path`, etc.)
+  - Legacy helper functions (`_should_copy`, `_ensure_path`)
+
+  These internal functions were replaced by the `DeploymentStrategy` class hierarchy and `_deploy_single()` function.
+
+## [4.2.0] - 2025-12-11
+
+### Added
+
+- **Interactive conflict handling for `deploy` command** - When a destination file exists, the deploy command now offers two options:
+  - **Keep existing** (`k`) - Save new config as `.ucf` (Update Configuration File), preserving the original — **default**
+  - **Overwrite** (`o`) - Backup original to `.bak`, then write new file
+
+- **`--batch` flag for `deploy` command** - Non-interactive mode that keeps existing files and writes new config as `.ucf` for manual review. Suitable for CI/CD pipelines and scripts where user customizations must be preserved.
+
+- **Automatic backup creation** - When using `--force` or choosing "Overwrite", the existing file is backed up to `.bak` before being replaced.
+
+- **Numbered suffix handling** - If `.bak` or `.ucf` files already exist, uses numbered suffixes (`.bak.1`, `.bak.2`, etc.) to avoid overwriting previous backups.
+
+- **`DeployAction` enum** - New enum in `examples.deploy` tracking deployment outcomes: `CREATED`, `OVERWRITTEN`, `KEPT`, `SKIPPED`.
+
+- **`DeployResult` dataclass** - Rich return type from `deploy_config()` providing:
+  - `destination`: Target path
+  - `action`: What action was taken (`DeployAction`)
+  - `backup_path`: Path to backup file (if action was `OVERWRITTEN`)
+  - `ucf_path`: Path to UCF file (if action was `KEPT`)
+
+- **`ConflictResolver` callback type** - New type alias for custom conflict resolution callbacks: `Callable[[Path], DeployAction]`.
+
+### Changed
+
+- **`deploy_config()` return type** - Now returns `list[DeployResult]` instead of `list[Path]`. The destination paths are accessible via `result.destination`.
+
+  **Breaking Change:** Update code that uses the return value:
+  ```python
+  # Before
+  paths = deploy_config(source, vendor="V", app="A", targets=["app"], slug="s")
+  for path in paths:
+      print(f"Created: {path}")
+
+  # After
+  results = deploy_config(source, vendor="V", app="A", targets=["app"], slug="s")
+  for result in results:
+      print(f"{result.action.value}: {result.destination}")
+  ```
+
+- **`deploy_config()` signature** - Added new parameters:
+  - `batch: bool = False` - Keep existing and write new as `.ucf` for review
+  - `conflict_resolver: ConflictResolver | None = None` - Custom callback for conflict resolution
+
 ## [4.1.1] - 2025-12-11
 
 ### Documentation
@@ -307,8 +401,8 @@ This eliminates potential confusion when slugs contain underscores (e.g., `my_ap
   - Equivalent JSON and YAML representations
 
 - **File Overwrite Behavior** - Comprehensive explanation of the `deploy` command's safe-by-default behavior:
-  - Default behavior: creates new files, skips existing files (protects user customizations)
-  - Force flag behavior: overwrites existing files without warning
+  - Default behavior: creates new files, handles conflicts interactively (protects user customizations)
+  - Force flag behavior: backs up existing files and overwrites
   - Visual decision flow diagram
   - 4 practical scenarios with examples
   - Best practices (DO's and DON'Ts) for safe deployment

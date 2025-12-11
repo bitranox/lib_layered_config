@@ -11,7 +11,7 @@ import pytest
 
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.examples import deploy as deploy_module
-from lib_layered_config.examples.deploy import deploy_config
+from lib_layered_config.examples.deploy import DeployAction, DeployResult, deploy_config
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, windows_only
 
@@ -36,8 +36,9 @@ def _deploy(
     *,
     targets: list[str],
     force: bool = False,
+    batch: bool = False,
     platform: str | None = None,
-) -> list[Path]:
+) -> list[DeployResult]:
     return deploy_config(
         source_config,
         vendor=VENDOR,
@@ -45,8 +46,14 @@ def _deploy(
         targets=targets,
         slug=SLUG,
         force=force,
+        batch=batch,
         platform=platform,
     )
+
+
+def _created_paths(results: list[DeployResult]) -> list[Path]:
+    """Extract paths where files were actually created or overwritten."""
+    return [r.destination for r in results if r.action in (DeployAction.CREATED, DeployAction.OVERWRITTEN)]
 
 
 def _path_for(sandbox: LayeredSandbox, target: str, hostname: str = "host") -> Path:
@@ -75,9 +82,9 @@ def source_config(tmp_path: Path) -> Path:
 
 @os_agnostic
 def test_deploy_returns_the_app_destination_path(sandbox: LayeredSandbox, source_config: Path) -> None:
-    created = _deploy(sandbox, source_config, targets=["app"])
+    results = _deploy(sandbox, source_config, targets=["app"])
 
-    assert created == [_path_for(sandbox, "app")]
+    assert _created_paths(results) == [_path_for(sandbox, "app")]
 
 
 @os_agnostic
@@ -90,9 +97,9 @@ def test_deploy_writes_payload_into_app_destination(sandbox: LayeredSandbox, sou
 
 @os_agnostic
 def test_deploy_returns_the_user_destination_path(sandbox: LayeredSandbox, source_config: Path) -> None:
-    created = _deploy(sandbox, source_config, targets=["user"])
+    results = _deploy(sandbox, source_config, targets=["user"])
 
-    assert created == [_path_for(sandbox, "user")]
+    assert _created_paths(results) == [_path_for(sandbox, "user")]
 
 
 @os_agnostic
@@ -111,9 +118,9 @@ def test_deploy_returns_the_host_destination_path(
 ) -> None:
     monkeypatch.setattr("socket.gethostname", lambda: "host-one")
 
-    created = _deploy(sandbox, source_config, targets=["host"])
+    results = _deploy(sandbox, source_config, targets=["host"])
 
-    assert created == [_path_for(sandbox, "host", hostname="host-one")]
+    assert _created_paths(results) == [_path_for(sandbox, "host", hostname="host-one")]
 
 
 @os_agnostic
@@ -131,17 +138,24 @@ def test_deploy_writes_payload_into_host_destination(
 
 
 @os_agnostic
-def test_deploy_refuses_to_disturb_existing_files_without_force(
+def test_deploy_batch_keeps_existing_and_creates_ucf(
     sandbox: LayeredSandbox,
     source_config: Path,
 ) -> None:
+    """Batch mode keeps existing files and creates .ucf for review."""
     target = sandbox.roots["app"] / "config.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("""[existing]\nvalue = 1\n""", encoding="utf-8")
 
-    result = _deploy(sandbox, source_config, targets=["app"])
+    results = _deploy(sandbox, source_config, targets=["app"], batch=True)
 
-    assert (result, _read(target)) == ([], """[existing]\nvalue = 1\n""")
+    assert len(results) == 1
+    assert results[0].action == DeployAction.KEPT
+    assert results[0].destination == target
+    assert results[0].ucf_path is not None
+    assert results[0].ucf_path.exists()
+    # Original file unchanged
+    assert _read(target) == """[existing]\nvalue = 1\n"""
 
 
 @os_agnostic
@@ -153,9 +167,14 @@ def test_deploy_overwrites_when_force_is_true(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("old", encoding="utf-8")
 
-    created = _deploy(sandbox, source_config, targets=["app"], force=True)
+    results = _deploy(sandbox, source_config, targets=["app"], force=True)
 
-    assert created == [target]
+    assert len(results) == 1
+    assert results[0].action == DeployAction.OVERWRITTEN
+    assert results[0].destination == target
+    assert results[0].backup_path is not None
+    assert results[0].backup_path.exists()
+    assert results[0].backup_path.read_text(encoding="utf-8") == "old"
     assert "flag = true" in _read(target)
 
 
@@ -170,18 +189,6 @@ def test_deploy_requires_source_file(tmp_path: Path) -> None:
     missing = tmp_path / "missing.toml"
     with pytest.raises(FileNotFoundError):
         deploy_config(missing, vendor=VENDOR, app=APP, targets=["app"], slug=SLUG)
-
-
-@os_agnostic
-def test_ensure_path_raises_when_destination_vanishes() -> None:
-    with pytest.raises(ValueError):
-        deploy_module._ensure_path(None, "ghost")
-
-
-@os_agnostic
-def test_ensure_path_returns_concrete_path(tmp_path: Path) -> None:
-    destination = tmp_path / "target.toml"
-    assert deploy_module._ensure_path(destination, "app") is destination
 
 
 @os_agnostic
@@ -289,283 +296,6 @@ def test_prepare_resolver_uses_platform_override() -> None:
     assert resolver.platform == "macos"
 
 
-@os_agnostic
-def test_linux_destination_helper_returns_app_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-
-    app_path = deploy_module._linux_destination_for(resolver, "app")
-    assert app_path.as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_linux_destination_helper_returns_host_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-
-    host_path = deploy_module._linux_destination_for(resolver, "host")
-    assert host_path.as_posix().endswith("hosts/penguin.toml")
-
-
-@os_agnostic
-def test_linux_destination_helper_returns_user_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-
-    user_path = deploy_module._linux_destination_for(resolver, "user")
-    assert user_path.as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_linux_app_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-
-    assert deploy_module._linux_app_path(resolver).as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_linux_host_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-
-    assert deploy_module._linux_host_path(resolver).as_posix().endswith("hosts/penguin.toml")
-
-
-@os_agnostic
-def test_linux_user_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-
-    assert deploy_module._linux_user_path(resolver).as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_mac_destination_helper_returns_app_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    app_path = deploy_module._mac_destination_for(resolver, "app")
-    assert app_path.as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_mac_destination_helper_returns_host_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    host_path = deploy_module._mac_destination_for(resolver, "host")
-    assert host_path.as_posix().endswith("hosts/mac-host.toml")
-
-
-@os_agnostic
-def test_mac_destination_helper_returns_user_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    user_path = deploy_module._mac_destination_for(resolver, "user")
-    assert user_path.as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_mac_app_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    assert deploy_module._mac_app_path(resolver).as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_mac_host_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    assert deploy_module._mac_host_path(resolver).as_posix().endswith("hosts/mac-host.toml")
-
-
-@os_agnostic
-def test_mac_user_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    assert deploy_module._mac_user_path(resolver).as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_mac_app_root_reports_application_support(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    assert deploy_module._mac_app_root(resolver).as_posix().endswith("Application Support/Acme/Demo")
-
-
-@os_agnostic
-def test_mac_home_root_reports_application_support(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="darwin", hostname="mac-host"
-    )
-
-    assert deploy_module._mac_home_root(resolver).as_posix().endswith("Application Support")
-
-
-@os_agnostic
-def test_windows_destination_helper_returns_app_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    app_path = deploy_module._windows_destination_for(resolver, "app")
-    assert app_path.as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_windows_destination_helper_returns_host_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    host_path = deploy_module._windows_destination_for(resolver, "host")
-    assert host_path.as_posix().endswith("hosts/WINHOST.toml")
-
-
-@os_agnostic
-def test_windows_destination_helper_returns_user_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    user_path = deploy_module._windows_destination_for(resolver, "user")
-    assert user_path.as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_windows_app_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    assert deploy_module._windows_app_path(resolver).as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_windows_host_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    assert deploy_module._windows_host_path(resolver).as_posix().endswith("hosts/WINHOST.toml")
-
-
-@os_agnostic
-def test_windows_user_path_wraps_ensure_path(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    assert deploy_module._windows_user_path(resolver).as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_windows_program_data_reports_programdata(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    assert deploy_module._windows_program_data(resolver).as_posix().endswith("ProgramData")
-
-
-@os_agnostic
-def test_windows_appdata_reports_roaming(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    assert deploy_module._windows_appdata(resolver).as_posix().endswith("AppData/Roaming")
-
-
-@os_agnostic
-def test_windows_localappdata_reports_local(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="win32", hostname="WINHOST"
-    )
-
-    assert deploy_module._windows_localappdata(resolver).as_posix().endswith("AppData/Local")
-
-
-@os_agnostic
-def test_windows_user_path_falls_back_to_local_when_roaming_missing(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    env = dict(sandbox.env)
-    roaming = tmp_path / "Roaming"
-    env.pop("LIB_LAYERED_CONFIG_APPDATA", None)
-    env["APPDATA"] = str(roaming)
-    resolver = DefaultPathResolver(
-        vendor=VENDOR,
-        app=APP,
-        slug=SLUG,
-        env=env,
-        platform="win32",
-        hostname="WINHOST",
-    )
-
-    user_path = deploy_module._windows_destination_for(resolver, "user")
-    assert user_path.as_posix().endswith("AppData/Local/Acme/Demo/config.toml")
-
-
-@os_agnostic
-def test_windows_programdata_override_is_honoured(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    env = dict(sandbox.env)
-    env["LIB_LAYERED_CONFIG_PROGRAMDATA"] = str(tmp_path / "ProgramDataOverride")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR,
-        app=APP,
-        slug=SLUG,
-        env=env,
-        platform="win32",
-        hostname="WINHOST",
-    )
-
-    app_path = deploy_module._windows_destination_for(resolver, "app")
-    assert "ProgramDataOverride" in app_path.as_posix()
-
-
 @windows_only
 def test_deploy_windows_uses_programdata_and_appdata_defaults(
     tmp_path: Path,
@@ -588,7 +318,7 @@ def test_deploy_windows_uses_programdata_and_appdata_defaults(
     source = tmp_path / "windows-source.toml"
     _write_payload(source)
 
-    created = deploy_config(
+    results = deploy_config(
         source,
         vendor=VENDOR,
         app=APP,
@@ -601,7 +331,8 @@ def test_deploy_windows_uses_programdata_and_appdata_defaults(
         (program_data / VENDOR / APP / "hosts" / f"{host}.toml").resolve(),
         (roaming / VENDOR / APP / "config.toml").resolve(),
     }
-    assert {path.resolve() for path in created} == expected_paths
+    created_paths = {r.destination.resolve() for r in results if r.action == DeployAction.CREATED}
+    assert created_paths == expected_paths
     for destination in expected_paths:
         assert destination.exists()
 
@@ -627,7 +358,7 @@ def test_deploy_windows_falls_back_to_localappdata_when_roaming_missing(
     source = tmp_path / "windows-fallback.toml"
     _write_payload(source)
 
-    created = deploy_config(
+    results = deploy_config(
         source,
         vendor=VENDOR,
         app=APP,
@@ -636,36 +367,10 @@ def test_deploy_windows_falls_back_to_localappdata_when_roaming_missing(
     )
 
     expected_user = local / VENDOR / APP / "config.toml"
-    assert created == [expected_user]
+    assert len(results) == 1
+    assert results[0].destination == expected_user
+    assert results[0].action == DeployAction.CREATED
     assert expected_user.exists()
-
-
-@os_agnostic
-def test_should_copy_declines_when_paths_match(tmp_path: Path) -> None:
-    source = tmp_path / "config.toml"
-    source.write_text("text", encoding="utf-8")
-
-    assert deploy_module._should_copy(source, source, force=False) is False
-
-
-@os_agnostic
-def test_should_copy_declines_when_destination_exists_without_force(tmp_path: Path) -> None:
-    source = tmp_path / "source.toml"
-    source.write_text("text", encoding="utf-8")
-    destination = tmp_path / "dest.toml"
-    destination.write_text("text", encoding="utf-8")
-
-    assert deploy_module._should_copy(source, destination, force=False) is False
-
-
-@os_agnostic
-def test_should_copy_allows_when_force_true(tmp_path: Path) -> None:
-    source = tmp_path / "source.toml"
-    source.write_text("text", encoding="utf-8")
-    destination = tmp_path / "dest.toml"
-    destination.write_text("text", encoding="utf-8")
-
-    assert deploy_module._should_copy(source, destination, force=True) is True
 
 
 @os_agnostic
@@ -694,7 +399,7 @@ def test_deploy_with_profile_creates_profile_directory(
     source = tmp_path / "source.toml"
     _write_payload(source)
 
-    created = deploy_config(
+    results = deploy_config(
         source,
         vendor=VENDOR,
         app=APP,
@@ -704,8 +409,8 @@ def test_deploy_with_profile_creates_profile_directory(
         platform="linux",
     )
 
-    assert len(created) == 1
-    assert "profile/test/config.toml" in created[0].as_posix()
+    assert len(results) == 1
+    assert "profile/test/config.toml" in results[0].destination.as_posix()
 
 
 @os_agnostic
@@ -720,7 +425,7 @@ def test_deploy_with_profile_host_includes_profile_segment(
     source = tmp_path / "source.toml"
     _write_payload(source)
 
-    created = deploy_config(
+    results = deploy_config(
         source,
         vendor=VENDOR,
         app=APP,
@@ -730,8 +435,8 @@ def test_deploy_with_profile_host_includes_profile_segment(
         platform="linux",
     )
 
-    assert len(created) == 1
-    assert "profile/staging/hosts/profile-host.toml" in created[0].as_posix()
+    assert len(results) == 1
+    assert "profile/staging/hosts/profile-host.toml" in results[0].destination.as_posix()
 
 
 @os_agnostic
@@ -745,7 +450,7 @@ def test_deploy_with_profile_user_includes_profile_segment(
     source = tmp_path / "source.toml"
     _write_payload(source)
 
-    created = deploy_config(
+    results = deploy_config(
         source,
         vendor=VENDOR,
         app=APP,
@@ -755,8 +460,8 @@ def test_deploy_with_profile_user_includes_profile_segment(
         platform="linux",
     )
 
-    assert len(created) == 1
-    assert "profile/production/config.toml" in created[0].as_posix()
+    assert len(results) == 1
+    assert "profile/production/config.toml" in results[0].destination.as_posix()
 
 
 @os_agnostic
@@ -818,7 +523,7 @@ def test_deploy_mac_with_profile_includes_profile_segment(
     source = tmp_path / "source.toml"
     _write_payload(source)
 
-    created = deploy_config(
+    results = deploy_config(
         source,
         vendor=VENDOR,
         app=APP,
@@ -828,8 +533,8 @@ def test_deploy_mac_with_profile_includes_profile_segment(
         platform="darwin",
     )
 
-    assert len(created) == 1
-    assert "profile/dev/config.toml" in created[0].as_posix()
+    assert len(results) == 1
+    assert "profile/dev/config.toml" in results[0].destination.as_posix()
 
 
 @os_agnostic
@@ -843,7 +548,7 @@ def test_deploy_windows_with_profile_includes_profile_segment(
     source = tmp_path / "source.toml"
     _write_payload(source)
 
-    created = deploy_config(
+    results = deploy_config(
         source,
         vendor=VENDOR,
         app=APP,
@@ -853,5 +558,293 @@ def test_deploy_windows_with_profile_includes_profile_segment(
         platform="win32",
     )
 
-    assert len(created) == 1
-    assert "profile/prod/config.toml" in created[0].as_posix()
+    assert len(results) == 1
+    assert "profile/prod/config.toml" in results[0].destination.as_posix()
+
+
+# ---------------------------------------------------------------------------
+# Backup and UCF file tests
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+def test_next_available_path_returns_simple_suffix_when_not_exists(tmp_path: Path) -> None:
+    base = tmp_path / "config.toml"
+    base.write_text("content", encoding="utf-8")
+
+    result = deploy_module._next_available_path(base, ".bak")
+
+    assert result == tmp_path / "config.toml.bak"
+
+
+@os_agnostic
+def test_next_available_path_returns_numbered_suffix_when_exists(tmp_path: Path) -> None:
+    base = tmp_path / "config.toml"
+    base.write_text("content", encoding="utf-8")
+    bak = tmp_path / "config.toml.bak"
+    bak.write_text("old backup", encoding="utf-8")
+
+    result = deploy_module._next_available_path(base, ".bak")
+
+    assert result == tmp_path / "config.toml.bak.1"
+
+
+@os_agnostic
+def test_next_available_path_increments_suffix_number(tmp_path: Path) -> None:
+    base = tmp_path / "config.toml"
+    base.write_text("content", encoding="utf-8")
+    (tmp_path / "config.toml.bak").write_text("bak0", encoding="utf-8")
+    (tmp_path / "config.toml.bak.1").write_text("bak1", encoding="utf-8")
+    (tmp_path / "config.toml.bak.2").write_text("bak2", encoding="utf-8")
+
+    result = deploy_module._next_available_path(base, ".bak")
+
+    assert result == tmp_path / "config.toml.bak.3"
+
+
+@os_agnostic
+def test_backup_file_creates_bak_copy(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text("original content", encoding="utf-8")
+
+    backup_path = deploy_module._backup_file(target)
+
+    assert backup_path == tmp_path / "config.toml.bak"
+    assert backup_path.read_text(encoding="utf-8") == "original content"
+    assert target.read_text(encoding="utf-8") == "original content"
+
+
+@os_agnostic
+def test_backup_file_uses_numbered_suffix_when_bak_exists(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text("current content", encoding="utf-8")
+    existing_bak = tmp_path / "config.toml.bak"
+    existing_bak.write_text("old backup", encoding="utf-8")
+
+    backup_path = deploy_module._backup_file(target)
+
+    assert backup_path == tmp_path / "config.toml.bak.1"
+    assert backup_path.read_text(encoding="utf-8") == "current content"
+
+
+@os_agnostic
+def test_write_ucf_creates_ucf_file(tmp_path: Path) -> None:
+    destination = tmp_path / "config.toml"
+    destination.write_text("existing content", encoding="utf-8")
+    payload = b"new content"
+
+    ucf_path = deploy_module._write_ucf(destination, payload)
+
+    assert ucf_path == tmp_path / "config.toml.ucf"
+    assert ucf_path.read_bytes() == payload
+
+
+@os_agnostic
+def test_write_ucf_uses_numbered_suffix_when_ucf_exists(tmp_path: Path) -> None:
+    destination = tmp_path / "config.toml"
+    destination.write_text("existing content", encoding="utf-8")
+    existing_ucf = tmp_path / "config.toml.ucf"
+    existing_ucf.write_text("old ucf", encoding="utf-8")
+    payload = b"new content"
+
+    ucf_path = deploy_module._write_ucf(destination, payload)
+
+    assert ucf_path == tmp_path / "config.toml.ucf.1"
+    assert ucf_path.read_bytes() == payload
+
+
+@os_agnostic
+def test_deploy_with_conflict_resolver_calls_callback(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing", encoding="utf-8")
+
+    calls: list[Path] = []
+
+    def resolver(destination: Path) -> DeployAction:
+        calls.append(destination)
+        return DeployAction.SKIPPED
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        conflict_resolver=resolver,
+    )
+
+    assert len(calls) == 1
+    assert calls[0] == target
+    assert results[0].action == DeployAction.SKIPPED
+
+
+@os_agnostic
+def test_deploy_with_conflict_resolver_overwrite_creates_backup(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("original", encoding="utf-8")
+
+    def resolver(_: Path) -> DeployAction:
+        return DeployAction.OVERWRITTEN
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        conflict_resolver=resolver,
+    )
+
+    assert results[0].action == DeployAction.OVERWRITTEN
+    assert results[0].backup_path is not None
+    assert results[0].backup_path.exists()
+    assert results[0].backup_path.read_text(encoding="utf-8") == "original"
+    assert "flag = true" in target.read_text(encoding="utf-8")
+
+
+@os_agnostic
+def test_deploy_with_conflict_resolver_kept_creates_ucf(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing content", encoding="utf-8")
+
+    def resolver(_: Path) -> DeployAction:
+        return DeployAction.KEPT
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        conflict_resolver=resolver,
+    )
+
+    assert results[0].action == DeployAction.KEPT
+    assert results[0].ucf_path is not None
+    assert results[0].ucf_path.exists()
+    assert "flag = true" in results[0].ucf_path.read_text(encoding="utf-8")
+    assert target.read_text(encoding="utf-8") == "existing content"
+
+
+@os_agnostic
+def test_deploy_batch_mode_creates_ucf_for_different_content(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Batch mode keeps existing and writes new config as .ucf for review."""
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing", encoding="utf-8")
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        batch=True,
+    )
+
+    assert len(results) == 1
+    assert results[0].action == DeployAction.KEPT
+    assert results[0].ucf_path is not None
+    assert results[0].ucf_path.exists()
+    assert target.read_text(encoding="utf-8") == "existing"
+
+
+@os_agnostic
+def test_deploy_force_mode_ignores_batch(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing", encoding="utf-8")
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        force=True,
+        batch=True,  # Should be ignored when force=True
+    )
+
+    assert results[0].action == DeployAction.OVERWRITTEN
+    assert results[0].backup_path is not None
+
+
+@os_agnostic
+def test_deploy_without_conflict_resolver_defaults_to_skip(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing", encoding="utf-8")
+
+    # No force, no batch, no conflict_resolver - defaults to skip
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+    )
+
+    assert len(results) == 1
+    assert results[0].action == DeployAction.SKIPPED
+
+
+@os_agnostic
+def test_deploy_multiple_overwrites_create_multiple_backups(
+    sandbox: LayeredSandbox,
+    tmp_path: Path,
+) -> None:
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("v1", encoding="utf-8")
+
+    source1 = tmp_path / "source1.toml"
+    source2 = tmp_path / "source2.toml"
+    source1.write_text("[v2]", encoding="utf-8")
+    source2.write_text("[v3]", encoding="utf-8")
+
+    # First deploy with force
+    results1 = deploy_config(
+        source1,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        force=True,
+    )
+
+    # Second deploy with force
+    results2 = deploy_config(
+        source2,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        force=True,
+    )
+
+    assert results1[0].backup_path.name == "config.toml.bak"
+    assert results2[0].backup_path.name == "config.toml.bak.1"
+    assert results1[0].backup_path.read_text(encoding="utf-8") == "v1"
+    assert results2[0].backup_path.read_text(encoding="utf-8") == "[v2]"
+    assert target.read_text(encoding="utf-8") == "[v3]"

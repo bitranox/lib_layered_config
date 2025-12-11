@@ -39,6 +39,8 @@ A cross-platform configuration loader that deep-merges application defaults, hos
 - **Provenance tracking** — every key reports the layer and path that produced it.
 - **Cross-platform path discovery** — Linux (XDG), macOS, and Windows layouts with environment overrides for tests.
 - **Configuration profiles** — organize environment-specific configs (test, staging, production) into isolated subdirectories.
+- **Easy deployment** — deploy configs to app, host, and user layers with smart conflict handling that protects user customizations through automatic backups (`.bak`) and UCF files (`.ucf`) for safe CI/CD updates.
+- **Fast parsing** — uses `rtoml` (Rust-based) for ~5x faster TOML parsing than stdlib `tomllib`.
 - **Extensible formats** — TOML and JSON are built-in; YAML is available via the optional `yaml` extra.
 - **Automation-friendly CLI** — inspect, deploy, or scaffold configurations without writing Python.
 - **Structured logging** — adapters emit trace-aware events without polluting the domain layer.
@@ -63,7 +65,7 @@ pip install lib_layered_config
 pip install "lib_layered_config[yaml]"
 ```
 
-> **Requires Python 3.10+** — uses `tomllib` on Python 3.11+, or the `tomli` backport on Python 3.10.
+> **Requires Python 3.10+** — uses `rtoml` (Rust-based TOML parser) for ~5x faster parsing than stdlib `tomllib`.
 >
 > Install the optional `yaml` extra only when you actually ship `.yml` files to keep the dependency footprint small.
 
@@ -1270,7 +1272,7 @@ lib_layered_config deploy --source ./config/app.toml \
   --target app [--target host] [--target user] \
   [--profile production] \
   [--platform linux|darwin|windows] \
-  [--force | --no-force]
+  [--force] [--batch]
 ```
 
 **Parameters:**
@@ -1284,9 +1286,18 @@ lib_layered_config deploy --source ./config/app.toml \
 | `--profile` | string | No | - | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths |
 | `--target` | choice | Yes | - | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user` |
 | `--platform` | string | No | auto-detect | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win` |
-| `--force` / `--no-force` | flag | No | `--no-force` | Overwrite existing files at destinations |
+| `--force` | flag | No | `false` | When file exists with different content: backup existing file to `.bak` and overwrite |
+| `--batch` | flag | No | `false` | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Ignored if `--force` is set |
 
-**Returns:** JSON array of file paths created or overwritten.
+**Returns:** JSON object with keys for each action taken:
+- `created`: Array of paths for newly created files
+- `skipped`: Array of paths for files that were skipped (identical content)
+- `overwritten`: Array of paths for files that were overwritten
+- `backups`: Array of paths for backup files created (`.bak` files)
+- `kept`: Array of paths for existing files that were kept
+- `ucf_files`: Array of paths for UCF files created (`.ucf` files with new config)
+
+Only non-empty arrays are included in the output.
 
 **Profile Examples:**
 ```bash
@@ -1308,38 +1319,68 @@ lib_layered_config deploy --source ./configs/test.toml \
 
 ### 🔒 File Overwrite Behavior
 
-The `deploy` command has **safe-by-default** behavior to prevent accidental data loss:
+The `deploy` command has **safe-by-default** behavior with smart conflict handling:
 
-#### **Default Behavior (without `--force`):**
-- ✅ **Creates new files** if they don't exist
-- ❌ **Skips existing files** - will NOT overwrite
-- 📋 Returns empty array `[]` or partial array if some files were skipped
-- 🛡️ **Protects user customizations** from being accidentally overwritten
+#### **Smart Skipping (Content-Aware)**
+
+Before any conflict handling, the deploy command compares the source content with the existing destination file byte-by-byte. If the content is **identical**, the file is skipped without creating backups:
 
 ```bash
 # First deployment - creates file
 lib_layered_config deploy --source ./config.toml \
   --vendor Acme --app MyApp --slug myapp --target user
-# Output: ["/home/alice/.config/myapp/config.toml"]
+# Output: {"created": ["/home/alice/.config/myapp/config.toml"]}
 
-# Second deployment (same command) - skips existing file
+# Second deployment with SAME content - smart skip (no backup needed)
 lib_layered_config deploy --source ./config.toml \
-  --vendor Acme --app MyApp --slug myapp --target user
-# Output: []  ← File already exists, not overwritten
+  --vendor Acme --app MyApp --slug myapp --target user --force
+# Output: {"skipped": ["/home/alice/.config/myapp/config.toml"]}
 ```
+
+This prevents unnecessary `.bak` file proliferation when repeatedly deploying unchanged configurations.
+
+#### **Default Behavior (Interactive Mode)**
+
+When a file exists with **different content** and neither `--force` nor `--batch` is set:
+- Prompts user with two options:
+  - **[K]eep existing** — Save new config as `.ucf` (Update Configuration File) — **default**
+  - **[O]verwrite** — Backup original to `.bak`, then write new file
 
 #### **With `--force` Flag:**
 - ✅ **Creates new files** if they don't exist
-- ✅ **Overwrites existing files** without warning
-- 📋 Returns array of all files created/overwritten
-- ⚠️ **Use with caution** - existing content will be lost
+- ✅ **Smart skips** if content is identical (no backup created)
+- ✅ **Backs up and overwrites** if content differs — existing file saved to `.bak`
+- 📋 Returns JSON with `overwritten` and `backups` arrays
 
 ```bash
-# Force overwrite existing files
-lib_layered_config deploy --source ./config.toml \
+# Force deploy with different content - creates backup
+lib_layered_config deploy --source ./new-config.toml \
   --vendor Acme --app MyApp --slug myapp --target user --force
-# Output: ["/home/alice/.config/myapp/config.toml"]  ← Overwritten
+# Output: {"overwritten": ["/home/alice/.config/myapp/config.toml"],
+#          "backups": ["/home/alice/.config/myapp/config.toml.bak"]}
 ```
+
+#### **With `--batch` Flag:**
+- ✅ **Creates new files** if they don't exist
+- ✅ **Smart skips** if content is identical
+- 📄 **Creates `.ucf` files** when content differs — keeps existing, writes new as `.ucf` for review
+- 🛡️ **Safe for CI/CD pipelines** — predictable behavior without user interaction
+
+```bash
+# Batch mode - keeps existing file, writes new config as .ucf for review
+lib_layered_config deploy --source ./new-config.toml \
+  --vendor Acme --app MyApp --slug myapp --target user --batch
+# Output: {"kept": ["/home/alice/.config/myapp/config.toml"],
+#          "ucf_files": ["/home/alice/.config/myapp/config.toml.ucf"]}
+```
+
+> **Note:** In `--batch` mode, when content differs, the new configuration is written to a `.ucf` file for manual review. This allows CI/CD pipelines to deploy updates without overwriting user customizations, while making new configs available for review.
+
+#### **Numbered Backup Suffixes**
+
+If `.bak` or `.ucf` files already exist, numbered suffixes are used:
+- `config.toml.bak` → `config.toml.bak.1` → `config.toml.bak.2`
+- `config.toml.ucf` → `config.toml.ucf.1` → `config.toml.ucf.2`
 
 ---
 
@@ -1359,23 +1400,36 @@ lib_layered_config deploy --source ./config.toml \
              YES   │   NO
           ┌────────┴────────┐
           ▼                 ▼
-    ┌───────────┐    ┌─────────────┐
-    │ --force ? │    │ Create file │
-    └─────┬─────┘    └─────────────┘
-     YES  │  NO
-    ┌─────┴────────┐
-    ▼              ▼
- ┌──────────┐ ┌───────────┐
- │ Overwrite│ │ Skip file │
- └──────────┘ │ Return [] │
-              └───────────┘
+    ┌───────────────┐ ┌─────────────┐
+    │ Content same? │ │ Create file │
+    └───────┬───────┘ │  (created)  │
+       YES  │  NO     └─────────────┘
+      ┌─────┴─────┐
+      ▼           ▼
+ ┌─────────┐ ┌───────────┐
+ │  Skip   │ │ --force ? │
+ │(skipped)│ └─────┬─────┘
+ └─────────┘  YES  │  NO
+            ┌──────┴───────┐
+            ▼              ▼
+       ┌─────────┐   ┌───────────┐
+       │ Backup  │   │ --batch ? │
+       │  .bak   │   └─────┬─────┘
+       │Overwrite│    YES  │  NO
+       │(overwr.)│   ┌─────┴─────┐
+       └─────────┘   ▼           ▼
+                ┌─────────┐ ┌──────────┐
+                │Keep +   │ │ Prompt:  │
+                │Write UCF│ │ K/O ?    │
+                │ (kept)  │ │(default K)│
+                └─────────┘ └──────────┘
 ```
 
 ---
 
 ### Practical Scenarios
 
-#### **Scenario 1: Initial Installation (Safe)**
+#### **Scenario 1: Initial Installation**
 ```bash
 # First time deploying - no files exist yet
 sudo lib_layered_config deploy \
@@ -1384,48 +1438,60 @@ sudo lib_layered_config deploy \
   --target app
 
 # ✅ Result: File created
-# Output: ["/etc/xdg/myapp/config.toml"]
+# Output: {"created": ["/etc/xdg/myapp/config.toml"]}
 ```
 
-#### **Scenario 2: User Has Customizations (Protected)**
+#### **Scenario 2: Redeploy Same Content (Smart Skip)**
 ```bash
-# User has already customized their config
-# Try to deploy again without --force
+# Deploy same config again - content identical
 lib_layered_config deploy \
-  --source ./new-defaults.toml \
+  --source ./dist/config.toml \
   --vendor Acme --app MyApp --slug myapp \
-  --target user
+  --target app --force
 
-# ❌ Result: File skipped (user's customizations preserved)
-# Output: []
+# ✅ Result: Skipped (no backup created - content identical)
+# Output: {"skipped": ["/etc/xdg/myapp/config.toml"]}
 ```
 
-#### **Scenario 3: Update During Upgrade (Intentional Overwrite)**
+#### **Scenario 3: Update with Backup**
 ```bash
-# Major version upgrade - want to reset to new defaults
+# Deploy new version with --force - creates automatic backup
 lib_layered_config deploy \
   --source ./v2-config.toml \
   --vendor Acme --app MyApp --slug myapp \
-  --target user \
-  --force
+  --target user --force
 
-# ⚠️ Result: File overwritten with new version
-# Output: ["/home/alice/.config/myapp/config.toml"]
-# User's customizations are LOST - they should back up first!
+# ✅ Result: Old file backed up, new file written
+# Output: {"overwritten": ["/home/alice/.config/myapp/config.toml"],
+#          "backups": ["/home/alice/.config/myapp/config.toml.bak"]}
+# User's old config is preserved in .bak file!
 ```
 
-#### **Scenario 4: Multiple Targets (Mixed Result)**
+#### **Scenario 4: CI/CD Pipeline (Batch Mode)**
+```bash
+# Deploy in CI - keeps existing, writes new config as .ucf for review
+lib_layered_config deploy \
+  --source ./new-config.toml \
+  --vendor Acme --app MyApp --slug myapp \
+  --target app --batch
+
+# ✅ Result: Creates new files, keeps existing and writes UCF for review
+# Output: {"kept": ["/etc/xdg/myapp/config.toml"],
+#          "ucf_files": ["/etc/xdg/myapp/config.toml.ucf"]}
+```
+
+#### **Scenario 5: Multiple Targets (Mixed Result)**
 ```bash
 # Deploy to both app and user
-# App directory is empty, user directory has existing config
+# App: file exists with same content, User: no file exists
 lib_layered_config deploy \
   --source ./config.toml \
   --vendor Acme --app MyApp --slug myapp \
-  --target app --target user
+  --target app --target user --force
 
-# 📋 Result: App created, user skipped
-# Output: ["/etc/xdg/myapp/config.toml"]
-# Note: User config not in output because it was skipped
+# 📋 Result: App skipped (same content), user created
+# Output: {"created": ["/home/alice/.config/myapp/config.toml"],
+#          "skipped": ["/etc/xdg/myapp/config.toml"]}
 ```
 
 ---
@@ -1434,28 +1500,34 @@ lib_layered_config deploy \
 
 #### ✅ **DO:**
 
-1. **Test first without `--force`:**
+1. **Use `--batch` for CI/CD pipelines:**
    ```bash
-   # See what would be deployed
+   # Predictable behavior - keeps existing, writes new as .ucf for review
    lib_layered_config deploy --source ./config.toml \
-     --vendor Acme --app MyApp --slug myapp --target user
-
-   # Empty output? Files exist. Check them before using --force
+     --vendor Acme --app MyApp --slug myapp --target app --batch
    ```
 
-2. **Use `--force` only when necessary:**
-   - During clean installations
-   - After backing up existing configs
-   - When intentionally resetting to defaults
-
-3. **Backup before force-deploying:**
+2. **Use `--force` when you want automatic backups:**
    ```bash
-   # Backup user config before overwriting
-   cp ~/.config/myapp/config.toml ~/.config/myapp/config.toml.backup
-
-   # Now safe to force deploy
+   # Force creates .bak backup before overwriting
    lib_layered_config deploy --source ./new-config.toml \
      --vendor Acme --app MyApp --slug myapp --target user --force
+   # Old config preserved in config.toml.bak
+   ```
+
+3. **Check the JSON output keys to understand what happened:**
+   ```bash
+   result=$(lib_layered_config deploy --source config.toml \
+     --vendor Acme --app MyApp --slug myapp --target user --batch)
+
+   # Check what action was taken
+   if echo "$result" | jq -e '.created' > /dev/null 2>&1; then
+     echo "New file created"
+   elif echo "$result" | jq -e '.kept' > /dev/null 2>&1; then
+     echo "File kept, new config at .ucf for review"
+   elif echo "$result" | jq -e '.skipped' > /dev/null 2>&1; then
+     echo "File skipped (identical content)"
+   fi
    ```
 
 4. **Document in installation scripts:**
@@ -1464,76 +1536,90 @@ lib_layered_config deploy \
    # Installation script
 
    echo "Deploying system-wide defaults..."
-   sudo lib_layered_config deploy \
+   result=$(sudo lib_layered_config deploy \
      --source ./defaults.toml \
      --vendor Acme --app MyApp --slug myapp \
-     --target app
+     --target app --batch)
 
-   echo "Note: User configurations preserved."
-   echo "To reset user config: add --force flag"
+   if echo "$result" | jq -e '.created' > /dev/null 2>&1; then
+     echo "✅ Configuration deployed"
+   elif echo "$result" | jq -e '.kept' > /dev/null 2>&1; then
+     echo "ℹ️  Configuration already exists, new config at .ucf for review"
+   else
+     echo "ℹ️  Configuration unchanged (identical content)"
+   fi
    ```
 
 #### ❌ **DON'T:**
 
-1. **Don't use `--force` in automated scripts without user confirmation:**
+1. **Don't ignore the JSON output keys:**
    ```bash
-   # BAD: Might destroy user customizations
-   lib_layered_config deploy --source ./config.toml \
-     --target user --force  # ⚠️ Dangerous!
+   # BAD: Assuming array format
+   result=$(lib_layered_config deploy --source config.toml --target user --batch)
+   if [ "$result" = "[]" ]; then  # Wrong! Output is now a JSON object
+     echo "Nothing deployed"
+   fi
 
-   # GOOD: Prompt user first
-   read -p "Overwrite existing config? (y/N): " confirm
-   if [ "$confirm" = "y" ]; then
-     lib_layered_config deploy --source ./config.toml \
-       --target user --force
+   # GOOD: Parse JSON properly
+   result=$(lib_layered_config deploy --source config.toml --target user --batch)
+   if echo "$result" | jq -e '.created' > /dev/null 2>&1; then
+     echo "Files created"
    fi
    ```
 
-2. **Don't assume empty output means failure:**
+2. **Don't forget to check backup files after `--force`:**
    ```bash
-   # Check if command succeeded even with empty output
-   result=$(lib_layered_config deploy --source config.toml --target user)
+   # After force deploy, check for backups
+   result=$(lib_layered_config deploy --source ./new-config.toml \
+     --vendor Acme --app MyApp --slug myapp --target user --force)
 
-   # Empty array means files were skipped, not an error!
-   if [ "$result" = "[]" ]; then
-     echo "Files already exist (not overwritten)"
-   fi
+   # If overwritten, backups array contains the .bak file paths
+   echo "$result" | jq -r '.backups[]?' 2>/dev/null
    ```
 
 ---
 
 ### Python API Equivalent
 
-The Python `deploy_config()` function has the same behavior:
+The Python `deploy_config()` function returns `list[DeployResult]` with rich information:
 
 ```python
 from lib_layered_config import deploy_config
+from lib_layered_config.examples.deploy import DeployAction
 
-# Safe by default - won't overwrite
-paths = deploy_config(
+# Deploy with batch mode (CI/CD safe)
+results = deploy_config(
     source="./config.toml",
     vendor="Acme",
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    force=False  # Default
+    batch=True  # Keep existing, write new as .ucf for review
 )
 
-if not paths:
-    print("File already exists and was not overwritten")
-    print("Use force=True to overwrite")
-else:
-    print(f"Deployed to: {paths}")
+for result in results:
+    print(f"{result.action.value}: {result.destination}")
+    if result.ucf_path:
+        print(f"  UCF file: {result.ucf_path}")
 
-# Force overwrite
-paths = deploy_config(
+# Force deploy with automatic backups
+results = deploy_config(
     source="./config.toml",
     vendor="Acme",
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    force=True  # Overwrites existing files
+    force=True  # Creates .bak backup before overwriting
 )
+
+for result in results:
+    if result.action == DeployAction.OVERWRITTEN:
+        print(f"Overwrote: {result.destination}")
+        print(f"Backup at: {result.backup_path}")
+    elif result.action == DeployAction.SKIPPED:
+        print(f"Skipped (identical content): {result.destination}")
+    elif result.action == DeployAction.CREATED:
+        print(f"Created: {result.destination}")
 ```
 
 **Examples:**
@@ -1549,7 +1635,7 @@ sudo lib_layered_config deploy \
 
 **Output:**
 ```json
-["/etc/xdg/myapp/config.toml"]
+{"created": ["/etc/xdg/myapp/config.toml"]}
 ```
 
 **Explanation:** This copies your configuration file to the system-wide location (`/etc/xdg/myapp/config.toml` on Linux, `/Library/Application Support/Acme/MyApp/config.toml` on macOS, etc.). This is typically done during package installation.
@@ -1565,12 +1651,12 @@ lib_layered_config deploy \
 
 **Output:**
 ```json
-["/home/alice/.config/myapp/config.toml"]
+{"created": ["/home/alice/.config/myapp/config.toml"]}
 ```
 
 **Explanation:** Deploys configuration to the current user's config directory. Great for user onboarding or preference templates.
 
-**Example 3: Deploy to multiple layers**
+**Example 3: Deploy to multiple layers with --force**
 ```bash
 # Deploy base configuration to both system and user levels
 lib_layered_config deploy \
@@ -1580,15 +1666,20 @@ lib_layered_config deploy \
   --force
 ```
 
-**Output:**
+**Output (if content differs from existing files):**
 ```json
-[
-  "/etc/xdg/myapp/config.toml",
-  "/home/alice/.config/myapp/config.toml"
-]
+{
+  "overwritten": ["/etc/xdg/myapp/config.toml", "/home/alice/.config/myapp/config.toml"],
+  "backups": ["/etc/xdg/myapp/config.toml.bak", "/home/alice/.config/myapp/config.toml.bak"]
+}
 ```
 
-**Explanation:** Using multiple `--target` flags deploys the same file to multiple locations. The `--force` flag overwrites existing files.
+**Output (if content is identical - smart skip):**
+```json
+{"skipped": ["/etc/xdg/myapp/config.toml", "/home/alice/.config/myapp/config.toml"]}
+```
+
+**Explanation:** Using multiple `--target` flags deploys the same file to multiple locations. The `--force` flag creates `.bak` backups before overwriting. If content is identical, files are skipped without creating backups.
 
 **Example 4: Cross-platform deployment**
 ```bash
@@ -1602,7 +1693,7 @@ lib_layered_config deploy \
 
 **Output:**
 ```json
-["C:\\Users\\alice\\AppData\\Roaming\\Acme\\MyApp\\config.toml"]
+{"created": ["C:\\Users\\alice\\AppData\\Roaming\\Acme\\MyApp\\config.toml"]}
 ```
 
 **Explanation:** Use `--platform` to override platform detection. Useful for testing deployment paths on different platforms without actually being on that platform.
@@ -1619,31 +1710,32 @@ lib_layered_config deploy \
 
 **Output:**
 ```json
-["/etc/xdg/myapp/hosts/server-01.toml"]
+{"created": ["/etc/xdg/myapp/hosts/server-01.toml"]}
 ```
 
 **Explanation:** Host-specific configurations are stored in the `hosts/` subdirectory with the hostname as the filename. They override app defaults but only on machines with matching hostnames.
 
-**Example 6: Safe deployment (check before overwriting)**
+**Example 6: CI/CD deployment with --batch**
 ```bash
-# Try to deploy without --force to prevent accidental overwrites
+# Deploy in CI pipeline - keeps existing, writes new as .ucf for review
 lib_layered_config deploy \
-  --source ./new-config.toml \
-  --vendor Acme --app MyApp --slug myapp \
-  --target user
-
-# If file exists, you'll get an empty array (nothing deployed)
-# Output: []
-
-# Then deploy with --force if you really want to overwrite
-lib_layered_config deploy \
-  --source ./new-config.toml \
+  --source ./config.toml \
   --vendor Acme --app MyApp --slug myapp \
   --target user \
-  --force
+  --batch
+
+# If file exists with identical content - smart skipped
+# Output: {"skipped": ["/home/alice/.config/myapp/config.toml"]}
+
+# If file exists with different content - kept and UCF created
+# Output: {"kept": ["/home/alice/.config/myapp/config.toml"],
+#          "ucf_files": ["/home/alice/.config/myapp/config.toml.ucf"]}
+
+# If file doesn't exist - created
+# Output: {"created": ["/home/alice/.config/myapp/config.toml"]}
 ```
 
-**Explanation:** Without `--force`, the command skips existing files. This prevents accidental overwrites of user customizations.
+**Explanation:** Use `--batch` for non-interactive deployments in CI/CD pipelines. When content differs, the existing file is kept and the new config is written to a `.ucf` file for manual review, making automation predictable while preserving user customizations.
 
 ---
 
@@ -2739,7 +2831,7 @@ else:
 
 ### `deploy_config`
 
-Copy a source configuration file into one or more layer directories.
+Copy a source configuration file into one or more layer directories with conflict handling.
 
 **Parameters:**
 - `source` (str | Path, required): Path to the configuration file to copy.
@@ -2749,9 +2841,17 @@ Copy a source configuration file into one or more layer directories.
 - `slug` (str | None, optional): Configuration slug. Default: `None` (uses `app` as slug).
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to deployment paths. Default: `None`.
 - `platform` (str | None, optional): Override auto-detected platform. Valid values: `"linux"`, `"darwin"`, `"windows"`, or any value starting with `"win"`. Default: `None` (auto-detects from current platform).
-- `force` (bool, optional): Overwrite existing files at destinations. Default: `False`.
+- `force` (bool, optional): When True and file exists with different content, backup to `.bak` and overwrite. Default: `False`.
+- `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`.
+- `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Custom callback for conflict resolution. Default: `None`.
 
-**Returns:** List of `Path` objects for files created or overwritten.
+**Returns:** `list[DeployResult]` — Each result contains:
+- `destination`: Path to the target file
+- `action`: `DeployAction` enum (`CREATED`, `OVERWRITTEN`, `KEPT`, `SKIPPED`)
+- `backup_path`: Path to `.bak` file (if action was `OVERWRITTEN`)
+- `ucf_path`: Path to `.ucf` file (if action was `KEPT`)
+
+**Smart Skipping:** If the source content is byte-identical to the existing destination file, the file is skipped without creating backups (regardless of `force` or `batch` flags).
 
 **Raises:** `FileNotFoundError` if source file does not exist.
 
@@ -2760,92 +2860,104 @@ Copy a source configuration file into one or more layer directories.
 **Example 1: Deploy system-wide defaults**
 ```python
 from lib_layered_config import deploy_config
-from pathlib import Path
+from lib_layered_config.examples.deploy import DeployAction
 
 # Deploy app-wide defaults to the system directory
-created_paths = deploy_config(
-    source=Path("./config/defaults.toml"),
+results = deploy_config(
+    source="./config/defaults.toml",
     vendor="Acme",
     app="MyApp",
     targets=["app"],  # Deploy to system-wide location
     slug="myapp"
 )
 
-# On Linux, this copies to: /etc/myapp/config.toml
+# On Linux, this copies to: /etc/xdg/myapp/config.toml
 # On macOS: /Library/Application Support/Acme/MyApp/config.toml
 # On Windows: C:\ProgramData\Acme\MyApp\config.toml
 
-for path in created_paths:
-    print(f"Deployed to: {path}")
+for result in results:
+    print(f"{result.action.value}: {result.destination}")
 ```
 **Explanation:** Use the `"app"` target to deploy system-wide defaults that all users share. This is typically done during installation.
 
-**Example 2: Deploy user-specific configuration**
+**Example 2: Deploy with batch mode (CI/CD safe)**
 ```python
 from lib_layered_config import deploy_config
+from lib_layered_config.examples.deploy import DeployAction
 
-# Deploy user-specific configuration
-created_paths = deploy_config(
+# Deploy in CI - keeps existing, writes new config as .ucf for review
+results = deploy_config(
     source="./my-config.toml",
     vendor="Acme",
     app="MyApp",
-    targets=["user"],  # Deploy to user's config directory
-    slug="myapp"
+    targets=["user"],
+    slug="myapp",
+    batch=True  # Non-interactive, creates .ucf for review
 )
 
-# On Linux, this copies to: ~/.config/myapp/config.toml
-# On macOS: ~/Library/Application Support/Acme/MyApp/config.toml
-# On Windows: %APPDATA%\Acme\MyApp\config.toml
-
-print(f"User configuration deployed to: {created_paths[0]}")
+for result in results:
+    if result.action == DeployAction.CREATED:
+        print(f"Created: {result.destination}")
+    elif result.action == DeployAction.KEPT:
+        print(f"Kept: {result.destination}")
+        print(f"  Review new config at: {result.ucf_path}")
+    elif result.action == DeployAction.SKIPPED:
+        print(f"Skipped (identical content): {result.destination}")
 ```
-**Explanation:** Use the `"user"` target to set up per-user configuration. Great for onboarding scripts or user preference templates.
+**Explanation:** Use `batch=True` for CI/CD pipelines. When content differs, the existing file is kept and new config is written to `.ucf` for review.
 
-**Example 3: Deploy host-specific configuration**
+**Example 3: Deploy with force and check backups**
 ```python
 from lib_layered_config import deploy_config
-import socket
+from lib_layered_config.examples.deploy import DeployAction
 
-# Deploy configuration specific to this host
-hostname = socket.gethostname()
-created_paths = deploy_config(
-    source=f"./configs/{hostname}.toml",
+# Force deploy - creates backups before overwriting
+results = deploy_config(
+    source="./new-config.toml",
     vendor="Acme",
     app="MyApp",
-    targets=["host"],  # Deploy to host-specific location
-    slug="myapp"
+    targets=["user"],
+    slug="myapp",
+    force=True  # Backup to .bak, then overwrite
 )
 
-# On Linux, this copies to: /etc/myapp/hosts/{hostname}.toml
-# The file will only be loaded on machines with this hostname
-
-print(f"Host-specific config for '{hostname}' deployed to: {created_paths[0]}")
+for result in results:
+    if result.action == DeployAction.OVERWRITTEN:
+        print(f"Overwrote: {result.destination}")
+        print(f"Backup at: {result.backup_path}")
+    elif result.action == DeployAction.SKIPPED:
+        print(f"Skipped (content identical): {result.destination}")
+    elif result.action == DeployAction.CREATED:
+        print(f"Created: {result.destination}")
 ```
-**Explanation:** Host-specific configurations override app defaults but are still system-wide. Useful for server-specific settings in multi-server deployments.
+**Explanation:** With `force=True`, existing files with different content are backed up to `.bak` before overwriting. If content is identical, files are smart-skipped without backups.
 
 **Example 4: Deploy to multiple layers at once**
 ```python
 from lib_layered_config import deploy_config
+from lib_layered_config.examples.deploy import DeployAction
 
 # Deploy the same config to multiple layers
-created_paths = deploy_config(
+results = deploy_config(
     source="./base-config.toml",
     vendor="Acme",
     app="MyApp",
     targets=["app", "user"],  # Deploy to both system and user directories
     slug="myapp",
-    force=True  # Overwrite if already exists
+    force=True
 )
 
-print(f"Deployed to {len(created_paths)} locations:")
-for path in created_paths:
-    print(f"  - {path}")
+print(f"Deployed to {len(results)} locations:")
+for result in results:
+    status = "✓" if result.action in (DeployAction.CREATED, DeployAction.OVERWRITTEN) else "○"
+    print(f"  {status} {result.destination} ({result.action.value})")
 ```
 **Explanation:** Deploy to multiple layers simultaneously. Useful for setting up consistent defaults across system and user levels. The `force=True` parameter allows overwriting existing files.
 
 **Example 5: Cross-platform deployment script**
 ```python
 from lib_layered_config import deploy_config
+from lib_layered_config.examples.deploy import DeployAction
 import sys
 
 # Deployment script that works across platforms
@@ -2854,31 +2966,36 @@ source_config = "./dist/config.toml"
 print(f"Deploying configuration on {sys.platform}...")
 
 try:
-    created_paths = deploy_config(
+    results = deploy_config(
         source=source_config,
         vendor="Acme",
         app="MyApp",
         targets=["app"],
-        slug="myapp"
-        # platform auto-detected
+        slug="myapp",
+        batch=True  # Non-interactive for scripts
     )
 
-    print(f"✓ Successfully deployed to {len(created_paths)} location(s)")
-    for path in created_paths:
-        print(f"  {path}")
+    for result in results:
+        if result.action == DeployAction.CREATED:
+            print(f"✓ Created: {result.destination}")
+        elif result.action == DeployAction.KEPT:
+            print(f"○ Kept existing, review new config at: {result.ucf_path}")
+        elif result.action == DeployAction.SKIPPED:
+            print(f"○ Skipped (identical content): {result.destination}")
 
 except FileNotFoundError:
     print(f"✗ Error: Source file '{source_config}' not found")
     sys.exit(1)
 ```
-**Explanation:** The function automatically detects the platform and deploys to the appropriate directories. Perfect for cross-platform installation scripts.
+**Explanation:** The function automatically detects the platform and deploys to the appropriate directories. Use `batch=True` for non-interactive scripts; new configs are written to `.ucf` files for review.
 
 **Example 6: Deploy to a specific profile (environment-specific)**
 ```python
 from lib_layered_config import deploy_config
+from lib_layered_config.examples.deploy import DeployAction
 
 # Deploy production configuration to the production profile
-created_paths = deploy_config(
+results = deploy_config(
     source="./configs/production.toml",
     vendor="Acme",
     app="MyApp",
@@ -2891,10 +3008,11 @@ created_paths = deploy_config(
 # On macOS: /Library/Application Support/Acme/MyApp/profile/production/config.toml
 # On Windows: C:\ProgramData\Acme\MyApp\profile\production\config.toml
 
-print(f"Production config deployed to: {created_paths[0]}")
+for result in results:
+    print(f"Production config: {result.action.value} -> {result.destination}")
 
 # Deploy test configuration to a separate profile
-test_paths = deploy_config(
+test_results = deploy_config(
     source="./configs/test.toml",
     vendor="Acme",
     app="MyApp",
@@ -2911,6 +3029,7 @@ test_paths = deploy_config(
 **Example 7: Deploy multiple profiles in a CI/CD pipeline**
 ```python
 from lib_layered_config import deploy_config
+from lib_layered_config.examples.deploy import DeployAction
 from pathlib import Path
 
 # Deploy configurations for all environments
@@ -2922,18 +3041,25 @@ for env in environments:
         print(f"⚠ Skipping {env}: config file not found")
         continue
 
-    paths = deploy_config(
+    results = deploy_config(
         source=config_file,
         vendor="Acme",
         app="MyApp",
         targets=["app"],
         slug="myapp",
         profile=env,
-        force=True  # Update existing configs
+        force=True  # Update existing configs (creates backups)
     )
-    print(f"✓ Deployed {env} config to: {paths[0]}")
+
+    for result in results:
+        if result.action == DeployAction.CREATED:
+            print(f"✓ {env}: created {result.destination}")
+        elif result.action == DeployAction.OVERWRITTEN:
+            print(f"✓ {env}: updated {result.destination} (backup: {result.backup_path})")
+        elif result.action == DeployAction.SKIPPED:
+            print(f"○ {env}: unchanged {result.destination}")
 ```
-**Explanation:** Profiles are ideal for CI/CD pipelines where you need to deploy different configurations for each environment. Each profile is isolated, so you can safely deploy all environments to the same system.
+**Explanation:** Profiles are ideal for CI/CD pipelines where you need to deploy different configurations for each environment. Each profile is isolated, so you can safely deploy all environments to the same system. With `force=True`, backups are created before overwriting.
 
 ---
 
