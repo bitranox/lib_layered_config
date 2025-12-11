@@ -149,8 +149,26 @@ helpers under `tests/support`.
 
 ## Known Issues & Future Improvements
 
-**Current Limitations:** `with_overrides` performs only shallow merges; deep
-overrides require explicit layer files or future extension.
+**Current Limitations:** `with_overrides` performs only **shallow (top-level) merges**.
+When overriding a nested key, the entire top-level key is replaced:
+
+```python
+cfg = Config({"db": {"host": "localhost", "port": 5432}}, {...})
+cfg = cfg.with_overrides({"db": {"host": "newhost"}})
+cfg["db"]  # → {"host": "newhost"}  — port is lost!
+```
+
+This is intentional, not a missing feature:
+
+1. **Provenance tracking** — Deep merge would require updating `_meta` for every
+   affected nested key, introducing complexity and potential for stale metadata.
+2. **Architecture** — The domain layer avoids importing application merge logic
+   to maintain Clean Architecture boundaries.
+3. **Use case fit** — `with_overrides` targets CLI flags and simple runtime
+   tweaks; complex nested changes belong in explicit layer files.
+
+**Workaround:** For deep overrides, create a layer file (TOML/JSON/YAML) and let
+the normal `read_config` merge pipeline handle it with full provenance tracking.
 
 **Future Enhancements:** Optionally expose typed accessors or schema binding
 once validation requirements are defined in docs/systemdesign.
@@ -192,7 +210,7 @@ would need to inspect string messages or adapter-specific exceptions.
 ## Solution Overview
 
 - Introduce `ConfigError` as the common base.
-- Provide `InvalidFormat`, `ValidationError`, and `NotFound` subclasses mapped
+- Provide `InvalidFormatError`, `ValidationError`, and `NotFoundError` subclasses mapped
   to the scenarios described in the system design.
 - Keep the module dependency-free so every layer can raise these errors without
   risk of cyclic imports.
@@ -204,7 +222,7 @@ would need to inspect string messages or adapter-specific exceptions.
 **App Layer Fit:** Application services catch `ConfigError` derivatives to
 translate domain failures into user-facing errors.
 
-**Data Flow:** Adapters raise specific subclasses (`InvalidFormat`, `NotFound`),
+**Data Flow:** Adapters raise specific subclasses (`InvalidFormatError`, `NotFoundError`),
 which bubble through the merge pipeline and surface in CLI responses.
 
 **System Dependencies:** Standard library only.
@@ -219,7 +237,7 @@ which bubble through the merge pipeline and surface in CLI responses.
 - **Output:** Captured by higher layers to format error messages.
 - **Location:** `src/lib_layered_config/domain/errors.py`
 
-### `InvalidFormat`, `ValidationError`, `NotFound`
+### `InvalidFormatError`, `ValidationError`, `NotFoundError`
 - **Purpose:** Specialised error signals for malformed input, semantic
   validation, or missing sources.
 - **Location:** `src/lib_layered_config/domain/errors.py`
@@ -233,7 +251,7 @@ which bubble through the merge pipeline and surface in CLI responses.
 **Key Configuration / Database Changes:** Not applicable.
 
 **Error Handling Strategy:** Subclasses communicate intent so callers can decide
-whether to fail fast (`InvalidFormat`) or continue (`NotFound`).
+whether to fail fast (`InvalidFormatError`) or continue (`NotFoundError`).
 
 ---
 
@@ -487,7 +505,7 @@ details to callers.
 
 ## Implementation Details
 
-**Error Handling:** ``LayerLoadError`` wraps ``InvalidFormat`` exceptions.
+**Error Handling:** ``LayerLoadError`` wraps ``InvalidFormatError`` exceptions.
 ``_compose_config`` returns ``EMPTY_CONFIG`` when no data exists.
 
 **Observability:** Resets trace IDs before collecting layers; actual logging is
@@ -569,7 +587,7 @@ merge policy, observability.
 ## Implementation Details
 
 **Error Handling:** Unsupported file extensions are skipped; loaders raising
-``InvalidFormat`` propagate so ``LayerLoadError`` can wrap them.
+``InvalidFormatError`` propagate so ``LayerLoadError`` can wrap them.
 
 **Observability:** Emits ``layer_loaded`` / ``configuration_empty`` events via
 `observability.log_*` helpers.
@@ -701,7 +719,7 @@ without coupling core logic to parser implementations.
 **App Layer Fit:** Instances of these loaders implement the `FileLoader`
 protocol and feed layer snapshots before merging.
 
-**System Dependencies:** `tomllib`, `json`, optional `yaml`, domain errors,
+**System Dependencies:** `tomllib` (stdlib 3.11+) or `tomli` (fallback for 3.10), `json`, optional `yaml`, domain errors,
 observability helpers.
 
 ---
@@ -724,11 +742,11 @@ observability helpers.
 ## Implementation Details
 
 **Error Handling:**
-- Raises `NotFound` for missing files.
-- Raises `InvalidFormat` for parse failures with format-specific context.
+- Raises `NotFoundError` for missing files.
+- Raises `InvalidFormatError` for parse failures with format-specific context.
 - Emits `config_file_read` / `config_file_loaded` events.
 - YAML parsing uses `_parse_yaml_bytes` to normalise `None` payloads to empty
-  mappings and translate `YAMLError` into actionable `InvalidFormat`.
+  mappings and translate `YAMLError` into actionable `InvalidFormatError`.
 
 ---
 
@@ -802,7 +820,7 @@ filesystem layers but before environment variables.
 ## Implementation Details
 
 **Error Handling:**
-- Raises `InvalidFormat` with line numbers on malformed entries.
+- Raises `InvalidFormatError` with line numbers on malformed entries.
 - Logs missing files via `dotenv_not_found` events.
 
 ---

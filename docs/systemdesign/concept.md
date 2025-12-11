@@ -25,7 +25,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 1. **Primary Goals** *(current status)*
 
 * [x] Deterministic precedence order `defaults → app → host → user → dotenv → env` implemented in `_layers.collect_layers` and enforced by tests.
-* [x] Structured file loaders (TOML/JSON core via stdlib, YAML behind optional extra).
+* [x] Structured file loaders (TOML/JSON core via `tomllib` stdlib 3.11+ or `tomli` fallback for 3.10, YAML behind optional extra).
 * [x] Immutable `Config` value object exposing `get`, `origin`, `as_dict`, `to_json`, `with_overrides`.
 * [x] Clean Architecture boundaries (Domain, Application, Adapters, Composition Root) reflected in module layout and import-linter contracts.
 * [x] Trace-aware structured logging provided by `observability` helpers, consumed by adapters/composition.
@@ -41,7 +41,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 
 1. **Domain Layer**
    - `Config` value object (immutable mapping; `get`, `as_dict`, `to_json`, `origin`, `with_overrides`).
-   - Error hierarchy `ConfigError`, `InvalidFormat`, `ValidationError`, `NotFound`.
+   - Error hierarchy `ConfigError`, `InvalidFormatError`, `ValidationError`, `NotFoundError`.
 
 2. **Application Layer**
    - Ports (Protocols) for `PathResolver`, `FileLoader`, `DotEnvLoader`, `EnvLoader`, `Merger`.
@@ -49,7 +49,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 
 3. **Adapters**
    - Path resolvers per OS (Linux/XDG, macOS Application Support, Windows ProgramData/AppData) honour environment overrides; reused by deployment helpers.
-   - Structured file loaders (TOML/JSON core, YAML optional) emit deterministic logging and raise `InvalidFormat`/`NotFound`.
+   - Structured file loaders (TOML/JSON core, YAML optional) emit deterministic logging and raise `InvalidFormatError`/`NotFoundError`.
    - Dotenv loader (upward search + platform extras, `__` nesting, quoting rules) and environment loader (namespace filtering, coercion for bool/null/int/float, provenance logging).
    - `observability` module exposes trace-aware logging helpers shared across adapters and composition.
 

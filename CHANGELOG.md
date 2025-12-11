@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.1.1] - 2025-12-11
+
+### Documentation
+
+- **Fixed error class names in system design docs** - Updated `concept.md` and `module_reference.md` to use actual class names (`InvalidFormatError`, `NotFoundError`) instead of shorthand (`InvalidFormat`, `NotFound`).
+
+- **Improved `with_overrides` limitation documentation** - Added code example and rationale explaining why shallow (top-level) merge is intentional, covering provenance tracking, Clean Architecture, and use case fit. Added workaround guidance for deep override needs.
+
+- **Clarified tomllib/tomli fallback** - Updated documentation to explicitly note `tomllib` (stdlib 3.11+) with `tomli` fallback for Python 3.10.
+
 ## [4.1.0] - 2025-12-11
 
 ### Added

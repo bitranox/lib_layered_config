@@ -1346,34 +1346,29 @@ lib_layered_config deploy --source ./config.toml \
 ### Decision Flow Diagram
 
 ```
-┌─────────────────────────────────┐
-│  lib_layered_config deploy      │
-│  --source config.toml            │
-│  --target user                   │
-└────────────┬────────────────────┘
-             │
-             ▼
-    ┌────────────────────┐
-    │ Does destination   │
-    │ file exist?        │
-    └────┬──────────┬────┘
-         │          │
-      YES│          │NO
-         │          │
-         ▼          ▼
-  ┌──────────┐  ┌──────────────┐
-  │ --force  │  │ Create file  │
-  │ flag?    │  │ ✅           │
-  └─┬──────┬─┘  └──────────────┘
-    │      │
- YES│      │NO
-    │      │
-    ▼      ▼
-┌─────┐ ┌──────────────┐
-│Over-│ │ Skip file    │
-│write│ │ Return []    │
-│✅   │ │ ❌           │
-└─────┘ └──────────────┘
+┌─────────────────────────────────────┐
+│  lib_layered_config deploy          │
+│  --source config.toml               │
+│  --target user                      │
+└──────────────────┬──────────────────┘
+                   ▼
+           ┌─────────────────┐
+           │ Does destination│
+           │   file exist?   │
+           └───────┬─────────┘
+             YES   │   NO
+          ┌────────┴────────┐
+          ▼                 ▼
+    ┌───────────┐    ┌─────────────┐
+    │ --force ? │    │ Create file │
+    └─────┬─────┘    └─────────────┘
+     YES  │  NO
+    ┌─────┴────────┐
+    ▼              ▼
+ ┌──────────┐ ┌───────────┐
+ │ Overwrite│ │ Skip file │
+ └──────────┘ │ Return [] │
+              └───────────┘
 ```
 
 ---
