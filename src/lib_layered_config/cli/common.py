@@ -220,12 +220,24 @@ def stringify(path: Path | None) -> str | None:
     return None if path is None else str(path)
 
 
-def wants_json(output_format: str) -> bool:
+def wants_json(output_format: OutputFormat) -> bool:
     """State plainly whether the caller requested JSON output.
 
     Commands toggle between human and JSON representations; clarity matters.
     """
-    return output_format.strip().lower() == OutputFormat.JSON.value
+    return output_format == OutputFormat.JSON
+
+
+def parse_output_format(value: str) -> OutputFormat:
+    """Parse a string into an OutputFormat enum at the CLI boundary.
+
+    Args:
+        value: Raw string from CLI (e.g., "human", "json").
+
+    Returns:
+        Corresponding OutputFormat enum member.
+    """
+    return OutputFormat(value.strip().lower())
 
 
 def resolve_indent(enabled: bool) -> int | None:

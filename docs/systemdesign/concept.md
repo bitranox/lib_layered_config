@@ -74,9 +74,9 @@ Use this checklist as a living reference; extend it as the solution grows.
 
 ## D) Toolchain & Automation
 
-* `pyproject.toml` targeting Python ≥3.13 with dev extras (pytest, hypothesis, coverage, ruff, pyright, bandit, pip-audit, import-linter, textual, twine, etc.).
+* `pyproject.toml` targeting Python ≥3.10 with dev extras (pytest, hypothesis, coverage, ruff, pyright, bandit, pip-audit, import-linter, textual, twine, etc.). Uses `tomli` as a conditional dependency for Python < 3.11.
 * `Makefile` targets: `test`, `build`, `run`, `push`, `bump`, `clean`, `menu`, `dev` (auto-bootstrap enabled).
-* CI (`.github/workflows/ci.yml`) matrix covering 3.13/3.14, Ruff linting, import-linter, Pyright, pytest with coverage, and notebook execution.
+* CI (`.github/workflows/ci.yml`) matrix covering Python 3.10-3.13 and latest 3.x, Ruff linting, import-linter, Pyright, pytest with coverage, and notebook execution.
 * Release workflow (`release.yml`) builds wheels/sdists and publishes via Twine once tagged (`vX.Y.Z`).
 
 ## E) Examples & Documentation

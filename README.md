@@ -63,7 +63,7 @@ pip install lib_layered_config
 pip install "lib_layered_config[yaml]"
 ```
 
-> **Requires Python 3.13+** — the standard-library `tomllib` handles TOML parsing.
+> **Requires Python 3.10+** — uses `tomllib` on Python 3.11+, or the `tomli` backport on Python 3.10.
 >
 > Install the optional `yaml` extra only when you actually ship `.yml` files to keep the dependency footprint small.
 
@@ -3205,7 +3205,7 @@ environment before running `make` is recommended.
 
 The GitHub Actions workflow executes three jobs:
 
-- **Test matrix** (Linux/macOS/Windows, Python 3.13 + latest 3.x) running the same pipeline as `make test`.
+- **Test matrix** (Linux/macOS/Windows, Python 3.10-3.13 + latest 3.x) running the same pipeline as `make test`.
 - **pipx / uv verification** to prove the built wheel installs cleanly with the common Python app launchers.
 - **Notebook smoke test** that executes `notebooks/Quickstart.ipynb` to keep the tutorial in sync using the native nbformat workflow (no compatibility shims required).
 - CLI jobs run through `lib_cli_exit_tools.cli_session`, ensuring the `--traceback` flag behaves the same locally and in automation.

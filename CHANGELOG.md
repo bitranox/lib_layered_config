@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.1.0] - 2025-12-11
+
+### Added
+
+- **Python 3.10+ compatibility** - The library now supports Python 3.10, 3.11, 3.12, and 3.13. Previously required Python 3.13+.
+  - Added `tomli` as a conditional dependency for Python < 3.11 (provides TOML parsing before `tomllib` was added to stdlib)
+  - CI matrix now tests against Python 3.10, 3.11, 3.12, 3.13, and latest 3.x
+
+- **`parse_output_format()` function** - New CLI helper in `cli/common.py` that converts string input to `OutputFormat` enum at the CLI boundary, following the data architecture principle of parsing at system edges.
+
+### Changed
+
+- **`wants_json()` signature** - Now accepts only `OutputFormat` enum instead of `str | OutputFormat`. String-to-enum conversion should happen at the CLI boundary using `parse_output_format()`.
+
 ## [4.0.1] - 2025-12-08
 
 ### Changed

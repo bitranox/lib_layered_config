@@ -62,7 +62,7 @@ Coverage is enforced at 90% for the `src/lib_layered_config` package. `py.typed`
 
 The `.github/workflows/ci.yml` pipeline mirrors local expectations:
 
-- `test` job executes the full suite on Linux, macOS, and Windows (Python 3.13 plus the latest 3.x).
+- `test` job executes the full suite on Linux, macOS, and Windows (Python 3.10, 3.11, 3.12, 3.13, and the latest 3.x).
 - `pipx-uv` job builds the wheel and checks CLI installation via `pipx` and `uv`.
 - `notebooks` job runs the Quickstart notebook to ensure documentation stays runnable.
 

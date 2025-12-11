@@ -1,12 +1,13 @@
 [project]
 name = "lib_layered_config"
-version = "4.0.1"
+version = "4.1.0"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
   "rich-click>=1.9.4",
-  "lib_cli_exit_tools>=2.1.1",
+  "lib_cli_exit_tools>=2.2.1",
+  "tomli>=2.3.0; python_version < '3.11'",
 ]
 license = { text = "MIT" }
 authors = [{ name = "bitranox", email = "bitranox@gmail.com" }]
@@ -14,7 +15,11 @@ keywords = ["configuration", "layered", "dotenv", "env", "toml"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Typing :: Typed",
@@ -31,7 +36,7 @@ dev = [
   "codecov-cli>=11.2.6",
   "coverage[toml]>=7.13.0",
   "hypothesis>=6.148.7",
-  "import-linter>=2.8",
+  "import-linter>=2.9",
   "bandit>=1.9.2",
   "pip-audit>=2.10.0",
   "PyYAML>=6.0.3",
@@ -41,6 +46,7 @@ dev = [
   "pytest-cov>=7.0.0",
   "ruff>=0.14.8",
   "textual>=6.8.0",
+  "tomli>=2.3.0; python_version < '3.11'",
   "twine>=6.2.0"
 ]
 yaml = [
@@ -63,7 +69,7 @@ include = ["src/lib_layered_config/py.typed"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py310"
 extend-exclude = [
   "notebooks/Quickstart.ipynb",
   "tests/benchmark",

@@ -11,6 +11,7 @@ from .common import (
     build_read_query,
     human_payload,
     json_payload,
+    parse_output_format,
     resolve_indent,
     wants_json,
 )
@@ -69,7 +70,8 @@ def read_command(
 ) -> None:
     """Read configuration and print either human prose or JSON."""
     query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file)
-    if wants_json(output_format):
+    fmt = parse_output_format(output_format)
+    if wants_json(fmt):
         click.echo(json_payload(query, resolve_indent(indent), provenance))
         return
     click.echo(human_payload(query))

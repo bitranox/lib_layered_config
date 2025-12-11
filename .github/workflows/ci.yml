@@ -17,8 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        # Test against Python 3.13 and the latest 3.x available on Actions runners
-        python: ["3.13", "3.x"]
+        # Test against Python 3.10 through 3.13 and latest 3.x
+        python: ["3.10", "3.11", "3.12", "3.13", "3.x"]
     env:
       PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
       PYTHONIOENCODING: "utf-8"
@@ -37,8 +37,13 @@ jobs:
         shell: python
         run: |
           import os
-          import tomllib
+          import sys
           from pathlib import Path
+
+          if sys.version_info >= (3, 11):
+              import tomllib
+          else:
+              import pip._vendor.tomli as tomllib
 
           data = tomllib.loads(Path('pyproject.toml').read_text('utf-8'))
           project = data['project']['name']
@@ -123,8 +128,13 @@ jobs:
         shell: python
         run: |
           import os
-          import tomllib
+          import sys
           from pathlib import Path
+
+          if sys.version_info >= (3, 11):
+              import tomllib
+          else:
+              import pip._vendor.tomli as tomllib
 
           data = tomllib.loads(Path('pyproject.toml').read_text('utf-8'))
           project = data['project']['name']
