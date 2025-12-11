@@ -180,4 +180,5 @@ forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.applicat
 # Known vulnerabilities to ignore (unfixable or accepted risk)
 # GHSA-4xh5-x5gv-qwph: py library ReDoS (no fix available, low risk)
 # PYSEC-2022-42969: same as above (alias)
-ignore-vulns = ["GHSA-4xh5-x5gv-qwph", "PYSEC-2022-42969"]
+# PYSEC-2022-43012, PYSEC-2025-49, CVE-2024-6345: setuptools in CI runner environment (not our dependency)
+ignore-vulns = ["GHSA-4xh5-x5gv-qwph", "PYSEC-2022-42969", "PYSEC-2022-43012", "PYSEC-2025-49", "CVE-2024-6345"]
