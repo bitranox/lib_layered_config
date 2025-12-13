@@ -39,6 +39,7 @@ A cross-platform configuration loader that deep-merges application defaults, hos
 - **Provenance tracking** — every key reports the layer and path that produced it.
 - **Cross-platform path discovery** — Linux (XDG), macOS, and Windows layouts with environment overrides for tests.
 - **Configuration profiles** — organize environment-specific configs (test, staging, production) into isolated subdirectories.
+- **`.d` directory support** — split configuration into multiple files using the Linux `.d` pattern (e.g., `config.d/10-database.toml`). Supports mixed formats (TOML, YAML, JSON) in the same directory.
 - **Easy deployment** — deploy configs to app, host, and user layers with smart conflict handling that protects user customizations through automatic backups (`.bak`) and UCF files (`.ucf`) for safe CI/CD updates.
 - **Fast parsing** — uses `rtoml` (Rust-based) for ~5x faster TOML parsing than stdlib `tomllib`.
 - **Extensible formats** — TOML and JSON are built-in; YAML is available via the optional `yaml` extra.
@@ -1021,29 +1022,48 @@ Environment overrides: `LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_PROGRAMDATA
 
 **Fallback note:** Whenever a path is marked as a fallback, the resolver first consults the documented environment overrides (`LIB_LAYERED_CONFIG_*`, `$XDG_CONFIG_HOME`, `%APPDATA%`, etc.). If those variables are unset or the computed directory does not exist, it switches to the stated fallback location (`~/.config`, `%LOCALAPPDATA%`, ...). This keeps local installs working without additional environment configuration while still allowing operators to steer resolution explicitly.
 
-### The `config.d` Directory
+### The `.d` Directory Pattern
 
-Each layer can include a `config.d/` directory for split configuration files. This follows the common Linux pattern (similar to `/etc/apt/sources.list.d/` or `/etc/sudoers.d/`).
+Any configuration file can have a companion `.d` directory for split configuration. This follows the common Linux pattern (similar to `/etc/apt/sources.list.d/` or `/etc/sudoers.d/`).
+
+**Naming convention:** The `.d` directory name is the filename without extension plus `.d`:
+- `config.toml` → `config.d/`
+- `defaults.toml` → `defaults.d/`
+- `myapp.yaml` → `myapp.d/`
+- `settings.json` → `settings.d/`
+
+This means **all formats share the same `.d` directory** - `config.toml`, `config.yaml`, and `config.json` all use `config.d/`.
 
 **How it works:**
-1. The resolver first loads `config.toml` (if present)
-2. Then loads all files from `config.d/` in **lexicographic order**
+1. The loader first loads the base file (e.g., `config.toml`) if present
+2. Then loads all files from the `.d` directory (e.g., `config.d/`) in **lexicographic order**
 3. Only files with supported extensions are loaded: `.toml`, `.json`, `.yaml`, `.yml`
 4. Files are merged in order, so later files override earlier ones
+5. **Both the base file and `.d` directory are optional** - either can exist independently
 
-**Naming convention:** Use numeric prefixes to control ordering:
+**File ordering:** Use numeric prefixes to control load order:
 ```
 config.d/
-├── 10-base.toml        # Loaded first
-├── 20-database.toml    # Loaded second
-├── 30-logging.toml     # Loaded third
+├── 10-base.toml        # Loaded first (lowest precedence)
+├── 20-database.yaml    # Loaded second (mixed formats allowed!)
+├── 30-logging.json     # Loaded third
 └── 99-overrides.toml   # Loaded last (highest precedence within config.d)
+```
+
+**Precedence order:**
+```
+config.toml             # Loaded first (lowest precedence)
+config.d/10-base.toml   # Loaded second
+config.d/20-db.yaml     # Loaded third
+config.d/99-local.toml  # Loaded last (highest precedence)
 ```
 
 **Use cases:**
 - **Package managers** can drop configuration snippets without modifying the main file
 - **Automation tools** can add/remove specific settings independently
 - **Team workflows** can split configuration by concern (database, logging, features)
+- **CI/CD pipelines** can deploy environment-specific overrides as separate files
+- **Default files** (`--default-file`) also support `.d` expansion
 
 **Example:**
 ```bash
@@ -1053,13 +1073,42 @@ config.d/
   host = "localhost"
   port = 5432
 
-# Ops team adds production overrides
+# Ops team adds production overrides (can use any supported format)
 /etc/myapp/config.d/50-production.toml:
   [database]
   host = "db.prod.example.com"
   pool_size = 20
 
-# Result: database.host = "db.prod.example.com", database.port = 5432, database.pool_size = 20
+# Monitoring team adds their settings as YAML
+/etc/myapp/config.d/60-monitoring.yaml:
+  monitoring:
+    enabled: true
+    endpoint: "https://metrics.example.com"
+
+# Result: database.host = "db.prod.example.com", database.port = 5432,
+#         database.pool_size = 20, monitoring.enabled = true
+```
+
+**With default files:**
+```python
+# defaults.toml and defaults.d/ are both loaded
+config = read_config(
+    vendor="Acme",
+    app="MyApp",
+    slug="myapp",
+    default_file="./defaults.toml"  # Also checks ./defaults.d/*.{toml,yaml,json}
+)
+```
+
+**Without base file (`.d` directory only):**
+```bash
+# No config.toml exists, only config.d/ directory
+/etc/myapp/config.d/
+├── 10-database.toml
+├── 20-cache.toml
+└── 30-logging.yaml
+
+# This works! All files from config.d/ are loaded and merged.
 ```
 
 ## CLI Usage
@@ -3263,11 +3312,40 @@ from pathlib import Path
 from lib_layered_config.examples import deploy_config, generate_examples
 
 # copy one file into the system/user layers
+# If ./myapp/config.d/ exists, those files are also deployed to each destination's config.d/
 paths = deploy_config("./myapp/config.toml", vendor="Acme", app="ConfigKit", targets=("app", "user"))
 
 # scaffold an example tree for documentation
 examples = generate_examples(Path("./examples"), slug="config-kit", vendor="Acme", app="ConfigKit")
 ```
+
+### Deploying with `.d` Directories
+
+When deploying a configuration file, any companion `.d` directory is automatically included:
+
+```bash
+# Source structure:
+# ./myapp/
+# ├── config.toml          # Base configuration
+# └── config.d/            # Companion .d directory
+#     ├── 10-database.toml
+#     └── 20-cache.toml
+
+lib_layered_config deploy --source ./myapp/config.toml --vendor Acme --app MyApp --slug myapp --target app
+
+# Result at /etc/xdg/myapp/:
+# ├── config.toml          # Base configuration deployed
+# └── config.d/            # .d directory also deployed
+#     ├── 10-database.toml
+#     └── 20-cache.toml
+```
+
+The JSON output includes separate fields for `.d` file results:
+- `dot_d_created`: Paths of `.d` files created
+- `dot_d_overwritten`: Paths of `.d` files overwritten (with `dot_d_backups`)
+- `dot_d_skipped`: Paths of `.d` files skipped (identical content)
+
+**Note:** Deployment copies ALL files from the `.d` directory (including README.md, notes.txt, etc.) to preserve documentation and supporting files. Only config file parsing filters by extension.
 
 ## Provenance & Observability
 

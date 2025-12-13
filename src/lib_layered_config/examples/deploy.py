@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
@@ -23,6 +23,11 @@ class DeployAction(Enum):
     SKIPPED = "skipped"  # No action taken
 
 
+def _empty_deploy_results() -> list[DeployResult]:
+    """Return an empty list of DeployResult for default_factory."""
+    return []
+
+
 @dataclass
 class DeployResult:
     """Result of a single file deployment."""
@@ -31,10 +36,43 @@ class DeployResult:
     action: DeployAction
     backup_path: Path | None = None  # Set if action is OVERWRITTEN
     ucf_path: Path | None = None  # Set if action is KEPT
+    dot_d_results: list[DeployResult] = field(default_factory=_empty_deploy_results)
 
 
 # Type alias for conflict resolution callback
 ConflictResolver = Callable[[Path], DeployAction]
+
+
+def _get_dot_d_dir(source_path: Path) -> Path:
+    """Get the companion .d directory path for a source file.
+
+    Uses the same naming convention as expand_dot_d:
+    config.toml → config.d (not config.toml.d)
+
+    Args:
+        source_path: Path to the source configuration file.
+
+    Returns:
+        Path to the companion .d directory.
+    """
+    return source_path.with_suffix(".d")
+
+
+def _collect_dot_d_sources(dot_d_dir: Path) -> list[Path]:
+    """Collect all files from a .d directory in lexicographical order.
+
+    Unlike config reading (which filters by extension), deployment copies
+    ALL files to preserve documentation, notes, and other supporting files.
+
+    Args:
+        dot_d_dir: Path to the .d directory.
+
+    Returns:
+        List of paths to all files sorted by name.
+    """
+    if not dot_d_dir.is_dir():
+        return []
+    return sorted(f for f in dot_d_dir.iterdir() if f.is_file())
 
 
 def _next_available_path(base: Path, suffix: str) -> Path:
@@ -286,8 +324,14 @@ def deploy_config(
 ) -> list[DeployResult]:
     """Copy source into the requested configuration layers with conflict handling.
 
+    Automatically detects and deploys companion .d directories. For a source file
+    like ``config.toml``, if ``config.d/`` exists, its contents are also deployed
+    to the corresponding ``.d`` directory at each destination.
+
     Args:
-        source: Path to the configuration file to deploy.
+        source: Path to the configuration file to deploy. The file must exist.
+            If a companion .d directory exists (e.g., ``config.d/`` for ``config.toml``),
+            its contents are also deployed.
         vendor: Vendor namespace.
         app: Application name.
         targets: Layer targets to deploy to (app, host, user).
@@ -301,10 +345,19 @@ def deploy_config(
 
     Returns:
         List of DeployResult objects describing what was done for each destination.
+        Each result may contain nested ``dot_d_results`` for .d file deployments.
+
+    Raises:
+        FileNotFoundError: If the source file does not exist.
     """
     source_path = Path(source)
     if not source_path.is_file():
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
+
+    # Check for companion .d directory
+    source_dot_d = _get_dot_d_dir(source_path)
+    dot_d_files = _collect_dot_d_sources(source_dot_d)
+    has_dot_d = len(dot_d_files) > 0
 
     resolver = _prepare_resolver(vendor=vendor, app=app, slug=slug or app, profile=profile, platform=platform)
     payload = source_path.read_bytes()
@@ -315,8 +368,66 @@ def deploy_config(
         if destination.resolve() == source_path.resolve():
             continue
 
+        # Deploy base file
         result = _deploy_single(
             destination=destination,
+            payload=payload,
+            force=force,
+            batch=batch,
+            conflict_resolver=conflict_resolver,
+        )
+
+        # Deploy .d directory files (if any)
+        if has_dot_d:
+            dest_dot_d = _get_dot_d_dir(destination)
+            result.dot_d_results = _deploy_dot_d_files(
+                dot_d_files=dot_d_files,
+                dest_dot_d=dest_dot_d,
+                source_dot_d=source_dot_d,
+                force=force,
+                batch=batch,
+                conflict_resolver=conflict_resolver,
+            )
+
+        results.append(result)
+
+    return results
+
+
+def _deploy_dot_d_files(
+    *,
+    dot_d_files: list[Path],
+    dest_dot_d: Path,
+    source_dot_d: Path,
+    force: bool,
+    batch: bool,
+    conflict_resolver: ConflictResolver | None,
+) -> list[DeployResult]:
+    """Deploy files from source .d directory to destination .d directory.
+
+    Args:
+        dot_d_files: List of source files to deploy.
+        dest_dot_d: Destination .d directory path.
+        source_dot_d: Source .d directory (for skipping same-file deploys).
+        force: If True, backup existing files and overwrite.
+        batch: If True, keep existing files and write new as .ucf.
+        conflict_resolver: Callback to resolve conflicts interactively.
+
+    Returns:
+        List of DeployResult objects for each .d file deployed.
+    """
+    results: list[DeployResult] = []
+
+    for source_file in dot_d_files:
+        dest_file = dest_dot_d / source_file.name
+
+        # Skip if source and destination are the same
+        if dest_file.resolve() == source_file.resolve():
+            continue
+
+        payload = source_file.read_bytes()
+        result = _deploy_single(
+            destination=dest_file,
             payload=payload,
             force=force,
             batch=batch,

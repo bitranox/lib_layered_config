@@ -1,5 +1,71 @@
 # Changelog
 
+## [5.1.0] - 2025-12-13
+
+### Added
+
+- **`.d` directory expansion for configuration files** - Any configuration file now automatically discovers and merges files from a companion `.d` directory. This follows the pattern used by `/etc/apt/sources.list.d/` and similar Unix conventions.
+
+  **Naming Convention:** The `.d` directory name is derived by replacing the file extension with `.d`:
+  - `config.toml` → `config.d/`
+  - `config.yaml` → `config.d/`
+  - `config.json` → `config.d/`
+
+  This design allows all formats to share the same companion directory and enables mixed format files within a single `.d` directory.
+
+  **Features:**
+  - Files in the `.d` directory are sorted lexicographically (e.g., `10-database.toml`, `20-cache.toml`)
+  - Both the base file and `.d` directory are optional (either can exist independently)
+  - Provenance tracks which specific `.d` file provided each configuration value
+  - Supports mixed formats in the same `.d` directory (TOML, YAML, JSON)
+  - Non-config files (e.g., `README.md`) are automatically ignored
+  - Works at all layers: defaults, app, host, user
+
+  **Example directory structure:**
+  ```
+  /etc/xdg/myapp/
+  ├── config.toml              # Base configuration
+  └── config.d/                # Companion .d directory
+      ├── 10-database.toml     # Merged second
+      ├── 20-cache.yaml        # Merged third (mixed formats OK)
+      └── 30-logging.json      # Merged fourth
+  ```
+
+  **Merge order:** `config.toml` → `10-database.toml` → `20-cache.yaml` → `30-logging.json`
+
+  **Usage example:**
+  ```python
+  from lib_layered_config import read_config
+
+  # Automatically reads config.toml + config.d/* files
+  config = read_config(vendor="Acme", app="MyApp", slug="myapp")
+
+  # Provenance shows which .d file provided each value
+  print(config.origin("database.host"))
+  # → {"layer": "app", "path": "/etc/xdg/myapp/config.d/10-database.toml", "key": "database.host"}
+  ```
+
+- **`expand_dot_d()` function** - New public function in `adapters.file_loaders` for expanding a config file path to include `.d` directory entries. Useful for advanced use cases where direct control over file expansion is needed.
+
+- **`_note_dot_d_expanded()` logging helper** - New observability helper that logs when `.d` expansion occurs with the count of additional files discovered.
+
+- **`.d` directory support in `deploy_config`** - The `deploy_config` function now automatically detects and deploys companion `.d` directories. When deploying `config.toml`, if `config.d/` exists, its contents are also deployed to the corresponding `.d` directory at each destination.
+
+  **Note:** Deployment copies ALL files from the `.d` directory (including README.md, notes.txt, etc.) to preserve documentation and supporting files. Only config file parsing filters by extension.
+
+  **JSON output fields for .d results:**
+  - `dot_d_created`: Paths of .d files created
+  - `dot_d_overwritten`: Paths of .d files overwritten
+  - `dot_d_skipped`: Paths of .d files skipped (identical content)
+  - `dot_d_backups`: Paths of .d backup files created
+
+### Internal
+
+- Added `adapters/file_loaders/_dot_d.py` module for `.d` directory expansion logic
+- Modified `_layers._load_entry_with_dot_d()` to integrate `.d` expansion into the layer loading pipeline
+- Updated `adapters/path_resolvers/_base.collect_layer()` to yield `config.toml` when `config.d/` directory exists (even if base file is missing)
+- Added comprehensive test suites: `tests/adapters/test_dot_d.py` (15 unit tests) and `tests/e2e/test_dot_d_integration.py` (9 E2E tests)
+
 ## [5.0.0] - 2025-12-11
 
 ### Added

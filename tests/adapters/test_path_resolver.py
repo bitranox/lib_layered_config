@@ -55,10 +55,13 @@ def test_linux_resolver_first_app_path_points_to_config(tmp_path: Path) -> None:
 
 
 @posix_only
-def test_linux_resolver_includes_override_directory(tmp_path: Path) -> None:
+def test_linux_resolver_yields_config_toml_when_config_d_exists(tmp_path: Path) -> None:
+    """Resolver yields config.toml when config.d directory exists (for .d expansion)."""
     resolver, _ = _linux_context(tmp_path)
-    expectation = any(path.replace("\\", "/").endswith("config.d/10-user.toml") for path in resolver.app())
-    assert expectation is True
+    app_paths = list(resolver.app())
+    # config.toml is yielded because config.d exists; actual .d expansion happens in _layers
+    assert len(app_paths) == 1
+    assert app_paths[0].endswith("config.toml")
 
 
 @posix_only
@@ -553,13 +556,17 @@ def test_windows_user_paths_empty_when_no_user_directories(tmp_path: Path) -> No
 
 
 @os_agnostic
-def test_collect_layer_discards_unknown_extensions(tmp_path: Path) -> None:
+def test_collect_layer_yields_config_toml_when_config_d_exists(tmp_path: Path) -> None:
+    """collect_layer yields config.toml when config.d exists (filtering happens in expand_dot_d)."""
     base = tmp_path / "layer"
     base.mkdir()
     (base / "config.d").mkdir()
     (base / "config.d" / "10-extra.txt").write_text("ignored", encoding="utf-8")
 
-    assert list(collect_layer(base)) == []
+    # config.toml is yielded because config.d exists; filtering of .txt happens in expand_dot_d
+    paths = list(collect_layer(base))
+    assert len(paths) == 1
+    assert paths[0].endswith("config.toml")
 
 
 # ---------------------------------------------------------------------------

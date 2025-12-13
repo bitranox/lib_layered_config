@@ -684,6 +684,168 @@ counts via `log_debug` events.
 
 ---
 
+### Feature Documentation: Dot-D Directory Expansion
+
+## Status
+
+Complete
+
+## Links & References
+
+**Feature Requirements:** docs/systemdesign/concept.md (.d directory pattern)
+**Related Files:**
+
+- `src/lib_layered_config/adapters/file_loaders/_dot_d.py`
+- `src/lib_layered_config/_layers.py`
+- `tests/adapters/test_dot_d.py`
+- `tests/e2e/test_dot_d_integration.py`
+
+---
+
+## Problem Statement
+
+Configuration files often need to be extended by additional snippets without
+modifying the original file. The `.d` directory pattern (inspired by `/etc/apt/sources.list.d/`)
+allows operators and package managers to drop configuration fragments into a
+companion directory that are automatically merged with the base file.
+
+## Solution Overview
+
+- Implement `expand_dot_d()` to expand any config file path into an ordered list
+  of paths including the base file and companion `.d` directory entries.
+- Naming convention: `config.toml` → `config.d/` (not `config.toml.d/`), allowing
+  mixed formats (TOML, YAML, JSON) in the same `.d` directory.
+- Both the base file and `.d` directory are optional (either can exist independently).
+- Files in the `.d` directory are sorted lexicographically (e.g., `10-db.toml`,
+  `20-cache.toml`) for deterministic ordering.
+- Integration with `_layers.py` ensures provenance tracks individual `.d` files.
+
+---
+
+## Architecture Integration
+
+**App Layer Fit:** The expansion is performed at the `_layers._load_entry_with_dot_d()`
+level, ensuring all configuration file paths (defaults, app, host, user) benefit
+from `.d` expansion without modifying path resolvers.
+
+**Data Flow:**
+- Path resolver yields `config.toml` paths
+- `_load_entry_with_dot_d()` calls `expand_dot_d()` to get ordered file list
+- Each file is loaded via `_load_entry()` and yields separate `LayerSnapshot`s
+- Merge pipeline combines them in order, tracking provenance per file
+
+**System Dependencies:** Standard library only (`pathlib`).
+
+---
+
+## Core Components
+
+### `expand_dot_d`
+- **Purpose:** Expand a config file path to include `.d` directory entries.
+- **Input:** Absolute path to a configuration file.
+- **Output:** Iterator yielding paths in merge order (base file first, then `.d` files).
+- **Location:** `adapters/file_loaders/_dot_d.py`
+
+### `_collect_dot_d_files`
+- **Purpose:** Helper to yield files from a `.d` directory in lexicographical order.
+- **Input:** Path to the `.d` directory.
+- **Output:** Iterator yielding absolute paths to supported config files.
+- **Location:** `adapters/file_loaders/_dot_d.py`
+
+### `_load_entry_with_dot_d`
+- **Purpose:** Load a config file and any companion `.d` files as snapshots.
+- **Input:** Layer name and base file path.
+- **Output:** Iterator of `LayerSnapshot` instances.
+- **Location:** `_layers.py`
+
+---
+
+## Implementation Details
+
+**Naming Convention:** The `.d` directory name is derived by replacing the file
+extension with `.d`:
+- `config.toml` → `config.d/`
+- `config.yaml` → `config.d/`
+- `config.json` → `config.d/`
+
+This allows all formats to share the same companion directory and enables mixed
+format files within a single `.d` directory.
+
+**File Filtering:** Only files with extensions `.toml`, `.yaml`, `.yml`, or `.json`
+are included. Non-config files (e.g., `README.md`) are silently ignored.
+
+**Subdirectory Handling:** Subdirectories inside `.d` are not traversed (flat
+structure only).
+
+**Error Handling:** Missing files and directories are handled gracefully; the
+function yields nothing if neither base file nor `.d` directory exists.
+
+**Observability:** The `_note_dot_d_expanded()` helper logs when `.d` expansion
+occurs with the count of additional files.
+
+---
+
+## Testing Approach
+
+**Unit Tests (`tests/adapters/test_dot_d.py`):**
+- `test_expand_dot_d_returns_base_only_when_no_dot_d_dir`
+- `test_expand_dot_d_returns_empty_when_neither_exists`
+- `test_expand_dot_d_returns_dot_d_only_when_base_missing`
+- `test_expand_dot_d_merges_base_and_dot_d_in_order`
+- `test_expand_dot_d_sorts_lexicographically`
+- `test_expand_dot_d_filters_unsupported_extensions`
+- `test_expand_dot_d_handles_mixed_formats_in_dot_d`
+- `test_expand_dot_d_ignores_subdirectories`
+
+**E2E Tests (`tests/e2e/test_dot_d_integration.py`):**
+- `test_read_config_merges_dot_d_directory`
+- `test_read_config_dot_d_override_precedence`
+- `test_read_config_dot_d_provenance_tracks_individual_files`
+- `test_read_config_dot_d_works_for_default_file`
+- `test_read_config_dot_d_user_layer_overrides_app_layer`
+- `test_read_config_dot_d_mixed_formats`
+
+---
+
+## Deployment Integration
+
+The `.d` directory pattern is also supported during deployment via `deploy_config()`.
+
+**Key Difference from Reading:**
+- **Reading**: Only config files (`.toml`, `.yaml`, `.yml`, `.json`) are parsed
+- **Deployment**: ALL files are copied (including README.md, notes.txt, etc.)
+
+This preserves documentation and supporting files alongside config fragments.
+
+**Implementation:**
+- `examples/deploy.py`: `_collect_dot_d_sources()` collects all files (no extension filter)
+- `cli/deploy.py`: `_format_results()` includes `.d` results in JSON output
+
+**JSON Output Fields:**
+- `dot_d_created`: Paths of `.d` files created
+- `dot_d_overwritten`: Paths of `.d` files overwritten
+- `dot_d_skipped`: Paths of `.d` files skipped (identical content)
+- `dot_d_backups`: Backup paths for overwritten `.d` files
+
+**Tests:**
+- `tests/e2e/test_deploy_behavior.py`:
+  - `test_deploy_with_dot_d_directory_copies_both_base_and_dot_d_files`
+  - `test_deploy_dot_d_force_mode_creates_backups`
+  - `test_deploy_dot_d_smart_skip_identical_content`
+  - `test_deploy_dot_d_includes_non_config_files`
+  - `test_deploy_dot_d_mixed_formats`
+
+---
+
+## Known Issues & Future Improvements
+
+**Current Limitations:** None identified.
+
+**Future Enhancements:** Consider adding support for include directives within
+config files if more complex composition patterns are required.
+
+---
+
 ### Feature Documentation: Structured File Loaders
 
 ## Status

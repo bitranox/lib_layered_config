@@ -750,3 +750,194 @@ def test_smart_skip_json_output_only_contains_skipped(
     assert "backups" not in output
     assert "ucf_files" not in output
     assert "kept" not in output
+
+
+# ---------------------------------------------------------------------------
+# Behavior: .d directory deployment
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+def test_deploy_with_dot_d_directory_copies_both_base_and_dot_d_files(
+    tmp_path: Path,
+    sandbox: LayeredSandbox,
+) -> None:
+    """Deploying a config with .d directory copies both base file and .d contents."""
+    # Create source with .d directory
+    source = tmp_path / "config.toml"
+    source.write_text('[base]\nkey = "value"\n', encoding="utf-8")
+    dot_d = tmp_path / "config.d"
+    dot_d.mkdir()
+    (dot_d / "10-db.toml").write_text('[db]\nhost = "localhost"\n', encoding="utf-8")
+    (dot_d / "20-cache.toml").write_text("[cache]\nenabled = true\n", encoding="utf-8")
+
+    result = make_runner().invoke(
+        cli.cli,
+        make_deploy_command(source, targets=["app"]),
+        env=sandbox.env,
+    )
+
+    assert result.exit_code == 0
+    output = json.loads(result.output)
+
+    # Base file should be created
+    assert "created" in output
+    assert len(output["created"]) == 1
+    base_dest = Path(output["created"][0])
+    assert base_dest.exists()
+    assert 'key = "value"' in base_dest.read_text(encoding="utf-8")
+
+    # .d files should also be created
+    assert "dot_d_created" in output
+    assert len(output["dot_d_created"]) == 2
+
+    # Verify .d files exist at destination
+    dest_dot_d = base_dest.with_suffix(".d")
+    assert dest_dot_d.is_dir()
+    assert (dest_dot_d / "10-db.toml").exists()
+    assert (dest_dot_d / "20-cache.toml").exists()
+    assert 'host = "localhost"' in (dest_dot_d / "10-db.toml").read_text(encoding="utf-8")
+
+
+@os_agnostic
+def test_deploy_dot_d_force_mode_creates_backups(
+    tmp_path: Path,
+    sandbox: LayeredSandbox,
+) -> None:
+    """Force mode creates backups for .d files with different content."""
+    # Create source with .d directory
+    source1 = tmp_path / "v1" / "config.toml"
+    source1.parent.mkdir()
+    source1.write_text("[base]\nv = 1\n", encoding="utf-8")
+    dot_d1 = tmp_path / "v1" / "config.d"
+    dot_d1.mkdir()
+    (dot_d1 / "10-extra.toml").write_text("[extra]\nv = 1\n", encoding="utf-8")
+
+    source2 = tmp_path / "v2" / "config.toml"
+    source2.parent.mkdir()
+    source2.write_text("[base]\nv = 2\n", encoding="utf-8")
+    dot_d2 = tmp_path / "v2" / "config.d"
+    dot_d2.mkdir()
+    (dot_d2 / "10-extra.toml").write_text("[extra]\nv = 2\n", encoding="utf-8")
+
+    runner = make_runner()
+
+    # First deploy
+    runner.invoke(cli.cli, make_deploy_command(source1, targets=["app"]), env=sandbox.env)
+
+    # Second deploy with --force
+    result = runner.invoke(
+        cli.cli,
+        make_deploy_command(source2, targets=["app"], force=True),
+        env=sandbox.env,
+    )
+
+    assert result.exit_code == 0
+    output = json.loads(result.output)
+
+    # Both base and .d files should be overwritten with backups
+    assert "overwritten" in output
+    assert "backups" in output
+    assert "dot_d_overwritten" in output
+    assert "dot_d_backups" in output
+
+
+@os_agnostic
+def test_deploy_dot_d_smart_skip_identical_content(
+    tmp_path: Path,
+    sandbox: LayeredSandbox,
+) -> None:
+    """Smart skip works for .d files with identical content."""
+    source = tmp_path / "config.toml"
+    source.write_text("[base]\nkey = 1\n", encoding="utf-8")
+    dot_d = tmp_path / "config.d"
+    dot_d.mkdir()
+    (dot_d / "10-extra.toml").write_text("[extra]\nkey = 1\n", encoding="utf-8")
+
+    runner = make_runner()
+
+    # First deploy
+    runner.invoke(cli.cli, make_deploy_command(source, targets=["app"]), env=sandbox.env)
+
+    # Second deploy with same content - should skip
+    result = runner.invoke(
+        cli.cli,
+        make_deploy_command(source, targets=["app"], force=True),
+        env=sandbox.env,
+    )
+
+    assert result.exit_code == 0
+    output = json.loads(result.output)
+
+    # Both base and .d files should be skipped
+    assert "skipped" in output
+    assert "dot_d_skipped" in output
+
+
+@os_agnostic
+def test_deploy_dot_d_includes_non_config_files(
+    tmp_path: Path,
+    sandbox: LayeredSandbox,
+) -> None:
+    """All files in .d directory are deployed, including non-config files."""
+    source = tmp_path / "config.toml"
+    source.write_text("[base]\n", encoding="utf-8")
+    dot_d = tmp_path / "config.d"
+    dot_d.mkdir()
+    (dot_d / "10-valid.toml").write_text("[valid]\n", encoding="utf-8")
+    (dot_d / "README.md").write_text("# Configuration docs\n", encoding="utf-8")
+    (dot_d / "notes.txt").write_text("Notes about config\n", encoding="utf-8")
+
+    result = make_runner().invoke(
+        cli.cli,
+        make_deploy_command(source, targets=["app"]),
+        env=sandbox.env,
+    )
+
+    assert result.exit_code == 0
+    output = json.loads(result.output)
+
+    # All 3 .d files should be created (config + non-config files)
+    assert len(output.get("dot_d_created", [])) == 3
+
+    # Verify ALL files were copied (deployment preserves non-config files)
+    base_dest = Path(output["created"][0])
+    dest_dot_d = base_dest.with_suffix(".d")
+    assert (dest_dot_d / "10-valid.toml").exists()
+    assert (dest_dot_d / "README.md").exists()
+    assert (dest_dot_d / "notes.txt").exists()
+    assert "Configuration docs" in (dest_dot_d / "README.md").read_text(encoding="utf-8")
+
+
+@os_agnostic
+def test_deploy_dot_d_mixed_formats(
+    tmp_path: Path,
+    sandbox: LayeredSandbox,
+) -> None:
+    """Deploying .d directory with mixed formats (TOML, YAML, JSON) works."""
+    source = tmp_path / "config.toml"
+    source.write_text("[base]\n", encoding="utf-8")
+    dot_d = tmp_path / "config.d"
+    dot_d.mkdir()
+    (dot_d / "10-toml.toml").write_text("[toml]\nx = 1\n", encoding="utf-8")
+    (dot_d / "20-yaml.yaml").write_text("yaml:\n  y: 2\n", encoding="utf-8")
+    (dot_d / "30-json.json").write_text('{"json": {"z": 3}}\n', encoding="utf-8")
+
+    result = make_runner().invoke(
+        cli.cli,
+        make_deploy_command(source, targets=["app"]),
+        env=sandbox.env,
+    )
+
+    assert result.exit_code == 0
+    output = json.loads(result.output)
+
+    # All 3 .d files should be created
+    assert len(output.get("dot_d_created", [])) == 3
+
+    # Verify all formats exist at destination
+    base_dest = Path(output["created"][0])
+    dest_dot_d = base_dest.with_suffix(".d")
+    assert (dest_dot_d / "10-toml.toml").exists()
+    assert (dest_dot_d / "20-yaml.yaml").exists()
+    assert (dest_dot_d / "30-json.json").exists()

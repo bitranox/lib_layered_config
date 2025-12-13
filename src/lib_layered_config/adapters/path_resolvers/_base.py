@@ -122,13 +122,14 @@ class PlatformStrategy(abc.ABC):
 
 
 def collect_layer(base: Path) -> Iterable[str]:
-    """Yield canonical config files and ``config.d`` entries under *base*.
+    """Yield canonical config file path under *base* for file-level expansion.
 
     Normalise discovery across operating systems while respecting preferred
     configuration formats.
 
-    Emits ``config.toml`` when present and lexicographically ordered entries
-    from ``config.d`` limited to supported extensions.
+    Yields ``config.toml`` when present or when its companion ``config.d``
+    directory exists. The actual .d directory expansion is handled by
+    ``_layers._load_entry_with_dot_d``.
 
     Args:
         base: Base directory for a particular layer.
@@ -148,19 +149,11 @@ def collect_layer(base: Path) -> Iterable[str]:
         >>> _ = file_a.write_text(os.linesep.join(['[settings]', 'value=1']), encoding='utf-8')
         >>> _ = file_b.write_text('{"value": 2}', encoding='utf-8')
         >>> sorted(Path(p).name for p in collect_layer(root))
-        ['10-extra.json', 'config.toml']
+        ['config.toml']
         >>> tmp.cleanup()
     """
     config_file = base / "config.toml"
-    if config_file.is_file():
+    config_d_dir = base / "config.d"
+
+    if config_file.is_file() or config_d_dir.is_dir():
         yield str(config_file)
-    yield from _collect_config_d(base / "config.d")
-
-
-def _collect_config_d(config_dir: Path) -> Iterable[str]:
-    """Yield config files from a config.d directory."""
-    if not config_dir.is_dir():
-        return
-    for path in sorted(config_dir.iterdir()):
-        if path.is_file() and path.suffix.lower() in _ALLOWED_EXTENSIONS:
-            yield str(path)

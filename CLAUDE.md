@@ -76,7 +76,7 @@ lib_layered_config/
 │       ├── adapters/          # Adapter layer (infrastructure)
 │       │   ├── dotenv/        # .env file loading
 │       │   ├── env/           # Environment variable loading
-│       │   ├── file_loaders/  # TOML/YAML file loaders
+│       │   ├── file_loaders/  # TOML/YAML file loaders + .d directory expansion
 │       │   ├── path_resolvers/ # Platform-specific path resolution
 │       │   └── _nested_keys.py # Nested key handling
 │       ├── application/       # Application layer (use cases)
@@ -164,6 +164,34 @@ Import rules (enforced by import-linter):
 - Layer order: `domain` → `application` → `adapters` → root package
 
 Apply principles from `python_clean_architecture.md` when designing and implementing features.
+
+## Configuration Loading Features
+
+### `.d` Directory Pattern
+Any configuration file can have a companion `.d` directory for split configuration:
+- `config.toml` → `config.d/` (not `config.toml.d/`)
+- `defaults.toml` → `defaults.d/`
+
+**Reading behavior:**
+- Base file loaded first (lowest precedence within layer)
+- `.d` directory files loaded in lexicographic order (e.g., `10-db.toml`, `20-cache.yaml`)
+- Mixed formats allowed in `.d` directory (TOML, YAML, JSON)
+- Both base file and `.d` directory are optional (either can exist independently)
+- Works with `default_file` parameter and all layer types (app, host, user)
+- Non-config files (README.md, etc.) are **ignored** during parsing
+
+**Deployment behavior:**
+- When deploying `config.toml`, the companion `config.d/` is automatically deployed
+- ALL files in `.d` directory are deployed (including README.md, notes.txt, etc.)
+- This preserves documentation and supporting files
+- JSON output includes: `dot_d_created`, `dot_d_overwritten`, `dot_d_skipped`, `dot_d_backups`
+
+**Implementation files:**
+- `adapters/file_loaders/_dot_d.py` - `expand_dot_d()` for reading (filters by extension)
+- `_layers.py` - `_load_entry_with_dot_d()` integration
+- `adapters/path_resolvers/_base.py` - `collect_layer()` yields `config.toml` when `config.d/` exists
+- `examples/deploy.py` - `_collect_dot_d_sources()` for deployment (all files)
+- `cli/deploy.py` - `_format_results()` includes `.d` file results
 
 ## Security & Configuration
 

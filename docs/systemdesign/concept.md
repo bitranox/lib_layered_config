@@ -33,6 +33,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 * [x] Example tree generator and deployment helpers for docs/onboarding (`examples/generate`, `examples/deploy`).
 * [x] Interactive conflict handling for `deploy` command with backup (`.bak`) and UCF (`.ucf`) file support.
 * [x] Smart skipping for `deploy` when destination content is identical (avoids unnecessary backups).
+* [x] `.d` directory expansion for configuration files (e.g., `config.toml` → `config.d/`) with lexicographic ordering and provenance tracking per file.
 
 2. **Non-Goals** *(still out of scope)*
 
@@ -53,6 +54,7 @@ Use this checklist as a living reference; extend it as the solution grows.
    - Path resolvers per OS (Linux/XDG, macOS Application Support, Windows ProgramData/AppData) honour environment overrides; reused by deployment helpers.
    - Structured file loaders (TOML/JSON core, YAML optional) emit deterministic logging and raise `InvalidFormatError`/`NotFoundError`.
    - Dotenv loader (upward search + platform extras, `__` nesting, quoting rules) and environment loader (namespace filtering, coercion for bool/null/int/float, provenance logging).
+   - `.d` directory expansion (`adapters/file_loaders/_dot_d.py`) automatically discovers and merges companion `.d` directories for any config file.
    - `observability` module exposes trace-aware logging helpers shared across adapters and composition.
 
 4. **Composition Root**

@@ -37,7 +37,7 @@ _ACTION_TO_KEY: dict[DeployAction, str] = {
 
 
 def _format_results(results: list[DeployResult]) -> str:
-    """Format deployment results as JSON."""
+    """Format deployment results as JSON, including .d directory results."""
     output: dict[str, list[str]] = {
         "created": [],
         "overwritten": [],
@@ -45,8 +45,15 @@ def _format_results(results: list[DeployResult]) -> str:
         "skipped": [],
         "backups": [],
         "ucf_files": [],
+        "dot_d_created": [],
+        "dot_d_overwritten": [],
+        "dot_d_kept": [],
+        "dot_d_skipped": [],
+        "dot_d_backups": [],
+        "dot_d_ucf_files": [],
     }
     for r in results:
+        # Handle base file result
         key = _ACTION_TO_KEY.get(r.action)
         if key:
             output[key].append(str(r.destination))
@@ -54,6 +61,16 @@ def _format_results(results: list[DeployResult]) -> str:
             output["backups"].append(str(r.backup_path))
         if r.ucf_path:
             output["ucf_files"].append(str(r.ucf_path))
+
+        # Handle .d directory results
+        for dot_d_r in r.dot_d_results:
+            dot_d_key = _ACTION_TO_KEY.get(dot_d_r.action)
+            if dot_d_key:
+                output[f"dot_d_{dot_d_key}"].append(str(dot_d_r.destination))
+            if dot_d_r.backup_path:
+                output["dot_d_backups"].append(str(dot_d_r.backup_path))
+            if dot_d_r.ucf_path:
+                output["dot_d_ucf_files"].append(str(dot_d_r.ucf_path))
 
     return json.dumps({k: v for k, v in output.items() if v}, indent=2)
 
@@ -63,7 +80,7 @@ def _format_results(results: list[DeployResult]) -> str:
     "--source",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     required=True,
-    help="Path to the configuration file that should be copied",
+    help="Path to the configuration file to deploy (companion .d directory is auto-detected)",
 )
 @click.option("--vendor", required=True, help="Vendor namespace")
 @click.option("--app", required=True, help="Application name")

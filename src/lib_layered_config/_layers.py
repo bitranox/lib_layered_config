@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
+from .adapters.file_loaders._dot_d import expand_dot_d
 from .adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from .adapters.path_resolvers.default import DefaultPathResolver
 from .application.merge import LayerSnapshot, MergeResult, merge_layers
@@ -123,26 +124,29 @@ def merge_or_empty(layers: list[LayerSnapshot]) -> MergeResult:
 
 
 def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
-    """Yield a defaults snapshot when *default_file* is supplied.
+    """Yield defaults snapshots when *default_file* is supplied.
+
+    The default file is expanded to include any companion ``.d`` directory files.
 
     Args:
         default_file: Absolute path string to the optional defaults file.
 
     Yields:
-        LayerSnapshot: Snapshot describing the defaults layer.
+        LayerSnapshot: Snapshots describing the defaults layer.
 
     Side Effects:
-        Emits ``layer_loaded`` events when a defaults file is parsed.
+        Emits ``layer_loaded`` events when defaults files are parsed.
     """
     if not default_file:
         return
 
-    snapshot = _load_entry(Layer.DEFAULTS, default_file)
-    if snapshot is None:
+    snapshots = list(_load_entry_with_dot_d(Layer.DEFAULTS, default_file))
+    if not snapshots:
         return
 
-    _note_layer_loaded(snapshot.name, snapshot.origin, {"keys": len(snapshot.payload)})
-    yield snapshot
+    for snapshot in snapshots:
+        _note_layer_loaded(snapshot.name, snapshot.origin, {"keys": len(snapshot.payload)})
+        yield snapshot
 
 
 def _filesystem_snapshots(resolver: DefaultPathResolver, prefer: Sequence[str] | None) -> Iterator[LayerSnapshot]:
@@ -204,6 +208,8 @@ def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapsho
 def _snapshots_from_paths(layer: str, paths: Iterable[str], prefer: Sequence[str] | None) -> Iterator[LayerSnapshot]:
     """Yield snapshots for every supported file inside *paths*.
 
+    Each path is expanded to include any companion ``.d`` directory files.
+
     Args:
         layer: Logical layer name the files belong to.
         paths: Iterable of candidate file paths.
@@ -213,9 +219,7 @@ def _snapshots_from_paths(layer: str, paths: Iterable[str], prefer: Sequence[str
         LayerSnapshot: Snapshot for each successfully loaded file.
     """
     for path in _paths_in_preferred_order(paths, prefer):
-        snapshot = _load_entry(layer, path)
-        if snapshot is not None:
-            yield snapshot
+        yield from _load_entry_with_dot_d(layer, path)
 
 
 def _load_entry(layer: str, path: str) -> LayerSnapshot | None:
@@ -245,6 +249,36 @@ def _load_entry(layer: str, path: str) -> LayerSnapshot | None:
     if not data:
         return None
     return LayerSnapshot(layer, data, path)
+
+
+def _load_entry_with_dot_d(layer: str, path: str) -> Iterator[LayerSnapshot]:
+    """Load *path* and any companion .d directory files as snapshots.
+
+    For a file ``foo.toml``, checks for ``foo.toml.d/`` directory and yields
+    snapshots for:
+    1. The base file (if it exists)
+    2. Files from the .d directory in lexicographical order (if directory exists)
+
+    Both the base file and .d directory are optional.
+
+    Args:
+        layer: Logical layer name associated with the files.
+        path: Absolute path to the base configuration file.
+
+    Yields:
+        LayerSnapshot: Snapshot for each file (base + .d entries) in merge order.
+
+    Raises:
+        InvalidFormatError: When any file contains invalid content.
+    """
+    expanded_paths = list(expand_dot_d(path))
+    if len(expanded_paths) > 1:
+        _note_dot_d_expanded(path, len(expanded_paths) - 1)
+
+    for expanded_path in expanded_paths:
+        snapshot = _load_entry(layer, expanded_path)
+        if snapshot is not None:
+            yield snapshot
 
 
 def _paths_in_preferred_order(paths: Iterable[str], prefer: Sequence[str] | None) -> list[str]:
@@ -294,6 +328,16 @@ def _note_layer_error(layer: str, path: str, exc: Exception) -> None:
         exc: Exception raised by the loader.
     """
     log_debug("layer_error", **make_event(layer, path, {"error": str(exc)}))
+
+
+def _note_dot_d_expanded(base_path: str, dot_d_count: int) -> None:
+    """Emit a debug event when .d directory expansion occurs.
+
+    Args:
+        base_path: Path to the base configuration file.
+        dot_d_count: Number of files found in the .d directory.
+    """
+    log_debug("dot_d_expanded", layer="file", path=base_path, dot_d_files=dot_d_count)
 
 
 def _note_configuration_empty() -> None:
