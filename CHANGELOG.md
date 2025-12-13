@@ -51,7 +51,13 @@
 
 - **`.d` directory support in `deploy_config`** - The `deploy_config` function now automatically detects and deploys companion `.d` directories. When deploying `config.toml`, if `config.d/` exists, its contents are also deployed to the corresponding `.d` directory at each destination.
 
-  **Note:** Deployment copies ALL files from the `.d` directory (including README.md, notes.txt, etc.) to preserve documentation and supporting files. Only config file parsing filters by extension.
+  **Key behaviors:**
+  - Deployment is **additive**: user-added files in the destination `.d` directory are preserved
+  - Smart skip and backup functionality applies to `.d` files (identical to base file handling)
+  - ALL files from source `.d` are copied (including README.md, notes.txt) to preserve documentation
+  - Only config file parsing filters by extension; deployment copies everything
+
+  **Best practice:** Override settings in a separate file (e.g., `90-local-overrides.toml`) instead of modifying distributed config files. This ensures customizations survive re-deployments.
 
   **JSON output fields for .d results:**
   - `dot_d_created`: Paths of .d files created

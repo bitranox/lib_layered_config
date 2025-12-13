@@ -154,10 +154,13 @@ config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit")
 
 #### 1. **Linux/UNIX Paths**
 ```bash
-/etc/xdg/myapp/config.toml               # System-wide (XDG-compliant)
-/etc/xdg/myapp/hosts/server-01.toml      # Host-specific (XDG-compliant)
-~/.config/myapp/config.toml              # User-specific
-~/.config/myapp/.env                      # Environment variables
+/etc/xdg/myapp/config.toml                    # System-wide (XDG-compliant)
+/etc/xdg/myapp/config.d/10-database.toml      # Optional split config
+/etc/xdg/myapp/config.d/20-logging.toml       # Files merged in order
+/etc/xdg/myapp/hosts/server-01.toml           # Host-specific (XDG-compliant)
+~/.config/myapp/config.toml                   # User-specific
+~/.config/myapp/config.d/90-local.toml        # User's split config
+~/.config/myapp/.env                          # Environment variables
 ```
 
 Note: For backwards compatibility, the library also checks `/etc/myapp/` if `/etc/xdg/myapp/` is not found.
@@ -181,9 +184,9 @@ The slug provides a consistent identifier regardless of platform:
 # Same slug works on all platforms
 config = read_config(vendor="Acme", app="My App", slug="myapp")
 
-# Linux:   /etc/xdg/myapp/config.toml
-# macOS:   /Library/Application Support/Acme/My App/config.toml
-# Windows: C:\ProgramData\Acme\My App\config.toml
+# Linux:   /etc/xdg/myapp/config.toml (+ optional config.d/)
+# macOS:   /Library/Application Support/Acme/My App/config.toml (+ optional config.d/)
+# Windows: C:\ProgramData\Acme\My App\config.toml (+ optional config.d\)
 # Env vars: MYAPP___DATABASE__HOST (all platforms)
 ```
 
@@ -223,29 +226,39 @@ When a profile is specified, a `profile/<name>/` subdirectory is inserted into a
 ```bash
 # Without profile:
 /etc/xdg/myapp/config.toml
+/etc/xdg/myapp/config.d/10-database.toml           # Optional split config
+/etc/xdg/myapp/config.d/20-logging.toml
 ~/.config/myapp/config.toml
+~/.config/myapp/config.d/90-local.toml             # User overrides
 
 # With profile="production":
 /etc/xdg/myapp/profile/production/config.toml
+/etc/xdg/myapp/profile/production/config.d/10-database.toml
+/etc/xdg/myapp/profile/production/config.d/20-cache.toml
 ~/.config/myapp/profile/production/config.toml
+~/.config/myapp/profile/production/config.d/90-local.toml
 ```
 
 #### 2. **macOS Paths (with profile)**
 ```bash
 # Without profile:
 /Library/Application Support/Acme/MyApp/config.toml
+/Library/Application Support/Acme/MyApp/config.d/10-database.toml
 
 # With profile="production":
 /Library/Application Support/Acme/MyApp/profile/production/config.toml
+/Library/Application Support/Acme/MyApp/profile/production/config.d/10-database.toml
 ```
 
 #### 3. **Windows Paths (with profile)**
 ```bash
 # Without profile:
 C:\ProgramData\Acme\MyApp\config.toml
+C:\ProgramData\Acme\MyApp\config.d\10-database.toml
 
 # With profile="production":
 C:\ProgramData\Acme\MyApp\profile\production\config.toml
+C:\ProgramData\Acme\MyApp\profile\production\config.d\10-database.toml
 ```
 
 #### 4. **Usage Example**
@@ -329,28 +342,35 @@ prod_config = read_config(
 
 **On Linux:**
 ```
-/etc/xdg/db-manager/config.toml          # System-wide (uses slug, XDG-compliant)
-~/.config/db-manager/config.toml         # User-specific (uses slug)
-Environment: DB_MANAGER___*              # Env prefix (slug → uppercase + ___)
+/etc/xdg/db-manager/config.toml               # System-wide (uses slug, XDG-compliant)
+/etc/xdg/db-manager/config.d/10-connection.toml   # Split config (optional)
+/etc/xdg/db-manager/config.d/20-pools.toml
+~/.config/db-manager/config.toml              # User-specific (uses slug)
+~/.config/db-manager/config.d/90-local.toml   # User overrides (optional)
+Environment: DB_MANAGER___*                   # Env prefix (slug → uppercase + ___)
 ```
 
 **On macOS:**
 ```
-/Library/Application Support/Acme/DatabaseManager/config.toml   # System-wide (vendor + app)
-~/Library/Application Support/Acme/DatabaseManager/config.toml  # User-specific (vendor + app)
-Environment: DB_MANAGER___*                                      # Env prefix (slug → uppercase + ___)
+/Library/Application Support/Acme/DatabaseManager/config.toml
+/Library/Application Support/Acme/DatabaseManager/config.d/10-connection.toml
+~/Library/Application Support/Acme/DatabaseManager/config.toml
+~/Library/Application Support/Acme/DatabaseManager/config.d/90-local.toml
+Environment: DB_MANAGER___*
 ```
 
 **On Windows:**
 ```
-C:\ProgramData\Acme\DatabaseManager\config.toml     # System-wide (vendor + app)
-%APPDATA%\Acme\DatabaseManager\config.toml          # User-specific (vendor + app)
-Environment: DB_MANAGER___*                         # Env prefix (slug → uppercase + ___)
+C:\ProgramData\Acme\DatabaseManager\config.toml
+C:\ProgramData\Acme\DatabaseManager\config.d\10-connection.toml
+%APPDATA%\Acme\DatabaseManager\config.toml
+%APPDATA%\Acme\DatabaseManager\config.d\90-local.toml
+Environment: DB_MANAGER___*
 ```
 
 **With `profile="production"`:**
 
-| Platform | Path |
+| Platform | Path (+ optional config.d/) |
 |----------|------|
 | Linux | `/etc/xdg/db-manager/profile/production/config.toml` |
 | macOS | `/Library/Application Support/Acme/DatabaseManager/profile/production/config.toml` |
@@ -393,15 +413,21 @@ Profiles allow you to organize environment-specific configurations (e.g., `test`
 **Without profile:**
 ```
 /etc/xdg/myapp/config.toml
+/etc/xdg/myapp/config.d/10-database.toml              # Optional split config
+/etc/xdg/myapp/config.d/20-logging.toml
 /etc/xdg/myapp/hosts/server-01.toml
 ~/.config/myapp/config.toml
+~/.config/myapp/config.d/90-local.toml                # User overrides
 ```
 
 **With `profile="production"`:**
 ```
 /etc/xdg/myapp/profile/production/config.toml
+/etc/xdg/myapp/profile/production/config.d/10-database.toml
+/etc/xdg/myapp/profile/production/config.d/20-cache.toml
 /etc/xdg/myapp/profile/production/hosts/server-01.toml
 ~/.config/myapp/profile/production/config.toml
+~/.config/myapp/profile/production/config.d/90-local.toml
 ```
 
 #### Using Profiles in Python
@@ -438,13 +464,15 @@ lib_layered_config deploy --source config.toml --vendor Acme --app ConfigKit --s
 
 #### Profile Path Examples
 
+Each path can have an optional companion `.d` directory (e.g., `config.d/`) for split configuration.
+
 | Platform | Without Profile | With `profile="test"` |
 |----------|-----------------|----------------------|
 | **Linux (app)** | `/etc/xdg/<slug>/config.toml` | `/etc/xdg/<slug>/profile/test/config.toml` |
 | **Linux (host)** | `/etc/xdg/<slug>/hosts/<hostname>.toml` | `/etc/xdg/<slug>/profile/test/hosts/<hostname>.toml` |
 | **Linux (user)** | `~/.config/<slug>/config.toml` | `~/.config/<slug>/profile/test/config.toml` |
-| **macOS (app)** | `/Library/Application Support/<vendor>/<app>/config.toml` | `/Library/Application Support/<vendor>/<app>/profile/test/config.toml` |
-| **Windows (app)** | `C:\ProgramData\<vendor>\<app>\config.toml` | `C:\ProgramData\<vendor>\<app>\profile\test\config.toml` |
+| **macOS (app)** | `/Library/.../<vendor>/<app>/config.toml` | `/Library/.../<vendor>/<app>/profile/test/config.toml` |
+| **Windows (app)** | `C:\ProgramData\<vendor>\<app>\config.toml` | `C:\ProgramData\...\profile\test\config.toml` |
 
 #### Profile Naming Rules
 
@@ -998,6 +1026,7 @@ Important directories (overridable via environment variables):
 - `/etc/<slug>/config.toml` (legacy fallback)
 - `/etc/<slug>/config.d/*.{toml,json,yaml,yml}`
 - `/etc/xdg/<slug>/hosts/<hostname>.toml` or `/etc/<slug>/hosts/<hostname>.toml`
+- `/etc/xdg/<slug>/hosts/<hostname>.d/*.{toml,json,yaml,yml}` (host-specific split config)
 - `$XDG_CONFIG_HOME/<slug>/config.toml` (user; falls back to `~/.config/<slug>/config.toml`)
 - `$XDG_CONFIG_HOME/<slug>/config.d/*.{toml,json,yaml,yml}`
 - `.env` search: current directory upwards + `$XDG_CONFIG_HOME/<slug>/.env`
@@ -1006,6 +1035,7 @@ Important directories (overridable via environment variables):
 - `/Library/Application Support/<Vendor>/<App>/config.toml` (system-wide app layer)
 - `/Library/Application Support/<Vendor>/<App>/config.d/*.{toml,json,yaml,yml}`
 - `/Library/Application Support/<Vendor>/<App>/hosts/<hostname>.toml`
+- `/Library/Application Support/<Vendor>/<App>/hosts/<hostname>.d/*.{toml,json,yaml,yml}`
 - `~/Library/Application Support/<Vendor>/<App>/config.toml` (user layer)
 - `~/Library/Application Support/<Vendor>/<App>/config.d/*.{toml,json,yaml,yml}`
 - `.env` search: current directory upwards + `~/Library/Application Support/<Vendor>/<App>/.env`
@@ -1014,6 +1044,7 @@ Important directories (overridable via environment variables):
 - `%ProgramData%\<Vendor>\<App>\config.toml` (system-wide app layer)
 - `%ProgramData%\<Vendor>\<App>\config.d\*.{toml,json,yaml,yml}`
 - `%ProgramData%\<Vendor>\<App>\hosts\%COMPUTERNAME%.toml`
+- `%ProgramData%\<Vendor>\<App>\hosts\%COMPUTERNAME%.d\*.{toml,json,yaml,yml}`
 - `%APPDATA%\<Vendor>\<App>\config.toml` (user layer; resolver order: `LIB_LAYERED_CONFIG_APPDATA` → `%APPDATA%`; falls back to `%LOCALAPPDATA%`)
 - `%APPDATA%\<Vendor>\<App>\config.d\*.{toml,json,yaml,yml}`
 - `.env` search: current directory upwards + `%APPDATA%\<Vendor>\<App>\.env`
@@ -1040,6 +1071,26 @@ This means **all formats share the same `.d` directory** - `config.toml`, `confi
 3. Only files with supported extensions are loaded: `.toml`, `.json`, `.yaml`, `.yml`
 4. Files are merged in order, so later files override earlier ones
 5. **Both the base file and `.d` directory are optional** - either can exist independently
+
+**Supported at all layers:** The `.d` directory pattern works for **app**, **host**, and **user** layers:
+
+| Layer | Base File | Companion `.d` Directory |
+|-------|-----------|--------------------------|
+| **app** | `/etc/xdg/myapp/config.toml` | `/etc/xdg/myapp/config.d/` |
+| **host** | `/etc/xdg/myapp/hosts/server-01.toml` | `/etc/xdg/myapp/hosts/server-01.d/` |
+| **user** | `~/.config/myapp/config.toml` | `~/.config/myapp/config.d/` |
+
+**Host-specific `.d` directories:** Each hostname file can have its own `.d` directory for per-host split configuration:
+```
+/etc/xdg/myapp/hosts/
+├── server-01.toml                    # Host-specific base config
+├── server-01.d/                      # Host-specific split config
+│   ├── 10-network.toml
+│   └── 20-storage.toml
+├── server-02.toml
+└── server-02.d/
+    └── 10-network.toml
+```
 
 **File ordering:** Use numeric prefixes to control load order:
 ```
@@ -1687,7 +1738,7 @@ sudo lib_layered_config deploy \
 {"created": ["/etc/xdg/myapp/config.toml"]}
 ```
 
-**Explanation:** This copies your configuration file to the system-wide location (`/etc/xdg/myapp/config.toml` on Linux, `/Library/Application Support/Acme/MyApp/config.toml` on macOS, etc.). This is typically done during package installation.
+**Explanation:** This copies your configuration file to the system-wide location (`/etc/xdg/myapp/config.toml` on Linux, `/Library/Application Support/Acme/MyApp/config.toml` on macOS, etc.). If the source has a companion `.d` directory (e.g., `./dist/config.d/`), those files are also deployed to `/etc/xdg/myapp/config.d/`. This is typically done during package installation.
 
 **Example 2: Deploy user-specific configuration**
 ```bash
@@ -2899,8 +2950,11 @@ Copy a source configuration file into one or more layer directories with conflic
 - `action`: `DeployAction` enum (`CREATED`, `OVERWRITTEN`, `KEPT`, `SKIPPED`)
 - `backup_path`: Path to `.bak` file (if action was `OVERWRITTEN`)
 - `ucf_path`: Path to `.ucf` file (if action was `KEPT`)
+- `dot_d_results`: List of `DeployResult` for companion `.d` directory files (if any)
 
-**Smart Skipping:** If the source content is byte-identical to the existing destination file, the file is skipped without creating backups (regardless of `force` or `batch` flags).
+**`.d` Directory Support:** If the source file has a companion `.d` directory (e.g., `defaults.toml` → `defaults.d/`), those files are also deployed to the corresponding `.d` directory at each destination. User-added files in the destination `.d` directory are preserved.
+
+**Smart Skipping:** If the source content is byte-identical to the existing destination file, the file is skipped without creating backups (regardless of `force` or `batch` flags). This applies to both base files and `.d` directory files.
 
 **Raises:** `FileNotFoundError` if source file does not exist.
 
@@ -2920,14 +2974,16 @@ results = deploy_config(
     slug="myapp"
 )
 
-# On Linux, this copies to: /etc/xdg/myapp/config.toml
-# On macOS: /Library/Application Support/Acme/MyApp/config.toml
-# On Windows: C:\ProgramData\Acme\MyApp\config.toml
+# On Linux, this copies to: /etc/xdg/myapp/config.toml (+ config.d/ if exists)
+# On macOS: /Library/Application Support/Acme/MyApp/config.toml (+ config.d/)
+# On Windows: C:\ProgramData\Acme\MyApp\config.toml (+ config.d\)
 
 for result in results:
     print(f"{result.action.value}: {result.destination}")
+    for dot_d_result in result.dot_d_results:
+        print(f"  .d: {dot_d_result.action.value}: {dot_d_result.destination}")
 ```
-**Explanation:** Use the `"app"` target to deploy system-wide defaults that all users share. This is typically done during installation.
+**Explanation:** Use the `"app"` target to deploy system-wide defaults that all users share. If a `defaults.d/` directory exists alongside `defaults.toml`, its contents are also deployed. This is typically done during installation.
 
 **Example 2: Deploy with batch mode (CI/CD safe)**
 ```python
@@ -3053,7 +3109,7 @@ results = deploy_config(
     profile="production"  # Deploy to profile-specific subdirectory
 )
 
-# On Linux: /etc/xdg/myapp/profile/production/config.toml
+# On Linux: /etc/xdg/myapp/profile/production/config.toml (+ config.d/ if exists)
 # On macOS: /Library/Application Support/Acme/MyApp/profile/production/config.toml
 # On Windows: C:\ProgramData\Acme\MyApp\profile\production\config.toml
 
@@ -3070,10 +3126,10 @@ test_results = deploy_config(
     profile="test"  # Completely isolated from production
 )
 
-# On Linux: /etc/xdg/myapp/profile/test/config.toml
-#           ~/.config/myapp/profile/test/config.toml
+# On Linux: /etc/xdg/myapp/profile/test/config.toml (+ config.d/)
+#           ~/.config/myapp/profile/test/config.toml (+ config.d/)
 ```
-**Explanation:** Use the `profile` parameter to deploy environment-specific configurations to isolated subdirectories. This keeps production, staging, and test configurations completely separate, preventing accidental cross-environment configuration leaks.
+**Explanation:** Use the `profile` parameter to deploy environment-specific configurations to isolated subdirectories. If the source has a companion `.d` directory, it's also deployed. This keeps production, staging, and test configurations completely separate, preventing accidental cross-environment configuration leaks.
 
 **Example 7: Deploy multiple profiles in a CI/CD pipeline**
 ```python
@@ -3178,8 +3234,10 @@ for file_path in created_files:
 
 # Output shows Windows paths:
 #   - ProgramData/Acme/MyApp/config.toml
+#   - ProgramData/Acme/MyApp/config.d/10-override.toml
 #   - ProgramData/Acme/MyApp/hosts/your-hostname.toml
 #   - AppData/Roaming/Acme/MyApp/config.toml
+#   - AppData/Roaming/Acme/MyApp/config.d/10-override.toml
 #   - .env.example
 ```
 **Explanation:** Generate platform-specific examples regardless of your current OS. Great for maintaining documentation for all supported platforms.
@@ -3346,6 +3404,59 @@ The JSON output includes separate fields for `.d` file results:
 - `dot_d_skipped`: Paths of `.d` files skipped (identical content)
 
 **Note:** Deployment copies ALL files from the `.d` directory (including README.md, notes.txt, etc.) to preserve documentation and supporting files. Only config file parsing filters by extension.
+
+### User Files Are Preserved During Deployment
+
+Deployment is **additive** — it only creates or updates files that exist in the source `.d` directory. User-added files in the destination are **never deleted or modified**.
+
+```bash
+# Source .d directory:
+config.d/
+├── 10-database.toml
+└── 20-cache.toml
+
+# Destination before deploy (user added custom files):
+/etc/xdg/myapp/config.d/
+├── 10-database.toml    # ← Will be updated/skipped
+├── 20-cache.toml       # ← Will be updated/skipped
+├── 50-custom.toml      # ← USER FILE: untouched
+└── 99-local.toml       # ← USER FILE: untouched
+
+# After deploy: user files 50-custom.toml and 99-local.toml remain intact
+```
+
+### Best Practice: Override in Additional Files
+
+Instead of modifying distributed configuration files directly, **add your customizations in a separate file** with a high numeric prefix:
+
+```bash
+# DON'T: Edit the distributed file (changes lost on next deploy)
+/etc/xdg/myapp/config.d/10-database.toml  # ← Don't modify this
+
+# DO: Create your own override file (preserved across deploys)
+/etc/xdg/myapp/config.d/90-local-overrides.toml  # ← Add your changes here
+```
+
+**Why this approach?**
+- Your customizations survive application updates and re-deployments
+- Clear separation between distributed defaults and local overrides
+- Easy to identify what was customized vs. what came from the package
+- Rollback is simple: just delete your override file
+
+**Example workflow:**
+```toml
+# Distributed: /etc/xdg/myapp/config.d/10-database.toml
+[database]
+host = "localhost"
+port = 5432
+pool_size = 10
+
+# Your overrides: /etc/xdg/myapp/config.d/90-local-overrides.toml
+[database]
+host = "db.prod.example.com"
+pool_size = 50
+# port is inherited from 10-database.toml (5432)
+```
 
 ## Provenance & Observability
 
