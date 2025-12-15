@@ -84,14 +84,14 @@ jobs:
         run: |
           uv pip install pywin32 --system
       - name: Cache ruff
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ruff_cache
           key: ruff-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
             ruff-${{ runner.os }}-
       - name: Cache pyright
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .pyright
           key: pyright-${{ runner.os }}-py${{ matrix.python }}-${{ github.sha }}
