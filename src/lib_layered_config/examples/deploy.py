@@ -309,6 +309,57 @@ class WindowsDeployment(DeploymentStrategy):
         return chosen_root / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
 
 
+def _deploy_to_destination(
+    *,
+    destination: Path,
+    source_path: Path,
+    payload: bytes,
+    dot_d_files: list[Path],
+    source_dot_d: Path,
+    force: bool,
+    batch: bool,
+    conflict_resolver: ConflictResolver | None,
+) -> DeployResult | None:
+    """Deploy to a single destination with optional .d directory handling.
+
+    Args:
+        destination: Target file path.
+        source_path: Original source file path (for skip detection).
+        payload: File content to write.
+        dot_d_files: List of .d directory source files.
+        source_dot_d: Source .d directory path.
+        force: If True, backup and overwrite.
+        batch: If True, keep existing and write as .ucf.
+        conflict_resolver: Callback for interactive conflict resolution.
+
+    Returns:
+        DeployResult or None if source and destination are the same.
+    """
+    if destination.resolve() == source_path.resolve():
+        return None
+
+    result = _deploy_single(
+        destination=destination,
+        payload=payload,
+        force=force,
+        batch=batch,
+        conflict_resolver=conflict_resolver,
+    )
+
+    if dot_d_files:
+        dest_dot_d = _get_dot_d_dir(destination)
+        result.dot_d_results = _deploy_dot_d_files(
+            dot_d_files=dot_d_files,
+            dest_dot_d=dest_dot_d,
+            source_dot_d=source_dot_d,
+            force=force,
+            batch=batch,
+            conflict_resolver=conflict_resolver,
+        )
+
+    return result
+
+
 def deploy_config(
     source: str | Path,
     *,
@@ -357,39 +408,24 @@ def deploy_config(
     # Check for companion .d directory
     source_dot_d = _get_dot_d_dir(source_path)
     dot_d_files = _collect_dot_d_sources(source_dot_d)
-    has_dot_d = len(dot_d_files) > 0
 
     resolver = _prepare_resolver(vendor=vendor, app=app, slug=slug or app, profile=profile, platform=platform)
     payload = source_path.read_bytes()
     results: list[DeployResult] = []
 
     for destination in _destinations_for(resolver, targets):
-        # Skip if source and destination are the same
-        if destination.resolve() == source_path.resolve():
-            continue
-
-        # Deploy base file
-        result = _deploy_single(
+        result = _deploy_to_destination(
             destination=destination,
+            source_path=source_path,
             payload=payload,
+            dot_d_files=dot_d_files,
+            source_dot_d=source_dot_d,
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
         )
-
-        # Deploy .d directory files (if any)
-        if has_dot_d:
-            dest_dot_d = _get_dot_d_dir(destination)
-            result.dot_d_results = _deploy_dot_d_files(
-                dot_d_files=dot_d_files,
-                dest_dot_d=dest_dot_d,
-                source_dot_d=source_dot_d,
-                force=force,
-                batch=batch,
-                conflict_resolver=conflict_resolver,
-            )
-
-        results.append(result)
+        if result is not None:
+            results.append(result)
 
     return results
 
@@ -438,6 +474,41 @@ def _deploy_dot_d_files(
     return results
 
 
+def _handle_conflict(
+    destination: Path,
+    payload: bytes,
+    force: bool,
+    batch: bool,
+    conflict_resolver: ConflictResolver | None,
+) -> DeployResult:
+    """Handle deployment when file exists with different content.
+
+    Args:
+        destination: Target file path.
+        payload: File content to write.
+        force: If True, backup and overwrite.
+        batch: If True, keep existing and write as .ucf.
+        conflict_resolver: Callback for interactive conflict resolution.
+
+    Returns:
+        DeployResult describing the action taken.
+    """
+    if force:
+        backup_path = _backup_file(destination)
+        _copy_payload(destination, payload)
+        return DeployResult(destination=destination, action=DeployAction.OVERWRITTEN, backup_path=backup_path)
+
+    if batch:
+        ucf_path = _write_ucf(destination, payload)
+        return DeployResult(destination=destination, action=DeployAction.KEPT, ucf_path=ucf_path)
+
+    if conflict_resolver is not None:
+        action = conflict_resolver(destination)
+        return _execute_action(destination, payload, action)
+
+    return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+
+
 def _deploy_single(
     *,
     destination: Path,
@@ -447,42 +518,14 @@ def _deploy_single(
     conflict_resolver: ConflictResolver | None,
 ) -> DeployResult:
     """Deploy to a single destination with conflict handling."""
-    # New file - no conflict
     if not destination.exists():
         _copy_payload(destination, payload)
         return DeployResult(destination=destination, action=DeployAction.CREATED)
 
-    # File exists but content is identical - skip (smart skipping)
     if _content_matches(destination, payload):
         return DeployResult(destination=destination, action=DeployAction.SKIPPED)
 
-    # File exists with different content - determine action
-    if force:
-        # Force mode: backup and overwrite
-        backup_path = _backup_file(destination)
-        _copy_payload(destination, payload)
-        return DeployResult(
-            destination=destination,
-            action=DeployAction.OVERWRITTEN,
-            backup_path=backup_path,
-        )
-
-    if batch:
-        # Batch mode: keep existing, write new as .ucf for review
-        ucf_path = _write_ucf(destination, payload)
-        return DeployResult(
-            destination=destination,
-            action=DeployAction.KEPT,
-            ucf_path=ucf_path,
-        )
-
-    # Interactive mode: ask callback
-    if conflict_resolver is not None:
-        action = conflict_resolver(destination)
-        return _execute_action(destination, payload, action)
-
-    # No resolver provided, default to skip
-    return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+    return _handle_conflict(destination, payload, force, batch, conflict_resolver)
 
 
 def _execute_action(destination: Path, payload: bytes, action: DeployAction) -> DeployResult:

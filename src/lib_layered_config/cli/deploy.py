@@ -36,6 +36,27 @@ _ACTION_TO_KEY: dict[DeployAction, str] = {
 }
 
 
+def _append_result_to_output(
+    r: DeployResult,
+    output: dict[str, list[str]],
+    prefix: str = "",
+) -> None:
+    """Append a single deployment result to the output dictionary.
+
+    Args:
+        r: The deployment result to process.
+        output: Dictionary to append results to.
+        prefix: Key prefix for .d directory results (e.g., "dot_d_").
+    """
+    key = _ACTION_TO_KEY.get(r.action)
+    if key:
+        output[f"{prefix}{key}"].append(str(r.destination))
+    if r.backup_path:
+        output[f"{prefix}backups"].append(str(r.backup_path))
+    if r.ucf_path:
+        output[f"{prefix}ucf_files"].append(str(r.ucf_path))
+
+
 def _format_results(results: list[DeployResult]) -> str:
     """Format deployment results as JSON, including .d directory results."""
     output: dict[str, list[str]] = {
@@ -53,25 +74,9 @@ def _format_results(results: list[DeployResult]) -> str:
         "dot_d_ucf_files": [],
     }
     for r in results:
-        # Handle base file result
-        key = _ACTION_TO_KEY.get(r.action)
-        if key:
-            output[key].append(str(r.destination))
-        if r.backup_path:
-            output["backups"].append(str(r.backup_path))
-        if r.ucf_path:
-            output["ucf_files"].append(str(r.ucf_path))
-
-        # Handle .d directory results
+        _append_result_to_output(r, output)
         for dot_d_r in r.dot_d_results:
-            dot_d_key = _ACTION_TO_KEY.get(dot_d_r.action)
-            if dot_d_key:
-                output[f"dot_d_{dot_d_key}"].append(str(dot_d_r.destination))
-            if dot_d_r.backup_path:
-                output["dot_d_backups"].append(str(dot_d_r.backup_path))
-            if dot_d_r.ucf_path:
-                output["dot_d_ucf_files"].append(str(dot_d_r.ucf_path))
-
+            _append_result_to_output(dot_d_r, output, prefix="dot_d_")
     return json.dumps({k: v for k, v in output.items() if v}, indent=2)
 
 

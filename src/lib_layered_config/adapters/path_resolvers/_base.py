@@ -3,6 +3,10 @@
 Define the contract for platform strategies and provide shared utilities
 used across all platform implementations.
 
+All path handling uses ``pathlib.Path`` for cross-platform compatibility.
+UNC network paths (e.g., ``//server/share``) are supported on Windows via
+environment variable overrides and handled natively by ``pathlib``.
+
 Contents:
     - ``PlatformContext``: dataclass holding resolution context (vendor, app, etc.)
     - ``PlatformStrategy``: abstract base for platform-specific resolvers

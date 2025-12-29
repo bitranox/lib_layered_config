@@ -1,5 +1,37 @@
 # Changelog
 
+## [5.2.0] - 2025-12-29
+
+### Added
+
+- **UNC path documentation and tests** - Documented support for UNC network paths (e.g., `//server/share`) in Windows path resolution. UNC paths are handled natively by `pathlib.Path` and can be configured via environment variable overrides.
+
+  **Environment variables supporting UNC paths:**
+  - `LIB_LAYERED_CONFIG_PROGRAMDATA` - Override for app-layer paths
+  - `LIB_LAYERED_CONFIG_APPDATA` - Override for user-layer paths (roaming)
+  - `LIB_LAYERED_CONFIG_LOCALAPPDATA` - Override for user-layer paths (local fallback)
+
+  **Example:**
+  ```bash
+  export LIB_LAYERED_CONFIG_PROGRAMDATA="//fileserver/configs"
+  ```
+
+- **Cross-platform path handling documentation** - Added documentation noting that all path handling uses `pathlib.Path` for cross-platform compatibility.
+
+### Changed
+
+- Updated `_windows.py` module and class docstrings with UNC path support details
+- Updated `_base.py` module docstring with cross-platform path handling note
+- Reduced cyclomatic complexity in `cli/deploy.py`, `domain/identifiers.py`, and `examples/deploy.py` by extracting helper functions
+
+### Fixed
+
+- Fixed broken reference to non-existent `AGENTS.md` in `CONTRIBUTING.md` (now correctly references `CLAUDE.md`)
+
+### Security
+
+- Added `CVE-2025-68146` (filelock race condition) to pip-audit ignore list as accepted risk for transitive dependency
+
 ## [5.1.0] - 2025-12-13
 
 ### Added

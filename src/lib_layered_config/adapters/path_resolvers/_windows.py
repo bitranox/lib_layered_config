@@ -2,6 +2,9 @@
 
 Implement path resolution following Windows ProgramData/AppData conventions.
 
+UNC network paths (e.g., ``//server/share``) are supported via environment
+variable overrides and handled natively by ``pathlib.Path``.
+
 Contents:
     - ``WindowsStrategy``: yields paths for app, host, user, and dotenv layers.
 """
@@ -20,8 +23,11 @@ class WindowsStrategy(PlatformStrategy):
     Respect ``%ProgramData%`` and ``%APPDATA%/%LOCALAPPDATA%`` layouts with
     override support for portable deployments.
 
+    UNC network paths (e.g., ``//server/share``) are supported via environment
+    variable overrides. Paths are handled natively by ``pathlib.Path``.
+
     Path Layouts:
-        - App: ``%ProgramData%/<Vendor>/<App>``
+        - App: ``%ProgramData%/<Vendor>/<App>`` (or UNC: ``//server/share/<Vendor>/<App>``)
         - Host: ``<app>/hosts/<hostname>.toml``
         - User: ``%APPDATA%/<Vendor>/<App>`` (fallback to ``%LOCALAPPDATA%``)
         - Dotenv: ``%APPDATA%/<Vendor>/<App>/.env``
@@ -30,7 +36,9 @@ class WindowsStrategy(PlatformStrategy):
     def _program_data_root(self) -> Path:
         """Return the base directory for ProgramData lookups.
 
-        Centralise overrides for ``%ProgramData%`` so tests can supply temporary roots.
+        Centralise overrides for ``%ProgramData%`` so tests can supply temporary
+        roots. Accepts UNC paths (e.g., ``//server/share``) which are handled
+        natively by ``pathlib.Path``.
 
         Returns:
             Resolved ProgramData root directory.

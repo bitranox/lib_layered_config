@@ -555,6 +555,70 @@ def test_windows_user_paths_empty_when_no_user_directories(tmp_path: Path) -> No
     assert list(resolver.user()) == []
 
 
+# ---------------------------------------------------------------------------
+# UNC path tests (Windows network paths)
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+def test_windows_unc_app_paths_resolve_from_network_share(tmp_path: Path) -> None:
+    """UNC network paths resolve correctly for Windows app layer."""
+    unc_root = "//server/share"
+    ctx, _ = _make_context(
+        tmp_path,
+        platform="win32",
+        env_override={"LIB_LAYERED_CONFIG_PROGRAMDATA": unc_root},
+    )
+    strategy = WindowsStrategy(ctx)
+    # Verify the path construction includes the UNC root
+    program_data = strategy._program_data_root()
+    assert program_data == Path(unc_root)
+    assert program_data.as_posix().startswith("//server/share")
+    # Verify app_paths() can be called without error (paths may not exist)
+    list(strategy.app_paths())
+
+
+@os_agnostic
+def test_windows_unc_user_paths_resolve_from_network_share(tmp_path: Path) -> None:
+    """UNC network paths resolve correctly for Windows user layer."""
+    unc_root = "//fileserver/users"
+    ctx, _ = _make_context(
+        tmp_path,
+        platform="win32",
+        env_override={"LIB_LAYERED_CONFIG_APPDATA": unc_root},
+    )
+    strategy = WindowsStrategy(ctx)
+    appdata = strategy._appdata_root()
+    assert appdata == Path(unc_root)
+    assert appdata.as_posix().startswith("//fileserver/users")
+
+
+@os_agnostic
+def test_windows_unc_localappdata_resolves_from_network_share(tmp_path: Path) -> None:
+    """UNC network paths resolve correctly for Windows LocalAppData fallback."""
+    unc_root = "//nas/local"
+    ctx, _ = _make_context(
+        tmp_path,
+        platform="win32",
+        env_override={"LIB_LAYERED_CONFIG_LOCALAPPDATA": unc_root},
+    )
+    strategy = WindowsStrategy(ctx)
+    localappdata = strategy._localappdata_root()
+    assert localappdata == Path(unc_root)
+    assert localappdata.as_posix().startswith("//nas/local")
+
+
+@os_agnostic
+def test_pathlib_preserves_unc_path_format() -> None:
+    """Verify pathlib.Path preserves UNC path format for cross-platform compatibility."""
+    unc_path = Path("//server/share/config")
+    # Path should preserve the UNC format
+    assert unc_path.as_posix() == "//server/share/config"
+    # Path operations should work correctly
+    child = unc_path / "vendor" / "app" / "config.toml"
+    assert child.as_posix() == "//server/share/config/vendor/app/config.toml"
+
+
 @os_agnostic
 def test_collect_layer_yields_config_toml_when_config_d_exists(tmp_path: Path) -> None:
     """collect_layer yields config.toml when config.d exists (filtering happens in expand_dot_d)."""

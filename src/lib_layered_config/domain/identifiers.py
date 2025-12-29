@@ -112,15 +112,27 @@ def _check_no_trailing_dot_or_space(value: str, name: str) -> None:
         raise ValueError(f"{name} cannot end with a dot or space: {value}")
 
 
+def _raise_pattern_error(value: str, name: str, *, check_space_start: bool) -> None:
+    """Raise appropriate ValueError for pattern mismatch.
+
+    Args:
+        value: The value that failed validation.
+        name: Parameter name for error messages.
+        check_space_start: If True, space is checked as an invalid start character.
+    """
+    if value.startswith("."):
+        raise ValueError(f"{name} cannot start with a dot: {value}")
+    invalid_starts = ("-", "_", " ") if check_space_start else ("-", "_")
+    if any(value.startswith(c) for c in invalid_starts):
+        raise ValueError(f"{name} must start with an alphanumeric character: {value}")
+    raise ValueError(f"{name} contains invalid characters: {value}")
+
+
 def _check_permissive_pattern(value: str, name: str) -> None:
     """Check value matches permissive pattern (allows spaces for vendor/app)."""
     if _VALID_PERMISSIVE_PATTERN.match(value):
         return
-    if value.startswith("."):
-        raise ValueError(f"{name} cannot start with a dot: {value}")
-    if value.startswith("-") or value.startswith("_") or value.startswith(" "):
-        raise ValueError(f"{name} must start with an alphanumeric character: {value}")
-    raise ValueError(f"{name} contains invalid characters: {value}")
+    _raise_pattern_error(value, name, check_space_start=True)
 
 
 def _check_hostname_pattern(value: str, name: str) -> None:
@@ -200,11 +212,7 @@ def _check_strict_pattern(value: str, name: str, allow_dots: bool) -> None:
         return
     if _VALID_IDENTIFIER_PATTERN.match(value):
         return
-    if value.startswith("."):
-        raise ValueError(f"{name} cannot start with a dot: {value}")
-    if value.startswith("-") or value.startswith("_"):
-        raise ValueError(f"{name} must start with an alphanumeric character: {value}")
-    raise ValueError(f"{name} contains invalid characters: {value}")
+    _raise_pattern_error(value, name, check_space_start=False)
 
 
 @lru_cache(maxsize=64)

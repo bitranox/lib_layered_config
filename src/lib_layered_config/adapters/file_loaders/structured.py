@@ -21,13 +21,13 @@ before passing the results to the merge policy.
 from __future__ import annotations
 
 import json
-
-import rtoml
 from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
 from types import ModuleType
 from typing import Any, NoReturn
+
+import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...observability import log_debug, log_error
