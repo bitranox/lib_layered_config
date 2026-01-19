@@ -8,7 +8,7 @@
 
 ### Security
 
-- Cleaned up pip-audit ignore list: removed stale CVEs no longer present in dependencies (`PYSEC-2022-43012`, `PYSEC-2025-49`, `CVE-2024-6345`, `CVE-2025-68146`)
+- Cleaned up pip-audit ignore list: removed `CVE-2025-68146` (filelock) which is no longer present in dependencies
 
 ## [5.2.0] - 2025-12-29
 
