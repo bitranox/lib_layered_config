@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.2.1] - 2026-01-19
+
+### Changed
+
+- Removed unused `ctx.obj["traceback"]` storage in CLI root command. The `--traceback` flag continues to work via `_session_overrides()` which passes the flag to `lib_cli_exit_tools.cli_session`.
+
+### Security
+
+- Cleaned up pip-audit ignore list: removed stale CVEs no longer present in dependencies (`PYSEC-2022-43012`, `PYSEC-2025-49`, `CVE-2024-6345`, `CVE-2025-68146`)
+
 ## [5.2.0] - 2025-12-29
 
 ### Added

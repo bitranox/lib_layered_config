@@ -30,11 +30,8 @@ from .read import read_json_command as cli_read_config_json
     default=False,
     help="Show full Python traceback on errors",
 )
-@click.pass_context
-def cli(ctx: click.Context, traceback: bool) -> None:
-    """Root command storing the requested traceback preference."""
-    ctx.ensure_object(dict)
-    ctx.obj["traceback"] = traceback
+def cli(traceback: bool) -> None:  # noqa: ARG001 - handled by _session_overrides
+    """Root command for the CLI group."""
 
 
 def main(argv: Sequence[str] | None = None, *, restore_traceback: bool = True) -> int:
