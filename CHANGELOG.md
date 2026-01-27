@@ -21,6 +21,13 @@
   dotted-path listings. Provenance is shown as `# source:` comments above
   each setting. Strings are double-quoted, lists use JSON array syntax.
 - Replaced stdlib `json` with `orjson` for JSON serialization/deserialization across all production modules (`domain/config.py`, `core.py`, `cli/common.py`, `cli/deploy.py`, `adapters/file_loaders/structured.py`).
+
+### Fixed
+
+- **import-linter contracts** — Fixed `make test` to invoke `lint-imports` CLI
+  instead of a no-op `python -m importlinter.cli lint` command. Updated layers
+  contract to use `containers` parameter (required by grimp v3.14). Corrected
+  forbidden contract field name from `modules` to `source_modules`.
 - `Config.to_json()` now uses orjson; the `indent` parameter always produces 2-space indent when set (orjson limitation).
 - `Config.to_json()` gains `redact: bool = False` parameter.
 - `Config.as_dict()` gains `redact: bool = False` parameter.

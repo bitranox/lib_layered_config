@@ -164,17 +164,18 @@ root_package = "lib_layered_config"
 [[tool.importlinter.contracts]]
 name = "Clean architecture layers"
 type = "layers"
+containers = ["lib_layered_config"]
 layers = [
-  "lib_layered_config.domain",
-  "lib_layered_config.application",
-  "lib_layered_config.adapters",
-  "lib_layered_config",
+  "cli",
+  "adapters",
+  "application",
+  "domain",
 ]
 
 [[tool.importlinter.contracts]]
 name = "No adapters in domain"
 type = "forbidden"
-modules = ["lib_layered_config.domain"]
+source_modules = ["lib_layered_config.domain"]
 forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.application", "lib_layered_config.core"]
 
 [tool.pip-audit]

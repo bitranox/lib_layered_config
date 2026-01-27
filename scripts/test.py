@@ -676,7 +676,7 @@ def _build_test_steps(
     steps.parallel.append(
         (
             "Import-linter contracts",
-            make([sys.executable, "-m", "importlinter.cli", "lint", "--config", "pyproject.toml"], "import-linter"),
+            make(["lint-imports", "--config", "pyproject.toml"], "import-linter"),
         )
     )
 
