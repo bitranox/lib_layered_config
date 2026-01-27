@@ -66,6 +66,10 @@ coverage.xml
 .cache/
 .run/
 .import_linter_cache/
+.qlty/
+.snyk
+coverage.json
+
 
 # ====================================
 # Build & distribution artifacts
@@ -196,3 +200,4 @@ LLM-CONTEXT/
 .claude/
 .gemini/
 .codex/
+CLAUDE.md

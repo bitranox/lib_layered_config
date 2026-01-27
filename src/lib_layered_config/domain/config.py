@@ -23,13 +23,16 @@ System Role:
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Iterator, Mapping
 from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping as MappingType
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, TypedDict, TypeGuard, TypeVar, cast
+
+import orjson
+
+from .redaction import redact_mapping
 
 
 class SourceInfo(TypedDict):
@@ -107,11 +110,15 @@ class Config(MappingABC[str, Any]):
         """Return the number of stored top-level keys."""
         return len(self._data)
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self, *, redact: bool = False) -> dict[str, Any]:
         """Return a deep, mutable copy of the configuration tree.
 
         Callers occasionally need to serialise or further mutate the data in a
         context that does not require provenance.
+
+        Args:
+            redact: When ``True``, sensitive values (passwords, tokens, secrets,
+                API keys) are replaced with ``***REDACTED***``.
 
         Returns:
             Independent copy of the configuration data.
@@ -125,16 +132,23 @@ class Config(MappingABC[str, Any]):
             >>> cfg["debug"]
             True
         """
-        return _clone_map(self._data)
+        result = _clone_map(self._data)
+        if redact:
+            return redact_mapping(result)
+        return result
 
-    def to_json(self, *, indent: int | None = None) -> str:
+    def to_json(self, *, indent: int | None = None, redact: bool = False) -> str:
         """Serialise the configuration as JSON.
 
         CLI tooling and documentation examples render the merged configuration
         in JSON to support piping into other scripts.
 
         Args:
-            indent: Optional indentation level mirroring ``json.dumps`` semantics.
+            indent: When set to any non-``None`` value, produces 2-space
+                indented output (orjson only supports 2-space indentation).
+            redact: When ``True``, sensitive values (passwords, tokens, secrets,
+                API keys) are replaced with ``***REDACTED***`` before
+                serialisation.
 
         Returns:
             JSON payload containing the cloned configuration data.
@@ -146,7 +160,9 @@ class Config(MappingABC[str, Any]):
             >>> "\\n  \\"debug\\"" in cfg.to_json(indent=2)
             True
         """
-        return json.dumps(self.as_dict(), indent=indent, separators=(",", ":"), ensure_ascii=False)
+        data = self.as_dict(redact=redact)
+        option = orjson.OPT_INDENT_2 if indent is not None else 0
+        return orjson.dumps(data, option=option).decode()
 
     def get(self, key: str, default: Any = None) -> Any:
         """Return the value for *key* or a default when the path is missing.
@@ -194,24 +210,26 @@ class Config(MappingABC[str, Any]):
         return self._meta.get(key)
 
     def with_overrides(self, overrides: Mapping[str, Any]) -> Config:
-        """Return a new configuration with shallow top-level overrides applied.
+        """Return a new configuration with deep-merged overrides applied.
 
-        CLI helpers allow callers to inject ad-hoc overrides while keeping the
-        original snapshot intact. This method produces that variant.
+        Recursively merges *overrides* into the existing data.  When both the
+        current configuration and *overrides* contain a mapping at the same key,
+        the mappings are merged recursively.  Non-mapping values (scalars, lists)
+        in *overrides* replace the corresponding values in the original.
 
         Args:
-            overrides: Top-level keys and values to override.
+            overrides: Mapping of keys and values to merge.
 
         Returns:
             New configuration instance sharing provenance with the original.
 
         Examples:
-            >>> cfg = Config({"feature": False}, {"feature": {"layer": "app", "path": None, "key": "feature"}})
-            >>> cfg.with_overrides({"feature": True})["feature"], cfg["feature"]
-            (True, False)
+            >>> cfg = Config({"db": {"host": "localhost", "port": 5432}}, {})
+            >>> cfg.with_overrides({"db": {"host": "newhost"}})["db"]["port"]
+            5432
         """
-        tinted = _blend_top_level(self._data, overrides)
-        return Config(tinted, self._meta)
+        merged = _deep_merge(self._data, overrides)
+        return Config(merged, self._meta)
 
 
 def _lock_map(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -233,26 +251,38 @@ def _lock_map(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(dict(mapping))
 
 
-def _blend_top_level(base: Mapping[str, Any], overrides: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy of *base* with *overrides* applied.
+def _deep_merge(
+    base: Mapping[str, Any],
+    overrides: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recursively merge *overrides* into *base*, returning a new dictionary.
 
-    ``Config.with_overrides`` depends on a pure helper so it can reuse
-    provenance metadata without mutation.
+    When both base and overrides have a mapping at the same key, merge
+    recursively.  Otherwise the override value replaces the base value.
+    Lists, scalars, and other non-mapping values are replaced, not merged.
 
     Args:
         base: Original mapping.
-        overrides: Mapping whose keys replace entries in *base*.
+        overrides: Mapping whose values are merged into *base*.
 
     Returns:
-        New dictionary with updated top-level values.
+        New dictionary with recursively merged values.
 
     Examples:
-        >>> _blend_top_level({"port": 8000}, {"port": 9000})["port"]
-        9000
+        >>> _deep_merge({"db": {"host": "h", "port": 5432}}, {"db": {"host": "new"}})
+        {'db': {'host': 'new', 'port': 5432}}
     """
-    tinted = dict(base)
-    tinted.update(overrides)
-    return tinted
+    merged = dict(base)
+    for key, override_value in overrides.items():
+        base_value = merged.get(key)
+        if isinstance(base_value, MappingABC) and isinstance(override_value, MappingABC):
+            merged[key] = _deep_merge(
+                cast(MappingType[str, Any], base_value),
+                cast(MappingType[str, Any], override_value),
+            )
+        else:
+            merged[key] = override_value
+    return merged
 
 
 def _follow_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:

@@ -77,8 +77,9 @@ before handing them to callers and CLI commands.
 - Presentation/CLI → read via mapping protocol or helper methods.
 - Observability → provenance metadata supports human-readable logging.
 
-**System Dependencies:** Pure standard library (`dataclasses`, `types`,
-`collections.abc`, `typing`, `json`). No external packages.
+**System Dependencies:** Standard library (`dataclasses`, `types`,
+`collections.abc`, `typing`) plus `orjson` for JSON serialisation and
+`domain.redaction` for sensitive value masking.
 
 ---
 
@@ -92,7 +93,8 @@ before handing them to callers and CLI commands.
   to `SourceInfo` entries.
 - **Output:** Mapping interface (getitem/len/iter) and helper methods returning
   either values (`get`, `origin`) or serialised representations (`as_dict`,
-  `to_json`).
+  `to_json`).  Both `as_dict` and `to_json` accept `redact=True` to mask
+  sensitive values (passwords, tokens, secrets, API keys) before output.
 - **Location:** `src/lib_layered_config/domain/config.py`
 
 ### `SourceInfo`
@@ -102,19 +104,20 @@ before handing them to callers and CLI commands.
 - **Output:** Dict-like structure consumed by CLI and observability modules.
 - **Location:** `src/lib_layered_config/domain/config.py`
 
-### Helper Functions (`_follow_path`, `_clone_map`, `_looks_like_mapping`, etc.)
+### Helper Functions (`_follow_path`, `_clone_map`, `_deep_merge`, `_looks_like_mapping`, etc.)
 
-- **Purpose:** Keep traversal and cloning logic pure and testable.
+- **Purpose:** Keep traversal, cloning, and merging logic pure and testable.
 - **Input:** Nested mappings or values from `_data`.
-- **Output:** Safe lookups, defensive clones, and type guards to protect
-  callers from accidental mutation.
+- **Output:** Safe lookups, defensive clones, deep-merged dictionaries, and type
+  guards to protect callers from accidental mutation.
 - **Location:** `src/lib_layered_config/domain/config.py`
 
 ---
 
 ## Implementation Details
 
-**Dependencies:** Standard library only.
+**Dependencies:** `orjson` (JSON serialisation), `domain.redaction` (sensitive
+value masking).  Standard library for all other functionality.
 
 **Key Configuration:** None; behaviour is driven entirely by inputs from the
 merge pipeline.
@@ -149,26 +152,19 @@ helpers under `tests/support`.
 
 ## Known Issues & Future Improvements
 
-**Current Limitations:** `with_overrides` performs only **shallow (top-level) merges**.
-When overriding a nested key, the entire top-level key is replaced:
+**Current Behaviour:** `with_overrides` performs a **deep recursive merge**.
+When overriding a nested key, sibling keys at the same level are preserved:
 
 ```python
 cfg = Config({"db": {"host": "localhost", "port": 5432}}, {...})
 cfg = cfg.with_overrides({"db": {"host": "newhost"}})
-cfg["db"]  # → {"host": "newhost"}  — port is lost!
+cfg["db"]  # → {"host": "newhost", "port": 5432}
 ```
 
-This is intentional, not a missing feature:
-
-1. **Provenance tracking** — Deep merge would require updating `_meta` for every
-   affected nested key, introducing complexity and potential for stale metadata.
-2. **Architecture** — The domain layer avoids importing application merge logic
-   to maintain Clean Architecture boundaries.
-3. **Use case fit** — `with_overrides` targets CLI flags and simple runtime
-   tweaks; complex nested changes belong in explicit layer files.
-
-**Workaround:** For deep overrides, create a layer file (TOML/JSON/YAML) and let
-the normal `read_config` merge pipeline handle it with full provenance tracking.
+Non-mapping values (scalars, lists) are replaced entirely; only nested mappings
+are merged recursively.  Provenance metadata (`_meta`) is shared from the
+original instance and is not updated for overridden keys — use explicit layer
+files when full provenance tracking is required.
 
 **Future Enhancements:** Optionally expose typed accessors or schema binding
 once validation requirements are defined in docs/systemdesign.
@@ -282,6 +278,90 @@ serialisable and do not capture large payloads in attributes.
 
 **User Impact:** Operators experience clearer error messages and can catch
 specific exceptions in automation scripts.
+
+---
+
+### Feature Documentation: Domain Redaction
+
+## Status
+
+Complete
+
+## Links & References
+
+**Feature Requirements:** Prevent accidental exposure of sensitive configuration
+values in logs, CLI output, and JSON exports.
+**Related Files:**
+
+- `src/lib_layered_config/domain/redaction.py`
+- `tests/domain/test_redaction.py`
+
+---
+
+## Problem Statement
+
+Configuration data frequently contains sensitive values (passwords, API tokens,
+secret keys).  Displaying or serialising this data without masking risks
+leaking credentials in logs, debug output, or JSON exports.
+
+## Solution Overview
+
+- Provide a regex-based `is_sensitive()` predicate that matches common
+  sensitive key patterns (case-insensitive, underscore-boundary aware).
+- Provide `redact_mapping()` to recursively create redacted copies of
+  configuration dictionaries without mutating the original.
+- Expose `REDACTED_PLACEHOLDER` constant for consumers who need to detect
+  redacted values.
+
+---
+
+## Architecture Integration
+
+**App Layer Fit:** Called by `Config.to_json(redact=True)` and
+`Config.as_dict(redact=True)` in the domain layer.  Also used by
+`read_config_json(redact=True)` in the composition root.
+
+**Data Flow:** Configuration dictionaries pass through `redact_mapping()` which
+creates a new dict tree with sensitive values replaced by
+`***REDACTED***`.
+
+**System Dependencies:** Standard library only (`re`).
+
+---
+
+## Core Components
+
+### `REDACTED_PLACEHOLDER`
+- **Purpose:** Constant replacement string (`***REDACTED***`).
+- **Location:** `domain/redaction.py`
+
+### `is_sensitive`
+- **Purpose:** Predicate testing whether a key name matches sensitive patterns.
+- **Patterns:** `password`, `secret`, `token`, `credential`, `api_key`,
+  `secret_key`, `private_key` (with plurals, prefixes, suffixes).
+- **Location:** `domain/redaction.py`
+
+### `redact_mapping`
+- **Purpose:** Recursively redact sensitive values in a configuration dict.
+- **Input:** Dictionary of configuration values.
+- **Output:** New dictionary with sensitive values replaced.
+- **Location:** `domain/redaction.py`
+
+---
+
+## Testing Approach
+
+- `tests/domain/test_redaction.py` covers true positives, true negatives,
+  nested dicts, lists of dicts, non-mutation, and empty input.
+- `tests/unit/test_config.py` covers `Config.to_json(redact=True)` and
+  `Config.as_dict(redact=True)` integration.
+
+---
+
+## Known Issues & Future Improvements
+
+- Pattern list is fixed; consider making it configurable if consumers need
+  custom sensitive key patterns.
 
 ---
 
@@ -881,8 +961,8 @@ without coupling core logic to parser implementations.
 **App Layer Fit:** Instances of these loaders implement the `FileLoader`
 protocol and feed layer snapshots before merging.
 
-**System Dependencies:** `tomllib` (stdlib 3.11+) or `tomli` (fallback for 3.10), `json`, optional `yaml`, domain errors,
-observability helpers.
+**System Dependencies:** `rtoml` (Rust-based TOML parser), `orjson` (JSON
+parser), optional `yaml` (PyYAML), domain errors, observability helpers.
 
 ---
 
@@ -1133,8 +1213,13 @@ helpers.
 ### `cli_deploy_config` / `cli_generate_examples`
 - **Purpose:** Delegate to example/deploy helpers and emit JSON file lists.
 
-### Helper Functions (`_render_json`, `_render_human`, `_normalise_*`)
+### Helper Functions (`render_human`, `_render_section`, `_format_toml_value`, `_normalise_*`)
 - **Purpose:** Keep command handlers declarative and reusable.
+- **Human Output:** `render_human` produces TOML-style `[section.subsection]`
+  headers with `key = value` lines.  Provenance is emitted as `# source:`
+  comments above each setting.  `_render_section` handles the recursive
+  traversal; `_format_toml_value` applies TOML-style formatting (quoted
+  strings, JSON arrays, lowercase booleans).
 
 ### Metadata Helpers (`version_string`, `describe_distribution`)
 - **Purpose:** Produce CLI-friendly metadata strings sourced from

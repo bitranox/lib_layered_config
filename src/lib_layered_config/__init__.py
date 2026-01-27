@@ -34,6 +34,7 @@ from .core import (
     read_config_raw,
 )
 from .domain.identifiers import Layer
+from .domain.redaction import REDACTED_PLACEHOLDER, is_sensitive, redact_mapping
 from .examples import deploy_config, generate_examples
 from .observability import bind_trace_id, get_logger
 from .testing import i_should_fail
@@ -46,6 +47,9 @@ __all__ = [
     "NotFoundError",
     "LayerLoadError",
     "Layer",
+    "REDACTED_PLACEHOLDER",
+    "is_sensitive",
+    "redact_mapping",
     "read_config",
     "read_config_json",
     "read_config_raw",

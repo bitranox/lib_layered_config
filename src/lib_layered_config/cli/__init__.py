@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import cast
+from typing import Any, cast
 
 import rich_click as click
 from lib_cli_exit_tools import cli_session
@@ -42,7 +42,7 @@ def main(argv: Sequence[str] | None = None, *, restore_traceback: bool = True) -
     with cli_session(
         summary_limit=TRACEBACK_SUMMARY,
         verbose_limit=TRACEBACK_VERBOSE,
-        overrides=overrides or None,
+        overrides=cast(Any, overrides or None),
         restore=restore_traceback,
     ) as run:
         runner = cast("Callable[..., int]", run)

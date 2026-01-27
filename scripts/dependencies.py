@@ -22,14 +22,13 @@ additional dependencies.
 
 from __future__ import annotations
 
-import json
 import re
 import sys
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
+
+import httpx
 
 from .toml_config import PyprojectConfig, load_pyproject_config
 
@@ -113,13 +112,12 @@ def _fetch_pypi_data(package_name: str) -> dict[str, Any] | None:
     url = f"https://pypi.org/pypi/{normalized}/json"
 
     try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            return json.loads(response.read().decode("utf-8"))  # type: ignore[no-any-return]
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
+        response = httpx.get(url, timeout=10.0)
+        if response.status_code == 404:
             return None
-        return None
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        response.raise_for_status()
+        return response.json()  # type: ignore[no-any-return]
+    except (httpx.HTTPStatusError, httpx.RequestError, ValueError):
         return None
 
 

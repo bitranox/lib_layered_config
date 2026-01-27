@@ -1,5 +1,33 @@
 # Changelog
 
+## [5.3.0] - 2026-01-27
+
+### Added
+
+- **Redaction support** - `Config.to_json(redact=True)` and `Config.as_dict(redact=True)` mask sensitive configuration values (passwords, tokens, secrets, API keys, credentials, private keys) with `***REDACTED***`. Prevents accidental exposure of secrets in logs, CLI output, or JSON exports.
+- **`redact_mapping()` function** - Public domain function for recursive redaction of sensitive values in configuration dictionaries.
+- **`is_sensitive()` predicate** - Public function to test whether a configuration key name matches known sensitive patterns.
+- **`REDACTED_PLACEHOLDER` constant** - The `***REDACTED***` string used as replacement, exported for consumer use.
+- **`orjson` as a production dependency** - Added `orjson>=3.11.5` for faster JSON serialization/deserialization.
+- **`httpx` as a dev dependency** - Added `httpx>=0.28.0`, replacing `urllib` in development scripts.
+
+### Changed
+
+- `Config.with_overrides()` now performs **deep recursive merge** instead of
+  shallow top-level replacement. Nested dict keys are preserved when overriding
+  a sub-key. Non-mapping values (scalars, lists) are still replaced entirely.
+- **TOML-style human-readable output** — `render_human()` now produces
+  `[section.subsection]` headers and `key = value` lines instead of flat
+  dotted-path listings. Provenance is shown as `# source:` comments above
+  each setting. Strings are double-quoted, lists use JSON array syntax.
+- Replaced stdlib `json` with `orjson` for JSON serialization/deserialization across all production modules (`domain/config.py`, `core.py`, `cli/common.py`, `cli/deploy.py`, `adapters/file_loaders/structured.py`).
+- `Config.to_json()` now uses orjson; the `indent` parameter always produces 2-space indent when set (orjson limitation).
+- `Config.to_json()` gains `redact: bool = False` parameter.
+- `Config.as_dict()` gains `redact: bool = False` parameter.
+- `read_config_json()` gains `redact: bool = False` parameter.
+- Replaced `tomllib`/`tomli` with `rtoml` in test suite (`tests/test_metadata.py`) for consistency with production TOML parser.
+- Replaced `urllib` with `httpx` in `scripts/dependencies.py` for PyPI API requests.
+
 ## [5.2.1] - 2026-01-19
 
 ### Changed

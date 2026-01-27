@@ -114,8 +114,9 @@ def test_cli_read_human_output_lists_values_and_provenance(sandbox: LayeredSandb
         env=sandbox.env,
     )
     assert result.exit_code == 0
-    lines = result.output.splitlines()
-    assert any(line.startswith("feature.flag:") for line in lines)
+    output = result.output
+    assert "[feature]" in output
+    assert "  flag = true" in output
 
 
 @os_agnostic

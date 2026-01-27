@@ -21,9 +21,10 @@ System Role:
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from pathlib import Path
+
+import orjson
 
 from ._layers import collect_layers, merge_or_empty
 from .adapters.dotenv.default import DefaultDotEnvLoader
@@ -106,6 +107,7 @@ def read_config_json(
     start_dir: str | Path | None = None,
     indent: int | None = None,
     default_file: str | Path | None = None,
+    redact: bool = False,
 ) -> str:
     """Return configuration and provenance as JSON suitable for tooling.
 
@@ -113,11 +115,16 @@ def read_config_json(
 
     Args:
         vendor / app / slug / profile / prefer / start_dir / default_file: Same meaning as :func:`read_config`.
-        indent: Optional indentation level passed to ``json.dumps``.
+        indent: Optional indentation level.  Any non-``None`` value produces
+            2-space indented output (orjson only supports 2-space indentation).
+        redact: When ``True``, sensitive values (passwords, tokens, secrets,
+            API keys) are replaced with ``***REDACTED***`` in the config data.
 
     Returns:
         JSON document containing ``{"config": ..., "provenance": ...}``.
     """
+    from .domain.redaction import redact_mapping
+
     result = read_config_raw(
         vendor=vendor,
         app=app,
@@ -127,7 +134,10 @@ def read_config_json(
         start_dir=_stringify_path(start_dir),
         default_file=_stringify_path(default_file),
     )
-    return _dump_json({"config": result.data, "provenance": result.provenance}, indent)
+    data = result.data
+    if redact:
+        data = redact_mapping(data)
+    return _dump_json({"config": data, "provenance": result.provenance}, indent)
 
 
 def read_config_raw(
@@ -272,8 +282,9 @@ def _dump_json(payload: object, indent: int | None) -> str:
 
     Args:
         payload: JSON-serialisable object to dump.
-        indent: Optional indentation level mirroring :func:`json.dumps`. ``None`` produces
-            the most compact output.
+        indent: When set to any non-``None`` value, produces 2-space indented
+            output (orjson only supports 2-space indentation).  ``None``
+            produces compact output.
 
     Returns:
         JSON document encoded as UTF-8 friendly text.
@@ -284,7 +295,8 @@ def _dump_json(payload: object, indent: int | None) -> str:
         >>> "\n" in _dump_json({"a": 1}, indent=2)
         True
     """
-    return json.dumps(payload, indent=indent, separators=(",", ":"), ensure_ascii=False)
+    option = orjson.OPT_INDENT_2 if indent is not None else 0
+    return orjson.dumps(payload, option=option).decode()
 
 
 __all__ = [

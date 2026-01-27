@@ -10,7 +10,7 @@ Contents:
     * Metadata helpers (:func:`version_string`, :func:`describe_distribution`).
     * Query shaping (:func:`build_read_query`, :func:`normalise_prefer`, :func:`stringify`).
     * Output shaping (:func:`json_payload`, :func:`human_payload`, :func:`render_human`).
-    * Human-friendly utilities (:func:`format_scalar`, :func:`json_paths`).
+    * Human-friendly utilities (:func:`_format_toml_value`, :func:`json_paths`).
 
 System Role:
     Commands import these helpers to stay declarative. They rely on the application
@@ -21,13 +21,13 @@ System Role:
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Protocol, cast
 
+import orjson
 import rich_click as click
 
 from .. import __init__conf__
@@ -285,53 +285,89 @@ def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool)
 
 
 def render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfoPayload]) -> str:
-    """Render configuration values and provenance as friendly prose.
+    """Render configuration as TOML-style sections with provenance comments.
+
+    Produces ``[section.subsection]`` headers for nested mappings and emits
+    the source of each setting as a ``# source:`` comment above its value.
 
     Args:
         data: Nested mapping of configuration values.
         provenance: Mapping of dotted keys to source metadata.
 
     Returns:
-        Multi-line description highlighting value and origin.
+        Multi-line TOML-style representation with provenance comments.
+
+    Examples:
+        >>> render_human({"db": {"host": "localhost"}}, {"db.host": {"layer": "app", "path": "/etc/app.toml", "key": "db.host"}})
+        '\\n[db]\\n  # source: layer=app, path=/etc/app.toml\\n  host = "localhost"'
     """
-    entries = list(iter_leaf_items(data))
-    if not entries:
+    if not data:
         return "No configuration values were found."
 
     lines: list[str] = []
-    for dotted, value in entries:
-        lines.append(f"{dotted}: {format_scalar(value)}")
+    _render_section(data, provenance, lines, section_path=())
+    return "\n".join(lines).rstrip()
+
+
+def _render_section(
+    data: Mapping[str, object],
+    provenance: Mapping[str, SourceInfoPayload],
+    lines: list[str],
+    section_path: tuple[str, ...],
+) -> None:
+    """Recursively render a configuration section in TOML style.
+
+    Emits leaf values first (with optional provenance comments), then recurses
+    into nested mappings with ``[section.subsection]`` headers.
+
+    Args:
+        data: Mapping of keys and values for this section.
+        provenance: Full provenance mapping (dotted keys).
+        lines: Accumulator for output lines.
+        section_path: Dotted path segments leading to this section.
+    """
+    if section_path:
+        lines.append(f"\n[{'.'.join(section_path)}]")
+
+    for key, value in data.items():
+        if isinstance(value, Mapping):
+            continue
+        dotted = ".".join((*section_path, key))
         info = provenance.get(dotted)
         if info:
             path = info["path"] or "(memory)"
-            lines.append(f"  provenance: layer={info['layer']}, path={path}")
-    return "\n".join(lines)
+            lines.append(f"  # source: layer={info['layer']}, path={path}")
+        lines.append(f"  {key} = {_format_toml_value(value)}")
 
-
-def iter_leaf_items(mapping: Mapping[str, object], prefix: tuple[str, ...] = ()) -> Iterable[tuple[str, object]]:
-    """Yield dotted paths and values for every leaf node in *mapping*.
-
-    Flatten nested structures so human-readable output can focus on leaves.
-    """
-    for key, value in mapping.items():
-        dotted = ".".join((*prefix, key))
+    for key, value in data.items():
         if isinstance(value, Mapping):
             nested = cast(Mapping[str, object], value)
-            yield from iter_leaf_items(nested, (*prefix, key))
-        else:
-            yield dotted, value
+            _render_section(nested, provenance, lines, (*section_path, key))
 
 
-def format_scalar(value: object) -> str:
-    """Format a scalar value for human output.
+def _format_toml_value(value: object) -> str:
+    """Format a value in TOML style.
 
-    Keep representation consistent across CLI messages (booleans lowercase,
-    ``None`` as ``null``).
+    Strings are double-quoted, booleans are lowercase, ``None`` renders as
+    ``null``, and lists use JSON array syntax.
+
+    Examples:
+        >>> _format_toml_value("hello")
+        '"hello"'
+        >>> _format_toml_value(True)
+        'true'
+        >>> _format_toml_value(42)
+        '42'
     """
     if isinstance(value, bool):
         return "true" if value else "false"
     if value is None:
         return "null"
+    if isinstance(value, str):
+        return f'"{value}"'
+    if isinstance(value, list):
+        items = cast(list[object], value)
+        return orjson.dumps(items).decode()
     return str(value)
 
 
@@ -340,7 +376,7 @@ def json_paths(paths: Iterable[Path]) -> str:
 
     Provide machine-readable artifacts for deployment/generation commands.
     """
-    return json.dumps([str(path) for path in paths], indent=2)
+    return orjson.dumps([str(path) for path in paths], option=orjson.OPT_INDENT_2).decode()
 
 
 def human_payload(query: ReadQuery) -> str:

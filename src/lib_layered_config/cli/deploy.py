@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from pathlib import Path
 
+import orjson
 import rich_click as click
 
 from ..examples import DeployAction, DeployResult
@@ -77,7 +77,7 @@ def _format_results(results: list[DeployResult]) -> str:
         _append_result_to_output(r, output)
         for dot_d_r in r.dot_d_results:
             _append_result_to_output(dot_d_r, output, prefix="dot_d_")
-    return json.dumps({k: v for k, v in output.items() if v}, indent=2)
+    return orjson.dumps({k: v for k, v in output.items() if v}, option=orjson.OPT_INDENT_2).decode()
 
 
 @click.command("deploy", context_settings=CLICK_CONTEXT_SETTINGS)

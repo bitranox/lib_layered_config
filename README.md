@@ -1,7 +1,7 @@
 # lib_layered_config
 
 <!-- Badges -->
-[![CI](https://github.com/bitranox/lib_layered_config/actions/workflows/ci.yml/badge.svg)](https://github.com/bitranox/lib_layered_config/actions/workflows/ci.yml)
+[![CI](https://github.com/bitranox/lib_layered_config/actions/workflows/default_cicd_public.yml/badge.svg)](https://github.com/bitranox/lib_layered_config/actions/workflows/default_cicd_public.yml)
 [![CodeQL](https://github.com/bitranox/lib_layered_config/actions/workflows/codeql.yml/badge.svg)](https://github.com/bitranox/lib_layered_config/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Open in Codespaces](https://img.shields.io/badge/Codespaces-Open-blue?logo=github&logoColor=white&style=flat-square)](https://codespaces.new/bitranox/lib_layered_config?quickstart=1)

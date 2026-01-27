@@ -20,13 +20,13 @@ before passing the results to the merge policy.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
 from types import ModuleType
 from typing import Any, NoReturn
 
+import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
@@ -263,7 +263,7 @@ class JSONFileLoader(BaseFileLoader):
 
     Provide a drop-in parser for JSON configuration files.
 
-    Uses :mod:`json` to parse files and delegates validation/logging to the base class.
+    Uses :mod:`orjson` to parse files and delegates validation/logging to the base class.
     """
 
     def load(self, path: str) -> Mapping[str, object]:
@@ -290,8 +290,8 @@ class JSONFileLoader(BaseFileLoader):
             >>> Path(tmp.name).unlink()
         """
         try:
-            payload: Any = json.loads(self._read(path))
-        except json.JSONDecodeError as exc:
+            payload: Any = orjson.loads(self._read(path))
+        except orjson.JSONDecodeError as exc:
             _raise_invalid_format(path, "json", exc)
         result = self._ensure_mapping(payload, path=path)
         _log_file_loaded(path, "json")

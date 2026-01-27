@@ -5,13 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 import runpy
-import sys
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib  # type: ignore[import-not-found,no-redef]
-
+import rtoml
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -20,8 +15,7 @@ TARGET_FIELDS = ("name", "title", "version", "homepage", "author", "author_email
 
 
 def _load_pyproject() -> dict[str, Any]:
-    with PYPROJECT_PATH.open("rb") as stream:
-        return tomllib.load(stream)
+    return rtoml.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
 
 
 def _resolve_init_conf_path(pyproject: dict[str, Any]) -> Path:
@@ -57,7 +51,7 @@ def _load_init_conf_metadata(init_conf_path: Path) -> dict[str, str]:
     if not fragments:
         raise AssertionError("No metadata assignments found in __init__conf__.py")
     metadata_text = "[metadata]\n" + "\n".join(fragments)
-    parsed = tomllib.loads(metadata_text)
+    parsed = rtoml.loads(metadata_text)
     metadata_table = cast(dict[str, str], parsed["metadata"])
     return metadata_table
 

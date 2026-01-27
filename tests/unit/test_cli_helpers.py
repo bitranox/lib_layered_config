@@ -162,7 +162,7 @@ def test_render_human_declares_empty_configuration() -> None:
 
 
 @os_agnostic
-def test_render_human_includes_value_and_provenance() -> None:
+def test_render_human_includes_provenance_comment_before_value() -> None:
     data = {"service": {"port": 8080}}
     provenance = {"service.port": {"layer": "app", "path": "/tmp/config.toml"}}
 
@@ -170,8 +170,10 @@ def test_render_human_includes_value_and_provenance() -> None:
 
     expected = "\n".join(
         [
-            "service.port: 8080",
-            "  provenance: layer=app, path=/tmp/config.toml",
+            "",
+            "[service]",
+            "  # source: layer=app, path=/tmp/config.toml",
+            "  port = 8080",
         ]
     )
     assert message == expected
@@ -181,22 +183,108 @@ def test_render_human_includes_value_and_provenance() -> None:
 def test_render_human_skips_provenance_when_absent() -> None:
     data = {"service": {"port": 8080}}
     message = common_module.render_human(data, {})
-    assert message == "service.port: 8080"
+    expected = "\n".join(["", "[service]", "  port = 8080"])
+    assert message == expected
 
 
 @os_agnostic
-def test_format_scalar_translates_true_to_lowercase() -> None:
-    assert common_module.format_scalar(True) == "true"
+def test_render_human_nested_sections_produce_dotted_headers() -> None:
+    data = {"db": {"connection": {"timeout": 30, "retries": 3}}}
+    message = common_module.render_human(data, {})
+    assert "[db.connection]" in message
+    assert "  timeout = 30" in message
+    assert "  retries = 3" in message
 
 
 @os_agnostic
-def test_format_scalar_translates_none_to_null() -> None:
-    assert common_module.format_scalar(None) == "null"
+def test_render_human_root_level_scalars_appear_before_sections() -> None:
+    data = {"debug": True, "db": {"host": "localhost"}}
+    message = common_module.render_human(data, {})
+    lines = message.split("\n")
+    debug_idx = next(i for i, line in enumerate(lines) if "debug = true" in line)
+    section_idx = next(i for i, line in enumerate(lines) if "[db]" in line)
+    assert debug_idx < section_idx
 
 
 @os_agnostic
-def test_format_scalar_converts_other_values_to_string() -> None:
-    assert common_module.format_scalar(42) == "42"
+def test_render_human_strings_are_quoted() -> None:
+    data = {"db": {"host": "localhost"}}
+    message = common_module.render_human(data, {})
+    assert '  host = "localhost"' in message
+
+
+@os_agnostic
+def test_render_human_memory_provenance_shows_memory() -> None:
+    data = {"feature": True}
+    provenance = {"feature": {"layer": "env", "path": None}}
+    message = common_module.render_human(data, provenance)
+    assert "# source: layer=env, path=(memory)" in message
+
+
+@os_agnostic
+def test_render_human_mixed_leaf_and_nested_in_same_section() -> None:
+    data = {"service": {"port": 8080, "db": {"host": "localhost"}}}
+    provenance = {
+        "service.port": {"layer": "app", "path": "/etc/app.toml"},
+        "service.db.host": {"layer": "host", "path": "/etc/host.toml"},
+    }
+    message = common_module.render_human(data, provenance)
+    assert "[service]" in message
+    assert "  port = 8080" in message
+    assert "[service.db]" in message
+    assert '  host = "localhost"' in message
+
+
+@os_agnostic
+def test_render_human_lists_formatted_as_json_arrays() -> None:
+    data = {"tags": ["a", "b"]}
+    message = common_module.render_human(data, {})
+    assert '  tags = ["a","b"]' in message
+
+
+@os_agnostic
+def test_render_human_multiple_top_level_sections() -> None:
+    data = {"db": {"host": "localhost"}, "cache": {"ttl": 60}}
+    message = common_module.render_human(data, {})
+    assert "[db]" in message
+    assert "[cache]" in message
+    assert '  host = "localhost"' in message
+    assert "  ttl = 60" in message
+
+
+# ---------------------------------------------------------------------------
+# _format_toml_value tests
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+def test_format_toml_value_translates_true_to_lowercase() -> None:
+    assert common_module._format_toml_value(True) == "true"
+
+
+@os_agnostic
+def test_format_toml_value_translates_false_to_lowercase() -> None:
+    assert common_module._format_toml_value(False) == "false"
+
+
+@os_agnostic
+def test_format_toml_value_translates_none_to_null() -> None:
+    assert common_module._format_toml_value(None) == "null"
+
+
+@os_agnostic
+def test_format_toml_value_quotes_strings() -> None:
+    assert common_module._format_toml_value("hello") == '"hello"'
+
+
+@os_agnostic
+def test_format_toml_value_converts_numbers_to_string() -> None:
+    assert common_module._format_toml_value(42) == "42"
+
+
+@os_agnostic
+def test_format_toml_value_formats_lists_as_json() -> None:
+    assert common_module._format_toml_value(["a", "b"]) == '["a","b"]'
 
 
 @os_agnostic
