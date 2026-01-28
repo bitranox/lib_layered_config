@@ -25,6 +25,7 @@ from collections.abc import Mapping as TypingMapping
 from dataclasses import dataclass
 from typing import TypeGuard, cast
 
+from ..domain.identifiers import Layer
 from ..observability import log_warn
 from .ports import SourceInfoPayload
 
@@ -210,7 +211,7 @@ def _store_scalar(
 
     target[key] = _clone_leaf(value)
     provenance[dotted] = {
-        "layer": snapshot.name,
+        "layer": snapshot.name.value if isinstance(snapshot.name, Layer) else snapshot.name,
         "path": snapshot.origin,
         "key": dotted,
     }

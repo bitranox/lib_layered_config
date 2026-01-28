@@ -1,9 +1,17 @@
 # Changelog
 
+All notable changes to lib_layered_config
+
+This project adheres to [Semantic Versioning](https://semver.org/).
+
+## [5.3.1] - 2026-01-28
+
+### Changed
+- **Provenance layer serialization** — `_store_scalar()` in `application/merge.py` now extracts the string `.value` from `Layer` enum instances before storing in the provenance dict. Previously, a `Layer` enum object could end up in the `"layer"` field, causing issues during JSON serialization
+
 ## [5.3.0] - 2026-01-27
 
 ### Added
-
 - **Redaction support** - `Config.to_json(redact=True)` and `Config.as_dict(redact=True)` mask sensitive configuration values (passwords, tokens, secrets, API keys, credentials, private keys) with `***REDACTED***`. Prevents accidental exposure of secrets in logs, CLI output, or JSON exports.
 - **`redact_mapping()` function** - Public domain function for recursive redaction of sensitive values in configuration dictionaries.
 - **`is_sensitive()` predicate** - Public function to test whether a configuration key name matches known sensitive patterns.
@@ -12,7 +20,6 @@
 - **`httpx` as a dev dependency** - Added `httpx>=0.28.0`, replacing `urllib` in development scripts.
 
 ### Changed
-
 - `Config.with_overrides()` now performs **deep recursive merge** instead of
   shallow top-level replacement. Nested dict keys are preserved when overriding
   a sub-key. Non-mapping values (scalars, lists) are still replaced entirely.
@@ -23,7 +30,6 @@
 - Replaced stdlib `json` with `orjson` for JSON serialization/deserialization across all production modules (`domain/config.py`, `core.py`, `cli/common.py`, `cli/deploy.py`, `adapters/file_loaders/structured.py`).
 
 ### Fixed
-
 - **import-linter contracts** — Fixed `make test` to invoke `lint-imports` CLI
   instead of a no-op `python -m importlinter.cli lint` command. Updated layers
   contract to use `containers` parameter (required by grimp v3.14). Corrected
