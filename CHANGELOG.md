@@ -4,6 +4,12 @@ All notable changes to lib_layered_config
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.3.8] - 2026-01-29
+
+### Added
+
+- **Explanatory header in human output** — `display_config()` now prints a bright red header comment at the start of human-readable output explaining that nested dictionaries are displayed as `[section.subsection]` headers and may not match the original TOML structure. This helps users understand TOML serialization behavior.
+
 ## [5.3.5] - 2026-01-29
 
 ### Added

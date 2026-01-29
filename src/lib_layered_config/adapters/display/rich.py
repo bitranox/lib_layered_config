@@ -16,82 +16,32 @@ System Role:
 
 from __future__ import annotations
 
-from typing import cast
+import re
+from typing import TYPE_CHECKING
 
 import orjson
 import rich_click as click
+import rtoml
 from rich.console import Console
 from rich.text import Text
 
 from ...application.ports import OutputFormat
-from ...domain.config import Config, SourceInfo
+from ...domain.config import Config
 from ...domain.redaction import redact_mapping
 
+if TYPE_CHECKING:
+    from ...domain.config import SourceInfo
+
 _REDACTED = "***REDACTED***"
-_SECTION_INDENT = "    "
-_TOPLEVEL_INDENT = ""
 _DEFAULT_CONSOLE = Console(highlight=False)
+_OUTPUT_HEADER = r"# Note: Nested dictionaries are displayed as \[section.subsection] headers and might not match the actual TOML \[section]"
+
+# Regex patterns for parsing TOML output
+_SECTION_PATTERN = re.compile(r"^\[([^\]]+)\]$")
+_KEY_VALUE_PATTERN = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(.*)$")
 
 
-def _is_flat_dict(value: dict[str, object]) -> bool:
-    """Check if a dict contains only primitive values (no nested dicts).
-
-    Flat dicts are displayed as inline tables (e.g., ``{ key = "value" }``)
-    rather than as section headers.
-
-    Args:
-        value: Dictionary to check.
-
-    Returns:
-        True if all values are primitives (no nested dicts).
-    """
-    return not any(isinstance(v, dict) for v in value.values())
-
-
-def _format_raw_value(value: object) -> str:
-    """Format a config value without key prefix.
-
-    Args:
-        value: The configuration value to format.
-
-    Returns:
-        Formatted string representation of the value.
-    """
-    if isinstance(value, dict):
-        # Format flat dicts as inline tables: { key = "value", ... }
-        typed_dict = cast("dict[str, object]", value)
-        items = ", ".join(f"{k} = {_format_raw_value(v)}" for k, v in typed_dict.items())
-        return f"{{ {items} }}" if items else "{}"
-    if isinstance(value, list):
-        return orjson.dumps(value).decode()
-    if isinstance(value, str):
-        return f'"{value}"'
-    return f"{value}"
-
-
-def _styled_entry(key: str, value: object, *, indent: str = "  ") -> Text:
-    """Build a Rich Text object for a styled config key-value line.
-
-    Args:
-        key: Configuration key name.
-        value: Configuration value.
-        indent: Leading whitespace before the key.
-
-    Returns:
-        A styled ``Text`` object ready for Console output.
-    """
-    text = Text(indent)
-    text.append(key, style="orange3")
-    text.append(" = ", style="white")
-    raw = _format_raw_value(value)
-    if isinstance(value, str) and value == _REDACTED:
-        text.append(raw, style="dim red")
-    else:
-        text.append(raw, style="green")
-    return text
-
-
-def _format_source_line(info: SourceInfo, indent: str = "  ", *, profile: str | None = None) -> str:
+def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | None = None) -> str:
     """Build a source comment string with layer and profile info.
 
     Args:
@@ -112,72 +62,76 @@ def _format_source_line(info: SourceInfo, indent: str = "  ", *, profile: str | 
     return f"{indent}# layer:{layer} profile:{profile_str}"
 
 
-def _has_leaf_values(data: dict[str, object]) -> bool:
-    """Check if a dict has any non-dict (leaf) values, recursively.
-
-    Args:
-        data: Dictionary to check.
-
-    Returns:
-        True if any leaf values exist at any nesting level.
-    """
-    for value in data.values():
-        if isinstance(value, dict):
-            if _has_leaf_values(cast("dict[str, object]", value)):
-                return True
-        else:
-            return True
-    return False
-
-
-def _print_section(
-    section_name: str,
-    data: dict[str, object],
-    config: Config | None = None,
+def _render_toml_with_styling(
+    toml_text: str,
+    config: Config,
+    console: Console,
+    profile: str | None,
     *,
-    console: Console | None = None,
-    profile: str | None = None,
+    section_prefix: str = "",
 ) -> None:
-    """Print a configuration section, recursing into nested dicts as TOML sub-sections.
+    """Render TOML text with Rich styling and provenance comments.
+
+    Parses TOML output line by line and applies styling:
+    - Section headers [section]: bold cyan
+    - Key = value: orange3 key, white =, green value (dim red for redacted)
 
     Args:
-        section_name: Dotted section path (e.g. ``lib_log_rich`` or
-            ``lib_log_rich.payload_limits``).
-        data: Key-value pairs for this section.
-        config: Optional Config object for provenance comments. When provided,
-            each leaf value is preceded by a ``# layer:`` comment line.
-        console: Optional Rich Console for output. Uses module default when None.
+        toml_text: TOML-formatted string from rtoml.dumps().
+        config: Config object for provenance lookup.
+        console: Rich Console for output.
         profile: Optional profile name for provenance comments.
-
-    Note:
-        Empty sections (dicts with no leaf values) are skipped to avoid
-        displaying meaningless headers like ``[section.empty_table]``.
-        Leaf values are printed first, then nested subsections, to ensure
-        values appear under their correct section header.
+        section_prefix: Prefix to prepend to section paths for provenance lookup
+            (used when displaying a filtered section).
     """
-    if not _has_leaf_values(data):
-        return
-    con = console or _DEFAULT_CONSOLE
-    header = Text(f"\n[{section_name}]")
-    header.stylize("bold cyan")
-    con.print(header)
-    # First pass: print leaf values and flat dicts (inline tables) for this section
-    for key, value in data.items():
-        is_flat = isinstance(value, dict) and _is_flat_dict(cast("dict[str, object]", value))
-        if not isinstance(value, dict) or is_flat:
-            if config is not None:
-                dotted_key = f"{section_name}.{key}"
-                info = config.origin(dotted_key)
-                if info is not None:
-                    con.print(_format_source_line(info, _SECTION_INDENT, profile=profile), style="yellow")
-            con.print(_styled_entry(key, cast("object", value), indent=_SECTION_INDENT))
-            con.print()
-    # Second pass: recurse into nested dicts (subsections) - skip flat dicts
-    for key, value in data.items():
-        if isinstance(value, dict) and not _is_flat_dict(cast("dict[str, object]", value)):
-            _print_section(
-                f"{section_name}.{key}", cast("dict[str, object]", value), config, console=con, profile=profile
-            )
+    current_section = section_prefix
+    lines = toml_text.split("\n")
+
+    for line in lines:
+        stripped = line.strip()
+
+        if not stripped:
+            continue
+
+        # Check for section header [section.path]
+        section_match = _SECTION_PATTERN.match(stripped)
+        if section_match:
+            section_path = section_match.group(1)
+            current_section = f"{section_prefix}.{section_path}" if section_prefix else section_path
+            header = Text(f"\n[{section_path}]")
+            header.stylize("bold cyan")
+            console.print(header)
+            continue
+
+        # Check for key = value
+        kv_match = _KEY_VALUE_PATTERN.match(stripped)
+        if kv_match:
+            key = kv_match.group(1)
+            value_str = kv_match.group(2)
+
+            # Build dotted key for provenance lookup
+            dotted_key = f"{current_section}.{key}" if current_section else key
+
+            # Print provenance comment if available
+            info = config.origin(dotted_key)
+            if info is not None:
+                indent = "    " if current_section else ""
+                console.print(_format_source_line(info, indent, profile=profile), style="yellow")
+
+            # Build styled line
+            indent = "    " if current_section else ""
+            text = Text(indent)
+            text.append(key, style="orange3")
+            text.append(" = ", style="white")
+
+            # Check if value is redacted
+            if _REDACTED in value_str:
+                text.append(value_str, style="dim red")
+            else:
+                text.append(value_str, style="green")
+
+            console.print(text)
+            console.print()
 
 
 def display_config(
@@ -239,37 +193,64 @@ def _display_json(config: Config, section: str | None) -> None:
 def _display_human(
     config: Config, section: str | None, *, console: Console | None = None, profile: str | None = None
 ) -> None:
-    """Render configuration as human-readable TOML-like output to stdout."""
+    """Render configuration as human-readable TOML output to stdout.
+
+    Uses rtoml.dumps() to serialize configuration data to proper TOML format,
+    then applies Rich styling for display.
+    """
     con = console or _DEFAULT_CONSOLE
+    con.print(_OUTPUT_HEADER, style="bright_red")
+    con.print()
+
     if section:
         section_data = config.get(section, default=None)
         if section_data is None:
             raise ValueError(f"Section '{section}' not found")
         redacted_section = redact_mapping({section: section_data})
         redacted_value = redacted_section[section]
+
         if isinstance(redacted_value, dict):
-            _print_section(section, cast("dict[str, object]", redacted_value), config, console=con, profile=profile)
+            # For dict sections, serialize and render with section as prefix
+            toml_text = rtoml.dumps({section: redacted_value})
+            _render_toml_with_styling(toml_text, config, con, profile)
         else:
+            # Scalar value - display directly
             info = config.origin(section)
             if info is not None:
-                con.print(_format_source_line(info, _TOPLEVEL_INDENT, profile=profile), style="yellow")
-            con.print(_styled_entry(section, redacted_value, indent=_TOPLEVEL_INDENT))
+                con.print(_format_source_line(info, "", profile=profile), style="yellow")
+
+            text = Text("")
+            text.append(section, style="orange3")
+            text.append(" = ", style="white")
+            value_str = _format_scalar(redacted_value)
+            if redacted_value == _REDACTED:
+                text.append(value_str, style="dim red")
+            else:
+                text.append(value_str, style="green")
+            con.print(text)
             con.print()
     else:
         data: dict[str, object] = config.as_dict(redact=True)
-        # First pass: print non-dicts and flat dicts as values
-        for key, value in data.items():
-            is_flat = isinstance(value, dict) and _is_flat_dict(cast("dict[str, object]", value))
-            if not isinstance(value, dict) or is_flat:
-                info = config.origin(key)
-                if info is not None:
-                    con.print(_format_source_line(info, _TOPLEVEL_INDENT, profile=profile), style="yellow")
-                con.print(_styled_entry(key, cast("object", value), indent=_TOPLEVEL_INDENT))
-                con.print()
-        # Second pass: recurse into non-flat dicts (sections)
-        for name, value in data.items():
-            if isinstance(value, dict) and not _is_flat_dict(cast("dict[str, object]", value)):
-                _print_section(name, cast("dict[str, object]", value), config, console=con, profile=profile)
+        toml_text = rtoml.dumps(data)
+        _render_toml_with_styling(toml_text, config, con, profile)
+
+
+def _format_scalar(value: object) -> str:
+    """Format a scalar value as TOML representation.
+
+    Args:
+        value: The scalar value to format.
+
+    Returns:
+        TOML-formatted string representation.
+    """
+    if isinstance(value, str):
+        return f'"{value}"'
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return orjson.dumps(value).decode()
+    return str(value)
 
 
 __all__ = [

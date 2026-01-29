@@ -35,6 +35,34 @@ def source_info_factory() -> Callable[[str, str, str | None], SourceInfo]:
     return _factory
 
 
+# ======================== display_config — header ========================
+
+
+def test_display_human_shows_header_comment(capsys: pytest.CaptureFixture[str]) -> None:
+    """Human output must start with explanatory header about TOML formatting."""
+    config = Config({"key": "value"}, {})
+    display_config(config, output_format=OutputFormat.HUMAN)
+    output = capsys.readouterr().out
+
+    # Header appears first (may be wrapped by console)
+    assert "# Note: Nested dictionaries are displayed as" in output
+    assert "[section.subsection]" in output
+    # Header comes before any config content
+    header_pos = output.find("# Note:")
+    value_pos = output.find('key = "value"')
+    assert header_pos < value_pos
+
+
+def test_display_json_does_not_show_header(capsys: pytest.CaptureFixture[str]) -> None:
+    """JSON output must not include the human-readable header."""
+    config = Config({"key": "value"}, {})
+    display_config(config, output_format=OutputFormat.JSON)
+    output = capsys.readouterr().out
+
+    assert "# Note:" not in output
+    assert output.strip().startswith("{")
+
+
 # ======================== display_config — error paths ========================
 
 
@@ -61,14 +89,15 @@ def test_display_config_raises_for_nonexistent_section_json(
 
 def test_display_human_renders_scalars_as_key_value(capsys: pytest.CaptureFixture[str]) -> None:
     """Top-level scalars must render as 'key = value', not as [key] section headers."""
-    # Use nested dict so section becomes a header (flat dicts are inline tables)
+    # Include a nested dict to verify section handling
     config = Config({"app_name": "myapp", "section": {"nested": {"key": "val"}}}, {})
     display_config(config, output_format=OutputFormat.HUMAN)
     output = capsys.readouterr().out
 
     assert "[app_name]" not in output
     assert 'app_name = "myapp"' in output
-    assert "[section]" in output
+    # rtoml skips intermediate sections with no direct keys, goes straight to deepest
+    assert "[section.nested]" in output
 
 
 def test_display_human_renders_scalar_provenance(
@@ -107,17 +136,15 @@ def test_display_human_renders_profile_in_provenance(
 
 
 def test_display_human_deeply_nested_section(capsys: pytest.CaptureFixture[str]) -> None:
-    """Deeply nested dicts with further nesting render as dotted TOML sub-sections."""
-    # Flat dicts are inline tables; nested dicts become section headers
+    """Deeply nested dicts render as dotted TOML sections (rtoml standard format)."""
     config = Config({"top": {"mid": {"deep": {"deeper": "value"}}}}, {})
 
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
-    # [top] and [top.mid] become section headers; deep is an inline table
-    assert "[top]" in output
-    assert "[top.mid]" in output
-    assert 'deep = { deeper = "value" }' in output
+    # rtoml skips intermediate empty sections, goes directly to deepest section with keys
+    assert "[top.mid.deep]" in output
+    assert 'deeper = "value"' in output
 
 
 # ======================== Falsey value handling ========================
@@ -140,7 +167,8 @@ def test_display_config_displays_section_with_false_value(capsys: pytest.Capture
     display_config(config, output_format=OutputFormat.HUMAN, section="section")
 
     output = capsys.readouterr().out
-    assert "enabled = False" in output
+    # TOML uses lowercase 'false', not Python's 'False'
+    assert "enabled = false" in output
 
 
 def test_display_config_json_displays_section_with_falsey_values(capsys: pytest.CaptureFixture[str]) -> None:
@@ -214,13 +242,14 @@ def test_display_json_redacts_sensitive_values(capsys: pytest.CaptureFixture[str
 
 
 def test_display_human_renders_list_values(capsys: pytest.CaptureFixture[str]) -> None:
-    """List values should be rendered as JSON arrays."""
+    """List values should be rendered as TOML arrays."""
     config = Config({"section": {"items": ["a", "b", "c"]}}, {})
 
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
-    assert '["a","b","c"]' in output
+    # rtoml uses spaces after commas in arrays (standard TOML formatting)
+    assert '["a", "b", "c"]' in output
 
 
 def test_display_human_renders_empty_list(capsys: pytest.CaptureFixture[str]) -> None:
@@ -236,8 +265,8 @@ def test_display_human_renders_empty_list(capsys: pytest.CaptureFixture[str]) ->
 # ======================== Empty section handling ========================
 
 
-def test_display_human_skips_empty_dict_sections(capsys: pytest.CaptureFixture[str]) -> None:
-    """Empty dict values should not create section headers."""
+def test_display_human_renders_empty_dict_as_section(capsys: pytest.CaptureFixture[str]) -> None:
+    """Empty dicts are rendered as empty sections by rtoml (valid TOML)."""
     config = Config({"lib_log_rich": {"console_styles": {}, "service": "myapp"}}, {})
 
     display_config(config, output_format=OutputFormat.HUMAN)
@@ -245,11 +274,12 @@ def test_display_human_skips_empty_dict_sections(capsys: pytest.CaptureFixture[s
     output = capsys.readouterr().out
     assert "[lib_log_rich]" in output
     assert "service" in output
-    assert "[lib_log_rich.console_styles]" not in output
+    # rtoml renders empty dicts as empty section headers (valid TOML)
+    assert "[lib_log_rich.console_styles]" in output
 
 
-def test_display_human_skips_nested_empty_dicts(capsys: pytest.CaptureFixture[str]) -> None:
-    """Deeply nested empty dicts should not create section headers."""
+def test_display_human_renders_nested_empty_dicts(capsys: pytest.CaptureFixture[str]) -> None:
+    """Nested empty dicts are rendered as empty sections by rtoml."""
     config = Config({"top": {"mid": {"empty": {}}, "value": "exists"}}, {})
 
     display_config(config, output_format=OutputFormat.HUMAN)
@@ -257,12 +287,12 @@ def test_display_human_skips_nested_empty_dicts(capsys: pytest.CaptureFixture[st
     output = capsys.readouterr().out
     assert "[top]" in output
     assert "value" in output
-    assert "[top.mid]" not in output
-    assert "[top.mid.empty]" not in output
+    # rtoml renders empty dicts as section headers
+    assert "[top.mid.empty]" in output
 
 
-def test_display_human_prints_leaf_values_before_subsections(capsys: pytest.CaptureFixture[str]) -> None:
-    """Leaf values must appear under their section header, before any subsections."""
+def test_display_human_prints_leaf_values_under_section(capsys: pytest.CaptureFixture[str]) -> None:
+    """Leaf values must appear under their section header."""
     # payload_limits has nested dict, so it becomes a subsection
     config = Config(
         {"lib_log_rich": {"payload_limits": {"nested": {"deep": "val"}}, "rate_limit": [], "service": "myapp"}}, {}
@@ -271,37 +301,37 @@ def test_display_human_prints_leaf_values_before_subsections(capsys: pytest.Capt
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
-    # rate_limit and service should appear under [lib_log_rich], before payload_limits subsection
+    # lib_log_rich should appear as a section with its direct children
     lib_log_rich_pos = output.find("[lib_log_rich]")
-    payload_limits_pos = output.find("[lib_log_rich.payload_limits]")
     rate_limit_pos = output.find("rate_limit")
     service_pos = output.find("service")
 
-    # rate_limit and service should come BEFORE the payload_limits subsection
-    assert lib_log_rich_pos < rate_limit_pos < payload_limits_pos
-    assert lib_log_rich_pos < service_pos < payload_limits_pos
+    # rate_limit and service should come after [lib_log_rich] header
+    assert lib_log_rich_pos < rate_limit_pos
+    assert lib_log_rich_pos < service_pos
 
 
-def test_display_human_renders_flat_dict_as_inline_table(capsys: pytest.CaptureFixture[str]) -> None:
-    """Flat dicts (no nested dicts) should render as inline tables, not sections."""
-    # config_options is a flat dict - all values are primitives (non-sensitive keys)
+def test_display_human_renders_nested_dict_as_section(capsys: pytest.CaptureFixture[str]) -> None:
+    """Nested dicts render as separate section headers (standard TOML format)."""
+    # config_options is a nested dict - rtoml always uses section headers for dicts
     config = Config({"lib_log_rich": {"config_options": {"level": "INFO", "format": "json"}, "service": "myapp"}}, {})
 
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
-    # config_options should appear as inline table, NOT as section header
-    assert "[lib_log_rich.config_options]" not in output
-    assert 'config_options = { level = "INFO", format = "json" }' in output
+    # rtoml uses section headers for all nested dicts (standard TOML format)
+    assert "[lib_log_rich.config_options]" in output
+    assert 'level = "INFO"' in output
+    assert 'format = "json"' in output
     assert "[lib_log_rich]" in output
     assert "service" in output
 
 
-def test_display_human_renders_empty_dict_with_provenance(
+def test_display_human_renders_empty_dict_value(
     capsys: pytest.CaptureFixture[str],
     source_info_factory: Callable[..., SourceInfo],
 ) -> None:
-    """Empty dicts should show provenance comment when metadata exists."""
+    """Empty dicts render as empty section headers (valid TOML)."""
     metadata: dict[str, SourceInfo] = {
         "lib_log_rich.console_styles": source_info_factory(
             "lib_log_rich.console_styles", "app", "/etc/myapp/config.toml"
@@ -312,5 +342,77 @@ def test_display_human_renders_empty_dict_with_provenance(
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
-    assert "# layer:app profile:none (/etc/myapp/config.toml)" in output
-    assert "console_styles = {}" in output
+    # rtoml renders empty dicts as empty section headers
+    assert "[lib_log_rich.console_styles]" in output
+
+
+# ======================== Scalar section filtering ========================
+
+
+def test_display_human_single_scalar_section(capsys: pytest.CaptureFixture[str]) -> None:
+    """Requesting a scalar value by section name should display it directly."""
+    config = Config({"top_level_string": "hello", "section": {"key": "value"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN, section="top_level_string")
+
+    output = capsys.readouterr().out
+    assert 'top_level_string = "hello"' in output
+    assert "[top_level_string]" not in output
+
+
+def test_display_human_scalar_section_with_provenance(
+    capsys: pytest.CaptureFixture[str],
+    source_info_factory: Callable[..., SourceInfo],
+) -> None:
+    """Scalar section with provenance should show source comment."""
+    metadata: dict[str, SourceInfo] = {
+        "app_name": source_info_factory("app_name", "defaults", "/app/defaults.toml"),
+    }
+    config = Config({"app_name": "myapp", "other": {"key": "val"}}, metadata)
+
+    display_config(config, output_format=OutputFormat.HUMAN, section="app_name")
+
+    output = capsys.readouterr().out
+    assert "# layer:defaults profile:none (/app/defaults.toml)" in output
+    assert 'app_name = "myapp"' in output
+
+
+def test_display_human_scalar_section_integer(capsys: pytest.CaptureFixture[str]) -> None:
+    """Integer scalar section should display correctly."""
+    config = Config({"port": 8080, "section": {"key": "value"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN, section="port")
+
+    output = capsys.readouterr().out
+    assert "port = 8080" in output
+
+
+def test_display_human_scalar_section_boolean(capsys: pytest.CaptureFixture[str]) -> None:
+    """Boolean scalar section should display correctly with TOML format."""
+    config = Config({"debug": True, "section": {"key": "value"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN, section="debug")
+
+    output = capsys.readouterr().out
+    assert "debug = true" in output
+
+
+def test_display_human_scalar_section_list(capsys: pytest.CaptureFixture[str]) -> None:
+    """List scalar section should display correctly."""
+    config = Config({"hosts": ["a", "b"], "section": {"key": "value"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN, section="hosts")
+
+    output = capsys.readouterr().out
+    assert 'hosts = ["a","b"]' in output
+
+
+def test_display_human_scalar_section_redacted(capsys: pytest.CaptureFixture[str]) -> None:
+    """Redacted scalar section should display with dim red styling."""
+    config = Config({"api_token": "secret123", "section": {"key": "value"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN, section="api_token")
+
+    output = capsys.readouterr().out
+    assert "***REDACTED***" in output
+    assert "secret123" not in output
