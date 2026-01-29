@@ -21,6 +21,8 @@ System Role:
 
 from __future__ import annotations
 
+from .adapters.display import display_config
+from .cli.common import OutputFormat
 from .core import (
     Config,
     ConfigError,
@@ -47,6 +49,7 @@ __all__ = [
     "NotFoundError",
     "LayerLoadError",
     "Layer",
+    "OutputFormat",
     "REDACTED_PLACEHOLDER",
     "is_sensitive",
     "redact_mapping",
@@ -54,6 +57,7 @@ __all__ = [
     "read_config_json",
     "read_config_raw",
     "deploy_config",
+    "display_config",
     "generate_examples",
     "default_env_prefix",
     "i_should_fail",

@@ -4,6 +4,37 @@ All notable changes to lib_layered_config
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.3.3] - 2026-01-29
+
+### Changed
+
+- **`display_config` styling refinement** — Adjusted color scheme for better readability: keys now use light brown (`orange3`), the `=` separator is white (previously dimmed), and all values use green (previously yellow for non-strings).
+
+## [5.3.2] - 2026-01-29
+
+### Added
+
+- **Rich-styled configuration display** — New `display_config()` function in `adapters.display` for enhanced configuration visualization with Rich console styling.
+
+  **Features:**
+  - Human-readable TOML-like output with color-coded display (light brown keys, white `=`, green values)
+  - JSON output format with automatic redaction
+  - Provenance comments showing layer, profile, and source file path for each value
+  - Cyan section headers, yellow provenance comments
+  - Automatic redaction of sensitive values (passwords, tokens, secrets, API keys) displayed in dim red
+
+  **Usage:**
+  ```python
+  from lib_layered_config import read_config, display_config, OutputFormat
+
+  config = read_config(vendor="Acme", app="MyApp", slug="myapp")
+  display_config(config)  # Human-readable output
+  display_config(config, output_format=OutputFormat.JSON)  # JSON output
+  display_config(config, section="database")  # Display specific section only
+  ```
+
+- **`OutputFormat` enum exported** — The `OutputFormat` enum (`OutputFormat.HUMAN`, `OutputFormat.JSON`) is now available from the main package for use with `display_config()`.
+
 ## [5.3.1] - 2026-01-28
 
 ### Changed
