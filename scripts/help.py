@@ -12,7 +12,6 @@ __all__ = ["render_help", "print_help"]
 
 def render_help(rows: Iterable[tuple[str, str]] | None = None) -> str:
     """Return aligned help text for automation targets."""
-
     data = tuple(rows or iter_help_rows())
     if not data:
         return "No automation targets declared."
@@ -23,7 +22,6 @@ def render_help(rows: Iterable[tuple[str, str]] | None = None) -> str:
 
 def print_help(stream: TextIO | None = None) -> None:
     """Write the automation help summary to the provided text stream."""
-
     target_stream = stream if stream is not None else _default_stream()
     target_stream.write(render_help() + "\n")
     target_stream.flush()
@@ -31,7 +29,6 @@ def print_help(stream: TextIO | None = None) -> None:
 
 def _default_stream() -> TextIO:
     """Return the default output stream (stdout)."""
-
     import sys
 
     return sys.stdout

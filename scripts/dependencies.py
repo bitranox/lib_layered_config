@@ -29,10 +29,29 @@ from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import orjson
 
 from .toml_config import PyprojectConfig, load_pyproject_config
 
-__all__ = ["DependencyInfo", "check_dependencies", "print_report", "update_dependencies"]
+__all__ = [
+    "DependencyInfo",
+    "check_dependencies",
+    "compare_versions",
+    "fetch_latest_version",
+    "print_report",
+    "update_dependencies",
+]
+
+# Precompiled regex patterns for version parsing and dependency matching
+_RE_NAME_SEPARATOR = re.compile(r"[-_.]+")
+_RE_VERSION_SPEC = re.compile(r"^([a-zA-Z0-9_.-]+)\s*((?:[><=!~]+\s*[\d.a-zA-Z*]+\s*,?\s*)+)?$")
+_RE_MIN_VERSION = re.compile(r"[>=~]=?\s*([\d.]+(?:a\d+|b\d+|rc\d+)?)")
+_RE_UPPER_BOUND = re.compile(r"<(?!=)\s*([\d.]+(?:a\d+|b\d+|rc\d+)?)")
+_RE_PRERELEASE = re.compile(r"(a|b|rc|dev|alpha|beta)", re.IGNORECASE)
+_RE_VERSION_NUMERIC = re.compile(r"^([\d.]+)")
+_RE_VERSION_CONSTRAINT = re.compile(r"([><=!~]+)\s*([\d.]+(?:a\d+|b\d+|rc\d+)?)")
+_RE_HAS_CONSTRAINT = re.compile(r"[><=!~]")
+_RE_PACKAGE_NAME = re.compile(r"^([a-zA-Z0-9_.-]+)")
 
 
 @dataclass
@@ -51,7 +70,7 @@ class DependencyInfo:
 
 def _normalize_name(name: str) -> str:
     """Normalize package name for comparison (PEP 503)."""
-    return re.sub(r"[-_.]+", "-", name).lower()
+    return _RE_NAME_SEPARATOR.sub("-", name).lower()
 
 
 def _parse_version_constraint(spec: str) -> tuple[str, str, str, str]:
@@ -81,7 +100,7 @@ def _parse_version_constraint(spec: str) -> tuple[str, str, str, str]:
 
     # Extract version constraint
     # Patterns: >=, <=, ==, !=, ~=, >, <
-    match = re.match(r"^([a-zA-Z0-9_.-]+)\s*((?:[><=!~]+\s*[\d.a-zA-Z*]+\s*,?\s*)+)?$", spec)
+    match = _RE_VERSION_SPEC.match(spec)
     if not match:
         # Fallback: just return the spec as name
         return spec, "", "", ""
@@ -94,12 +113,12 @@ def _parse_version_constraint(spec: str) -> tuple[str, str, str, str]:
     upper_bound = ""
     if constraint:
         # Look for >= or == patterns to find minimum version
-        version_match = re.search(r"[>=~]=?\s*([\d.]+(?:a\d+|b\d+|rc\d+)?)", constraint)
+        version_match = _RE_MIN_VERSION.search(constraint)
         if version_match:
             min_version = version_match.group(1)
 
         # Look for < or <= patterns to find upper bound (but not !=)
-        upper_match = re.search(r"<(?!=)\s*([\d.]+(?:a\d+|b\d+|rc\d+)?)", constraint)
+        upper_match = _RE_UPPER_BOUND.search(constraint)
         if upper_match:
             upper_bound = upper_match.group(1)
 
@@ -113,15 +132,17 @@ def _fetch_pypi_data(package_name: str) -> dict[str, Any] | None:
 
     try:
         response = httpx.get(url, timeout=10.0)
-        if response.status_code == 404:
-            return None
         response.raise_for_status()
-        return response.json()  # type: ignore[no-any-return]
-    except (httpx.HTTPStatusError, httpx.RequestError, ValueError):
+        return orjson.loads(response.content)  # type: ignore[no-any-return]
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return None
+        return None
+    except (httpx.ConnectError, httpx.TimeoutException, orjson.JSONDecodeError):
         return None
 
 
-def _fetch_latest_version(package_name: str) -> str | None:
+def fetch_latest_version(package_name: str) -> str | None:
     """Fetch the latest version of a package from PyPI."""
     data = _fetch_pypi_data(package_name)
     if data is None:
@@ -156,9 +177,9 @@ def _fetch_latest_version_below(package_name: str, upper_bound: str) -> str | No
 
     # Get all version strings and filter to those below upper_bound
     valid_versions: list[tuple[tuple[int, ...], str]] = []
-    for version_str in typed_releases.keys():
+    for version_str in typed_releases:
         # Skip pre-release versions (containing a, b, rc, dev, etc.)
-        if re.search(r"(a|b|rc|dev|alpha|beta)", version_str, re.IGNORECASE):
+        if _RE_PRERELEASE.search(version_str):
             continue
 
         version_tuple = _parse_version_tuple(version_str)
@@ -179,7 +200,7 @@ def _fetch_latest_version_below(package_name: str, upper_bound: str) -> str | No
 
 def _parse_version_tuple(v: str) -> tuple[int, ...]:
     """Parse version string into a tuple of integers for comparison."""
-    match = re.match(r"^([\d.]+)", v)
+    match = _RE_VERSION_NUMERIC.match(v)
     if not match:
         return ()
     numeric = match.group(1)
@@ -199,7 +220,7 @@ def _version_gte(version_a: str, version_b: str) -> bool:
     return a_padded >= b_padded
 
 
-def _compare_versions(current: str, latest: str) -> str:
+def compare_versions(current: str, latest: str) -> str:
     """Compare two version strings and return status."""
     if not current or not latest:
         return "unknown"
@@ -234,7 +255,7 @@ def _extract_dependencies_from_list(
             continue
 
         # Fetch latest version (respecting upper bound if present)
-        latest_absolute = _fetch_latest_version(name)
+        latest_absolute = fetch_latest_version(name)
         if latest_absolute is None:
             status = "error"
             latest_str = "not found"
@@ -257,7 +278,7 @@ def _extract_dependencies_from_list(
                 latest_str = f"{latest_in_range} (max <{upper_bound}, absolute: {latest_absolute})"
         else:
             # No upper bound constraint or latest is within range
-            status = _compare_versions(min_version, latest_absolute)
+            status = compare_versions(min_version, latest_absolute)
             latest_str = latest_absolute
 
         results.append(
@@ -381,7 +402,9 @@ def print_report(deps: list[DependencyInfo], *, verbose: bool = False) -> int:
             constraint_display = dep.constraint if dep.constraint else "(any)"
 
             print(
-                f"  {status_icon} {dep.name:<{name_width}}  {constraint_display:<{constraint_width}}  -> {dep.latest:<{latest_width}}  [{dep.status}]"
+                f"  {status_icon} {dep.name:<{name_width}}"
+                f"  {constraint_display:<{constraint_width}}"
+                f"  -> {dep.latest:<{latest_width}}  [{dep.status}]"
             )
 
             if dep.status == "outdated":
@@ -448,19 +471,17 @@ def _build_updated_spec(dep: DependencyInfo) -> str:
 
     # Find the version constraint pattern and replace the version
     # Common patterns: >=X.Y.Z, ==X.Y.Z, ~=X.Y.Z, >X.Y.Z
-    pattern = r"([><=!~]+)\s*([\d.]+(?:a\d+|b\d+|rc\d+)?)"
-
     def replace_version(match: re.Match[str]) -> str:
         operator = match.group(1)
         return f"{operator}{latest}"
 
     # Replace all version constraints with latest
-    updated = re.sub(pattern, replace_version, original)
+    updated = _RE_VERSION_CONSTRAINT.sub(replace_version, original)
 
     # If no version constraint was found, add >=latest
-    if updated == original and not re.search(r"[><=!~]", original):
+    if updated == original and not _RE_HAS_CONSTRAINT.search(original):
         # Extract just the package name
-        name_match = re.match(r"^([a-zA-Z0-9_.-]+)", original)
+        name_match = _RE_PACKAGE_NAME.match(original)
         if name_match:
             pkg_name = name_match.group(1)
             updated = f"{pkg_name}{extras}>={latest}"
@@ -468,7 +489,7 @@ def _build_updated_spec(dep: DependencyInfo) -> str:
             updated = f"{original}>={latest}"
     elif extras and extras not in updated:
         # Re-add extras if they were stripped
-        name_match = re.match(r"^([a-zA-Z0-9_.-]+)", updated)
+        name_match = _RE_PACKAGE_NAME.match(updated)
         if name_match:
             pkg_name = name_match.group(1)
             rest = updated[len(pkg_name) :]

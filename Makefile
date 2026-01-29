@@ -3,7 +3,19 @@ SHELL := /bin/bash
 PYTHON ?= python3
 SCRIPTS ?= $(PYTHON) -m scripts
 
-.PHONY: help install dev test run clean build push release coverage version-current bump bump-patch bump-minor bump-major dependencies dependencies-update menu
+.PHONY: help install dev test test-local run clean build push release coverage version-current bump bump-patch bump-minor bump-major dependencies dependencies-update menu
+
+# Capture trailing words after "push" so `make push fix typo` works unquoted.
+ifeq (push,$(firstword $(MAKECMDGOALS)))
+  PUSH_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(PUSH_ARGS):;@:)
+endif
+
+# Capture trailing words after "run" so `make run config` works unquoted.
+ifeq (run,$(firstword $(MAKECMDGOALS)))
+  RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(RUN_ARGS):;@:)
+endif
 
 help:
 	$(SCRIPTS) help
@@ -18,7 +30,7 @@ test:
 	$(SCRIPTS) test
 
 run:
-	$(SCRIPTS) run
+	$(SCRIPTS) run $(RUN_ARGS)
 
 version-current:
 	$(SCRIPTS) version-current
@@ -41,8 +53,11 @@ clean:
 coverage:
 	$(SCRIPTS) coverage
 
+test-local:
+	$(SCRIPTS) test-local
+
 push:
-	$(SCRIPTS) push
+	$(SCRIPTS) push $(PUSH_ARGS)
 
 build:
 	$(SCRIPTS) build

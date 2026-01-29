@@ -1,3 +1,5 @@
+"""CLI entry point for project automation commands."""
+
 from __future__ import annotations
 
 import os
@@ -33,7 +35,6 @@ _DEFAULT_REMOTE = get_default_remote()
 
 def env_token(name: str) -> str | None:
     """Return an environment variable stripped of surrounding whitespace."""
-
     raw = os.getenv(name)
     if raw is None:
         return None
@@ -50,7 +51,6 @@ def choose_token(
     default: str,
 ) -> str:
     """Pick the first non-empty token, ensuring it belongs to the allowed family."""
-
     for candidate in (option, *fallbacks):
         if candidate is None:
             continue
@@ -64,7 +64,6 @@ def choose_token(
 
 def coverage_choice(option: str | None) -> str:
     """Resolve the coverage mode using CLI flag, environment, then default."""
-
     return choose_token(
         option,
         fallbacks=(env_token("COVERAGE"),),
@@ -76,7 +75,6 @@ def coverage_choice(option: str | None) -> str:
 
 def part_choice(option: str | None) -> str:
     """Resolve the version part to bump."""
-
     return choose_token(
         option,
         fallbacks=(env_token("PART"),),
@@ -88,7 +86,6 @@ def part_choice(option: str | None) -> str:
 
 def remote_choice(option: str | None) -> str:
     """Resolve the git remote for push-like workflows."""
-
     return option or env_token("REMOTE") or _DEFAULT_REMOTE
 
 
@@ -120,7 +117,7 @@ def dev_command(dry_run: bool) -> None:
 @main.command(name="clean", help="Remove caches and build artefacts")
 @click.option("--pattern", "patterns", multiple=True, help="Additional glob patterns to delete")
 def clean_command(patterns: tuple[str, ...]) -> None:
-    target_patterns = clean_module.get_clean_patterns() + tuple(patterns)
+    target_patterns = clean_module.DEFAULT_PATTERNS + tuple(patterns)
     clean_module.clean(target_patterns)
 
 
@@ -149,6 +146,17 @@ def coverage_command(verbose: bool) -> None:
     test_module.run_coverage(verbose=verbose)
 
 
+@main.command(name="test-local", help="Run local-only tests (requires external resources)")
+@click.option("--verbose", is_flag=True, help="Print verbose test output")
+def test_local_command(verbose: bool) -> None:
+    """Run tests marked local_only (skipped in CI).
+
+    These tests require external resources (SMTP server, etc.) or the local
+    dev environment. Configure EMAIL__SMTP_HOSTS and EMAIL__FROM_ADDRESS in .env.
+    """
+    test_module.run_local_tests(verbose=verbose)
+
+
 @main.command(name="build", help="Build wheel/sdist artifacts")
 def build_command() -> None:
     build_module.build_artifacts()
@@ -163,11 +171,11 @@ def release_command(remote: str | None) -> None:
 
 @main.command(name="push", help="Run checks, commit, and push current branch")
 @click.option("--remote", default=None, show_default=False)
-@click.option("--message", "message", type=str, default=None, help="Commit message (overrides prompt)")
-def push_command(remote: str | None, message: str | None) -> None:
+@click.argument("message_words", nargs=-1, type=click.UNPROCESSED)
+def push_command(remote: str | None, message_words: tuple[str, ...]) -> None:
     resolved_remote = remote_choice(remote)
-    commit_message = message if message is not None else env_token("COMMIT_MESSAGE")
-    push_module.push(remote=resolved_remote, message=commit_message)
+    message = " ".join(message_words).strip() if message_words else env_token("COMMIT_MESSAGE")
+    push_module.push(remote=resolved_remote, message=message or None)
 
 
 @main.command(name="version-current", help="Print current version from pyproject.toml")

@@ -44,6 +44,10 @@ def get_clean_patterns(pyproject: Path = Path("pyproject.toml")) -> tuple[str, .
     return _FALLBACK_PATTERNS
 
 
+# For backwards compatibility
+DEFAULT_PATTERNS = get_clean_patterns()
+
+
 def clean(patterns: Iterable[str] | None = None) -> None:
     """Remove cached artefacts and build outputs matching ``patterns``.
 

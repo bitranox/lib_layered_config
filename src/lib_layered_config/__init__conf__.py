@@ -19,6 +19,8 @@ present authoritative project information without invoking packaging APIs.
 
 from __future__ import annotations
 
+import sys
+
 #: Distribution name declared in ``pyproject.toml``.
 name = "lib_layered_config"
 #: Human-readable summary shown in CLI help output.
@@ -71,4 +73,4 @@ def print_info() -> None:
     pad = max(len(label) for label, _ in fields)
     lines = [f"Info for {name}:", ""]
     lines.extend(f"    {label.ljust(pad)} = {value}" for label, value in fields)
-    print("\n".join(lines))
+    sys.stdout.write("\n".join(lines) + "\n")

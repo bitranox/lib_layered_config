@@ -4,6 +4,7 @@ Ensure the composition root depends on abstractions instead of concrete
 implementations, mirroring the Clean Architecture layering in the system design.
 
 Contents:
+    - ``OutputFormat``: enum for CLI/adapter output format selection.
     - ``SourceInfoPayload``: type alias for domain ``SourceInfo`` TypedDict.
     - Type aliases (``ConfigData``, ``ProvenanceData``) for consistent signatures.
     - Protocols for each adapter type (path resolver, file loader, dotenv loader,
@@ -17,9 +18,22 @@ System Role:
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from enum import Enum
 from typing import Protocol, runtime_checkable
 
 from ..domain.config import SourceInfo
+
+
+class OutputFormat(str, Enum):
+    """Output format options for CLI commands and display adapters.
+
+    Provides type-safe selection between human-readable and machine-readable output.
+    Placed in the application layer so both CLI and adapters can import it.
+    """
+
+    HUMAN = "human"
+    JSON = "json"
+
 
 # Re-export domain SourceInfo as SourceInfoPayload for adapter contracts
 SourceInfoPayload = SourceInfo
@@ -104,6 +118,7 @@ class Merger(Protocol):
 
 
 __all__ = [
+    "OutputFormat",
     "SourceInfoPayload",
     "ConfigData",
     "ProvenanceData",

@@ -417,7 +417,7 @@ class PyprojectConfig:
         try:
             data: dict[str, Any] = rtoml.loads(path.read_text(encoding="utf-8"))
             return cls.from_dict(data)
-        except Exception:
+        except (rtoml.TomlParsingError, OSError, ValueError):
             return cls()
 
 

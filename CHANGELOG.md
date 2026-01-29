@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [5.3.4] - 2026-01-29
 
+### Changed
+
+- **`OutputFormat` moved to application layer** — The `OutputFormat` enum is now defined in `application.ports` instead of `cli.common` to satisfy Clean Architecture layer constraints. Both `cli` and `adapters.display` can now import it without violating import rules. The enum remains exported from the package root.
+
 ### Fixed
 
 - **Leaf values now appear under correct section header** — `display_config()` now prints all leaf values (scalars, lists) for a section before recursing into nested subsections. Previously, values appearing after a nested dict in iteration order would visually appear under the subsection header (e.g., `rate_limit` appearing under `[lib_log_rich.scrub_patterns]` instead of `[lib_log_rich]`).

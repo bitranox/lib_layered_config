@@ -6,7 +6,7 @@ and surface metadata drawn from ``__init__conf__``.
 
 Contents:
     * :class:`ReadQuery` — frozen bundle capturing the parameters for configuration reads.
-    * :class:`OutputFormat` — enum for CLI output format selection.
+    * :class:`OutputFormat` — enum for CLI output format selection (re-exported from application.ports).
     * Metadata helpers (:func:`version_string`, :func:`describe_distribution`).
     * Query shaping (:func:`build_read_query`, :func:`normalise_prefer`, :func:`stringify`).
     * Output shaping (:func:`json_payload`, :func:`human_payload`, :func:`render_human`).
@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -33,7 +32,7 @@ import rich_click as click
 from .. import __init__conf__
 from .._platform import normalise_examples_platform as _normalise_examples_platform
 from .._platform import normalise_resolver_platform as _normalise_resolver_platform
-from ..application.ports import SourceInfoPayload
+from ..application.ports import OutputFormat, SourceInfoPayload
 from ..core import read_config, read_config_json, read_config_raw
 from .constants import DEFAULT_JSON_INDENT
 
@@ -59,16 +58,6 @@ class _PackageMetadata(Protocol):
 
 
 package_metadata: _PackageMetadata = cast(_PackageMetadata, __init__conf__)
-
-
-class OutputFormat(str, Enum):
-    """Output format options for CLI commands.
-
-    Provides type-safe selection between human-readable and machine-readable output.
-    """
-
-    HUMAN = "human"
-    JSON = "json"
 
 
 @dataclass(frozen=True, slots=True)

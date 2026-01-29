@@ -22,7 +22,7 @@ System Role:
 from __future__ import annotations
 
 from .adapters.display import display_config
-from .cli.common import OutputFormat
+from .application.ports import OutputFormat
 from .core import (
     Config,
     ConfigError,

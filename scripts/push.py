@@ -1,3 +1,5 @@
+"""Run checks, commit changes, and push the current branch."""
+
 from __future__ import annotations
 
 import os
@@ -6,6 +8,7 @@ from pathlib import Path
 
 import rich_click as click
 
+from . import dependencies as dependencies_module
 from ._utils import (
     get_default_remote,
     get_project_metadata,
@@ -14,7 +17,6 @@ from ._utils import (
     run,
     sync_metadata_module,
 )
-from . import dependencies as dependencies_module
 
 __all__ = ["push"]
 
@@ -27,9 +29,7 @@ def _get_installed_version(package_name: str) -> str | None:
 
     try:
         return version(package_name)
-    except PackageNotFoundError:
-        return None
-    except Exception:
+    except (PackageNotFoundError, ValueError):
         return None
 
 
@@ -43,12 +43,12 @@ def _check_and_update_pip() -> None:
         return
 
     # Fetch latest pip version from PyPI
-    latest = dependencies_module._fetch_latest_version("pip")  # pyright: ignore[reportPrivateUsage]
+    latest = dependencies_module.fetch_latest_version("pip")
     if latest is None:
         click.echo("[pip] Could not fetch latest pip version from PyPI", err=True)
         return
 
-    status = dependencies_module._compare_versions(installed, latest)  # pyright: ignore[reportPrivateUsage]
+    status = dependencies_module.compare_versions(installed, latest)
 
     if status == "up-to-date":
         click.echo(f"[pip] pip {installed} is up-to-date")
@@ -159,18 +159,24 @@ def _check_dependencies_and_prompt_update() -> None:
         click.echo("[dependencies] Update skipped. Run 'make dependencies-update' later to update.")
 
 
-def _check_installed_dependencies() -> None:
-    """Check if dependencies are installed at the versions specified in pyproject.toml."""
-    click.echo("\n[dependencies] Checking installed packages against pyproject.toml requirements...")
+def _find_dependency_issues(
+    deps: list[dependencies_module.DependencyInfo],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str, str, str]]]:
+    """Identify missing and outdated installed packages.
 
-    try:
-        deps = dependencies_module.check_dependencies()
-    except Exception as exc:
-        click.echo(f"[dependencies] Failed to check dependencies: {exc}", err=True)
-        return
+    Compares each dependency's required minimum version against the locally
+    installed version.  Pure logic -- no I/O or side-effects.
 
-    missing: list[tuple[str, str]] = []  # (name, required_version)
-    outdated_installed: list[tuple[str, str, str, str]] = []  # (name, installed, required, latest)
+    Args:
+        deps: Dependency metadata returned by ``check_dependencies``.
+
+    Returns:
+        A ``(missing, outdated_installed)`` tuple where *missing* contains
+        ``(name, required_version)`` pairs and *outdated_installed* contains
+        ``(name, installed, required, latest)`` tuples.
+    """
+    missing: list[tuple[str, str]] = []
+    outdated_installed: list[tuple[str, str, str, str]] = []
 
     for dep in deps:
         if not dep.current_min:
@@ -181,24 +187,30 @@ def _check_installed_dependencies() -> None:
         if installed is None:
             missing.append((dep.name, dep.current_min))
         else:
-            # Compare installed version with required minimum
-            installed_status = dependencies_module._compare_versions(installed, dep.current_min)  # pyright: ignore[reportPrivateUsage]
+            installed_status = dependencies_module.compare_versions(installed, dep.current_min)
             if installed_status == "outdated":
-                # Installed version is older than required
                 outdated_installed.append((dep.name, installed, dep.current_min, dep.latest))
 
-    if not missing and not outdated_installed:
-        click.echo("[dependencies] All required packages are installed at correct versions!")
-        return
+    return missing, outdated_installed
 
-    # Display missing packages
+
+def _display_dependency_issues(
+    missing: list[tuple[str, str]],
+    outdated_installed: list[tuple[str, str, str, str]],
+) -> None:
+    """Display missing and outdated packages via ``click.echo``.
+
+    Args:
+        missing: ``(name, required_version)`` pairs for packages not installed.
+        outdated_installed: ``(name, installed, required, latest)`` tuples for
+            packages whose installed version is below the requirement.
+    """
     if missing:
         click.echo(f"\n[dependencies] {len(missing)} packages are NOT installed:\n")
         name_width = max(len(name) for name, _ in missing)
         for name, required in sorted(missing):
             click.echo(f"  [X] {name:<{name_width}}  (requires >={required})")
 
-    # Display outdated installed packages
     if outdated_installed:
         click.echo(f"\n[dependencies] {len(outdated_installed)} installed packages are below required version:\n")
         name_width = max(len(name) for name, _, _, _ in outdated_installed)
@@ -208,15 +220,21 @@ def _check_installed_dependencies() -> None:
                 f"  [!] {name:<{name_width}}  {installed:<{installed_width}}  (requires >={required}, latest: {latest})"
             )
 
-    total_issues = len(missing) + len(outdated_installed)
-    click.echo("")
 
-    # Check if running in CI or non-interactive mode
+def _prompt_and_install_dependencies(total_issues: int) -> None:
+    """Prompt the user to install or update packages and run pip if accepted.
+
+    In CI or non-interactive environments a hint is printed instead of
+    prompting.
+
+    Args:
+        total_issues: Combined count of missing and outdated packages (used in
+            the hint message).
+    """
     if os.getenv("CI") or not sys.stdin.isatty():
         click.echo(f"[dependencies] {total_issues} package(s) need updating. Run 'pip install -e .[dev]' to fix.")
         return
 
-    # Prompt user to install/update
     try:
         response = click.prompt(
             "Do you want to install/update these packages now?",
@@ -242,9 +260,38 @@ def _check_installed_dependencies() -> None:
         click.echo("[dependencies] Install skipped. Run 'pip install -e .[dev]' to update packages.")
 
 
+def _check_installed_dependencies() -> None:
+    """Check if dependencies are installed at the versions specified in pyproject.toml.
+
+    Orchestrates discovery, display, and interactive installation by
+    delegating to ``_find_dependency_issues``,
+    ``_display_dependency_issues``, and
+    ``_prompt_and_install_dependencies``.
+    """
+    click.echo("\n[dependencies] Checking installed packages against pyproject.toml requirements...")
+
+    try:
+        deps = dependencies_module.check_dependencies()
+    except Exception as exc:
+        click.echo(f"[dependencies] Failed to check dependencies: {exc}", err=True)
+        return
+
+    missing, outdated_installed = _find_dependency_issues(deps)
+
+    if not missing and not outdated_installed:
+        click.echo("[dependencies] All required packages are installed at correct versions!")
+        return
+
+    _display_dependency_issues(missing, outdated_installed)
+
+    total_issues = len(missing) + len(outdated_installed)
+    click.echo("")
+
+    _prompt_and_install_dependencies(total_issues)
+
+
 def push(*, remote: str = _DEFAULT_REMOTE, message: str | None = None) -> None:
     """Run checks, commit changes, and push the current branch."""
-
     # Step 0: Ensure pip is up-to-date
     _check_and_update_pip()
 
@@ -267,42 +314,37 @@ def push(*, remote: str = _DEFAULT_REMOTE, message: str | None = None) -> None:
 
     click.echo("[push] Committing and pushing (single attempt)")
     run(["git", "add", "-A"], capture=False)  # stage all
-    staged = run(["bash", "-lc", "! git diff --cached --quiet"], check=False)
-    commit_message = _resolve_commit_message(message)
-    if staged.code != 0:
+    staged = run(["git", "diff", "--cached", "--quiet"], check=False, capture=True)
+    user_message = _resolve_commit_message(message)
+    commit_message = f"{version} - {user_message}"
+    if staged.code == 0:
         click.echo("[push] No staged changes detected; creating empty commit")
     run(["git", "commit", "--allow-empty", "-m", commit_message], capture=False)  # type: ignore[list-item]
     click.echo(f"[push] Commit message: {commit_message}")
     run(["git", "push", "-u", remote, branch], capture=False)  # type: ignore[list-item]
 
 
+_DEFAULT_MESSAGE = "chores"
+
+
 def _resolve_commit_message(message: str | None) -> str:
-    default_message = os.environ.get("COMMIT_MESSAGE", "chore: update").strip() or "chore: update"
+    """Return the user-facing part of the commit message.
+
+    Resolution order:
+    1. Explicit *message* argument (from CLI positional args)
+    2. ``COMMIT_MESSAGE`` environment variable
+    3. Default: ``"chores"``
+    """
     if message is not None:
-        return message.strip() or default_message
+        return message.strip() or _DEFAULT_MESSAGE
 
     env_message = os.environ.get("COMMIT_MESSAGE")
     if env_message is not None:
-        final = env_message.strip() or default_message
+        final = env_message.strip() or _DEFAULT_MESSAGE
         click.echo(f"[push] Using commit message from COMMIT_MESSAGE: {final}")
         return final
 
-    if sys.stdin.isatty():
-        return click.prompt("[push] Commit message", default=default_message)
-
-    try:
-        with open("/dev/tty", "r+", encoding="utf-8", errors="ignore") as tty:
-            tty.write(f"[push] Commit message [{default_message}]: ")
-            tty.flush()
-            response = tty.readline()
-    except OSError:
-        click.echo("[push] Non-interactive input; using default commit message")
-        return default_message
-    except KeyboardInterrupt:
-        raise SystemExit("[push] Commit aborted by user")
-
-    response = response.strip()
-    return response or default_message
+    return _DEFAULT_MESSAGE
 
 
 if __name__ == "__main__":  # pragma: no cover

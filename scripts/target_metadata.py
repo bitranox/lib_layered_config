@@ -61,14 +61,12 @@ class TargetSpec:
 
 def _env_default(name: str, fallback: str | None = None) -> str | None:
     """Return the environment variable value when set, otherwise fallback."""
-
     value = os.getenv(name)
     return value if value is not None and value != "" else fallback
 
 
 def _build_targets() -> tuple[TargetSpec, ...]:
     """Create the immutable collection of automation targets."""
-
     return (
         TargetSpec("install", "Editable install", ()),
         TargetSpec("dev", "Editable install with dev extras", ()),
@@ -108,6 +106,18 @@ def _build_targets() -> tuple[TargetSpec, ...]:
                 ),
             ),
         ),
+        TargetSpec(
+            "test-local",
+            "Run local-only tests (SMTP, script composition, external resources)",
+            (
+                ParamSpec(
+                    "TEST_VERBOSE",
+                    "Verbose test output (0|1)",
+                    default=_env_default("TEST_VERBOSE", "0"),
+                    choices=("0", "1"),
+                ),
+            ),
+        ),
         TargetSpec("run", "Run project CLI (defaults to --help)", ()),
         TargetSpec("version-current", "Print version from pyproject.toml", ()),
         TargetSpec(
@@ -133,17 +143,12 @@ def _build_targets() -> tuple[TargetSpec, ...]:
         TargetSpec("clean", "Remove caches, build artifacts, coverage", ()),
         TargetSpec(
             "push",
-            "Run tests, commit once, and push",
+            "Run tests, commit (<version> - <message>), and push",
             (
                 ParamSpec(
                     "REMOTE",
                     "Git remote",
                     default=_env_default("REMOTE", _DEFAULT_REMOTE),
-                ),
-                ParamSpec(
-                    "COMMIT_MESSAGE",
-                    "Commit message override",
-                    default=_env_default("COMMIT_MESSAGE"),
                 ),
             ),
         ),
@@ -190,13 +195,11 @@ def _build_targets() -> tuple[TargetSpec, ...]:
 
 def get_targets() -> tuple[TargetSpec, ...]:
     """Return the current automation targets with environment defaults."""
-
     return _build_targets()
 
 
 def iter_help_rows(targets: Iterable[TargetSpec] | None = None) -> Iterator[tuple[str, str]]:
     """Yield ``(name, description)`` tuples for help/summary displays."""
-
     items = targets if targets is not None else get_targets()
     for target in items:
         yield target.name, target.description

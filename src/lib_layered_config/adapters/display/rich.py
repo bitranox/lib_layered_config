@@ -23,7 +23,7 @@ import rich_click as click
 from rich.console import Console
 from rich.text import Text
 
-from ...cli.common import OutputFormat
+from ...application.ports import OutputFormat
 from ...domain.config import Config, SourceInfo
 from ...domain.redaction import redact_mapping
 
