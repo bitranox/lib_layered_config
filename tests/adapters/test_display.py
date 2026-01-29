@@ -225,3 +225,50 @@ def test_display_human_renders_empty_list(capsys: pytest.CaptureFixture[str]) ->
 
     output = capsys.readouterr().out
     assert "items = []" in output
+
+
+# ======================== Empty section handling ========================
+
+
+def test_display_human_skips_empty_dict_sections(capsys: pytest.CaptureFixture[str]) -> None:
+    """Empty dict values should not create section headers."""
+    config = Config({"lib_log_rich": {"console_styles": {}, "service": "myapp"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN)
+
+    output = capsys.readouterr().out
+    assert "[lib_log_rich]" in output
+    assert "service" in output
+    assert "[lib_log_rich.console_styles]" not in output
+
+
+def test_display_human_skips_nested_empty_dicts(capsys: pytest.CaptureFixture[str]) -> None:
+    """Deeply nested empty dicts should not create section headers."""
+    config = Config({"top": {"mid": {"empty": {}}, "value": "exists"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN)
+
+    output = capsys.readouterr().out
+    assert "[top]" in output
+    assert "value" in output
+    assert "[top.mid]" not in output
+    assert "[top.mid.empty]" not in output
+
+
+def test_display_human_prints_leaf_values_before_subsections(capsys: pytest.CaptureFixture[str]) -> None:
+    """Leaf values must appear under their section header, before any subsections."""
+    # Simulate lib_log_rich structure: scrub_patterns (dict) then rate_limit (list)
+    config = Config({"lib_log_rich": {"scrub_patterns": {"password": ".+"}, "rate_limit": [], "service": "myapp"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN)
+
+    output = capsys.readouterr().out
+    # rate_limit and service should appear under [lib_log_rich], not under [lib_log_rich.scrub_patterns]
+    lib_log_rich_pos = output.find("[lib_log_rich]")
+    scrub_patterns_pos = output.find("[lib_log_rich.scrub_patterns]")
+    rate_limit_pos = output.find("rate_limit")
+    service_pos = output.find("service")
+
+    # rate_limit and service should come BEFORE the scrub_patterns subsection
+    assert lib_log_rich_pos < rate_limit_pos < scrub_patterns_pos
+    assert lib_log_rich_pos < service_pos < scrub_patterns_pos

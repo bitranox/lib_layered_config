@@ -92,6 +92,24 @@ def _format_source_line(info: SourceInfo, indent: str = "  ", *, profile: str | 
     return f"{indent}# layer:{layer} profile:{profile_str}"
 
 
+def _has_leaf_values(data: dict[str, object]) -> bool:
+    """Check if a dict has any non-dict (leaf) values, recursively.
+
+    Args:
+        data: Dictionary to check.
+
+    Returns:
+        True if any leaf values exist at any nesting level.
+    """
+    for value in data.values():
+        if isinstance(value, dict):
+            if _has_leaf_values(cast("dict[str, object]", value)):
+                return True
+        else:
+            return True
+    return False
+
+
 def _print_section(
     section_name: str,
     data: dict[str, object],
@@ -110,17 +128,22 @@ def _print_section(
             each leaf value is preceded by a ``# layer:`` comment line.
         console: Optional Rich Console for output. Uses module default when None.
         profile: Optional profile name for provenance comments.
+
+    Note:
+        Empty sections (dicts with no leaf values) are skipped to avoid
+        displaying meaningless headers like ``[section.empty_table]``.
+        Leaf values are printed first, then nested subsections, to ensure
+        values appear under their correct section header.
     """
+    if not _has_leaf_values(data):
+        return
     con = console or _DEFAULT_CONSOLE
     header = Text(f"\n[{section_name}]")
     header.stylize("bold cyan")
     con.print(header)
+    # First pass: print leaf values (non-dicts) for this section
     for key, value in data.items():
-        if isinstance(value, dict):
-            _print_section(
-                f"{section_name}.{key}", cast("dict[str, object]", value), config, console=con, profile=profile
-            )
-        else:
+        if not isinstance(value, dict):
             if config is not None:
                 dotted_key = f"{section_name}.{key}"
                 info = config.origin(dotted_key)
@@ -128,6 +151,12 @@ def _print_section(
                     con.print(_format_source_line(info, _SECTION_INDENT, profile=profile), style="yellow")
             con.print(_styled_entry(key, value, indent=_SECTION_INDENT))
             con.print()
+    # Second pass: recurse into nested dicts (subsections)
+    for key, value in data.items():
+        if isinstance(value, dict):
+            _print_section(
+                f"{section_name}.{key}", cast("dict[str, object]", value), config, console=con, profile=profile
+            )
 
 
 def display_config(

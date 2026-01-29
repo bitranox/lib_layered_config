@@ -4,11 +4,21 @@ All notable changes to lib_layered_config
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.3.4] - 2026-01-29
+
+### Fixed
+
+- **Leaf values now appear under correct section header** — `display_config()` now prints all leaf values (scalars, lists) for a section before recursing into nested subsections. Previously, values appearing after a nested dict in iteration order would visually appear under the subsection header (e.g., `rate_limit` appearing under `[lib_log_rich.scrub_patterns]` instead of `[lib_log_rich]`).
+
 ## [5.3.3] - 2026-01-29
 
 ### Changed
 
 - **`display_config` styling refinement** — Adjusted color scheme for better readability: keys now use light brown (`orange3`), the `=` separator is white (previously dimmed), and all values use green (previously yellow for non-strings).
+
+### Fixed
+
+- **Empty sections no longer displayed** — `display_config()` now skips empty dict values (e.g., `console_styles = {}`) instead of creating meaningless section headers like `[section.empty_table]`. Sections with no leaf values at any nesting level are omitted from output.
 
 ## [5.3.2] - 2026-01-29
 
