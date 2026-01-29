@@ -79,12 +79,25 @@ def test_when_dotenv_supplies_password_the_payload_keeps_it() -> None:
 
 
 @os_agnostic
-def test_when_branch_becomes_empty_provenance_falls_silent() -> None:
+def test_when_scalar_replaced_by_empty_dict_provenance_points_to_new_layer() -> None:
+    """When a scalar is replaced by an empty dict, provenance should track the new layer."""
     result = merge_story(
         snapshot("app", {"db": {"host": "localhost"}}, "app.toml"),
         snapshot("env", {"db": {"host": {}}}),
     )
-    assert result.provenance == {}
+    # The empty dict came from env layer, so provenance should point there
+    assert result.provenance["db.host"]["layer"] == "env"
+
+
+@os_agnostic
+def test_when_layer_defines_empty_dict_provenance_is_recorded() -> None:
+    """Empty dicts should have provenance so display can show their source."""
+    result = merge_story(
+        snapshot("app", {"styles": {}, "enabled": True}, "app.toml"),
+    )
+    assert result.provenance["styles"]["layer"] == "app"
+    assert result.provenance["styles"]["path"] == "app.toml"
+    assert result.provenance["enabled"]["layer"] == "app"
 
 
 @os_agnostic

@@ -61,7 +61,8 @@ def test_display_config_raises_for_nonexistent_section_json(
 
 def test_display_human_renders_scalars_as_key_value(capsys: pytest.CaptureFixture[str]) -> None:
     """Top-level scalars must render as 'key = value', not as [key] section headers."""
-    config = Config({"app_name": "myapp", "section": {"key": "val"}}, {})
+    # Use nested dict so section becomes a header (flat dicts are inline tables)
+    config = Config({"app_name": "myapp", "section": {"nested": {"key": "val"}}}, {})
     display_config(config, output_format=OutputFormat.HUMAN)
     output = capsys.readouterr().out
 
@@ -92,10 +93,12 @@ def test_display_human_renders_profile_in_provenance(
     source_info_factory: Callable[..., SourceInfo],
 ) -> None:
     """Profile name must appear in source provenance comment."""
+    # Use a leaf value directly under section to get provenance shown
     metadata: dict[str, SourceInfo] = {
         "section.key": source_info_factory("section.key", "user", "/home/user/.config/app/config.toml"),
     }
-    config = Config({"section": {"key": "value"}}, metadata)
+    # Include nested dict so section becomes a header (not inline), but also has a leaf
+    config = Config({"section": {"key": "value", "nested": {"deep": "val"}}}, metadata)
 
     display_config(config, output_format=OutputFormat.HUMAN, profile="production")
 
@@ -104,14 +107,17 @@ def test_display_human_renders_profile_in_provenance(
 
 
 def test_display_human_deeply_nested_section(capsys: pytest.CaptureFixture[str]) -> None:
-    """Deeply nested dicts render as dotted TOML sub-sections."""
-    config = Config({"top": {"mid": {"deep": "value"}}}, {})
+    """Deeply nested dicts with further nesting render as dotted TOML sub-sections."""
+    # Flat dicts are inline tables; nested dicts become section headers
+    config = Config({"top": {"mid": {"deep": {"deeper": "value"}}}}, {})
 
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
+    # [top] and [top.mid] become section headers; deep is an inline table
+    assert "[top]" in output
     assert "[top.mid]" in output
-    assert "deep" in output
+    assert 'deep = { deeper = "value" }' in output
 
 
 # ======================== Falsey value handling ========================
@@ -257,18 +263,54 @@ def test_display_human_skips_nested_empty_dicts(capsys: pytest.CaptureFixture[st
 
 def test_display_human_prints_leaf_values_before_subsections(capsys: pytest.CaptureFixture[str]) -> None:
     """Leaf values must appear under their section header, before any subsections."""
-    # Simulate lib_log_rich structure: scrub_patterns (dict) then rate_limit (list)
-    config = Config({"lib_log_rich": {"scrub_patterns": {"password": ".+"}, "rate_limit": [], "service": "myapp"}}, {})
+    # payload_limits has nested dict, so it becomes a subsection
+    config = Config(
+        {"lib_log_rich": {"payload_limits": {"nested": {"deep": "val"}}, "rate_limit": [], "service": "myapp"}}, {}
+    )
 
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
-    # rate_limit and service should appear under [lib_log_rich], not under [lib_log_rich.scrub_patterns]
+    # rate_limit and service should appear under [lib_log_rich], before payload_limits subsection
     lib_log_rich_pos = output.find("[lib_log_rich]")
-    scrub_patterns_pos = output.find("[lib_log_rich.scrub_patterns]")
+    payload_limits_pos = output.find("[lib_log_rich.payload_limits]")
     rate_limit_pos = output.find("rate_limit")
     service_pos = output.find("service")
 
-    # rate_limit and service should come BEFORE the scrub_patterns subsection
-    assert lib_log_rich_pos < rate_limit_pos < scrub_patterns_pos
-    assert lib_log_rich_pos < service_pos < scrub_patterns_pos
+    # rate_limit and service should come BEFORE the payload_limits subsection
+    assert lib_log_rich_pos < rate_limit_pos < payload_limits_pos
+    assert lib_log_rich_pos < service_pos < payload_limits_pos
+
+
+def test_display_human_renders_flat_dict_as_inline_table(capsys: pytest.CaptureFixture[str]) -> None:
+    """Flat dicts (no nested dicts) should render as inline tables, not sections."""
+    # config_options is a flat dict - all values are primitives (non-sensitive keys)
+    config = Config({"lib_log_rich": {"config_options": {"level": "INFO", "format": "json"}, "service": "myapp"}}, {})
+
+    display_config(config, output_format=OutputFormat.HUMAN)
+
+    output = capsys.readouterr().out
+    # config_options should appear as inline table, NOT as section header
+    assert "[lib_log_rich.config_options]" not in output
+    assert 'config_options = { level = "INFO", format = "json" }' in output
+    assert "[lib_log_rich]" in output
+    assert "service" in output
+
+
+def test_display_human_renders_empty_dict_with_provenance(
+    capsys: pytest.CaptureFixture[str],
+    source_info_factory: Callable[..., SourceInfo],
+) -> None:
+    """Empty dicts should show provenance comment when metadata exists."""
+    metadata: dict[str, SourceInfo] = {
+        "lib_log_rich.console_styles": source_info_factory(
+            "lib_log_rich.console_styles", "app", "/etc/myapp/config.toml"
+        ),
+    }
+    config = Config({"lib_log_rich": {"console_styles": {}, "service": "myapp"}}, metadata)
+
+    display_config(config, output_format=OutputFormat.HUMAN)
+
+    output = capsys.readouterr().out
+    assert "# layer:app profile:none (/etc/myapp/config.toml)" in output
+    assert "console_styles = {}" in output

@@ -4,15 +4,27 @@ All notable changes to lib_layered_config
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.3.5] - 2026-01-29
+
+### Added
+
+- **Provenance tracking for empty dicts** — The merge logic now stores provenance metadata for empty dict values (e.g., `console_styles: {}`). This allows `display_config()` to show source comments for empty dicts, matching the behavior for scalar values. Previously, empty dicts had no provenance and displayed without source information.
+
+### Changed
+
+- **`Config.origin()` returns data for empty dicts** — The `origin()` method now returns `SourceInfo` for empty dict keys instead of `None`, providing consistent provenance lookup across all value types.
+
 ## [5.3.4] - 2026-01-29
 
 ### Changed
 
 - **`OutputFormat` moved to application layer** — The `OutputFormat` enum is now defined in `application.ports` instead of `cli.common` to satisfy Clean Architecture layer constraints. Both `cli` and `adapters.display` can now import it without violating import rules. The enum remains exported from the package root.
 
+- **Flat dicts rendered as inline tables** — `display_config()` now renders flat dicts (containing only primitive values, no nested dicts) as TOML inline tables (e.g., `scrub_patterns = { password = ".+", token = ".+" }`) instead of section headers. This matches the TOML source style and reduces visual noise.
+
 ### Fixed
 
-- **Leaf values now appear under correct section header** — `display_config()` now prints all leaf values (scalars, lists) for a section before recursing into nested subsections. Previously, values appearing after a nested dict in iteration order would visually appear under the subsection header (e.g., `rate_limit` appearing under `[lib_log_rich.scrub_patterns]` instead of `[lib_log_rich]`).
+- **Leaf values now appear under correct section header** — `display_config()` now prints all leaf values (scalars, lists, and flat dicts) for a section before recursing into nested subsections. Previously, values appearing after a nested dict in iteration order would visually appear under the subsection header (e.g., `rate_limit` appearing under `[lib_log_rich.scrub_patterns]` instead of `[lib_log_rich]`).
 
 ## [5.3.3] - 2026-01-29
 

@@ -189,7 +189,7 @@ def _store_branch(
     segments.append(key)
     _descend(branch, provenance, value, snapshot, segments)
     segments.pop()
-    _clear_branch_if_empty(branch, dotted, provenance)
+    _store_provenance_for_empty_branch(branch, dotted, provenance, snapshot)
 
 
 def _store_scalar(
@@ -292,28 +292,40 @@ def _ensure_branch(
     return new_branch
 
 
-def _clear_branch_if_empty(
-    branch: MutableMapping[str, object], dotted: str, provenance: MutableMapping[str, SourceInfoPayload]
+def _store_provenance_for_empty_branch(
+    branch: MutableMapping[str, object],
+    dotted: str,
+    provenance: MutableMapping[str, SourceInfoPayload],
+    snapshot: LayerSnapshot,
 ) -> None:
-    """Remove empty branches from provenance when overwritten by scalars.
+    """Store provenance for empty dict values so they show source in display output.
+
+    When a layer defines an empty dict (e.g., ``console_styles: {}``), we still want
+    to track where that empty value came from for display purposes.
 
     Args:
         branch: Mutable mapping representing the nested branch just processed.
         dotted: Dotted key corresponding to the branch.
-        provenance: Provenance mapping to prune when the branch becomes empty.
+        provenance: Provenance mapping to update for empty branches.
+        snapshot: Layer metadata used for provenance entries.
 
     Side Effects:
-        Mutates *provenance* by removing entries when the branch no longer has data.
+        Mutates *provenance* by adding entry when the branch is empty.
 
     Examples:
-        >>> prov = {'a.b': {'layer': 'env', 'path': None, 'key': 'a.b'}}
-        >>> _clear_branch_if_empty({}, 'a.b', prov)
-        >>> 'a.b' in prov
-        False
+        >>> prov = {}
+        >>> snap = LayerSnapshot('app', {'styles': {}}, '/etc/app.toml')
+        >>> _store_provenance_for_empty_branch({}, 'styles', prov, snap)
+        >>> prov['styles']['layer']
+        'app'
     """
     if branch:
         return
-    provenance.pop(dotted, None)
+    provenance[dotted] = {
+        "layer": snapshot.name.value if isinstance(snapshot.name, Layer) else snapshot.name,
+        "path": snapshot.origin,
+        "key": dotted,
+    }
 
 
 def _join_segments(segments: Sequence[str], key: str) -> str:

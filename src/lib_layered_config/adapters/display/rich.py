@@ -33,6 +33,21 @@ _TOPLEVEL_INDENT = ""
 _DEFAULT_CONSOLE = Console(highlight=False)
 
 
+def _is_flat_dict(value: dict[str, object]) -> bool:
+    """Check if a dict contains only primitive values (no nested dicts).
+
+    Flat dicts are displayed as inline tables (e.g., ``{ key = "value" }``)
+    rather than as section headers.
+
+    Args:
+        value: Dictionary to check.
+
+    Returns:
+        True if all values are primitives (no nested dicts).
+    """
+    return not any(isinstance(v, dict) for v in value.values())
+
+
 def _format_raw_value(value: object) -> str:
     """Format a config value without key prefix.
 
@@ -42,6 +57,11 @@ def _format_raw_value(value: object) -> str:
     Returns:
         Formatted string representation of the value.
     """
+    if isinstance(value, dict):
+        # Format flat dicts as inline tables: { key = "value", ... }
+        typed_dict = cast("dict[str, object]", value)
+        items = ", ".join(f"{k} = {_format_raw_value(v)}" for k, v in typed_dict.items())
+        return f"{{ {items} }}" if items else "{}"
     if isinstance(value, list):
         return orjson.dumps(value).decode()
     if isinstance(value, str):
@@ -141,19 +161,20 @@ def _print_section(
     header = Text(f"\n[{section_name}]")
     header.stylize("bold cyan")
     con.print(header)
-    # First pass: print leaf values (non-dicts) for this section
+    # First pass: print leaf values and flat dicts (inline tables) for this section
     for key, value in data.items():
-        if not isinstance(value, dict):
+        is_flat = isinstance(value, dict) and _is_flat_dict(cast("dict[str, object]", value))
+        if not isinstance(value, dict) or is_flat:
             if config is not None:
                 dotted_key = f"{section_name}.{key}"
                 info = config.origin(dotted_key)
                 if info is not None:
                     con.print(_format_source_line(info, _SECTION_INDENT, profile=profile), style="yellow")
-            con.print(_styled_entry(key, value, indent=_SECTION_INDENT))
+            con.print(_styled_entry(key, cast("object", value), indent=_SECTION_INDENT))
             con.print()
-    # Second pass: recurse into nested dicts (subsections)
+    # Second pass: recurse into nested dicts (subsections) - skip flat dicts
     for key, value in data.items():
-        if isinstance(value, dict):
+        if isinstance(value, dict) and not _is_flat_dict(cast("dict[str, object]", value)):
             _print_section(
                 f"{section_name}.{key}", cast("dict[str, object]", value), config, console=con, profile=profile
             )
@@ -236,15 +257,18 @@ def _display_human(
             con.print()
     else:
         data: dict[str, object] = config.as_dict(redact=True)
+        # First pass: print non-dicts and flat dicts as values
         for key, value in data.items():
-            if not isinstance(value, dict):
+            is_flat = isinstance(value, dict) and _is_flat_dict(cast("dict[str, object]", value))
+            if not isinstance(value, dict) or is_flat:
                 info = config.origin(key)
                 if info is not None:
                     con.print(_format_source_line(info, _TOPLEVEL_INDENT, profile=profile), style="yellow")
-                con.print(_styled_entry(key, value, indent=_TOPLEVEL_INDENT))
+                con.print(_styled_entry(key, cast("object", value), indent=_TOPLEVEL_INDENT))
                 con.print()
+        # Second pass: recurse into non-flat dicts (sections)
         for name, value in data.items():
-            if isinstance(value, dict):
+            if isinstance(value, dict) and not _is_flat_dict(cast("dict[str, object]", value)):
                 _print_section(name, cast("dict[str, object]", value), config, console=con, profile=profile)
 
 
