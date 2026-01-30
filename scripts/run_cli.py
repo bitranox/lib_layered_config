@@ -13,27 +13,30 @@ PROJECT = get_project_metadata()
 __all__ = ["run_cli"]
 
 
-def _find_local_dependencies() -> list[str]:
+def _find_local_dependencies() -> list[tuple[str, str]]:
     """Find sibling directories that match project dependencies.
 
     Scans the parent directory for subdirectories that match dependency names
     and contain a pyproject.toml file (indicating a valid Python project).
 
     Returns:
-        List of absolute paths to local dependency directories.
+        List of tuples (package_name, absolute_path) for local dependencies.
+        Package names use hyphens (PyPI convention) for --reinstall-package.
     """
     project_root = Path.cwd().resolve()
     parent_dir = project_root.parent
     dependencies = get_dependencies()
 
-    local_deps: list[str] = []
+    local_deps: list[tuple[str, str]] = []
     for dep_name in dependencies:
-        # Check both underscore and hyphen variants
+        # Check both underscore and hyphen variants for directory names
         variants = [dep_name, dep_name.replace("_", "-")]
         for variant in variants:
             sibling = parent_dir / variant
             if sibling.is_dir() and (sibling / "pyproject.toml").exists():
-                local_deps.append(str(sibling))
+                # Use hyphenated name for --reinstall-package (PyPI convention)
+                package_name = dep_name.replace("_", "-")
+                local_deps.append((package_name, str(sibling)))
                 break
     return local_deps
 
@@ -41,21 +44,22 @@ def _find_local_dependencies() -> list[str]:
 def run_cli(args: Sequence[str] | None = None) -> int:
     """Invoke the project CLI via uvx using the local development version.
 
-    Uses --refresh to ensure uvx refreshes all cached data. Also discovers
-    sibling directories that match project dependencies and includes them
-    with --with flags to pick up local development changes.
+    Uses --no-cache to bypass the cache entirely, ensuring all packages
+    (including local dependencies) are always rebuilt from source.
+    Discovers sibling directories that match project dependencies and
+    includes them with --with flags.
 
     This approach is project-independent: it reads dependencies from
     pyproject.toml and finds matching sibling directories automatically.
     """
     forwarded = list(args) if args else ["--help"]
 
-    # Build command with local dependency paths
-    command = ["uvx", "--from", ".", "--refresh"]
+    # Build command with no cache to ensure fresh builds
+    command = ["uvx", "--from", ".", "--no-cache"]
 
     # Add local sibling dependencies
-    for local_dep in _find_local_dependencies():
-        command.extend(["--with", local_dep])
+    for _dep_name, local_path in _find_local_dependencies():
+        command.extend(["--with", local_path])
 
     command.extend([PROJECT.name, *forwarded])
 

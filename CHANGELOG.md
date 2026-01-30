@@ -4,6 +4,19 @@ All notable changes to lib_layered_config
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.3.9] - 2026-01-29
+
+### Changed
+
+- **Refactored config display using rtoml serialization** — The `display_config()` function now uses `rtoml.dumps()` for TOML serialization instead of custom formatting logic, then applies Rich styling to the output. This produces more accurate TOML output that matches standard TOML conventions and simplifies the codebase.
+
+### Internal
+
+- Replaced manual value formatting with `rtoml.dumps()` followed by regex-based parsing and styling
+- Removed `_is_flat_dict()`, `_format_raw_value()`, `_styled_entry()`, `_has_leaf_values()`, and `_print_section()` helper functions
+- Added `_SECTION_PATTERN` and `_KEY_VALUE_PATTERN` regex constants for parsing TOML output
+- New `_render_toml_with_styling()` function handles line-by-line styling of TOML output
+
 ## [5.3.8] - 2026-01-29
 
 ### Added
