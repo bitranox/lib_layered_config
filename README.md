@@ -1616,6 +1616,33 @@ lib_layered_config deploy \
 #          "skipped": ["/etc/xdg/myapp/config.toml"]}
 ```
 
+#### **Scenario 6: Deploy to Specific User (as Root)**
+```bash
+# As root/admin, deploy user config for a specific user
+# Uses sudo -u to run as that user, ensuring correct $HOME and permissions
+sudo -u alice lib_layered_config deploy \
+  --source ./user-defaults.toml \
+  --vendor Acme --app MyApp --slug myapp \
+  --target user
+
+# ✅ Result: Config deployed to alice's home directory with correct ownership
+# Output: {"created": ["/home/alice/.config/myapp/config.toml"]}
+# File is owned by alice:alice with 600 permissions
+
+# Deploy to multiple users in a loop
+for user in alice bob charlie; do
+  sudo -u "$user" lib_layered_config deploy \
+    --source ./user-defaults.toml \
+    --vendor Acme --app MyApp --slug myapp \
+    --target user --batch
+done
+```
+
+> **Why `sudo -u` instead of just `sudo`?** Running as root would deploy to `/root/.config/`, not the target user's home. Using `sudo -u <user>` ensures:
+> - Correct `$HOME` directory resolution
+> - Files owned by the target user (not root)
+> - Proper user-layer permissions (700/600)
+
 ---
 
 ### Best Practices
