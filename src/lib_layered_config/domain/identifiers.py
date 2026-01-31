@@ -6,10 +6,13 @@ compatibility.
 
 Contents:
     - ``Layer``: enumeration of configuration layer names.
+    - ``DEFAULT_MAX_PROFILE_LENGTH``: default maximum length for profile names (64).
     - ``validate_path_segment``: core validation for filesystem path segments (strict, no spaces).
     - ``validate_identifier``: validate slug/profile identifiers (strict, no spaces).
     - ``validate_vendor_app``: validate vendor/app names (permissive, allows spaces).
     - ``validate_profile``: validate optional profile names (strict, no spaces).
+    - ``validate_profile_name``: public API for profile validation with configurable length.
+    - ``is_valid_profile_name``: check if profile name is valid without raising.
     - ``validate_hostname``: validate hostname for filesystem paths (allows dots for FQDN).
 
 Validation Strategy:
@@ -18,6 +21,16 @@ Validation Strategy:
     - **slug/profile**: Use ``validate_identifier()`` - strict, no spaces allowed
       (used in Linux paths and environment variable prefixes).
     - **hostname**: Use ``validate_hostname()`` - allows dots for FQDNs.
+    - **profile**: Use ``validate_profile_name()`` or ``is_valid_profile_name()`` for
+      profile validation with configurable max length (default 64 chars).
+
+Security Features:
+    Profile names are validated against multiple attack vectors:
+    - Path traversal (``../``, ``..\\``, absolute paths)
+    - Control characters (null bytes, newlines, etc.)
+    - Windows reserved names (CON, PRN, NUL, etc.)
+    - Non-ASCII characters (encoding attacks)
+    - Length limits (default 64 characters)
 """
 
 from __future__ import annotations
@@ -25,6 +38,20 @@ from __future__ import annotations
 import re
 from enum import Enum
 from functools import lru_cache
+
+#: Default maximum length for profile names (characters).
+#: Profile names are used as path segments, so reasonable limits prevent
+#: filesystem issues and potential denial-of-service via excessively long names.
+DEFAULT_MAX_PROFILE_LENGTH: int = 64
+
+#: Absolute maximum profile name length (filesystem safety limit).
+#: Even if user sets max_profile_length higher, this limit applies.
+#: This prevents filesystem issues from excessively long path segments.
+ABSOLUTE_MAX_PROFILE_LENGTH: int = 256
+
+# Control characters that must never appear in profile names
+# Includes null byte, newline, carriage return, tab, and other C0 controls
+_CONTROL_CHAR_PATTERN: re.Pattern[str] = re.compile(r"[\x00-\x1f\x7f]")
 
 # Windows reserved device names (case-insensitive)
 _WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
@@ -148,6 +175,18 @@ def _check_no_trailing_space(value: str, name: str) -> None:
     """Raise ValueError if value ends with space."""
     if value.endswith(" "):
         raise ValueError(f"{name} cannot end with a space: {value}")
+
+
+def _check_no_control_chars(value: str, name: str) -> None:
+    """Raise ValueError if value contains control characters."""
+    if _CONTROL_CHAR_PATTERN.search(value):
+        raise ValueError(f"{name} contains control characters: {value!r}")
+
+
+def _check_max_length(value: str, name: str, max_length: int) -> None:
+    """Raise ValueError if value exceeds maximum length."""
+    if len(value) > max_length:
+        raise ValueError(f"{name} exceeds maximum length of {max_length}: {len(value)} characters")
 
 
 class Layer(str, Enum):
@@ -290,20 +329,29 @@ def validate_vendor_app(value: str, name: str) -> str:
     return value
 
 
-def validate_profile(value: str | None) -> str | None:
+def validate_profile(
+    value: str | None,
+    *,
+    max_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+) -> str | None:
     """Validate profile name or return None if not provided.
 
     Profile names become path segments, so they must be validated against
     path traversal attacks and ensured cross-platform filesystem compatibility.
 
+    Note:
+        For the public API with better documentation, see :func:`validate_profile_name`.
+        This function is kept for backward compatibility.
+
     Args:
         value: The profile name to validate, or None for no profile.
+        max_length: Maximum allowed length (default: 64 characters).
 
     Returns:
         The validated profile name, or None if no profile.
 
     Raises:
-        ValueError: When the profile name contains invalid characters.
+        ValueError: When the profile name is invalid.
 
     Examples:
         >>> validate_profile(None) is None
@@ -319,7 +367,132 @@ def validate_profile(value: str | None) -> str | None:
     """
     if value is None:
         return None
+    return validate_profile_name(value, max_length=max_length)
+
+
+def validate_profile_name(
+    value: str,
+    *,
+    max_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+) -> str:
+    """Validate a profile name for safe use in filesystem paths.
+
+    Profile names are used to construct configuration paths like
+    ``profile/<name>/config.toml``. This function ensures names are safe
+    against path traversal attacks, control character injection, and
+    cross-platform filesystem compatibility issues.
+
+    Security Checks:
+        - Length limit (default 64 characters, absolute max 256 characters)
+        - No control characters (null bytes, newlines, etc.)
+        - No path traversal sequences (``../``, ``..\\``)
+        - No path separators (``/``, ``\\``)
+        - ASCII-only characters
+        - No Windows reserved names (CON, PRN, NUL, etc.)
+        - Must start with alphanumeric character
+        - No trailing dots or spaces
+
+    Note:
+        The ``max_length`` parameter is clamped to ``ABSOLUTE_MAX_PROFILE_LENGTH``
+        (256 characters) for filesystem safety. Setting ``max_length=1000`` will
+        effectively use 256 as the limit.
+
+    Args:
+        value: The profile name to validate.
+        max_length: Maximum allowed length (default: 64 characters).
+            Set to 0 or negative to disable length checking (still capped at 256).
+
+    Returns:
+        The validated profile name (unchanged if valid).
+
+    Raises:
+        ValueError: When the profile name fails validation.
+
+    Examples:
+        >>> validate_profile_name("production")
+        'production'
+        >>> validate_profile_name("test-v2")
+        'test-v2'
+        >>> validate_profile_name("dev_local")
+        'dev_local'
+        >>> validate_profile_name("")
+        Traceback (most recent call last):
+            ...
+        ValueError: profile cannot be empty
+        >>> validate_profile_name("../etc/passwd")
+        Traceback (most recent call last):
+            ...
+        ValueError: profile contains invalid characters: ../etc/passwd
+        >>> validate_profile_name("a" * 100)
+        Traceback (most recent call last):
+            ...
+        ValueError: profile exceeds maximum length of 64: 100 characters
+        >>> validate_profile_name("test\\x00inject")
+        Traceback (most recent call last):
+            ...
+        ValueError: profile contains control characters: 'test\\x00inject'
+    """
+    _check_not_empty(value, "profile")
+    _check_no_control_chars(value, "profile")
+    # Clamp max_length to absolute maximum for filesystem safety
+    if max_length > 0:
+        effective_max = min(max_length, ABSOLUTE_MAX_PROFILE_LENGTH)
+        _check_max_length(value, "profile", effective_max)
+    else:
+        # Even with length checking "disabled", enforce absolute maximum
+        _check_max_length(value, "profile", ABSOLUTE_MAX_PROFILE_LENGTH)
     return validate_identifier(value, "profile")
+
+
+def is_valid_profile_name(
+    value: str | None,
+    *,
+    max_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+) -> bool:
+    """Check if a profile name is valid without raising an exception.
+
+    Use this function to validate user input before passing to API functions,
+    or for pre-flight checks in configuration deployment.
+
+    Note:
+        The ``max_length`` parameter is clamped to ``ABSOLUTE_MAX_PROFILE_LENGTH``
+        (256 characters) for filesystem safety. Setting ``max_length=1000`` will
+        effectively use 256 as the limit. Setting ``max_length=0`` still enforces
+        the 256 character absolute maximum.
+
+    Args:
+        value: The profile name to check. None is considered valid (no profile).
+        max_length: Maximum allowed length (default: 64 characters).
+            Set to 0 or negative to disable length checking (still capped at 256).
+
+    Returns:
+        True if the profile name is valid or None, False otherwise.
+
+    Examples:
+        >>> is_valid_profile_name(None)
+        True
+        >>> is_valid_profile_name("production")
+        True
+        >>> is_valid_profile_name("test-v2")
+        True
+        >>> is_valid_profile_name("")
+        False
+        >>> is_valid_profile_name("../etc")
+        False
+        >>> is_valid_profile_name("a" * 100)
+        False
+        >>> is_valid_profile_name("a" * 100, max_length=0)
+        True
+        >>> is_valid_profile_name("test\\x00inject")
+        False
+    """
+    if value is None:
+        return True
+    try:
+        validate_profile_name(value, max_length=max_length)
+        return True
+    except ValueError:
+        return False
 
 
 @lru_cache(maxsize=16)
@@ -372,10 +545,13 @@ def validate_hostname(value: str) -> str:
 
 
 __all__ = [
+    "DEFAULT_MAX_PROFILE_LENGTH",
     "Layer",
-    "validate_path_segment",
-    "validate_identifier",
-    "validate_vendor_app",
-    "validate_profile",
+    "is_valid_profile_name",
     "validate_hostname",
+    "validate_identifier",
+    "validate_path_segment",
+    "validate_profile",
+    "validate_profile_name",
+    "validate_vendor_app",
 ]

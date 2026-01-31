@@ -5,13 +5,19 @@ from __future__ import annotations
 import pytest
 
 from lib_layered_config.domain.identifiers import (
+    DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
+    is_valid_profile_name,
     validate_hostname,
     validate_identifier,
     validate_path_segment,
     validate_profile,
+    validate_profile_name,
     validate_vendor_app,
 )
+
+# Import internal constant for testing
+from lib_layered_config.domain.identifiers import ABSOLUTE_MAX_PROFILE_LENGTH
 
 
 class TestValidatePathSegment:
@@ -548,3 +554,352 @@ class TestValidateProfile:
         """Invalid profile names should raise ValueError with descriptive message."""
         with pytest.raises(ValueError, match=error_pattern):
             validate_profile(value)
+
+    # ========== LENGTH LIMITS ==========
+
+    def test_accepts_profile_at_default_max_length(self) -> None:
+        """Profile exactly at default max length should be accepted."""
+        profile = "a" * DEFAULT_MAX_PROFILE_LENGTH
+        assert validate_profile(profile) == profile
+
+    def test_rejects_profile_exceeding_default_max_length(self) -> None:
+        """Profile exceeding default max length should be rejected."""
+        profile = "a" * (DEFAULT_MAX_PROFILE_LENGTH + 1)
+        with pytest.raises(ValueError, match=f"profile exceeds maximum length of {DEFAULT_MAX_PROFILE_LENGTH}"):
+            validate_profile(profile)
+
+    def test_custom_max_length_accepts_shorter_profile(self) -> None:
+        """Profile within custom max length should be accepted."""
+        profile = "a" * 20
+        assert validate_profile(profile, max_length=20) == profile
+
+    def test_custom_max_length_rejects_longer_profile(self) -> None:
+        """Profile exceeding custom max length should be rejected."""
+        profile = "a" * 21
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 20"):
+            validate_profile(profile, max_length=20)
+
+    def test_zero_max_length_uses_absolute_max(self) -> None:
+        """Setting max_length=0 should use ABSOLUTE_MAX_PROFILE_LENGTH (256)."""
+        # Should accept up to 256 chars
+        profile = "a" * 256
+        assert validate_profile(profile, max_length=0) == profile
+        # Should reject above 256 chars
+        profile = "a" * 257
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256"):
+            validate_profile(profile, max_length=0)
+
+    def test_negative_max_length_uses_absolute_max(self) -> None:
+        """Setting max_length to negative should use ABSOLUTE_MAX_PROFILE_LENGTH (256)."""
+        # Should accept up to 256 chars
+        profile = "a" * 256
+        assert validate_profile(profile, max_length=-1) == profile
+        # Should reject above 256 chars
+        profile = "a" * 257
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256"):
+            validate_profile(profile, max_length=-1)
+
+    # ========== CONTROL CHARACTER REJECTION ==========
+
+    @pytest.mark.parametrize(
+        "char,name",
+        [
+            ("\x00", "null byte"),
+            ("\x01", "SOH"),
+            ("\x0a", "newline"),
+            ("\x0d", "carriage return"),
+            ("\x09", "tab"),
+            ("\x1f", "unit separator"),
+            ("\x7f", "DEL"),
+        ],
+    )
+    def test_rejects_control_characters(self, char: str, name: str) -> None:
+        """Control characters should be rejected."""
+        with pytest.raises(ValueError, match="profile contains control characters"):
+            validate_profile(f"test{char}profile")
+
+
+class TestValidateProfileName:
+    """Tests for validate_profile_name function.
+
+    This is the public API for profile validation with configurable length.
+    """
+
+    # ========== VALID PROFILE NAMES ==========
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "production",
+            "test",
+            "dev",
+            "staging",
+            "prod-v1",
+            "test_env",
+            "v1.2.3",
+            "my-custom-profile",
+        ],
+    )
+    def test_accepts_valid_profile_names(self, value: str) -> None:
+        """Valid profile names should pass through unchanged."""
+        assert validate_profile_name(value) == value
+
+    # ========== SECURITY CHECKS ==========
+
+    def test_rejects_empty_string(self) -> None:
+        """Empty profile name should be rejected."""
+        with pytest.raises(ValueError, match="profile cannot be empty"):
+            validate_profile_name("")
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "../etc/passwd",
+            "..\\windows\\system32",
+            "/etc/passwd",
+            "\\windows\\system32",
+            "foo/bar",
+            "foo\\bar",
+        ],
+    )
+    def test_rejects_path_traversal(self, value: str) -> None:
+        """Path traversal attempts should be rejected."""
+        with pytest.raises(ValueError, match="profile contains invalid characters"):
+            validate_profile_name(value)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "test\x00inject",
+            "test\nprofile",
+            "test\rprofile",
+            "test\tprofile",
+        ],
+    )
+    def test_rejects_control_characters(self, value: str) -> None:
+        """Control characters should be rejected."""
+        with pytest.raises(ValueError, match="profile contains control characters"):
+            validate_profile_name(value)
+
+    def test_rejects_non_ascii(self) -> None:
+        """Non-ASCII characters should be rejected."""
+        with pytest.raises(ValueError, match="profile contains non-ASCII"):
+            validate_profile_name("tëst")
+
+    @pytest.mark.parametrize(
+        "value",
+        ["CON", "PRN", "AUX", "NUL", "COM1", "LPT1"],
+    )
+    def test_rejects_windows_reserved_names(self, value: str) -> None:
+        """Windows reserved names should be rejected."""
+        with pytest.raises(ValueError, match="profile is a Windows reserved name"):
+            validate_profile_name(value)
+
+    # ========== LENGTH LIMITS ==========
+
+    def test_default_max_length_is_64(self) -> None:
+        """Default max length should be 64 characters."""
+        assert DEFAULT_MAX_PROFILE_LENGTH == 64
+
+    def test_accepts_exactly_64_characters(self) -> None:
+        """Profile with exactly 64 characters should be accepted."""
+        profile = "a" * 64
+        assert validate_profile_name(profile) == profile
+
+    def test_rejects_65_characters(self) -> None:
+        """Profile with 65 characters should be rejected."""
+        profile = "a" * 65
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 64: 65 characters"):
+            validate_profile_name(profile)
+
+    def test_custom_max_length(self) -> None:
+        """Custom max length should be respected."""
+        profile = "a" * 10
+        assert validate_profile_name(profile, max_length=10) == profile
+
+        profile = "a" * 11
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 10: 11 characters"):
+            validate_profile_name(profile, max_length=10)
+
+    def test_zero_max_length_uses_absolute_max(self) -> None:
+        """max_length=0 should use the absolute max (256 chars)."""
+        # Up to 256 chars should pass
+        assert validate_profile_name("a" * 256, max_length=0) == "a" * 256
+        # Above 256 chars should fail
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256"):
+            validate_profile_name("a" * 257, max_length=0)
+
+    def test_negative_max_length_uses_absolute_max(self) -> None:
+        """Negative max_length should use the absolute max (256 chars)."""
+        # Up to 256 chars should pass
+        assert validate_profile_name("a" * 256, max_length=-1) == "a" * 256
+        # Above 256 chars should fail
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256"):
+            validate_profile_name("a" * 257, max_length=-1)
+
+
+class TestIsValidProfileName:
+    """Tests for is_valid_profile_name function.
+
+    This function returns bool instead of raising exceptions.
+    """
+
+    # ========== VALID PROFILES ==========
+
+    def test_none_is_valid(self) -> None:
+        """None should be considered valid (no profile)."""
+        assert is_valid_profile_name(None) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "production",
+            "test",
+            "dev",
+            "staging",
+            "prod-v1",
+            "test_env",
+            "v1.2.3",
+        ],
+    )
+    def test_valid_profiles_return_true(self, value: str) -> None:
+        """Valid profile names should return True."""
+        assert is_valid_profile_name(value) is True
+
+    # ========== INVALID PROFILES ==========
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "",  # Empty
+            "../etc",  # Path traversal
+            "test\x00inject",  # Control character
+            "tëst",  # Non-ASCII
+            "CON",  # Windows reserved
+            ".hidden",  # Starts with dot
+            "-profile",  # Starts with hyphen
+            "profile.",  # Ends with dot
+            "my profile",  # Contains space
+        ],
+    )
+    def test_invalid_profiles_return_false(self, value: str) -> None:
+        """Invalid profile names should return False."""
+        assert is_valid_profile_name(value) is False
+
+    # ========== LENGTH LIMITS ==========
+
+    def test_length_at_limit_returns_true(self) -> None:
+        """Profile at default length limit should return True."""
+        profile = "a" * DEFAULT_MAX_PROFILE_LENGTH
+        assert is_valid_profile_name(profile) is True
+
+    def test_length_exceeds_limit_returns_false(self) -> None:
+        """Profile exceeding default length limit should return False."""
+        profile = "a" * (DEFAULT_MAX_PROFILE_LENGTH + 1)
+        assert is_valid_profile_name(profile) is False
+
+    def test_custom_max_length(self) -> None:
+        """Custom max length should be respected."""
+        profile = "a" * 100
+        assert is_valid_profile_name(profile, max_length=100) is True
+        assert is_valid_profile_name(profile, max_length=50) is False
+
+    def test_zero_max_length_uses_absolute_max(self) -> None:
+        """max_length=0 should use the absolute max (256 chars)."""
+        # Up to 256 chars should be valid
+        assert is_valid_profile_name("a" * 256, max_length=0) is True
+        # Above 256 chars should be invalid
+        assert is_valid_profile_name("a" * 257, max_length=0) is False
+
+    def test_negative_max_length_uses_absolute_max(self) -> None:
+        """Negative max_length should use the absolute max (256 chars)."""
+        # Up to 256 chars should be valid
+        assert is_valid_profile_name("a" * 256, max_length=-1) is True
+        # Above 256 chars should be invalid
+        assert is_valid_profile_name("a" * 257, max_length=-1) is False
+
+
+class TestDefaultMaxProfileLength:
+    """Tests for DEFAULT_MAX_PROFILE_LENGTH constant."""
+
+    def test_value_is_64(self) -> None:
+        """Default max profile length should be 64."""
+        assert DEFAULT_MAX_PROFILE_LENGTH == 64
+
+    def test_is_immutable_int(self) -> None:
+        """Constant should be an integer."""
+        assert isinstance(DEFAULT_MAX_PROFILE_LENGTH, int)
+
+
+class TestAbsoluteMaxProfileLength:
+    """Tests for ABSOLUTE_MAX_PROFILE_LENGTH constant and clamping behavior.
+
+    The absolute maximum is a security hardening measure that prevents
+    filesystem issues from excessively long path segments. Even if users
+    set max_length higher than 256, the absolute limit is enforced.
+    """
+
+    def test_value_is_256(self) -> None:
+        """Absolute max profile length should be 256."""
+        assert ABSOLUTE_MAX_PROFILE_LENGTH == 256
+
+    def test_is_immutable_int(self) -> None:
+        """Constant should be an integer."""
+        assert isinstance(ABSOLUTE_MAX_PROFILE_LENGTH, int)
+
+    def test_accepts_profile_at_absolute_max_length(self) -> None:
+        """Profile exactly at absolute max length (256) should be accepted."""
+        profile = "a" * 256
+        assert validate_profile_name(profile, max_length=1000) == profile
+
+    def test_rejects_profile_exceeding_absolute_max_length(self) -> None:
+        """Profile exceeding absolute max (257 chars) should be rejected even with max_length=1000."""
+        profile = "a" * 257
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256: 257 characters"):
+            validate_profile_name(profile, max_length=1000)
+
+    def test_max_length_clamped_to_absolute_max(self) -> None:
+        """Setting max_length=1000 should effectively use 256."""
+        # 256 chars should pass
+        assert validate_profile_name("a" * 256, max_length=1000) == "a" * 256
+        # 257 chars should fail with message showing 256 as the limit
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256"):
+            validate_profile_name("a" * 257, max_length=1000)
+
+    def test_zero_max_length_still_enforces_absolute_max(self) -> None:
+        """max_length=0 should still enforce the 256 char absolute maximum."""
+        # Previously max_length=0 disabled length checking entirely
+        # Now it should still enforce the absolute maximum
+        profile = "a" * 256
+        assert validate_profile_name(profile, max_length=0) == profile
+
+        profile = "a" * 257
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256: 257 characters"):
+            validate_profile_name(profile, max_length=0)
+
+    def test_negative_max_length_still_enforces_absolute_max(self) -> None:
+        """Negative max_length should still enforce the 256 char absolute maximum."""
+        profile = "a" * 256
+        assert validate_profile_name(profile, max_length=-1) == profile
+
+        profile = "a" * 257
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256: 257 characters"):
+            validate_profile_name(profile, max_length=-1)
+
+    def test_is_valid_profile_name_respects_absolute_max(self) -> None:
+        """is_valid_profile_name should also respect the absolute maximum."""
+        # At absolute max
+        assert is_valid_profile_name("a" * 256, max_length=1000) is True
+        # Above absolute max
+        assert is_valid_profile_name("a" * 257, max_length=1000) is False
+        # With max_length=0 (previously disabled checking)
+        assert is_valid_profile_name("a" * 256, max_length=0) is True
+        assert is_valid_profile_name("a" * 257, max_length=0) is False
+
+    def test_validate_profile_respects_absolute_max(self) -> None:
+        """validate_profile should also respect the absolute maximum."""
+        # At absolute max
+        assert validate_profile("a" * 256, max_length=1000) == "a" * 256
+        # Above absolute max
+        with pytest.raises(ValueError, match="profile exceeds maximum length of 256"):
+            validate_profile("a" * 257, max_length=1000)

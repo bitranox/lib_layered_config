@@ -35,7 +35,18 @@ from .core import (
     read_config_json,
     read_config_raw,
 )
-from .domain.identifiers import Layer
+from .domain.identifiers import (
+    DEFAULT_MAX_PROFILE_LENGTH,
+    Layer,
+    is_valid_profile_name,
+    validate_profile_name,
+)
+from .domain.permissions import (
+    DEFAULT_APP_DIR_MODE,
+    DEFAULT_APP_FILE_MODE,
+    DEFAULT_USER_DIR_MODE,
+    DEFAULT_USER_FILE_MODE,
+)
 from .domain.redaction import REDACTED_PLACEHOLDER, is_sensitive, redact_mapping
 from .examples import deploy_config, generate_examples
 from .observability import bind_trace_id, get_logger
@@ -44,23 +55,30 @@ from .testing import i_should_fail
 __all__ = [
     "Config",
     "ConfigError",
+    "DEFAULT_APP_DIR_MODE",
+    "DEFAULT_APP_FILE_MODE",
+    "DEFAULT_MAX_PROFILE_LENGTH",
+    "DEFAULT_USER_DIR_MODE",
+    "DEFAULT_USER_FILE_MODE",
     "InvalidFormatError",
-    "ValidationError",
-    "NotFoundError",
-    "LayerLoadError",
     "Layer",
+    "LayerLoadError",
+    "NotFoundError",
     "OutputFormat",
     "REDACTED_PLACEHOLDER",
-    "is_sensitive",
-    "redact_mapping",
-    "read_config",
-    "read_config_json",
-    "read_config_raw",
+    "ValidationError",
+    "bind_trace_id",
+    "default_env_prefix",
     "deploy_config",
     "display_config",
     "generate_examples",
-    "default_env_prefix",
-    "i_should_fail",
-    "bind_trace_id",
     "get_logger",
+    "i_should_fail",
+    "is_sensitive",
+    "is_valid_profile_name",
+    "read_config",
+    "read_config_json",
+    "read_config_raw",
+    "redact_mapping",
+    "validate_profile_name",
 ]

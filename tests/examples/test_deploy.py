@@ -13,7 +13,7 @@ from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolv
 from lib_layered_config.examples import deploy as deploy_module
 from lib_layered_config.examples.deploy import DeployAction, DeployResult, deploy_config
 from tests.support import LayeredSandbox, create_layered_sandbox
-from tests.support.os_markers import os_agnostic, windows_only
+from tests.support.os_markers import os_agnostic, posix_only, windows_only
 
 VENDOR = "Acme"
 APP = "Demo"
@@ -284,8 +284,12 @@ def test_destinations_skip_none(monkeypatch: pytest.MonkeyPatch) -> None:
     class DummyResolver(DefaultPathResolver):
         pass
 
+    class NullStrategy:
+        def destination_for(self, target: str) -> Path | None:
+            return None
+
     resolver = DummyResolver(vendor=VENDOR, app=APP, slug=SLUG)
-    monkeypatch.setattr(deploy_module, "_resolve_destination", lambda *_: None)
+    monkeypatch.setattr(deploy_module, "_strategy_for", lambda *_: NullStrategy())
 
     assert list(deploy_module._destinations_for(resolver, ["app"])) == []
 
@@ -378,7 +382,14 @@ def test_copy_payload_creates_parent_directories(tmp_path: Path) -> None:
     payload = b"echo"
     destination = tmp_path / "nested" / "config.toml"
 
-    deploy_module._copy_payload(destination, payload)
+    deploy_module._copy_payload(
+        destination,
+        payload,
+        layer="app",
+        set_permissions_flag=False,
+        dir_mode=None,
+        file_mode=None,
+    )
 
     assert destination.read_bytes() == payload
 
@@ -848,3 +859,185 @@ def test_deploy_multiple_overwrites_create_multiple_backups(
     assert results1[0].backup_path.read_text(encoding="utf-8") == "v1"
     assert results2[0].backup_path.read_text(encoding="utf-8") == "[v2]"
     assert target.read_text(encoding="utf-8") == "[v3]"
+
+
+# ---------------------------------------------------------------------------
+# Permission deployment tests
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+def test_deploy_with_permissions_disabled_skips_chmod(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Deploying with set_permissions=False should not change file modes."""
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        set_permissions=False,
+    )
+
+    assert len(results) == 1
+    assert results[0].action == DeployAction.CREATED
+
+
+@posix_only
+def test_deploy_app_layer_sets_644_file_permissions(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Deploying to app layer should set 644 file permissions."""
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        set_permissions=True,
+    )
+
+    assert len(results) == 1
+    assert results[0].action == DeployAction.CREATED
+    destination = results[0].destination
+    assert (destination.stat().st_mode & 0o777) == 0o644
+
+
+@posix_only
+def test_deploy_user_layer_sets_600_file_permissions(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Deploying to user layer should set 600 file permissions."""
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["user"],
+        slug=SLUG,
+        set_permissions=True,
+    )
+
+    assert len(results) == 1
+    assert results[0].action == DeployAction.CREATED
+    destination = results[0].destination
+    assert (destination.stat().st_mode & 0o777) == 0o600
+
+
+@posix_only
+def test_deploy_host_layer_sets_644_file_permissions(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deploying to host layer should set 644 file permissions."""
+    monkeypatch.setattr("socket.gethostname", lambda: "test-host")
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["host"],
+        slug=SLUG,
+        set_permissions=True,
+    )
+
+    assert len(results) == 1
+    assert results[0].action == DeployAction.CREATED
+    destination = results[0].destination
+    assert (destination.stat().st_mode & 0o777) == 0o644
+
+
+@posix_only
+def test_deploy_with_custom_file_mode(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Custom file_mode should override layer defaults."""
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        set_permissions=True,
+        file_mode=0o640,
+    )
+
+    assert len(results) == 1
+    destination = results[0].destination
+    assert (destination.stat().st_mode & 0o777) == 0o640
+
+
+@posix_only
+def test_deploy_with_custom_dir_mode(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Custom dir_mode should set directory permissions."""
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        set_permissions=True,
+        dir_mode=0o750,
+    )
+
+    assert len(results) == 1
+    destination = results[0].destination
+    # Check that parent directory has custom mode
+    assert (destination.parent.stat().st_mode & 0o777) == 0o750
+
+
+@posix_only
+def test_deploy_permissions_on_overwrite(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """Permissions should be set when overwriting existing file."""
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("old content", encoding="utf-8")
+    # Set different permissions first
+    target.chmod(0o777)
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        force=True,
+        set_permissions=True,
+    )
+
+    assert len(results) == 1
+    assert results[0].action == DeployAction.OVERWRITTEN
+    # File should have correct permissions after overwrite
+    assert (target.stat().st_mode & 0o777) == 0o644
+
+
+@posix_only
+def test_deploy_user_directory_permissions_are_700(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+) -> None:
+    """User layer directories should have 700 permissions."""
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["user"],
+        slug=SLUG,
+        set_permissions=True,
+    )
+
+    assert len(results) == 1
+    destination = results[0].destination
+    # Check parent directory has user-private permissions
+    assert (destination.parent.stat().st_mode & 0o777) == 0o700

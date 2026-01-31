@@ -4,6 +4,125 @@ All notable changes to lib_layered_config
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.4.0] - 2026-01-31
+
+### Added
+
+- **Unix file permissions for deployed configuration files** — The `deploy_config()` function now automatically sets appropriate Unix file permissions based on the target layer. This ensures configuration files have the right access controls without manual `chmod` commands.
+
+  **Default permissions by layer:**
+  | Layer | Directory Mode | File Mode | Rationale |
+  |-------|---------------|-----------|-----------|
+  | `app` | `0o755` (rwxr-xr-x) | `0o644` (rw-r--r--) | System-wide config readable by all |
+  | `host` | `0o755` (rwxr-xr-x) | `0o644` (rw-r--r--) | Machine-specific config readable by all |
+  | `user` | `0o700` (rwx------) | `0o600` (rw-------) | Private user config |
+
+  **New parameters for `deploy_config()`:**
+  - `set_permissions: bool = True` — Enable/disable permission setting (default: enabled)
+  - `dir_mode: int | None = None` — Override directory mode for all targets
+  - `file_mode: int | None = None` — Override file mode for all targets
+
+  **CLI flag:**
+  - `--permissions / --no-permissions` — Enable/disable permission setting (default: `--permissions`)
+
+  **Platform behavior:**
+  - Linux/macOS: Full permission support via `chmod()`
+  - Windows: Permissions skipped (Windows uses ACLs, not Unix modes)
+
+  **Example usage:**
+  ```python
+  from lib_layered_config import deploy_config
+
+  # Default: layer-aware permissions
+  deploy_config(source="config.toml", vendor="Acme", app="MyApp",
+                targets=["user"], slug="myapp")
+  # User layer files get 700/600 permissions
+
+  # Custom permissions
+  deploy_config(source="config.toml", vendor="Acme", app="MyApp",
+                targets=["app"], slug="myapp",
+                dir_mode=0o750, file_mode=0o640)
+
+  # Disable permissions
+  deploy_config(source="config.toml", vendor="Acme", app="MyApp",
+                targets=["user"], slug="myapp",
+                set_permissions=False)
+  ```
+
+- **Permission constants exported in public API** — Four permission mode constants are now available from the main package:
+  - `DEFAULT_APP_DIR_MODE` — `0o755`
+  - `DEFAULT_APP_FILE_MODE` — `0o644`
+  - `DEFAULT_USER_DIR_MODE` — `0o700`
+  - `DEFAULT_USER_FILE_MODE` — `0o600`
+
+- **`domain/permissions.py` module** — New domain module containing:
+  - `set_permissions()` — Apply layer-aware default permissions
+  - `set_custom_permissions()` — Apply custom permission modes
+  - `LAYER_PERMISSIONS` — Mapping of layer names to permission modes
+
+- **Profile name length validation** — Profile names are now validated for length with configurable limits for security and filesystem safety.
+
+  **Length limits:**
+  - Default max length: 64 characters (`DEFAULT_MAX_PROFILE_LENGTH`)
+  - Absolute max length: 256 characters (internal security hardening)
+  - Even if `max_length` is set higher than 256, the 256 limit is enforced
+  - Setting `max_length=0` or negative uses the absolute maximum (256 chars)
+
+  **New public API exports:**
+  - `DEFAULT_MAX_PROFILE_LENGTH` — Constant (64 characters)
+  - `validate_profile_name(value, *, max_length=64)` — Raises `ValueError` on invalid
+  - `is_valid_profile_name(value, *, max_length=64)` — Returns `bool`, no exception
+
+  **New parameter for `deploy_config()`:**
+  - `max_profile_length: int = 64` — Maximum allowed profile name length
+
+  **Security checks include:**
+  - Path traversal prevention (`../`, `..\\`, absolute paths)
+  - Control character rejection (null bytes, newlines, tabs)
+  - Windows reserved name blocking (CON, PRN, NUL, COM1-9, LPT1-9)
+  - Non-ASCII character rejection (encoding attack prevention)
+  - Must start with alphanumeric, no trailing dots/spaces
+
+  **Example usage:**
+  ```python
+  from lib_layered_config import (
+      validate_profile_name,
+      is_valid_profile_name,
+      DEFAULT_MAX_PROFILE_LENGTH,
+  )
+
+  # Validate with exception
+  validate_profile_name("production")  # OK
+  validate_profile_name("a" * 100)     # Raises ValueError
+
+  # Check without exception
+  if is_valid_profile_name(user_input):
+      deploy_config(..., profile=user_input)
+
+  # Custom max length
+  validate_profile_name("long-profile-name", max_length=128)
+  ```
+
+### Changed
+
+- **README restructured by theme** — The README now has a cleaner organization with sections grouped by theme:
+  - Getting Started (Key Features, Installation, Quick Start)
+  - Core Concepts (Identifiers, Profiles, File Structure, Precedence)
+  - Command Line Interface (all CLI commands)
+  - Python API (all API functions and classes)
+  - Deployment & Security (permissions, security best practices, .d directories)
+  - Reference (observability, architecture, development)
+
+### Documentation
+
+- **Comprehensive security best practices** — New README sections covering:
+  - File permissions by layer with rationale
+  - Recommended permissions for `.env` files (`0o600`)
+  - macOS and Windows platform-specific considerations
+  - Recommendations for sensitive data (env vars, secrets managers, redaction)
+
+- **Updated CLAUDE.md** — Added File Permissions section with API parameters, CLI flags, platform behavior, and implementation file references
+
 ## [5.3.9] - 2026-01-29
 
 ### Changed

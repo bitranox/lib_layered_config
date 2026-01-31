@@ -116,6 +116,12 @@ def _format_results(results: list[DeployResult]) -> str:
     default=False,
     help="Non-interactive mode: keep existing and write new as .ucf (for CI/scripts)",
 )
+@click.option(
+    "--permissions/--no-permissions",
+    default=True,
+    show_default=True,
+    help="Set Unix permissions (755/644 for app/host, 700/600 for user)",
+)
 def deploy_command(
     source: Path,
     vendor: str,
@@ -126,6 +132,7 @@ def deploy_command(
     platform: str | None,
     force: bool,
     batch: bool,
+    permissions: bool,
 ) -> None:
     """Copy a source file into the requested layered directories.
 
@@ -150,6 +157,7 @@ def deploy_command(
         force=force,
         batch=batch,
         conflict_resolver=conflict_resolver,
+        set_permissions=permissions,
     )
     click.echo(_format_results(results))
 

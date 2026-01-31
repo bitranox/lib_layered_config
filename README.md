@@ -17,20 +17,49 @@ A cross-platform configuration loader that deep-merges application defaults, hos
 
 ## Table of Contents
 
-1. [Key Features](#key-features)
-2. [Architecture Overview](#architecture-overview)
-3. [Installation](#installation)
-4. [Quick Start](#quick-start)
-5. [Understanding Key Identifiers: Vendor, App, and Slug](#understanding-key-identifiers-vendor-app-and-slug)
-   - [Configuration Profiles](#configuration-profiles)
-6. [Configuration File Structure](#configuration-file-structure)
-7. [Configuration Sources & Precedence](#configuration-sources--precedence)
-8. [CLI Usage](#cli-usage)
-9. [Python API](#python-api)
-10. [Example Generation & Deployment](#example-generation--deployment)
-11. [Provenance & Observability](#provenance--observability)
-12. [Development](#development)
-13. [License](#license)
+### Getting Started
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+
+### Core Concepts
+- [Understanding Key Identifiers](#understanding-key-identifiers-vendor-app-slug-and-profile) — Vendor, App, Slug, Profile
+- [Configuration Profiles](#configuration-profiles)
+- [Configuration File Structure](#configuration-file-structure)
+- [Configuration Sources & Precedence](#configuration-sources--precedence)
+
+### Command Line Interface
+- [CLI Command Summary](#command-summary)
+- [`read` / `read-json`](#read) — Load and inspect configuration
+- [`deploy`](#deploy) — Deploy configuration files
+- [`generate-examples`](#generate-examples) — Scaffold example trees
+- [`env-prefix`](#env-prefix) — Compute environment prefix
+- [`info` / `fail`](#info) — Diagnostics
+
+### Python API
+- [Layer Enum](#layer-enum)
+- [Config Class](#config-class)
+- [`read_config`](#read_config) / [`read_config_json`](#read_config_json) / [`read_config_raw`](#read_config_raw)
+- [`deploy_config`](#deploy_config)
+- [`generate_examples` (Python)](#generate_examples)
+- [`default_env_prefix`](#default_env_prefix)
+- [Profile Validation](#profile-validation)
+- [Permission Constants](#permission-constants)
+
+### Deployment & Security
+- [File Permissions](#-file-permissions)
+- [Security Best Practices](#-security-best-practices)
+- [Recommendations for Sensitive Data](#-recommendations-for-sensitive-data)
+- [Example Generation & Deployment](#example-generation--deployment)
+- [Deploying with `.d` Directories](#deploying-with-d-directories)
+- [User Files Preservation](#user-files-are-preserved-during-deployment)
+
+### Reference
+- [Provenance & Observability](#provenance--observability)
+- [Architecture Overview](#architecture-overview)
+- [Further Documentation](#further-documentation)
+- [Development](#development)
+- [License](#license)
 
 ## Key Features
 
@@ -45,18 +74,6 @@ A cross-platform configuration loader that deep-merges application defaults, hos
 - **Extensible formats** — TOML and JSON are built-in; YAML is available via the optional `yaml` extra.
 - **Automation-friendly CLI** — inspect, deploy, or scaffold configurations without writing Python.
 - **Structured logging** — adapters emit trace-aware events without polluting the domain layer.
-
-## Architecture Overview
-
-The project follows a Clean Architecture layout so responsibilities remain easy to reason about and test:
-
-- **Domain** — immutable `Config` value object plus error taxonomy.
-- **Application** — merge policy (`LayerSnapshot`, `merge_layers`) and adapter protocols.
-- **Adapters** — filesystem discovery, structured file loaders, dotenv, and environment ingress.
-- **Composition** — `core` and `_layers` wire adapters together and expose the public API.
-- **Presentation & Tooling** — CLI commands, deployment/example helpers, observability utilities, and testing hooks.
-
-Consult [`docs/systemdesign/module_reference.md`](docs/systemdesign/module_reference.md) for a per-module catalogue and traceability back to the system design notes.
 
 ## Installation
 
@@ -314,6 +331,7 @@ lib_layered_config deploy --source config.toml --vendor Acme --app MyApp --slug 
 - Use non-ASCII characters: `"tëst"` → will raise `ValueError`
 - Use Windows reserved names: `"CON"`, `"NUL"` → will raise `ValueError`
 - Use path separators: `"../etc"` → will raise `ValueError`
+- Exceed 256 characters (absolute limit for filesystem safety)
 
 ---
 
@@ -393,12 +411,12 @@ This library uses four identifiers so your application can follow **native conve
 
 ### Quick Reference Table
 
-| Identifier | Format | Example | Used In |
-|------------|--------|---------|---------|
-| **vendor** | ASCII, spaces allowed | `"Acme"`, `"Acme Corp"` | macOS, Windows paths |
-| **app** | ASCII, spaces allowed | `"My App"`, `"Btx Fix Mcp"` | macOS, Windows paths |
-| **slug** | lowercase-with-hyphens (recommended) | `"db-manager"` | Linux paths, env var prefix (becomes `DB_MANAGER___`) |
-| **profile** | lowercase-with-hyphens (recommended) | `"production"` | Optional subdirectory for environment-specific configs |
+| Identifier  | Format                               | Example                     | Used In                                                |
+|-------------|--------------------------------------|-----------------------------|--------------------------------------------------------|
+| **vendor**  | ASCII, spaces allowed                | `"Acme"`, `"Acme Corp"`     | macOS, Windows paths                                   |
+| **app**     | ASCII, spaces allowed                | `"My App"`, `"Btx Fix Mcp"` | macOS, Windows paths                                   |
+| **slug**    | lowercase-with-hyphens (recommended) | `"db-manager"`              | Linux paths, env var prefix (becomes `DB_MANAGER___`)  |
+| **profile** | lowercase-with-hyphens (recommended) | `"production"`              | Optional subdirectory for environment-specific configs |
 
 **All identifiers are validated** to ensure cross-platform filesystem safety. See [Identifier Validation Rules](#identifier-validation-rules) below.
 
@@ -466,20 +484,22 @@ lib_layered_config deploy --source config.toml --vendor Acme --app ConfigKit --s
 
 Each path can have an optional companion `.d` directory (e.g., `config.d/`) for split configuration.
 
-| Platform | Without Profile | With `profile="test"` |
-|----------|-----------------|----------------------|
-| **Linux (app)** | `/etc/xdg/<slug>/config.toml` | `/etc/xdg/<slug>/profile/test/config.toml` |
-| **Linux (host)** | `/etc/xdg/<slug>/hosts/<hostname>.toml` | `/etc/xdg/<slug>/profile/test/hosts/<hostname>.toml` |
-| **Linux (user)** | `~/.config/<slug>/config.toml` | `~/.config/<slug>/profile/test/config.toml` |
-| **macOS (app)** | `/Library/.../<vendor>/<app>/config.toml` | `/Library/.../<vendor>/<app>/profile/test/config.toml` |
-| **Windows (app)** | `C:\ProgramData\<vendor>\<app>\config.toml` | `C:\ProgramData\...\profile\test\config.toml` |
+| Platform          | Without Profile                             | With `profile="test"`                                  |
+|-------------------|---------------------------------------------|--------------------------------------------------------|
+| **Linux (app)**   | `/etc/xdg/<slug>/config.toml`               | `/etc/xdg/<slug>/profile/test/config.toml`             |
+| **Linux (host)**  | `/etc/xdg/<slug>/hosts/<hostname>.toml`     | `/etc/xdg/<slug>/profile/test/hosts/<hostname>.toml`   |
+| **Linux (user)**  | `~/.config/<slug>/config.toml`              | `~/.config/<slug>/profile/test/config.toml`            |
+| **macOS (app)**   | `/Library/.../<vendor>/<app>/config.toml`   | `/Library/.../<vendor>/<app>/profile/test/config.toml` |
+| **Windows (app)** | `C:\ProgramData\<vendor>\<app>\config.toml` | `C:\ProgramData\...\profile\test\config.toml`          |
 
 #### Profile Naming Rules
 
-Profile names follow the same validation as other identifiers (see below).
+Profile names follow the same validation as other identifiers (see below), with an additional length constraint:
+- **Default max length:** 64 characters (configurable via `max_profile_length`)
+- **Absolute max length:** 256 characters (security hardening, cannot be overridden)
 
 **Valid:** `test`, `production`, `staging-v2`, `dev_local`
-**Invalid:** `../etc`, `.hidden`, `my profile`, `CON`
+**Invalid:** `../etc`, `.hidden`, `my profile`, `CON`, names exceeding 256 characters
 
 ---
 
@@ -489,24 +509,24 @@ All identifiers are validated to ensure they are safe for use as filesystem dire
 
 #### Validation by Identifier Type
 
-| Identifier | Spaces Allowed | Used For |
-|------------|----------------|----------|
-| **vendor** | ✅ Yes | macOS/Windows paths (`/Library/Application Support/Acme Corp/`) |
-| **app** | ✅ Yes | macOS/Windows paths (`/Library/Application Support/.../My App/`) |
-| **slug** | ❌ No | Linux paths, environment variable prefix |
-| **profile** | ❌ No | Profile subdirectory name |
-| **hostname** | ❌ No | Host-specific config files |
+| Identifier   | Spaces Allowed | Used For                                                         |
+|--------------|----------------|------------------------------------------------------------------|
+| **vendor**   | ✅ Yes          | macOS/Windows paths (`/Library/Application Support/Acme Corp/`)  |
+| **app**      | ✅ Yes          | macOS/Windows paths (`/Library/Application Support/.../My App/`) |
+| **slug**     | ❌ No           | Linux paths, environment variable prefix                         |
+| **profile**  | ❌ No           | Profile subdirectory name                                        |
+| **hostname** | ❌ No           | Host-specific config files                                       |
 
 #### Common Validation Rules (All Identifiers)
 
-| Rule | Description | Example Invalid Value |
-|------|-------------|----------------------|
-| **ASCII-only** | No Unicode/UTF-8 special characters | `café`, `日本語`, `app🚀` |
-| **Must start with alphanumeric** | Cannot start with dot, hyphen, underscore, or space | `.hidden`, `-app`, `_private` |
-| **No path separators** | Prevents path traversal attacks | `../etc`, `foo/bar`, `C:\Windows` |
-| **No Windows-invalid chars** | `<`, `>`, `:`, `"`, `\|`, `?`, `*` are forbidden | `app<test>`, `file:name` |
-| **No Windows reserved names** | CON, PRN, AUX, NUL, COM1-9, LPT1-9 | `CON`, `prn`, `NUL.txt` |
-| **Cannot end with dot/space** | Windows restriction | `app.`, `name ` |
+| Rule                             | Description                                         | Example Invalid Value             |
+|----------------------------------|-----------------------------------------------------|-----------------------------------|
+| **ASCII-only**                   | No Unicode/UTF-8 special characters                 | `café`, `日本語`, `app🚀`            |
+| **Must start with alphanumeric** | Cannot start with dot, hyphen, underscore, or space | `.hidden`, `-app`, `_private`     |
+| **No path separators**           | Prevents path traversal attacks                     | `../etc`, `foo/bar`, `C:\Windows` |
+| **No Windows-invalid chars**     | `<`, `>`, `:`, `"`, `\|`, `?`, `*` are forbidden    | `app<test>`, `file:name`          |
+| **No Windows reserved names**    | CON, PRN, AUX, NUL, COM1-9, LPT1-9                  | `CON`, `prn`, `NUL.txt`           |
+| **Cannot end with dot/space**    | Windows restriction                                 | `app.`, `name `                   |
 
 #### Examples
 
@@ -1007,14 +1027,14 @@ All three formats produce the same configuration structure and can be accessed i
 
 Later layers override earlier ones **per key** while leaving unrelated keys untouched.
 
-| Precedence | Layer       | Description |
-| ---------- | ----------- | ----------- |
-| 0          | `defaults`  | Optional baseline file provided via the API/CLI `--default-file` flag |
-| 1          | `app`       | System-wide defaults (e.g. `/etc/<slug>/…`) |
-| 2          | `host`      | Machine-specific overrides (`hosts/<hostname>.toml`) |
-| 3          | `user`      | Per-user settings (XDG, Application Support, AppData) |
-| 4          | `dotenv`    | First `.env` found via upward search plus platform extras |
-| 5          | `env`       | Process environment with namespacing and `__` nesting |
+| Precedence | Layer      | Description                                                           |
+|------------|------------|-----------------------------------------------------------------------|
+| 0          | `defaults` | Optional baseline file provided via the API/CLI `--default-file` flag |
+| 1          | `app`      | System-wide defaults (e.g. `/etc/<slug>/…`)                           |
+| 2          | `host`     | Machine-specific overrides (`hosts/<hostname>.toml`)                  |
+| 3          | `user`     | Per-user settings (XDG, Application Support, AppData)                 |
+| 4          | `dotenv`   | First `.env` found via upward search plus platform extras             |
+| 5          | `env`      | Process environment with namespacing and `__` nesting                 |
 
 Use the optional defaults layer when you want one explicitly-provided file to seed configuration before host/user overrides apply.
 
@@ -1074,11 +1094,11 @@ This means **all formats share the same `.d` directory** - `config.toml`, `confi
 
 **Supported at all layers:** The `.d` directory pattern works for **app**, **host**, and **user** layers:
 
-| Layer | Base File | Companion `.d` Directory |
-|-------|-----------|--------------------------|
-| **app** | `/etc/xdg/myapp/config.toml` | `/etc/xdg/myapp/config.d/` |
+| Layer    | Base File                             | Companion `.d` Directory            |
+|----------|---------------------------------------|-------------------------------------|
+| **app**  | `/etc/xdg/myapp/config.toml`          | `/etc/xdg/myapp/config.d/`          |
 | **host** | `/etc/xdg/myapp/hosts/server-01.toml` | `/etc/xdg/myapp/hosts/server-01.d/` |
-| **user** | `~/.config/myapp/config.toml` | `~/.config/myapp/config.d/` |
+| **user** | `~/.config/myapp/config.toml`         | `~/.config/myapp/config.d/`         |
 
 **Host-specific `.d` directories:** Each hostname file can have its own `.d` directory for per-host split configuration:
 ```
@@ -1195,17 +1215,17 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 
 **Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `--vendor` | string | Yes | - | Vendor namespace used to compute filesystem paths |
-| `--app` | string | Yes | - | Application name used to compute filesystem paths |
-| `--slug` | string | Yes | - | Configuration slug for file paths and environment prefix |
-| `--prefer` | string | No | None | Preferred file suffix (repeatable flag: `--prefer toml --prefer json`). Earlier values take precedence. Valid values: `toml`, `json`, `yaml`, `yml` |
-| `--start-dir` | path | No | current dir | Starting directory for upward `.env` file search. Must be an existing directory |
-| `--default-file` | path | No | None | Path to lowest-precedence defaults file. Must be an existing file |
-| `--format` | choice | No | `human` | Output format. Valid values: `human` (annotated prose), `json` (structured JSON) |
-| `--indent` / `--no-indent` | flag | No | `--indent` | Pretty-print JSON output with indentation. Only applies when `--format json` |
-| `--provenance` / `--no-provenance` | flag | No | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json` |
+| Parameter                          | Type   | Required | Default        | Description                                                                                                                                         |
+|------------------------------------|--------|----------|----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                   |
+| `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                   |
+| `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                            |
+| `--prefer`                         | string | No       | None           | Preferred file suffix (repeatable flag: `--prefer toml --prefer json`). Earlier values take precedence. Valid values: `toml`, `json`, `yaml`, `yml` |
+| `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                     |
+| `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file                                                                                   |
+| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (annotated prose), `json` (structured JSON)                                                                    |
+| `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                        |
+| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                       |
 
 **Examples:**
 
@@ -1344,15 +1364,15 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
 
 **Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `--vendor` | string | Yes | - | Vendor namespace |
-| `--app` | string | Yes | - | Application name |
-| `--slug` | string | Yes | - | Configuration slug |
-| `--prefer` | string | No | None | Preferred file suffix (repeatable) |
-| `--start-dir` | path | No | current dir | Starting directory for `.env` search |
-| `--default-file` | path | No | None | Path to defaults file |
-| `--indent` / `--no-indent` | flag | No | `--indent` | Pretty-print JSON output |
+| Parameter                  | Type   | Required | Default     | Description                          |
+|----------------------------|--------|----------|-------------|--------------------------------------|
+| `--vendor`                 | string | Yes      | -           | Vendor namespace                     |
+| `--app`                    | string | Yes      | -           | Application name                     |
+| `--slug`                   | string | Yes      | -           | Configuration slug                   |
+| `--prefer`                 | string | No       | None        | Preferred file suffix (repeatable)   |
+| `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search |
+| `--default-file`           | path   | No       | None        | Path to defaults file                |
+| `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output             |
 
 **Example:**
 ```bash
@@ -1372,22 +1392,24 @@ lib_layered_config deploy --source ./config/app.toml \
   --target app [--target host] [--target user] \
   [--profile production] \
   [--platform linux|darwin|windows] \
-  [--force] [--batch]
+  [--force] [--batch] \
+  [--permissions | --no-permissions]
 ```
 
 **Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `--source` | path | Yes | - | Path to the configuration file to copy. Must be an existing file |
-| `--vendor` | string | Yes | - | Vendor namespace |
-| `--app` | string | Yes | - | Application name |
-| `--slug` | string | Yes | - | Configuration slug |
-| `--profile` | string | No | - | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths |
-| `--target` | choice | Yes | - | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user` |
-| `--platform` | string | No | auto-detect | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win` |
-| `--force` | flag | No | `false` | When file exists with different content: backup existing file to `.bak` and overwrite |
-| `--batch` | flag | No | `false` | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Ignored if `--force` is set |
+| Parameter                            | Type   | Required | Default         | Description                                                                                                                                                  |
+|--------------------------------------|--------|----------|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--source`                           | path   | Yes      | -               | Path to the configuration file to copy. Must be an existing file                                                                                             |
+| `--vendor`                           | string | Yes      | -               | Vendor namespace                                                                                                                                             |
+| `--app`                              | string | Yes      | -               | Application name                                                                                                                                             |
+| `--slug`                             | string | Yes      | -               | Configuration slug                                                                                                                                           |
+| `--profile`                          | string | No       | -               | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths                                                  |
+| `--target`                           | choice | Yes      | -               | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user`                        |
+| `--platform`                         | string | No       | auto-detect     | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win`                                                             |
+| `--force`                            | flag   | No       | `false`         | When file exists with different content: backup existing file to `.bak` and overwrite                                                                        |
+| `--batch`                            | flag   | No       | `false`         | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Ignored if `--force` is set                         |
+| `--permissions` / `--no-permissions` | flag   | No       | `--permissions` | Set Unix file permissions on deployed files. Uses layer-specific defaults: app/host = 755/644 (world-readable), user = 700/600 (private). Skipped on Windows |
 
 **Returns:** JSON object with keys for each action taken:
 - `created`: Array of paths for newly created files
@@ -1679,6 +1701,205 @@ lib_layered_config deploy \
 
 ---
 
+### 🔐 File Permissions
+
+The `deploy` command automatically sets appropriate Unix file permissions based on the target layer. This ensures configuration files have the right access controls without manual `chmod` commands.
+
+#### Default Permissions by Layer
+
+| Layer | Directory Mode | File Mode | Rationale |
+|-------|---------------|-----------|-----------|
+| `app` | `755` (rwxr-xr-x) | `644` (rw-r--r--) | System-wide config readable by all processes |
+| `host` | `755` (rwxr-xr-x) | `644` (rw-r--r--) | Machine-specific config readable by all processes |
+| `user` | `700` (rwx------) | `600` (rw-------) | Private user config not accessible by others |
+
+#### CLI Usage
+
+```bash
+# Default: permissions enabled with layer-appropriate defaults
+lib_layered_config deploy --source ./config.toml \
+  --vendor Acme --app MyApp --slug myapp --target user
+# Result: ~/.config/myapp/config.toml with mode 600
+
+# Disable automatic permissions (use umask defaults)
+lib_layered_config deploy --source ./config.toml \
+  --vendor Acme --app MyApp --slug myapp --target user --no-permissions
+```
+
+#### Python API Usage
+
+```python
+from lib_layered_config import deploy_config
+
+# Default: set_permissions=True with layer defaults
+results = deploy_config(
+    source="./config.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["user"],
+    slug="myapp",
+)
+# User layer files get 700/600 permissions
+
+# Custom permissions override
+results = deploy_config(
+    source="./config.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["app"],
+    slug="myapp",
+    dir_mode=0o750,   # Override directory mode
+    file_mode=0o640,  # Override file mode
+)
+
+# Disable permissions entirely
+results = deploy_config(
+    source="./config.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["user"],
+    slug="myapp",
+    set_permissions=False,
+)
+```
+
+#### Platform Behavior
+
+| Platform | Behavior |
+|----------|----------|
+| **Linux** | Full permission support via `chmod()` |
+| **macOS** | Full permission support via `chmod()` |
+| **Windows** | Permissions skipped (Windows uses ACLs, not Unix modes) |
+
+> **Note:** On Windows, file access control should be managed through Windows ACLs (Access Control Lists) using native tools like `icacls` or PowerShell's `Set-Acl`. The library does not attempt to set Windows ACLs.
+
+---
+
+### 🛡️ Security Best Practices
+
+#### Recommended Permissions by File Type
+
+| File Type          | Location                       | Owner:Group     | Mode  | Notes                              |
+|--------------------|--------------------------------|-----------------|-------|------------------------------------|
+| **App defaults**   | `/etc/xdg/<slug>/config.toml`  | `root:root`     | `644` | World-readable system defaults     |
+| **Host overrides** | `/etc/xdg/<slug>/hosts/*.toml` | `root:root`     | `644` | Machine-specific settings          |
+| **User config**    | `~/.config/<slug>/config.toml` | `<user>:<user>` | `600` | Private user preferences           |
+| **Project `.env`** | `/path/to/project/.env`        | `<user>:<user>` | `600` | Contains secrets—highly restricted |
+| **User `.env`**    | `~/.config/<slug>/.env`        | `<user>:<user>` | `600` | Contains secrets—highly restricted |
+
+#### Dotenv Layer (`.env` Files)
+
+`.env` files often contain secrets (API keys, database passwords, tokens) and should be **highly restricted**:
+
+```bash
+# Secure your .env files
+chmod 600 .env
+chmod 600 ~/.config/myapp/.env
+
+# Verify permissions
+ls -la .env
+# -rw------- 1 alice alice 256 Jan 31 12:00 .env
+```
+
+> ⚠️ **Warning:** Never commit `.env` files to version control. Add `.env` to your `.gitignore`.
+
+#### macOS Considerations
+
+macOS respects Unix permissions but also has additional security layers:
+
+```bash
+# Set restrictive permissions on macOS
+chmod 600 ~/Library/Application\ Support/Acme/MyApp/config.toml
+
+# Check extended attributes (if any)
+xattr -l ~/Library/Application\ Support/Acme/MyApp/config.toml
+```
+
+For applications distributed via App Store or notarized packages, additional entitlements may be required to access certain directories.
+
+#### Windows Considerations
+
+Windows uses Access Control Lists (ACLs) instead of Unix-style permissions:
+
+```powershell
+# View current ACL
+Get-Acl "$env:APPDATA\Acme\MyApp\config.toml" | Format-List
+
+# Set restrictive ACL (current user only)
+$acl = Get-Acl "$env:APPDATA\Acme\MyApp\config.toml"
+$acl.SetAccessRuleProtection($true, $false)
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+    $env:USERNAME, "FullControl", "Allow")
+$acl.SetAccessRule($rule)
+Set-Acl "$env:APPDATA\Acme\MyApp\config.toml" $acl
+```
+
+For system-wide configuration in `%ProgramData%`, use Windows built-in permissions that allow read access for all users but write access only for administrators.
+
+---
+
+### 🔑 Recommendations for Sensitive Data
+
+**Best Practice:** Don't store secrets in configuration files at all. Instead:
+
+1. **Use environment variables** for secrets (highest precedence layer)
+   ```bash
+   export MYAPP___DATABASE__PASSWORD="secret123"
+   # Config will have database.password = "secret123" from env layer
+   ```
+
+2. **Use `.env` files** with `600` permissions for local development
+   ```bash
+   # .env file (chmod 600)
+   MYAPP___DATABASE__PASSWORD=secret123
+   MYAPP___API__TOKEN=tok_abc123
+   ```
+
+3. **Use a secrets manager** for production
+   - **HashiCorp Vault** — Enterprise-grade secret management
+   - **AWS Secrets Manager** — Native AWS integration
+   - **Azure Key Vault** — Native Azure integration
+   - **Google Secret Manager** — Native GCP integration
+   - **1Password CLI** — Developer-friendly with `op` CLI
+
+   ```bash
+   # Example: Inject secrets from Vault at runtime
+   export MYAPP___DATABASE__PASSWORD=$(vault kv get -field=password secret/myapp/db)
+   ```
+
+4. **Use redaction** when displaying or logging configuration
+   ```python
+   from lib_layered_config import read_config
+
+   config = read_config(vendor="Acme", app="MyApp", slug="myapp")
+
+   # Redacted output for logs (masks passwords, tokens, etc.)
+   safe_json = config.to_json(redact=True)
+   print(safe_json)  # {"database": {"password": "***REDACTED***", "host": "localhost"}}
+   ```
+
+#### Environment Variable Security
+
+Environment variables provide the highest precedence layer and are ideal for secrets because:
+
+- ✅ Not stored in files (no accidental commits)
+- ✅ Process-scoped (visible only to the process and its children)
+- ✅ Easy to rotate (just restart with new values)
+- ✅ Compatible with container orchestration (Kubernetes secrets, Docker secrets)
+
+```bash
+# Linux/macOS: Set secrets at runtime
+MYAPP___DATABASE__PASSWORD=secret123 \
+MYAPP___API__TOKEN=tok_abc123 \
+python -m myapp
+
+# Or export for the session
+export MYAPP___DATABASE__PASSWORD=secret123
+python -m myapp
+```
+
+---
+
 ### Python API Equivalent
 
 The Python `deploy_config()` function returns `list[DeployResult]` with rich information:
@@ -1853,14 +2074,14 @@ lib_layered_config generate-examples --destination ./examples \
 
 **Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `--destination` | path | Yes | - | Directory that will receive the example tree. Will be created if it doesn't exist |
-| `--slug` | string | Yes | - | Configuration slug used in generated files |
-| `--vendor` | string | Yes | - | Vendor namespace interpolated into examples |
-| `--app` | string | Yes | - | Application name interpolated into examples |
-| `--platform` | choice | No | auto-detect | Override platform layout. Valid values: `posix` (Linux/macOS layout), `windows` (Windows layout) |
-| `--force` / `--no-force` | flag | No | `--no-force` | Overwrite existing example files |
+| Parameter                | Type   | Required | Default      | Description                                                                                      |
+|--------------------------|--------|----------|--------------|--------------------------------------------------------------------------------------------------|
+| `--destination`          | path   | Yes      | -            | Directory that will receive the example tree. Will be created if it doesn't exist                |
+| `--slug`                 | string | Yes      | -            | Configuration slug used in generated files                                                       |
+| `--vendor`               | string | Yes      | -            | Vendor namespace interpolated into examples                                                      |
+| `--app`                  | string | Yes      | -            | Application name interpolated into examples                                                      |
+| `--platform`             | choice | No       | auto-detect  | Override platform layout. Valid values: `posix` (Linux/macOS layout), `windows` (Windows layout) |
+| `--force` / `--no-force` | flag   | No       | `--no-force` | Overwrite existing example files                                                                 |
 
 **Returns:** JSON array of file paths created.
 
@@ -2011,9 +2232,9 @@ lib_layered_config env-prefix <slug>
 
 **Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `slug` | string | Yes (positional) | - | Configuration slug to convert to environment prefix |
+| Parameter | Type   | Required         | Default | Description                                         |
+|-----------|--------|------------------|---------|-----------------------------------------------------|
+| `slug`    | string | Yes (positional) | -       | Configuration slug to convert to environment prefix |
 
 **Returns:** Uppercase environment prefix with dashes converted to underscores.
 
@@ -2173,6 +2394,15 @@ from lib_layered_config import (
     deploy_config,
     generate_examples,
     i_should_fail,
+    # Profile validation
+    DEFAULT_MAX_PROFILE_LENGTH,
+    validate_profile_name,
+    is_valid_profile_name,
+    # Permission constants (for deploy_config)
+    DEFAULT_APP_DIR_MODE,
+    DEFAULT_APP_FILE_MODE,
+    DEFAULT_USER_DIR_MODE,
+    DEFAULT_USER_FILE_MODE,
 )
 ```
 
@@ -2944,6 +3174,9 @@ Copy a source configuration file into one or more layer directories with conflic
 - `force` (bool, optional): When True and file exists with different content, backup to `.bak` and overwrite. Default: `False`.
 - `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`.
 - `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Custom callback for conflict resolution. Default: `None`.
+- `set_permissions` (bool, optional): Set Unix permissions on deployed files. Uses layer-specific defaults: app/host = 755/644, user = 700/600. Skipped on Windows. Default: `True`.
+- `dir_mode` (int | None, optional): Override directory mode for all targets. Default: `None` (use layer defaults).
+- `file_mode` (int | None, optional): Override file mode for all targets. Default: `None` (use layer defaults).
 
 **Returns:** `list[DeployResult]` — Each result contains:
 - `destination`: Path to the target file
@@ -2955,6 +3188,13 @@ Copy a source configuration file into one or more layer directories with conflic
 **`.d` Directory Support:** If the source file has a companion `.d` directory (e.g., `defaults.toml` → `defaults.d/`), those files are also deployed to the corresponding `.d` directory at each destination. User-added files in the destination `.d` directory are preserved.
 
 **Smart Skipping:** If the source content is byte-identical to the existing destination file, the file is skipped without creating backups (regardless of `force` or `batch` flags). This applies to both base files and `.d` directory files.
+
+**Permissions:** By default (`set_permissions=True`), Unix file permissions are set automatically based on the target layer:
+- **App/Host layers:** `755` for directories, `644` for files (world-readable)
+- **User layer:** `700` for directories, `600` for files (private to user)
+- **Windows:** Permissions skipped (Windows uses ACLs)
+
+Use `dir_mode` and `file_mode` to override defaults, or `set_permissions=False` to skip entirely.
 
 **Raises:** `FileNotFoundError` if source file does not exist.
 
@@ -3166,6 +3406,54 @@ for env in environments:
 ```
 **Explanation:** Profiles are ideal for CI/CD pipelines where you need to deploy different configurations for each environment. Each profile is isolated, so you can safely deploy all environments to the same system. With `force=True`, backups are created before overwriting.
 
+**Example 8: Deploy with custom permissions**
+```python
+from lib_layered_config import deploy_config
+from lib_layered_config.examples.deploy import DeployAction
+
+# Deploy with layer defaults (recommended)
+# - App layer: 755 dirs, 644 files (world-readable)
+# - User layer: 700 dirs, 600 files (private)
+results = deploy_config(
+    source="./config.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["user"],
+    slug="myapp",
+    set_permissions=True  # Default - sets 700/600 for user layer
+)
+
+# Deploy with custom permissions (e.g., group-readable)
+results = deploy_config(
+    source="./config.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["app"],
+    slug="myapp",
+    dir_mode=0o750,   # rwxr-x--- (owner + group read/execute)
+    file_mode=0o640,  # rw-r----- (owner + group read)
+)
+
+# Deploy without setting permissions (use umask defaults)
+results = deploy_config(
+    source="./config.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["user"],
+    slug="myapp",
+    set_permissions=False,  # Skip chmod, use system umask
+)
+
+for result in results:
+    if result.action == DeployAction.CREATED:
+        print(f"Created: {result.destination}")
+        # Check actual permissions (Linux/macOS)
+        import stat
+        mode = result.destination.stat().st_mode
+        print(f"  Mode: {stat.filemode(mode)}")
+```
+**Explanation:** Use `set_permissions=True` (default) for automatic layer-aware permissions. Use `dir_mode` and `file_mode` to override defaults for special requirements (e.g., group-readable configs). Use `set_permissions=False` when permissions should be inherited from umask. On Windows, permission setting is automatically skipped.
+
 ---
 
 ### `generate_examples`
@@ -3361,6 +3649,212 @@ except RuntimeError as e:
     print(f"Caught expected error: {e}")
 ```
 
+---
+
+### Profile Validation
+
+The library exports functions and constants for validating profile names before use. This is useful for pre-flight checks in configuration deployment or validating user input.
+
+#### `DEFAULT_MAX_PROFILE_LENGTH`
+
+Constant defining the default maximum length for profile names.
+
+**Value:** `64` (characters)
+
+**Example:**
+```python
+from lib_layered_config import DEFAULT_MAX_PROFILE_LENGTH
+
+print(f"Profile names are limited to {DEFAULT_MAX_PROFILE_LENGTH} characters by default")
+# Output: Profile names are limited to 64 characters by default
+```
+
+---
+
+### Permission Constants
+
+The library exports constants for Unix file permissions used during deployment. These constants define sensible defaults for different configuration layers.
+
+#### `DEFAULT_APP_DIR_MODE`
+
+Directory permission mode for app/host layers (system-wide configs).
+
+**Value:** `0o755` (rwxr-xr-x)
+
+#### `DEFAULT_APP_FILE_MODE`
+
+File permission mode for app/host layers (system-wide configs).
+
+**Value:** `0o644` (rw-r--r--)
+
+#### `DEFAULT_USER_DIR_MODE`
+
+Directory permission mode for user layer (private configs).
+
+**Value:** `0o700` (rwx------)
+
+#### `DEFAULT_USER_FILE_MODE`
+
+File permission mode for user layer (private configs).
+
+**Value:** `0o600` (rw-------)
+
+**Example:**
+```python
+from lib_layered_config import (
+    DEFAULT_APP_DIR_MODE,
+    DEFAULT_APP_FILE_MODE,
+    DEFAULT_USER_DIR_MODE,
+    DEFAULT_USER_FILE_MODE,
+)
+
+print(f"App dir mode: {oct(DEFAULT_APP_DIR_MODE)}")   # 0o755
+print(f"App file mode: {oct(DEFAULT_APP_FILE_MODE)}") # 0o644
+print(f"User dir mode: {oct(DEFAULT_USER_DIR_MODE)}") # 0o700
+print(f"User file mode: {oct(DEFAULT_USER_FILE_MODE)}") # 0o600
+```
+
+**Explanation:** App/host layers use world-readable permissions since system-wide configuration should be accessible by all processes. User layer uses private permissions since personal configuration should not be accessible by other users. On Windows, permissions are skipped (Windows uses ACLs instead).
+
+---
+
+#### `validate_profile_name`
+
+Validate a profile name for safe use in filesystem paths.
+
+**Parameters:**
+- `value` (str, required): The profile name to validate.
+- `max_length` (int, optional): Maximum allowed length. Default: `64` characters. Set to `0` or negative to use the absolute maximum (256 chars).
+
+**Returns:** The validated profile name (unchanged if valid).
+
+**Raises:** `ValueError` when the profile name fails validation.
+
+**Security Checks:**
+- Length limit (default 64 chars, absolute max 256 chars for filesystem safety)
+- No control characters (null bytes, newlines, tabs, etc.)
+- No path traversal sequences (`../`, `..\\`)
+- No path separators (`/`, `\\`)
+- ASCII-only characters
+- No Windows reserved names (CON, PRN, NUL, COM1-9, LPT1-9)
+- Must start with alphanumeric character
+- No trailing dots or spaces
+
+**Note:** The `max_length` parameter is clamped to 256 characters for filesystem safety. Setting `max_length=1000` will effectively use 256 as the limit.
+
+**Examples:**
+
+**Example 1: Basic validation**
+```python
+from lib_layered_config import validate_profile_name
+
+# Valid profile names
+profile = validate_profile_name("production")  # Returns "production"
+profile = validate_profile_name("test-v2")     # Returns "test-v2"
+profile = validate_profile_name("dev_local")   # Returns "dev_local"
+```
+
+**Example 2: Handling invalid input**
+```python
+from lib_layered_config import validate_profile_name
+
+try:
+    validate_profile_name("")  # Empty string
+except ValueError as e:
+    print(f"Error: {e}")  # "profile cannot be empty"
+
+try:
+    validate_profile_name("../etc/passwd")  # Path traversal
+except ValueError as e:
+    print(f"Error: {e}")  # "profile contains invalid characters: ../etc/passwd"
+
+try:
+    validate_profile_name("a" * 100)  # Too long
+except ValueError as e:
+    print(f"Error: {e}")  # "profile exceeds maximum length of 64: 100 characters"
+```
+
+**Example 3: Custom length limits**
+```python
+from lib_layered_config import validate_profile_name
+
+# Allow longer profiles (up to 256 chars absolute max)
+profile = validate_profile_name("a" * 100, max_length=200)  # OK
+
+# Even with max_length=1000, the absolute max of 256 applies
+try:
+    validate_profile_name("a" * 257, max_length=1000)
+except ValueError as e:
+    print(f"Error: {e}")  # "profile exceeds maximum length of 256: 257 characters"
+```
+
+---
+
+#### `is_valid_profile_name`
+
+Check if a profile name is valid without raising an exception.
+
+**Parameters:**
+- `value` (str | None, required): The profile name to check. `None` is considered valid (no profile).
+- `max_length` (int, optional): Maximum allowed length. Default: `64` characters. Set to `0` or negative to use the absolute maximum (256 chars).
+
+**Returns:** `True` if the profile name is valid or `None`, `False` otherwise.
+
+**Note:** The `max_length` parameter is clamped to 256 characters for filesystem safety, same as `validate_profile_name`.
+
+**Examples:**
+
+**Example 1: Pre-flight validation**
+```python
+from lib_layered_config import is_valid_profile_name, read_config
+
+def load_config_with_profile(profile: str | None):
+    """Load configuration, validating the profile name first."""
+    if not is_valid_profile_name(profile):
+        print(f"Invalid profile name: {profile}")
+        return None
+
+    return read_config(
+        vendor="Acme",
+        app="MyApp",
+        slug="myapp",
+        profile=profile
+    )
+
+# Usage
+config = load_config_with_profile("production")  # Valid
+config = load_config_with_profile("../etc")      # Invalid, returns None
+config = load_config_with_profile(None)          # Valid (no profile)
+```
+
+**Example 2: User input validation**
+```python
+from lib_layered_config import is_valid_profile_name
+
+def get_valid_profile():
+    """Prompt user for a valid profile name."""
+    while True:
+        profile = input("Enter profile name (or 'none'): ").strip()
+        if profile.lower() == "none":
+            return None
+        if is_valid_profile_name(profile):
+            return profile
+        print("Invalid profile name. Use lowercase letters, numbers, hyphens, underscores.")
+        print("Cannot contain spaces, path separators, or special characters.")
+```
+
+**Example 3: Batch validation**
+```python
+from lib_layered_config import is_valid_profile_name
+
+profiles = ["production", "test", "../hack", "staging-v2", "my profile"]
+valid_profiles = [p for p in profiles if is_valid_profile_name(p)]
+invalid_profiles = [p for p in profiles if not is_valid_profile_name(p)]
+
+print(f"Valid: {valid_profiles}")    # ['production', 'test', 'staging-v2']
+print(f"Invalid: {invalid_profiles}")  # ['../hack', 'my profile']
+```
+
 ## Example Generation & Deployment
 
 Use the Python helpers or CLI equivalents:
@@ -3480,7 +3974,21 @@ logging.basicConfig(level=logging.WARNING)
 
 This helps identify configuration mismatches where a key changes from a simple value to a nested structure (or the reverse) across layers.
 
-## Further documentation
+## Architecture Overview
+
+The project follows a Clean Architecture layout so responsibilities remain easy to reason about and test:
+
+| Layer | Responsibility |
+|-------|----------------|
+| **Domain** | Immutable `Config` value object plus error taxonomy |
+| **Application** | Merge policy (`LayerSnapshot`, `merge_layers`) and adapter protocols |
+| **Adapters** | Filesystem discovery, structured file loaders, dotenv, and environment ingress |
+| **Composition** | `core` and `_layers` wire adapters together and expose the public API |
+| **Presentation** | CLI commands, deployment/example helpers, observability utilities, and testing hooks |
+
+Consult [`docs/systemdesign/module_reference.md`](docs/systemdesign/module_reference.md) for a per-module catalogue and traceability back to the system design notes.
+
+## Further Documentation
 
 - [CHANGELOG](CHANGELOG.md) — user-facing release notes.
 - [CONTRIBUTING](CONTRIBUTING.md) — guidelines for issues, pull requests, and coding style.

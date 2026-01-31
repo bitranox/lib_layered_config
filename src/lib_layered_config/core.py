@@ -30,6 +30,7 @@ from ._layers import collect_layers, merge_or_empty
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.path_resolvers.default import DefaultPathResolver
+from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
 from .application.merge import MergeResult
 from .application.ports import SourceInfoPayload
 from .domain.config import EMPTY_CONFIG, Config
@@ -59,6 +60,7 @@ def read_config(
     prefer: Sequence[str] | None = None,
     start_dir: str | None = None,
     default_file: str | Path | None = None,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
 ) -> Config:
     """Return an immutable :class:`Config` built from all reachable layers.
 
@@ -74,9 +76,14 @@ def read_config(
         prefer: Optional sequence of preferred file suffixes (``["toml", "json"]``).
         start_dir: Optional directory that seeds `.env` discovery.
         default_file: Optional lowest-precedence file injected before filesystem layers.
+        max_profile_length: Maximum allowed profile name length (default: 64).
+            Set to 0 or negative to disable length checking.
 
     Returns:
         Immutable configuration with provenance metadata.
+
+    Raises:
+        ValueError: When profile name is invalid (too long, path traversal, etc.).
 
     Examples:
         >>> from pathlib import Path
@@ -93,6 +100,7 @@ def read_config(
         prefer=prefer,
         start_dir=start_dir,
         default_file=_stringify_path(default_file),
+        max_profile_length=max_profile_length,
     )
     return _compose_config(result.data, result.provenance)
 
@@ -108,6 +116,7 @@ def read_config_json(
     indent: int | None = None,
     default_file: str | Path | None = None,
     redact: bool = False,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
 ) -> str:
     """Return configuration and provenance as JSON suitable for tooling.
 
@@ -119,9 +128,14 @@ def read_config_json(
             2-space indented output (orjson only supports 2-space indentation).
         redact: When ``True``, sensitive values (passwords, tokens, secrets,
             API keys) are replaced with ``***REDACTED***`` in the config data.
+        max_profile_length: Maximum allowed profile name length (default: 64).
+            Set to 0 or negative to disable length checking.
 
     Returns:
         JSON document containing ``{"config": ..., "provenance": ...}``.
+
+    Raises:
+        ValueError: When profile name is invalid (too long, path traversal, etc.).
     """
     from .domain.redaction import redact_mapping
 
@@ -133,6 +147,7 @@ def read_config_json(
         prefer=prefer,
         start_dir=_stringify_path(start_dir),
         default_file=_stringify_path(default_file),
+        max_profile_length=max_profile_length,
     )
     data = result.data
     if redact:
@@ -149,14 +164,30 @@ def read_config_raw(
     prefer: Sequence[str] | None = None,
     start_dir: str | None = None,
     default_file: str | Path | None = None,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
 ) -> MergeResult:
     """Return raw merged data and provenance for advanced tooling.
 
     Unlike :func:`read_config`, returns mutable dictionaries instead of the
     immutable :class:`Config` abstraction. Raises :class:`LayerLoadError`
     when a structured file loader encounters invalid content.
+
+    Args:
+        vendor / app / slug / profile / prefer / start_dir / default_file: Same as :func:`read_config`.
+        max_profile_length: Maximum allowed profile name length (default: 64).
+            Set to 0 or negative to disable length checking.
+
+    Raises:
+        ValueError: When profile name is invalid (too long, path traversal, etc.).
     """
-    resolver = _build_resolver(vendor=vendor, app=app, slug=slug, profile=profile, start_dir=start_dir)
+    resolver = _build_resolver(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        profile=profile,
+        start_dir=start_dir,
+        max_profile_length=max_profile_length,
+    )
     dotenv_loader, env_loader = _build_loaders(resolver)
 
     bind_trace_id(None)
@@ -214,6 +245,7 @@ def _build_resolver(
     slug: str,
     profile: str | None,
     start_dir: str | None,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
 ) -> DefaultPathResolver:
     """Create a path resolver configured with optional ``start_dir`` context.
 
@@ -225,6 +257,8 @@ def _build_resolver(
         profile: Optional profile name for environment-specific configuration paths.
         start_dir: Optional directory that seeds project-relative resolution (used for
             `.env` discovery); ``None`` preserves resolver defaults.
+        max_profile_length: Maximum allowed profile name length (default: 64).
+            Set to 0 or negative to disable length checking.
 
     Returns:
         Resolver instance ready for layer discovery.
@@ -235,7 +269,12 @@ def _build_resolver(
         'demo'
     """
     return DefaultPathResolver(
-        vendor=vendor, app=app, slug=slug, profile=profile, cwd=Path(start_dir) if start_dir else None
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        profile=profile,
+        cwd=Path(start_dir) if start_dir else None,
+        max_profile_length=max_profile_length,
     )
 
 

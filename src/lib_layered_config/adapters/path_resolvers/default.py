@@ -21,6 +21,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from ...domain.identifiers import (
+    DEFAULT_MAX_PROFILE_LENGTH,
     validate_hostname,
     validate_identifier,
     validate_profile,
@@ -57,6 +58,7 @@ class DefaultPathResolver:
         env: dict[str, str] | None = None,
         platform: str | None = None,
         hostname: str | None = None,
+        max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     ) -> None:
         """Store context required to resolve filesystem locations.
 
@@ -71,6 +73,8 @@ class DefaultPathResolver:
             platform: Platform identifier (``sys.platform`` clone). Defaults to the
                 current interpreter platform.
             hostname: Hostname used for host-specific configuration lookups.
+            max_profile_length: Maximum allowed profile name length (default: 64).
+                Set to 0 or negative to disable length checking.
 
         Raises:
             ValueError: When vendor, app, slug, profile, or hostname contain invalid path characters.
@@ -78,7 +82,7 @@ class DefaultPathResolver:
         self.vendor = validate_vendor_app(vendor, "vendor")
         self.application = validate_vendor_app(app, "app")
         self.slug = validate_identifier(slug, "slug")
-        self.profile = validate_profile(profile)
+        self.profile = validate_profile(profile, max_length=max_profile_length)
         self.cwd = cwd or Path.cwd()
         self.env = {**os.environ, **(env or {})}
         self.platform = platform or sys.platform
