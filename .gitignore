@@ -60,7 +60,7 @@ coverage.xml
 .hypothesis/
 .tox/
 .nox/
-.devcontainer/
+# .devcontainer/ # needed for github codespaces
 
 # general cache directories (any project-level caching)
 .cache/
