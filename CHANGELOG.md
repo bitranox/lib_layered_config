@@ -4,6 +4,27 @@ All notable changes to lib_layered_config
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [5.4.1] - 2026-02-13
+
+### Changed
+
+- Migrated build automation from `scripts/` Python modules to `bmk` CLI tool via `Makefile`
+- Removed `scripts/` directory (~5,500 lines of internal build tooling no longer needed)
+- Refactored GitHub Actions CI/CD workflow with extracted metadata action
+- Updated Makefile to use `uvx bmk@latest` for all build, test, and release targets
+
+### Fixed
+
+- Fixed coverage measurement conflict between pytest-cov and bmk's external `coverage run` wrapper (replaced `--cov` addopts with `--no-cov` to let bmk manage coverage)
+- Added CVE ignore entries for CVE-2026-26007, CVE-2026-25990, CVE-2026-1703
+
+### Added
+
+- DevContainer configuration for containerized development
+- Bash 4+ compatibility for macOS CI environments
+
 ## [5.4.0] - 2026-01-31
 
 ### Added
