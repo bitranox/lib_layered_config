@@ -23,6 +23,7 @@ jobs:
       PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
       PYTHONIOENCODING: "utf-8"
       UV_LINK_MODE: "copy"
+      UV_BREAK_SYSTEM_PACKAGES: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -39,10 +40,6 @@ jobs:
         run: |
           brew install bash
           echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
-
-      - name: Install tomli (Python < 3.11)
-        shell: bash
-        run: python -c "import tomllib" 2>/dev/null || uv pip install tomli --system
 
       - name: Extract project metadata
         id: metadata
@@ -100,7 +97,7 @@ jobs:
           # and stale journal files cause "database is locked" errors.
           COVERAGE_FILE: "${{ runner.temp }}/.coverage"
         run: >-
-          python -m pytest -m "not local_only"
+          pytest -m "not local_only"
           --cov=${{ env.SRC_PATH }}/${{ env.PACKAGE_MODULE }}
           --cov-report=term-missing
           --cov-report=xml:${{ env.COV_REPORT_FILE }}
@@ -136,12 +133,9 @@ jobs:
         shell: python
         run: |
           import subprocess, sys
-          try:
-              import tomllib
-          except ModuleNotFoundError:
-              import tomli as tomllib
-          with open("pyproject.toml", "rb") as f:
-              data = tomllib.load(f)
+          import rtoml
+          from pathlib import Path
+          data = rtoml.load(Path("pyproject.toml"))
           vulns = data.get("tool", {}).get("pip-audit", {}).get("ignore-vulns", [])
           cmd = ["pip-audit", "--skip-editable"]
           for v in vulns:
@@ -215,10 +209,6 @@ jobs:
         with:
           enable-cache: true
           prune-cache: false
-
-      - name: Install tomli (Python < 3.11)
-        shell: bash
-        run: python -c "import tomllib" 2>/dev/null || uv pip install tomli --system
 
       - name: Extract project metadata
         id: metadata
