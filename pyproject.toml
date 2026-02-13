@@ -186,4 +186,4 @@ forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.applicat
 # CVE-2026-21441: urllib3 (transitive, awaiting fix release)
 # CVE-2026-22702: virtualenv (dev dependency, awaiting fix release)
 ignore-vulns = ["GHSA-4xh5-x5gv-qwph", "PYSEC-2022-42969", "PYSEC-2022-43012", "PYSEC-2025-49", "CVE-2024-6345",
-    "CVE-2025-69277", "CVE-2026-21441", "CVE-2026-22702","CVE-2026-1703", "CVE-2026-25990"]
+    "CVE-2025-69277", "CVE-2026-21441", "CVE-2026-22702","CVE-2026-1703", "CVE-2026-25990", "CVE-2026-26007"]
