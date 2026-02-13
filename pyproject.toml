@@ -126,8 +126,9 @@ fail_under = 90
 show_missing = true
 
 [tool.clean]
-# Patterns to remove when running `make clean` or `python -m scripts clean`
+# Patterns to remove when running `make clean`
 patterns = [
+  "**/__pycache__",
   ".hypothesis",
   ".import_linter_cache",
   ".pytest_cache",
