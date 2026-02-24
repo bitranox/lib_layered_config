@@ -569,14 +569,17 @@ details to callers.
 ### `read_config`
 - **Purpose:** Return immutable configuration object.
 - **Location:** `core.py`
+- **Notable parameters:** `dotenv_path` — explicit `.env` file (skips upward search).
 
 ### `read_config_json`
 - **Purpose:** Return JSON payload for CLI/automation.
 - **Location:** `core.py`
+- **Notable parameters:** `dotenv_path` — explicit `.env` file (skips upward search).
 
 ### `read_config_raw`
 - **Purpose:** Expose raw dictionaries, used by CLI helpers and tests.
 - **Location:** `core.py`
+- **Notable parameters:** `dotenv_path` — explicit `.env` file (skips upward search).
 
 ### `LayerLoadError`
 - **Purpose:** Single exception type for adapter failures.
@@ -654,6 +657,7 @@ merge policy, observability.
 
 ### `collect_layers`
 - **Purpose:** Assemble a list of ``LayerSnapshot`` instances.
+- **Notable parameters:** `dotenv_path` — forwarded to dotenv loader to skip directory search.
 
 ### `merge_or_empty`
 - **Purpose:** Merge snapshots or return empty dictionaries when nothing is
@@ -1031,7 +1035,8 @@ pairs strictly, and integrate with the merge provenance system.
 ## Solution Overview
 
 - `DefaultDotEnvLoader` searches for files, parses the first hit, and records
-  the loaded path.
+  the loaded path. When `dotenv_path` is supplied, the directory search is
+  skipped and the explicit file is loaded directly via `_load_explicit`.
 - Shared helpers ensure nested structure and case handling match the environment
   adapter.
 - Structured logging communicates success, absence, or parse errors.
@@ -1050,8 +1055,9 @@ filesystem layers but before environment variables.
 ## Core Components
 
 ### `DefaultDotEnvLoader`
-- **Purpose:** Main adapter exposing `.load` and `last_loaded_path`.
+- **Purpose:** Main adapter exposing `.load(start_dir, *, dotenv_path)` and `last_loaded_path`.
 - **Location:** `adapters/dotenv/default.py`
+- **Notable methods:** `_load_explicit(path)` — bypass directory search when `dotenv_path` is given.
 
 ### Helpers (`_build_search_list`, `_iter_candidates`, `_parse_dotenv`, `_assign_nested`, `_resolve_key` …)
 - **Purpose:** Keep parsing strict, maintain nested structure, and share logic

@@ -1,4 +1,4 @@
-# BMK MAKEFILE 2.3.2
+# BMK MAKEFILE 2.7.1
 # do not alter this file - it might be overwritten on new versions of BMK
 # if You want to alter it, remove the first line # BMK MAKEFILE 1.0 - then it is a custom makefile and will not be overwritten
 # bmk Makefile — thin wrapper calling bmk via uvx
@@ -30,7 +30,8 @@ ARGS ?=
 # instead of: make push ARGS="fix login bug"
 
 # All targets that accept trailing arguments
-_BMK_TARGETS := test t testintegration testi ti codecov coverage cov \
+_BMK_TARGETS := test t test-human th testintegration testi ti testintegration-human tih \
+	codecov coverage cov \
 	build bld clean cln cl run \
 	bump-major bump-minor bump-patch bump \
 	commit c push psh p release rel r \
@@ -56,11 +57,23 @@ test:  ## Run test suite [alias: t]
 t:
 	$(BMK) test $(ARGS)
 
+.PHONY: test-human th
+test-human:  ## Run test suite with human-readable output [alias: th]
+	$(BMK) test --human $(ARGS)
+th:
+	$(BMK) test --human $(ARGS)
+
 .PHONY: testintegration testi ti
 testintegration:  ## Run integration tests only [aliases: testi, ti]
 	$(BMK) testintegration $(ARGS)
 testi ti:
 	$(BMK) testintegration $(ARGS)
+
+.PHONY: testintegration-human tih
+testintegration-human:  ## Run integration tests with human-readable output [alias: tih]
+	$(BMK) testintegration --human $(ARGS)
+tih:
+	$(BMK) testintegration --human $(ARGS)
 
 .PHONY: codecov coverage cov
 codecov:  ## Upload coverage report to Codecov [aliases: coverage, cov]

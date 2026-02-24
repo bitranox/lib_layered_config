@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from typing import Any, Final, cast
 
+__all__ = ["REDACTED_PLACEHOLDER", "is_sensitive", "redact_mapping"]
+
 REDACTED_PLACEHOLDER: Final[str] = "***REDACTED***"
 """Constant replacing sensitive values in redacted output."""
 

@@ -61,6 +61,7 @@ def read_config(
     start_dir: str | None = None,
     default_file: str | Path | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+    dotenv_path: str | Path | None = None,
 ) -> Config:
     """Return an immutable :class:`Config` built from all reachable layers.
 
@@ -78,6 +79,9 @@ def read_config(
         default_file: Optional lowest-precedence file injected before filesystem layers.
         max_profile_length: Maximum allowed profile name length (default: 64).
             Set to 0 or negative to disable length checking.
+        dotenv_path: Optional explicit path to a ``.env`` file.  When set,
+            this file is loaded directly instead of searching upward from
+            *start_dir*.
 
     Returns:
         Immutable configuration with provenance metadata.
@@ -101,6 +105,7 @@ def read_config(
         start_dir=start_dir,
         default_file=_stringify_path(default_file),
         max_profile_length=max_profile_length,
+        dotenv_path=_stringify_path(dotenv_path),
     )
     return _compose_config(result.data, result.provenance)
 
@@ -117,13 +122,14 @@ def read_config_json(
     default_file: str | Path | None = None,
     redact: bool = False,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+    dotenv_path: str | Path | None = None,
 ) -> str:
     """Return configuration and provenance as JSON suitable for tooling.
 
     CLI commands and automation scripts often prefer JSON to Python objects.
 
     Args:
-        vendor / app / slug / profile / prefer / start_dir / default_file: Same meaning as :func:`read_config`.
+        vendor / app / slug / profile / prefer / start_dir / default_file / dotenv_path: Same meaning as :func:`read_config`.
         indent: Optional indentation level.  Any non-``None`` value produces
             2-space indented output (orjson only supports 2-space indentation).
         redact: When ``True``, sensitive values (passwords, tokens, secrets,
@@ -148,6 +154,7 @@ def read_config_json(
         start_dir=_stringify_path(start_dir),
         default_file=_stringify_path(default_file),
         max_profile_length=max_profile_length,
+        dotenv_path=_stringify_path(dotenv_path),
     )
     data = result.data
     if redact:
@@ -165,6 +172,7 @@ def read_config_raw(
     start_dir: str | None = None,
     default_file: str | Path | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+    dotenv_path: str | Path | None = None,
 ) -> MergeResult:
     """Return raw merged data and provenance for advanced tooling.
 
@@ -173,7 +181,7 @@ def read_config_raw(
     when a structured file loader encounters invalid content.
 
     Args:
-        vendor / app / slug / profile / prefer / start_dir / default_file: Same as :func:`read_config`.
+        vendor / app / slug / profile / prefer / start_dir / default_file / dotenv_path: Same as :func:`read_config`.
         max_profile_length: Maximum allowed profile name length (default: 64).
             Set to 0 or negative to disable length checking.
 
@@ -201,6 +209,7 @@ def read_config_raw(
             env_loader=env_loader,
             slug=slug,
             start_dir=start_dir,
+            dotenv_path=_stringify_path(dotenv_path),
         )
     except InvalidFormatError as exc:  # pragma: no cover - adapter tests exercise
         raise LayerLoadError(str(exc)) from exc

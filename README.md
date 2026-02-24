@@ -1208,6 +1208,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
   [--prefer toml] [--prefer json] \
   [--start-dir /path/to/project] \
   [--default-file ./config.defaults.toml] \
+  [--env-file /path/to/.env] \
   [--format human|json] \
   [--indent | --no-indent] \
   [--provenance | --no-provenance]
@@ -1223,6 +1224,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 | `--prefer`                         | string | No       | None           | Preferred file suffix (repeatable flag: `--prefer toml --prefer json`). Earlier values take precedence. Valid values: `toml`, `json`, `yaml`, `yml` |
 | `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                     |
 | `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file                                                                                   |
+| `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must be an existing file                                                         |
 | `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (annotated prose), `json` (structured JSON)                                                                    |
 | `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                        |
 | `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                       |
@@ -1331,7 +1333,17 @@ lib_layered_config read \
 
 **Explanation:** Use `--default-file` to provide application defaults that ship with your app, and `--start-dir` to specify where to start searching for `.env` files (useful when running from a different directory).
 
-**Example 6: Debugging configuration issues**
+**Example 6: Explicit .env file (skip directory search)**
+```bash
+# Load a specific .env file instead of searching upward
+lib_layered_config read \
+  --vendor Acme --app MyApp --slug myapp \
+  --env-file /opt/myapp/secrets/.env.production
+```
+
+**Explanation:** Use `--env-file` to load a specific `.env` file directly. This bypasses the upward directory search entirely, which is useful in CI/CD pipelines or containers where the `.env` file lives in a known location.
+
+**Example 7: Debugging configuration issues**
 ```bash
 # Check if environment variables are overriding your config
 MYAPP___SERVICE__TIMEOUT=5 lib_layered_config read \
@@ -1359,6 +1371,7 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
   [--prefer toml] [--prefer json] \
   [--start-dir /path/to/project] \
   [--default-file ./config.defaults.toml] \
+  [--env-file /path/to/.env] \
   [--indent | --no-indent]
 ```
 
@@ -1372,6 +1385,7 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
 | `--prefer`                 | string | No       | None        | Preferred file suffix (repeatable)   |
 | `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search |
 | `--default-file`           | path   | No       | None        | Path to defaults file                |
+| `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)  |
 | `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output             |
 
 **Example:**
@@ -2789,6 +2803,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes (e.g., `["toml", "json", "yaml"]`). Files matching earlier suffixes take precedence. Default: `None` (accepts all supported formats with default ordering).
 - `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search. Default: `None` (uses current working directory).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
+- `dotenv_path` (str | Path | None, optional): Explicit path to a `.env` file. When set, this file is loaded directly instead of searching upward from `start_dir`. Default: `None` (use directory search).
 
 **Returns:** Immutable `Config` object with merged configuration and provenance tracking.
 
@@ -2872,7 +2887,25 @@ config = read_config(
 ```
 **Explanation:** Use `start_dir` to control where `.env` file discovery begins. This ensures your project's `.env` file is found even if your script runs from a subdirectory.
 
-**Example 5: Complete setup with all parameters**
+**Example 5: Explicit .env file path**
+```python
+from pathlib import Path
+from lib_layered_config import read_config
+
+# Load a specific .env file instead of searching upward
+config = read_config(
+    vendor="Acme",
+    app="MyApp",
+    slug="myapp",
+    dotenv_path=Path("/opt/myapp/secrets/.env.production")
+)
+
+# The library loads /opt/myapp/secrets/.env.production directly
+# without searching parent directories for .env files
+```
+**Explanation:** Use `dotenv_path` when you know the exact location of the `.env` file. This is common in containers and CI/CD where secrets are mounted at a known path.
+
+**Example 6: Complete setup with all parameters**
 ```python
 from pathlib import Path
 from lib_layered_config import read_config
@@ -2916,6 +2949,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
+- `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
 - `indent` (int | None, optional): JSON indentation level. `None` for compact output. Default: `None`.
 
 **Returns:** JSON string containing `{"config": {...}, "provenance": {...}}`.
@@ -3007,6 +3041,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes. Default: `None`.
 - `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
+- `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
 
 **Returns:** Tuple of `(data_dict, provenance_dict)` where both are mutable dictionaries.
 

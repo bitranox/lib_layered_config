@@ -18,6 +18,16 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+__all__ = [
+    "DEFAULT_APP_DIR_MODE",
+    "DEFAULT_APP_FILE_MODE",
+    "DEFAULT_USER_DIR_MODE",
+    "DEFAULT_USER_FILE_MODE",
+    "LAYER_PERMISSIONS",
+    "set_custom_permissions",
+    "set_permissions",
+]
+
 # App/Host layer defaults (world-readable, admin-writable)
 DEFAULT_APP_DIR_MODE: int = 0o755
 DEFAULT_APP_FILE_MODE: int = 0o644

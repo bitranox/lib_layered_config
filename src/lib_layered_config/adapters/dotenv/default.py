@@ -62,12 +62,17 @@ class DefaultDotEnvLoader:
         self._extras = [Path(p) for p in extras or []]
         self.last_loaded_path: str | None = None
 
-    def load(self, start_dir: str | None = None) -> Mapping[str, object]:
+    def load(self, start_dir: str | None = None, *, dotenv_path: str | None = None) -> Mapping[str, object]:
         """Return the first parsed dotenv file discovered in the search order.
 
-        Searches from *start_dir* upward plus any extras, parses the first
-        existing file into a nested mapping, and sets :attr:`last_loaded_path`.
+        When *dotenv_path* is given, loads that file directly instead of
+        searching upward from *start_dir*.  Otherwise searches from *start_dir*
+        upward plus any extras, parses the first existing file into a nested
+        mapping, and sets :attr:`last_loaded_path`.
         """
+        if dotenv_path is not None:
+            return self._load_explicit(Path(dotenv_path))
+
         candidates = _build_search_list(start_dir, self._extras)
         self.last_loaded_path = None
         for candidate in candidates:
@@ -79,6 +84,17 @@ class DefaultDotEnvLoader:
             return data
         _log_dotenv_missing()
         return {}
+
+    def _load_explicit(self, path: Path) -> Mapping[str, object]:
+        """Load a specific dotenv file without directory search."""
+        self.last_loaded_path = None
+        if not path.is_file():
+            _log_dotenv_missing()
+            return {}
+        self.last_loaded_path = str(path)
+        data = _parse_dotenv(path)
+        _log_dotenv_loaded(path, data)
+        return data
 
 
 def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Path]:

@@ -6,6 +6,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-02-24
+
+### Added
+
+- **Explicit dotenv file path** — New `dotenv_path` parameter for `read_config()`, `read_config_json()`, and `read_config_raw()` loads a specific `.env` file directly instead of searching upward from `start_dir`. CLI equivalent: `--env-file` flag on `read` and `read-json` commands.
+- Added `__all__` exports to `domain/config.py`, `domain/permissions.py`, `domain/redaction.py`, and `cli/common.py`
+
+### Changed
+
+- Bumped dependency versions: `hypothesis>=6.151.9`, `ruff>=0.15.2`, `textual>=8.0.0`, `hatchling>=1.29.0`
+- Updated Makefile to BMK 2.7.1 (adds `test-human` / `th` and `testintegration-human` / `tih` targets)
+- Updated documentation: README (CLI + Python API for `--env-file`/`dotenv_path`), CLAUDE.md, module reference
+
+### Fixed
+
+- Fixed CI/CD runner configuration and bandit pyproject.toml reading
+- Removed stale `scripts/` directory from CLAUDE.md project structure
+- Fixed `orjson` version in CLAUDE.md to match pyproject.toml (`>=3.11.7`)
+
 ## [5.4.1] - 2026-02-13
 
 ### Changed

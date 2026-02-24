@@ -169,3 +169,48 @@ def test_read_config_default_file_serves_as_lowest_precedence(
     )
     assert config.get("service.timeout") == 10
     assert config.get("service.region") == "eu-central"
+
+
+@os_agnostic
+def test_read_config_dotenv_path_overrides_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+    sandbox: LayeredSandbox,
+    tmp_path: Path,
+) -> None:
+    sandbox.apply_env(monkeypatch)
+    # Write a .env in start_dir that should be ignored
+    sandbox.write("user", ".env", content="SERVICE__MODE=discovered\n")
+    # Write an explicit dotenv file elsewhere
+    explicit_env = tmp_path / "explicit.env"
+    explicit_env.write_text("SERVICE__MODE=explicit\n", encoding="utf-8")
+
+    config = read_config(
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        start_dir=str(sandbox.start_dir),
+        dotenv_path=explicit_env,
+    )
+    assert config.get("service.mode") == "explicit"
+
+
+@os_agnostic
+def test_read_config_dotenv_path_provenance_records_explicit_file(
+    monkeypatch: pytest.MonkeyPatch,
+    sandbox: LayeredSandbox,
+    tmp_path: Path,
+) -> None:
+    sandbox.apply_env(monkeypatch)
+    explicit_env = tmp_path / "custom.env"
+    explicit_env.write_text("SERVICE__REGION=us-east\n", encoding="utf-8")
+
+    result = read_config_raw(
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        start_dir=str(sandbox.start_dir),
+        dotenv_path=str(explicit_env),
+    )
+    assert result.data["service"]["region"] == "us-east"  # type: ignore[index]
+    assert result.provenance["service.region"]["layer"] == "dotenv"
+    assert result.provenance["service.region"]["path"] == str(explicit_env)

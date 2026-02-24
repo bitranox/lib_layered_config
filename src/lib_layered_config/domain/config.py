@@ -34,6 +34,8 @@ import orjson
 
 from .redaction import redact_mapping
 
+__all__ = ["Config", "EMPTY_CONFIG", "SourceInfo"]
+
 
 class SourceInfo(TypedDict):
     """Describe the provenance of a configuration value.

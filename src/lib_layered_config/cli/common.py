@@ -36,6 +36,26 @@ from ..application.ports import OutputFormat, SourceInfoPayload
 from ..core import read_config, read_config_json, read_config_raw
 from .constants import DEFAULT_JSON_INDENT
 
+__all__ = [
+    "OutputFormat",
+    "ReadQuery",
+    "build_read_query",
+    "describe_distribution",
+    "human_payload",
+    "json_payload",
+    "json_paths",
+    "normalise_examples_platform_option",
+    "normalise_platform_option",
+    "normalise_prefer",
+    "normalise_targets",
+    "parse_output_format",
+    "render_human",
+    "resolve_indent",
+    "stringify",
+    "version_string",
+    "wants_json",
+]
+
 
 class _PackageMetadata(Protocol):
     """Protocol describing package metadata exported by ``__init__conf__``."""
@@ -84,6 +104,7 @@ class ReadQuery:
     prefer: tuple[str, ...] | None
     start_dir: str | None
     default_file: str | None
+    dotenv_path: str | None
 
 
 def version_string() -> str:
@@ -121,6 +142,7 @@ def build_read_query(
     prefer: Sequence[str],
     start_dir: Path | None,
     default_file: Path | None,
+    dotenv_path: Path | None = None,
 ) -> ReadQuery:
     """Shape CLI parameters into a :class:`ReadQuery`.
 
@@ -134,6 +156,7 @@ def build_read_query(
         prefer: List of extensions supplied via ``--prefer`` (possibly empty).
         start_dir: Optional explicit starting directory.
         default_file: Optional explicit baseline file.
+        dotenv_path: Optional explicit ``.env`` file path.
 
     Returns:
         Frozen, normalised dataclass instance.
@@ -146,6 +169,7 @@ def build_read_query(
         prefer=normalise_prefer(prefer),
         start_dir=stringify(start_dir),
         default_file=stringify(default_file),
+        dotenv_path=stringify(dotenv_path),
     )
 
 
@@ -260,6 +284,7 @@ def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool)
             start_dir=query.start_dir,
             default_file=query.default_file,
             indent=indent,
+            dotenv_path=query.dotenv_path,
         )
     config = read_config(
         vendor=query.vendor,
@@ -269,6 +294,7 @@ def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool)
         prefer=query.prefer,
         start_dir=query.start_dir,
         default_file=query.default_file,
+        dotenv_path=query.dotenv_path,
     )
     return config.to_json(indent=indent)
 
@@ -381,6 +407,7 @@ def human_payload(query: ReadQuery) -> str:
         prefer=query.prefer,
         start_dir=query.start_dir,
         default_file=query.default_file,
+        dotenv_path=query.dotenv_path,
     )
     return render_human(result.data, result.provenance)
 

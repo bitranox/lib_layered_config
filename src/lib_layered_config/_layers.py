@@ -52,6 +52,7 @@ def collect_layers(
     env_loader: DefaultEnvLoader,
     slug: str,
     start_dir: str | None,
+    dotenv_path: str | None = None,
 ) -> list[LayerSnapshot]:
     """Return layer snapshots in precedence order (defaults → app → host → user → dotenv → env).
 
@@ -67,6 +68,7 @@ def collect_layers(
             env_loader=env_loader,
             slug=slug,
             start_dir=start_dir,
+            dotenv_path=dotenv_path,
         )
     )
 
@@ -80,6 +82,7 @@ def _snapshots_in_merge_sequence(
     env_loader: DefaultEnvLoader,
     slug: str,
     start_dir: str | None,
+    dotenv_path: str | None = None,
 ) -> Iterator[LayerSnapshot]:
     """Yield layer snapshots in the documented merge order.
 
@@ -89,13 +92,14 @@ def _snapshots_in_merge_sequence(
     Args:
         resolver / prefer / default_file / dotenv_loader / env_loader / slug / start_dir:
             Same meaning as :func:`collect_layers`.
+        dotenv_path: When set, load this specific file instead of searching.
 
     Yields:
         LayerSnapshot: Snapshot tuples ready for the merge policy.
     """
     yield from _default_snapshots(default_file)
     yield from _filesystem_snapshots(resolver, prefer)
-    yield from _dotenv_snapshots(dotenv_loader, start_dir)
+    yield from _dotenv_snapshots(dotenv_loader, start_dir, dotenv_path=dotenv_path)
     yield from _env_snapshots(env_loader, slug)
 
 
@@ -170,17 +174,23 @@ def _filesystem_snapshots(resolver: DefaultPathResolver, prefer: Sequence[str] |
             yield from snapshots
 
 
-def _dotenv_snapshots(loader: DefaultDotEnvLoader, start_dir: str | None) -> Iterator[LayerSnapshot]:
+def _dotenv_snapshots(
+    loader: DefaultDotEnvLoader,
+    start_dir: str | None,
+    *,
+    dotenv_path: str | None = None,
+) -> Iterator[LayerSnapshot]:
     """Yield a snapshot for dotenv-provided values when present.
 
     Args:
         loader: Dotenv loader that handles discovery and parsing.
         start_dir: Optional starting directory for the upward search.
+        dotenv_path: When set, load this specific file instead of searching.
 
     Yields:
         LayerSnapshot: Snapshot representing the ``dotenv`` layer when a file exists.
     """
-    data = loader.load(start_dir)
+    data = loader.load(start_dir, dotenv_path=dotenv_path)
     if not data:
         return
     _note_layer_loaded(Layer.DOTENV, loader.last_loaded_path, {"keys": len(data)})

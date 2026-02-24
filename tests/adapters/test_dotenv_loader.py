@@ -118,6 +118,38 @@ def test_parse_dotenv_interprets_inline_hash_as_empty(tmp_path: Path) -> None:
 
 
 @os_agnostic
+def test_dotenv_loader_loads_explicit_path(tmp_path: Path) -> None:
+    custom_env = tmp_path / "custom.env"
+    custom_env.write_text("APP__MODE=staging\n", encoding="utf-8")
+    loader = DefaultDotEnvLoader()
+    data = loader.load(dotenv_path=str(custom_env))
+    assert data["app"]["mode"] == "staging"  # type: ignore[index]
+    assert loader.last_loaded_path == str(custom_env)
+
+
+@os_agnostic
+def test_dotenv_loader_explicit_path_skips_directory_search(tmp_path: Path) -> None:
+    # Place a .env in start_dir that should be ignored
+    (tmp_path / ".env").write_text("IGNORED__KEY=should_not_load\n", encoding="utf-8")
+    custom_env = tmp_path / "other.env"
+    custom_env.write_text("USED__KEY=loaded\n", encoding="utf-8")
+    loader = DefaultDotEnvLoader()
+    data = loader.load(str(tmp_path), dotenv_path=str(custom_env))
+    assert "used" in data
+    assert "ignored" not in data
+    assert loader.last_loaded_path == str(custom_env)
+
+
+@os_agnostic
+def test_dotenv_loader_explicit_path_missing_returns_empty(tmp_path: Path) -> None:
+    missing = tmp_path / "nonexistent.env"
+    loader = DefaultDotEnvLoader()
+    data = loader.load(dotenv_path=str(missing))
+    assert data == {}
+    assert loader.last_loaded_path is None
+
+
+@os_agnostic
 def test_assign_nested_raises_invalid_format_on_scalar_collision() -> None:
     target: dict[str, object] = {"service": "scalar"}
     with pytest.raises(InvalidFormatError):

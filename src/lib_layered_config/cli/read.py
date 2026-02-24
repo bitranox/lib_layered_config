@@ -37,6 +37,13 @@ from .constants import CLICK_CONTEXT_SETTINGS
     help="Optional lowest-precedence defaults file",
 )
 @click.option(
+    "--env-file",
+    "dotenv_path",
+    type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
+    default=None,
+    help="Explicit .env file path (skips upward directory search)",
+)
+@click.option(
     "--format",
     "output_format",
     type=click.Choice(["human", "json"], case_sensitive=False),
@@ -64,12 +71,13 @@ def read_command(
     prefer: Sequence[str],
     start_dir: Path | None,
     default_file: Path | None,
+    dotenv_path: Path | None,
     output_format: str,
     indent: bool,
     provenance: bool,
 ) -> None:
     """Read configuration and print either human prose or JSON."""
-    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file)
+    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file, dotenv_path)
     fmt = parse_output_format(output_format)
     if wants_json(fmt):
         click.echo(json_payload(query, resolve_indent(indent), provenance))
@@ -94,6 +102,13 @@ def read_command(
     default=None,
 )
 @click.option(
+    "--env-file",
+    "dotenv_path",
+    type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
+    default=None,
+    help="Explicit .env file path (skips upward directory search)",
+)
+@click.option(
     "--indent/--no-indent",
     default=True,
     show_default=True,
@@ -107,10 +122,11 @@ def read_json_command(
     prefer: Sequence[str],
     start_dir: Path | None,
     default_file: Path | None,
+    dotenv_path: Path | None,
     indent: bool,
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
-    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file)
+    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file, dotenv_path)
     click.echo(json_payload(query, resolve_indent(indent), include_provenance=True))
 
 
