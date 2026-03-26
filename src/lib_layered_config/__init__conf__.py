@@ -26,7 +26,7 @@ name = "lib_layered_config"
 #: Human-readable summary shown in CLI help output.
 title = "Cross-platform layered configuration loader for Python"
 #: Current release version pulled from ``pyproject.toml`` by automation.
-version = "5.5.0"
+version = "5.5.1"
 #: Repository homepage presented to users.
 homepage = "https://github.com/bitranox/lib_layered_config"
 #: Author attribution surfaced in CLI output.

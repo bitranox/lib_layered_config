@@ -6,6 +6,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [5.5.1] - 2026-03-26
+
+### Fixed
+
+- Fixed TOML syntax error in `pyproject.toml` (missing comma in `ignore-vulns` array)
+
+### Changed
+
+- Updated CI/CD workflow: bumped upload/download artifact actions
+- Added new CVE exclusions for transitive dependencies (`CVE-2026-1703`, `CVE-2026-25990`, `CVE-2026-26007`, `CVE-2026-4539`, `CVE-2026-25645`)
+
 ## [5.5.0] - 2026-02-24
 
 ### Added

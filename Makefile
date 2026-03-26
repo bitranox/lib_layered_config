@@ -1,7 +1,7 @@
-# BMK MAKEFILE 2.7.1
+# BMK MAKEFILE 2.9.0
 # do not alter this file - it might be overwritten on new versions of BMK
 # if You want to alter it, remove the first line # BMK MAKEFILE 1.0 - then it is a custom makefile and will not be overwritten
-# bmk Makefile — thin wrapper calling bmk via uvx
+# bmk Makefile — thin wrapper using `uv tool install` for persistent bmk
 #
 # Usage:
 #   make test                        # run test suite
@@ -11,8 +11,10 @@
 #   make custom deploy                # run custom command
 #   make custom deploy --dry-run
 #
-# All targets invoke `uvx bmk@latest` so the latest published
-# version is always used, regardless of local install state.
+# On every invocation, bmk is (re-)installed as a persistent uv tool
+# together with the current project's dependencies (read from ./pyproject.toml).
+# This ensures pyright, pytest, pip-audit etc. can resolve the full
+# dependency tree without PYTHONPATH hacks or a local .venv.
 #
 # Arguments after the target name are forwarded automatically.
 # You can also use ARGS="..." explicitly if preferred.
@@ -20,8 +22,18 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-BMK := uvx bmk@latest
+# Use absolute path to the uv tool binary so active virtualenvs cannot shadow it.
+BMK := $(HOME)/.local/bin/bmk
 ARGS ?=
+
+# ──────────────────────────────────────────────────────────────
+# Ensure bmk + project deps are installed as a persistent uv tool
+# ──────────────────────────────────────────────────────────────
+# --reinstall re-resolves deps on every call (fast when cached).
+# Fallback handles first-time install where --reinstall would fail.
+.PHONY: _ensure_bmk
+_ensure_bmk:
+	@uv tool install --reinstall bmk --with . 2>/dev/null || uv tool install bmk --with .
 
 # ──────────────────────────────────────────────────────────────
 # Argument forwarding via MAKECMDGOALS
@@ -52,33 +64,33 @@ endif
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: test t
-test:  ## Run test suite [alias: t]
+test: _ensure_bmk  ## Run test suite [alias: t]
 	$(BMK) test $(ARGS)
-t:
+t: _ensure_bmk
 	$(BMK) test $(ARGS)
 
 .PHONY: test-human th
-test-human:  ## Run test suite with human-readable output [alias: th]
+test-human: _ensure_bmk  ## Run test suite with human-readable output [alias: th]
 	$(BMK) test --human $(ARGS)
-th:
+th: _ensure_bmk
 	$(BMK) test --human $(ARGS)
 
 .PHONY: testintegration testi ti
-testintegration:  ## Run integration tests only [aliases: testi, ti]
+testintegration: _ensure_bmk  ## Run integration tests only [aliases: testi, ti]
 	$(BMK) testintegration $(ARGS)
-testi ti:
+testi ti: _ensure_bmk
 	$(BMK) testintegration $(ARGS)
 
 .PHONY: testintegration-human tih
-testintegration-human:  ## Run integration tests with human-readable output [alias: tih]
+testintegration-human: _ensure_bmk  ## Run integration tests with human-readable output [alias: tih]
 	$(BMK) testintegration --human $(ARGS)
-tih:
+tih: _ensure_bmk
 	$(BMK) testintegration --human $(ARGS)
 
 .PHONY: codecov coverage cov
-codecov:  ## Upload coverage report to Codecov [aliases: coverage, cov]
+codecov: _ensure_bmk  ## Upload coverage report to Codecov [aliases: coverage, cov]
 	$(BMK) codecov $(ARGS)
-coverage cov:
+coverage cov: _ensure_bmk
 	$(BMK) codecov $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -86,15 +98,15 @@ coverage cov:
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: build bld
-build:  ## Build wheel and sdist artifacts [alias: bld]
+build: _ensure_bmk  ## Build wheel and sdist artifacts [alias: bld]
 	$(BMK) build $(ARGS)
-bld:
+bld: _ensure_bmk
 	$(BMK) build $(ARGS)
 
 .PHONY: clean cln cl
-clean:  ## Remove build artifacts and caches [aliases: cln, cl]
+clean: _ensure_bmk  ## Remove build artifacts and caches [aliases: cln, cl]
 	$(BMK) clean $(ARGS)
-cln cl:
+cln cl: _ensure_bmk
 	$(BMK) clean $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -102,7 +114,7 @@ cln cl:
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: run
-run:  ## Run the project CLI via uvx
+run: _ensure_bmk  ## Run the project CLI
 	$(BMK) run $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -110,15 +122,15 @@ run:  ## Run the project CLI via uvx
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: bump-major
-bump-major:  ## Bump major version (X+1).0.0
+bump-major: _ensure_bmk  ## Bump major version (X+1).0.0
 	$(BMK) bump major $(ARGS)
 
 .PHONY: bump-minor
-bump-minor:  ## Bump minor version X.(Y+1).0
+bump-minor: _ensure_bmk  ## Bump minor version X.(Y+1).0
 	$(BMK) bump minor $(ARGS)
 
 .PHONY: bump-patch
-bump-patch:  ## Bump patch version X.Y.(Z+1)
+bump-patch: _ensure_bmk  ## Bump patch version X.Y.(Z+1)
 	$(BMK) bump patch $(ARGS)
 
 .PHONY: bump
@@ -129,21 +141,21 @@ bump: bump-patch  ## Bump patch version (default for bump)
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: commit c
-commit:  ## Create a git commit with timestamped message [alias: c]
+commit: _ensure_bmk  ## Create a git commit with timestamped message [alias: c]
 	$(BMK) commit $(ARGS)
-c:
+c: _ensure_bmk
 	$(BMK) commit $(ARGS)
 
 .PHONY: push psh p
-push:  ## Run tests, commit, and push to remote [aliases: psh, p]
+push: _ensure_bmk  ## Run tests, commit, and push to remote [aliases: psh, p]
 	$(BMK) push $(ARGS)
-psh p:
+psh p: _ensure_bmk
 	$(BMK) push $(ARGS)
 
 .PHONY: release rel r
-release:  ## Create a versioned release (tag + GitHub release) [aliases: rel, r]
+release: _ensure_bmk  ## Create a versioned release (tag + GitHub release) [aliases: rel, r]
 	$(BMK) release $(ARGS)
-rel r:
+rel r: _ensure_bmk
 	$(BMK) release $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -151,13 +163,13 @@ rel r:
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: dependencies deps d
-dependencies:  ## Check and list project dependencies [aliases: deps, d]
+dependencies: _ensure_bmk  ## Check and list project dependencies [aliases: deps, d]
 	$(BMK) dependencies $(ARGS)
-deps d:
+deps d: _ensure_bmk
 	$(BMK) dependencies $(ARGS)
 
 .PHONY: dependencies-update
-dependencies-update:  ## Update dependencies to latest versions
+dependencies-update: _ensure_bmk  ## Update dependencies to latest versions
 	$(BMK) dependencies update $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -165,15 +177,15 @@ dependencies-update:  ## Update dependencies to latest versions
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: config
-config:  ## Show current merged configuration
+config: _ensure_bmk  ## Show current merged configuration
 	$(BMK) config $(ARGS)
 
 .PHONY: config-deploy
-config-deploy:  ## Deploy configuration to system/user directories
+config-deploy: _ensure_bmk  ## Deploy configuration to system/user directories
 	$(BMK) config-deploy $(ARGS)
 
 .PHONY: config-generate-examples
-config-generate-examples:  ## Generate example configuration files
+config-generate-examples: _ensure_bmk  ## Generate example configuration files
 	$(BMK) config-generate-examples $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -181,11 +193,11 @@ config-generate-examples:  ## Generate example configuration files
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: send-email
-send-email:  ## Send an email via configured SMTP
+send-email: _ensure_bmk  ## Send an email via configured SMTP
 	$(BMK) send-email $(ARGS)
 
 .PHONY: send-notification
-send-notification:  ## Send a plain-text notification email
+send-notification: _ensure_bmk  ## Send a plain-text notification email
 	$(BMK) send-notification $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -193,7 +205,7 @@ send-notification:  ## Send a plain-text notification email
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: custom
-custom:  ## Run a custom command (make custom <name> [args...])
+custom: _ensure_bmk  ## Run a custom command (make custom <name> [args...])
 	$(BMK) custom $(ARGS)
 
 # ──────────────────────────────────────────────────────────────
@@ -201,15 +213,15 @@ custom:  ## Run a custom command (make custom <name> [args...])
 # ──────────────────────────────────────────────────────────────
 
 .PHONY: info
-info:  ## Print resolved package metadata
+info: _ensure_bmk  ## Print resolved package metadata
 	$(BMK) info $(ARGS)
 
 .PHONY: logdemo
-logdemo:  ## Run logging demonstration
+logdemo: _ensure_bmk  ## Run logging demonstration
 	$(BMK) logdemo $(ARGS)
 
 .PHONY: version-current
-version-current:  ## Print current version
+version-current: _ensure_bmk  ## Print current version
 	$(BMK) --version
 
 # ──────────────────────────────────────────────────────────────
