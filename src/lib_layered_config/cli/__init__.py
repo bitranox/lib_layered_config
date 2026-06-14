@@ -10,6 +10,7 @@ from lib_cli_exit_tools import cli_session
 
 from .common import version_string
 from .constants import CLICK_CONTEXT_SETTINGS, TRACEBACK_SUMMARY, TRACEBACK_VERBOSE
+from .typed_click import option, version_option
 from .read import read_command as cli_read_config
 from .read import read_json_command as cli_read_config_json
 
@@ -19,12 +20,12 @@ from .read import read_json_command as cli_read_config_json
     context_settings=CLICK_CONTEXT_SETTINGS,
     invoke_without_command=False,
 )
-@click.version_option(
+@version_option(
     version=version_string(),
     prog_name="lib_layered_config",
     message="lib_layered_config version %(version)s",
 )
-@click.option(
+@option(
     "--traceback/--no-traceback",
     is_flag=True,
     default=False,

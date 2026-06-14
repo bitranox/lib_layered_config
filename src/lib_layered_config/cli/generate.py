@@ -9,24 +9,25 @@ import rich_click as click
 from ..examples import generate_examples as generate_examples_impl
 from .common import json_paths, normalise_examples_platform_option
 from .constants import CLICK_CONTEXT_SETTINGS
+from .typed_click import option
 
 
 @click.command("generate-examples", context_settings=CLICK_CONTEXT_SETTINGS)
-@click.option(
+@option(
     "--destination",
     type=click.Path(path_type=Path, file_okay=False, dir_okay=True, resolve_path=True),
     required=True,
     help="Directory that will receive the example tree",
 )
-@click.option("--slug", required=True, help="Slug identifying the configuration set")
-@click.option("--vendor", required=True, help="Vendor namespace")
-@click.option("--app", required=True, help="Application name")
-@click.option(
+@option("--slug", required=True, help="Slug identifying the configuration set")
+@option("--vendor", required=True, help="Vendor namespace")
+@option("--app", required=True, help="Application name")
+@option(
     "--platform",
     default=None,
     help="Override platform layout (posix/windows)",
 )
-@click.option(
+@option(
     "--force/--no-force",
     default=False,
     show_default=True,

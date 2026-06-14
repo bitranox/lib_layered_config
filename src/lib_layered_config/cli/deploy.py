@@ -12,6 +12,7 @@ from ..examples import DeployAction, DeployResult
 from ..examples import deploy_config as deploy_config_impl
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
+from .typed_click import option
 
 
 def _prompt_for_action(destination: Path) -> DeployAction:
@@ -81,17 +82,17 @@ def _format_results(results: list[DeployResult]) -> str:
 
 
 @click.command("deploy", context_settings=CLICK_CONTEXT_SETTINGS)
-@click.option(
+@option(
     "--source",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     required=True,
     help="Path to the configuration file to deploy (companion .d directory is auto-detected)",
 )
-@click.option("--vendor", required=True, help="Vendor namespace")
-@click.option("--app", required=True, help="Application name")
-@click.option("--slug", required=True, help="Slug identifying the configuration set")
-@click.option("--profile", default=None, help="Configuration profile name (e.g., 'test', 'production')")
-@click.option(
+@option("--vendor", required=True, help="Vendor namespace")
+@option("--app", required=True, help="Application name")
+@option("--slug", required=True, help="Slug identifying the configuration set")
+@option("--profile", default=None, help="Configuration profile name (e.g., 'test', 'production')")
+@option(
     "--target",
     "targets",
     multiple=True,
@@ -99,24 +100,24 @@ def _format_results(results: list[DeployResult]) -> str:
     type=click.Choice(TARGET_CHOICES, case_sensitive=False),
     help="Layer targets to deploy to (repeatable)",
 )
-@click.option(
+@option(
     "--platform",
     default=None,
     help="Override auto-detected platform (linux, darwin, windows)",
 )
-@click.option(
+@option(
     "--force/--no-force",
     default=False,
     show_default=True,
     help="Overwrite existing files (with .bak backup)",
 )
-@click.option(
+@option(
     "--batch",
     is_flag=True,
     default=False,
     help="Non-interactive mode: keep existing and write new as .ucf (for CI/scripts)",
 )
-@click.option(
+@option(
     "--permissions/--no-permissions",
     default=True,
     show_default=True,

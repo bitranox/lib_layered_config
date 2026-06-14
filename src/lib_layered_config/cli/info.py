@@ -7,6 +7,7 @@ import rich_click as click
 from ..core import default_env_prefix
 from .common import describe_distribution
 from .constants import CLICK_CONTEXT_SETTINGS
+from .typed_click import argument
 
 
 @click.command("info", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -17,7 +18,7 @@ def info_command() -> None:
 
 
 @click.command("env-prefix", context_settings=CLICK_CONTEXT_SETTINGS)
-@click.argument("slug")
+@argument("slug")
 def env_prefix_command(slug: str) -> None:
     """Echo the canonical environment variable prefix for a slug."""
     click.echo(default_env_prefix(slug))

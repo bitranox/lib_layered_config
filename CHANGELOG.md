@@ -6,6 +6,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [5.5.2] 2026-06-14
+
+### Changed
+- Added a `cli/typed_click.py` facade wrapping rich-click's `option` / `version_option` / `argument` decorators behind explicit, fully-known signatures, keeping the CLI strict-clean under pyright 1.1.410 (`reportUnknownMemberType`) without disabling the rule (ignore isolated to the facade).
+- Bumped `lib_cli_exit_tools` floor to `>=2.3.2`.
+
 ## [5.5.1] - 2026-03-26
 
 ### Fixed

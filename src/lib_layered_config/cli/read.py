@@ -16,34 +16,35 @@ from .common import (
     wants_json,
 )
 from .constants import CLICK_CONTEXT_SETTINGS
+from .typed_click import option
 
 
 @click.command("read", context_settings=CLICK_CONTEXT_SETTINGS)
-@click.option("--vendor", required=True, help="Vendor namespace")
-@click.option("--app", required=True, help="Application name")
-@click.option("--slug", required=True, help="Slug identifying the configuration set")
-@click.option("--profile", default=None, help="Configuration profile name (e.g., 'test', 'production')")
-@click.option("--prefer", multiple=True, help="Preferred file suffix ordering (repeatable)")
-@click.option(
+@option("--vendor", required=True, help="Vendor namespace")
+@option("--app", required=True, help="Application name")
+@option("--slug", required=True, help="Slug identifying the configuration set")
+@option("--profile", default=None, help="Configuration profile name (e.g., 'test', 'production')")
+@option("--prefer", multiple=True, help="Preferred file suffix ordering (repeatable)")
+@option(
     "--start-dir",
     type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True, readable=True),
     default=None,
     help="Starting directory for .env upward search",
 )
-@click.option(
+@option(
     "--default-file",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     default=None,
     help="Optional lowest-precedence defaults file",
 )
-@click.option(
+@option(
     "--env-file",
     "dotenv_path",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     default=None,
     help="Explicit .env file path (skips upward directory search)",
 )
-@click.option(
+@option(
     "--format",
     "output_format",
     type=click.Choice(["human", "json"], case_sensitive=False),
@@ -51,13 +52,13 @@ from .constants import CLICK_CONTEXT_SETTINGS
     show_default=True,
     help="Choose between human prose or JSON",
 )
-@click.option(
+@option(
     "--indent/--no-indent",
     default=True,
     show_default=True,
     help="Pretty-print JSON output",
 )
-@click.option(
+@option(
     "--provenance/--no-provenance",
     default=True,
     show_default=True,
@@ -86,29 +87,29 @@ def read_command(
 
 
 @click.command("read-json", context_settings=CLICK_CONTEXT_SETTINGS)
-@click.option("--vendor", required=True)
-@click.option("--app", required=True)
-@click.option("--slug", required=True)
-@click.option("--profile", default=None, help="Configuration profile name")
-@click.option("--prefer", multiple=True)
-@click.option(
+@option("--vendor", required=True)
+@option("--app", required=True)
+@option("--slug", required=True)
+@option("--profile", default=None, help="Configuration profile name")
+@option("--prefer", multiple=True)
+@option(
     "--start-dir",
     type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True, readable=True),
     default=None,
 )
-@click.option(
+@option(
     "--default-file",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     default=None,
 )
-@click.option(
+@option(
     "--env-file",
     "dotenv_path",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     default=None,
     help="Explicit .env file path (skips upward directory search)",
 )
-@click.option(
+@option(
     "--indent/--no-indent",
     default=True,
     show_default=True,
