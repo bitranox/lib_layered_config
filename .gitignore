@@ -201,3 +201,6 @@ LLM-CONTEXT/
 .gemini/
 .codex/
 CLAUDE.md
+
+# Local, per-developer settings (Claude Code etc.) - never commit
+*.local.json
