@@ -8,6 +8,7 @@ formatting.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -555,17 +556,19 @@ def test_smart_skip_preserves_original_file_unchanged(
     target_path = Path(output1["created"][0])
     original_mtime = target_path.stat().st_mtime
 
-    # Wait a tiny bit to ensure mtime would change if file was touched
-    import time
-
-    time.sleep(0.01)
+    # Backdate the file well into the past so that ANY rewrite bumps mtime to ~now, a
+    # difference far larger than filesystem mtime resolution. This is deterministic and
+    # avoids the flaky sleep-and-compare-resolution approach.
+    backdated = original_mtime - 10_000
+    os.utime(target_path, (backdated, backdated))
 
     # Second deploy with same content (smart skip)
     runner.invoke(cli.cli, make_deploy_command(source, force=True), env=sandbox.env)
 
-    # File should be completely untouched
+    # File should be completely untouched: content identical and mtime still backdated
+    # (a rewrite would have jumped it to ~now).
     assert target_path.read_text(encoding="utf-8") == content
-    assert target_path.stat().st_mtime == original_mtime
+    assert target_path.stat().st_mtime < original_mtime - 1_000
 
 
 @os_agnostic

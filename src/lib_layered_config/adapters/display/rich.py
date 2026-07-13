@@ -85,53 +85,52 @@ def _render_toml_with_styling(
             (used when displaying a filtered section).
     """
     current_section = section_prefix
-    lines = toml_text.split("\n")
-
-    for line in lines:
+    for line in toml_text.split("\n"):
         stripped = line.strip()
-
         if not stripped:
             continue
-
-        # Check for section header [section.path]
         section_match = _SECTION_PATTERN.match(stripped)
         if section_match:
-            section_path = section_match.group(1)
-            current_section = f"{section_prefix}.{section_path}" if section_prefix else section_path
-            header = Text(f"\n[{section_path}]")
-            header.stylize("bold cyan")
-            console.print(header)
+            current_section = _render_section_header(section_match, section_prefix, console)
             continue
-
-        # Check for key = value
         kv_match = _KEY_VALUE_PATTERN.match(stripped)
         if kv_match:
-            key = kv_match.group(1)
-            value_str = kv_match.group(2)
+            _render_key_value(kv_match, current_section, config, console, profile)
 
-            # Build dotted key for provenance lookup
-            dotted_key = f"{current_section}.{key}" if current_section else key
 
-            # Print provenance comment if available
-            info = config.origin(dotted_key)
-            if info is not None:
-                indent = "    " if current_section else ""
-                console.print(_format_source_line(info, indent, profile=profile), style="yellow")
+def _render_section_header(match: re.Match[str], section_prefix: str, console: Console) -> str:
+    """Print a ``[section]`` header (bold cyan) and return the new current section path."""
+    section_path = match.group(1)
+    current_section = f"{section_prefix}.{section_path}" if section_prefix else section_path
+    header = Text(f"\n[{section_path}]")
+    header.stylize("bold cyan")
+    console.print(header)
+    return current_section
 
-            # Build styled line
-            indent = "    " if current_section else ""
-            text = Text(indent)
-            text.append(key, style="orange3")
-            text.append(" = ", style="white")
 
-            # Check if value is redacted
-            if _REDACTED in value_str:
-                text.append(value_str, style="dim red")
-            else:
-                text.append(value_str, style="green")
+def _render_key_value(
+    match: re.Match[str],
+    current_section: str,
+    config: Config,
+    console: Console,
+    profile: str | None,
+) -> None:
+    """Print one ``key = value`` line with its provenance comment and value styling."""
+    key = match.group(1)
+    value_str = match.group(2)
+    dotted_key = f"{current_section}.{key}" if current_section else key
+    indent = "    " if current_section else ""
 
-            console.print(text)
-            console.print()
+    info = config.origin(dotted_key)
+    if info is not None:
+        console.print(_format_source_line(info, indent, profile=profile), style="yellow")
+
+    text = Text(indent)
+    text.append(key, style="orange3")
+    text.append(" = ", style="white")
+    text.append(value_str, style="dim red" if _REDACTED in value_str else "green")
+    console.print(text)
+    console.print()
 
 
 def display_config(

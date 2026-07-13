@@ -1,19 +1,42 @@
-"""Deploy configuration artifacts into layered directories with per-platform strategies."""
+"""Deploy configuration artifacts into layered directories with per-platform strategies.
+
+Copy a source config file (plus its companion ``.d`` directory) into the app, host, and
+user layer locations for the current platform, resolving conflicts safely and hardening
+Unix permissions per layer.
+
+Contents:
+    - ``DeployAction`` / ``DeployResult``: the outcome vocabulary and per-file record.
+    - ``deploy_config``: public entry point that resolves destinations and deploys each.
+    - ``DeploymentStrategy`` and its ``Linux`` / ``Mac`` / ``Windows`` subclasses: compute
+      per-platform destination paths.
+    - Conflict handling (``_handle_conflict`` / ``_execute_action``): backup-and-overwrite
+      (``force``), keep-and-write-``.ucf`` (``batch``), or an interactive resolver, with
+      identical-content smart-skip.
+    - Permission helpers (``_copy_payload`` / ``_write_ucf`` / ``_write_bytes``): write via
+      an owner-only temp file then apply the layer mode, so secrets are never briefly
+      world-readable.
+
+System Role:
+    Invoked by ``cli/deploy.py`` (and re-exported from the package root as
+    ``deploy_config``). Sits in the ``examples`` layer between ``cli`` and ``adapters``.
+"""
 
 from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from ..adapters.path_resolvers.default import DefaultPathResolver
-from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
+from ..domain.errors import ValidationError
+from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
 from ..domain.permissions import set_custom_permissions, set_permissions
 
-_VALID_TARGETS = {"app", "host", "user"}
+_VALID_TARGETS = {Layer.APP.value, Layer.HOST.value, Layer.USER.value}
 
 
 class DeployAction(Enum):
@@ -113,19 +136,39 @@ def _backup_file(path: Path) -> Path:
     return backup
 
 
-def _write_ucf(destination: Path, payload: bytes) -> Path:
+def _write_ucf(
+    destination: Path,
+    payload: bytes,
+    *,
+    layer: str,
+    set_permissions_flag: bool,
+    dir_mode: int | None,
+    file_mode: int | None,
+) -> Path:
     """Write new config as .ucf variant (with numbered suffix if needed).
+
+    The .ucf sidecar can hold the same secrets as the primary file, so it gets the
+    same layer-appropriate permission hardening (e.g. 0o600 for the user layer) rather
+    than being left at the umask default.
 
     Args:
         destination: Original destination path.
         payload: File content to write.
+        layer: Target layer ("app", "host", or "user").
+        set_permissions_flag: If True, set Unix permissions.
+        dir_mode: Override directory mode (None = use layer defaults).
+        file_mode: Override file mode (None = use layer defaults).
 
     Returns:
         Path to the created .ucf file.
     """
     ucf_path = _next_available_path(destination, ".ucf")
     ucf_path.parent.mkdir(parents=True, exist_ok=True)
-    ucf_path.write_bytes(payload)
+    if set_permissions_flag:
+        _apply_directory_permissions(ucf_path.parent, layer, dir_mode, file_mode)
+    _write_bytes(ucf_path, payload, restrict=set_permissions_flag)
+    if set_permissions_flag:
+        _apply_file_permissions(ucf_path, layer, dir_mode, file_mode)
     return ucf_path
 
 
@@ -150,7 +193,7 @@ def _content_matches(destination: Path, payload: bytes) -> bool:
 def _validate_target(target: str) -> str:
     normalised = target.lower()
     if normalised not in _VALID_TARGETS:
-        raise ValueError(f"Unsupported deployment target: {target}")
+        raise ValidationError(f"Unsupported deployment target: {target}")
     return normalised
 
 
@@ -172,7 +215,7 @@ class DeploymentStrategy:
         for raw_target in targets:
             target = raw_target.lower()
             if target not in _VALID_TARGETS:
-                raise ValueError(f"Unsupported deployment target: {raw_target}")
+                raise ValidationError(f"Unsupported deployment target: {raw_target}")
             destination = self.destination_for(target)
             if destination is not None:
                 yield destination
@@ -555,35 +598,26 @@ def _handle_conflict(
     Returns:
         DeployResult describing the action taken.
     """
+    # force -> OVERWRITTEN, batch -> KEPT, resolver -> its chosen action. All three route
+    # through _execute_action so the backup/overwrite and .ucf logic lives in one place.
     if force:
-        backup_path = _backup_file(destination)
-        _copy_payload(
-            destination,
-            payload,
-            layer=layer,
-            set_permissions_flag=set_permissions_flag,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
-        )
-        return DeployResult(destination=destination, action=DeployAction.OVERWRITTEN, backup_path=backup_path)
-
-    if batch:
-        ucf_path = _write_ucf(destination, payload)
-        return DeployResult(destination=destination, action=DeployAction.KEPT, ucf_path=ucf_path)
-
-    if conflict_resolver is not None:
+        action = DeployAction.OVERWRITTEN
+    elif batch:
+        action = DeployAction.KEPT
+    elif conflict_resolver is not None:
         action = conflict_resolver(destination)
-        return _execute_action(
-            destination,
-            payload,
-            action,
-            layer=layer,
-            set_permissions_flag=set_permissions_flag,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
-        )
+    else:
+        return DeployResult(destination=destination, action=DeployAction.SKIPPED)
 
-    return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+    return _execute_action(
+        destination,
+        payload,
+        action,
+        layer=layer,
+        set_permissions_flag=set_permissions_flag,
+        dir_mode=dir_mode,
+        file_mode=file_mode,
+    )
 
 
 def _deploy_single(
@@ -660,7 +694,14 @@ def _execute_action(
         # Smart skip if content is identical (no need for UCF)
         if _content_matches(destination, payload):
             return DeployResult(destination=destination, action=DeployAction.SKIPPED)
-        ucf_path = _write_ucf(destination, payload)
+        ucf_path = _write_ucf(
+            destination,
+            payload,
+            layer=layer,
+            set_permissions_flag=set_permissions_flag,
+            dir_mode=dir_mode,
+            file_mode=file_mode,
+        )
         return DeployResult(
             destination=destination,
             action=DeployAction.KEPT,
@@ -757,7 +798,7 @@ def _copy_payload(
     if set_permissions_flag:
         _apply_directory_permissions(destination.parent, layer, dir_mode, file_mode)
 
-    _write_bytes(destination, payload)
+    _write_bytes(destination, payload, restrict=set_permissions_flag)
 
     # Set file permissions
     if set_permissions_flag:
@@ -808,5 +849,24 @@ def _apply_file_permissions(
         set_permissions(file_path, layer, is_dir=False)
 
 
-def _write_bytes(path: Path, payload: bytes) -> None:
-    path.write_bytes(payload)
+def _write_bytes(path: Path, payload: bytes, *, restrict: bool = False) -> None:
+    """Write *payload* to *path*.
+
+    With ``restrict`` (used whenever permissions will be tightened), the payload is
+    written to an owner-only temp file (``mkstemp`` creates it ``0o600``) in the same
+    directory and then atomically renamed into place. This closes the TOCTOU window in
+    which a secret could be world-readable between a plain create and the follow-up
+    chmod - the destination is only ever the old file or the fully-written 0o600 file.
+    """
+    if not restrict:
+        path.write_bytes(payload)
+        return
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise

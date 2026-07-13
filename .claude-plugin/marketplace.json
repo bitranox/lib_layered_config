@@ -1,0 +1,16 @@
+{
+  "name": "lib_layered_config",
+  "owner": {
+    "name": "bitranox"
+  },
+  "metadata": {
+    "description": "lib_layered_config delivered as a single Claude Code plugin: a skill to install, use and design configuration with lib_layered_config (a cross-platform layered config loader for Python and the CLI, with per-key provenance and environment profiles)."
+  },
+  "plugins": [
+    {
+      "name": "lib_layered_config",
+      "source": ".",
+      "description": "Install, use and design configuration with lib_layered_config: the Python API, the CLI, the env-var override rules, profiles, per-key provenance (which layer and file a value came from), and the config paths on Linux, macOS and Windows."
+    }
+  ]
+}

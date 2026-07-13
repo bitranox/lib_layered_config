@@ -22,6 +22,7 @@ from pathlib import Path
 
 from ...domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
+    Layer,
     validate_hostname,
     validate_identifier,
     validate_profile,
@@ -143,7 +144,7 @@ class DefaultPathResolver:
             ['config.toml']
             >>> tmp.cleanup()
         """
-        return self._iter_layer("app")
+        return self._iter_layer(Layer.APP.value)
 
     def host(self) -> Iterable[str]:
         """Return host-specific overrides.
@@ -154,7 +155,7 @@ class DefaultPathResolver:
         Returns:
             Ordered host-level configuration paths.
         """
-        return self._iter_layer("host")
+        return self._iter_layer(Layer.HOST.value)
 
     def user(self) -> Iterable[str]:
         """Return user-level configuration locations.
@@ -165,7 +166,7 @@ class DefaultPathResolver:
         Returns:
             Ordered user-level configuration paths.
         """
-        return self._iter_layer("user")
+        return self._iter_layer(Layer.USER.value)
 
     def dotenv(self) -> Iterable[str]:
         """Return candidate ``.env`` locations discovered during path resolution.
@@ -184,9 +185,9 @@ class DefaultPathResolver:
             return []
 
         method_map = {
-            "app": self._strategy.app_paths,
-            "host": self._strategy.host_paths,
-            "user": self._strategy.user_paths,
+            Layer.APP.value: self._strategy.app_paths,
+            Layer.HOST.value: self._strategy.host_paths,
+            Layer.USER.value: self._strategy.user_paths,
         }
         method = method_map.get(layer)
         if method is None:

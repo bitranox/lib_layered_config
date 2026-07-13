@@ -18,6 +18,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from .identifiers import Layer
+
 __all__ = [
     "DEFAULT_APP_DIR_MODE",
     "DEFAULT_APP_FILE_MODE",
@@ -36,11 +38,11 @@ DEFAULT_APP_FILE_MODE: int = 0o644
 DEFAULT_USER_DIR_MODE: int = 0o700
 DEFAULT_USER_FILE_MODE: int = 0o600
 
-# Mapping of layer to default permissions
+# Mapping of layer to default permissions (keyed by the Layer enum values)
 LAYER_PERMISSIONS: dict[str, dict[str, int]] = {
-    "app": {"dir": DEFAULT_APP_DIR_MODE, "file": DEFAULT_APP_FILE_MODE},
-    "host": {"dir": DEFAULT_APP_DIR_MODE, "file": DEFAULT_APP_FILE_MODE},
-    "user": {"dir": DEFAULT_USER_DIR_MODE, "file": DEFAULT_USER_FILE_MODE},
+    Layer.APP.value: {"dir": DEFAULT_APP_DIR_MODE, "file": DEFAULT_APP_FILE_MODE},
+    Layer.HOST.value: {"dir": DEFAULT_APP_DIR_MODE, "file": DEFAULT_APP_FILE_MODE},
+    Layer.USER.value: {"dir": DEFAULT_USER_DIR_MODE, "file": DEFAULT_USER_FILE_MODE},
 }
 
 
@@ -58,7 +60,7 @@ def set_permissions(path: Path, layer: str, *, is_dir: bool = False) -> None:
     if os.name != "posix":
         return
 
-    perms = LAYER_PERMISSIONS.get(layer, LAYER_PERMISSIONS["app"])
+    perms = LAYER_PERMISSIONS.get(layer, LAYER_PERMISSIONS[Layer.APP.value])
     mode = perms["dir"] if is_dir else perms["file"]
     path.chmod(mode)
 

@@ -125,3 +125,64 @@ def test_iter_namespace_entries_ignores_empty_suffix() -> None:
 @os_agnostic
 def test_coerce_parses_negative_integers() -> None:
     assert _coerce("-7") == -7
+
+
+@os_agnostic
+def test_coerce_parses_json_array() -> None:
+    assert _coerce('["replica1", "replica2"]') == ["replica1", "replica2"]
+
+
+@os_agnostic
+def test_coerce_parses_json_array_of_numbers() -> None:
+    assert _coerce("[1, 2, 3]") == [1, 2, 3]
+
+
+@os_agnostic
+def test_coerce_parses_json_object() -> None:
+    assert _coerce('{"host": "db", "port": 5432}') == {"host": "db", "port": 5432}
+
+
+@os_agnostic
+def test_coerce_keeps_invalid_json_container_as_string() -> None:
+    # Bareword list is not valid JSON; the raw string must survive untouched.
+    assert _coerce("[a, b]") == "[a, b]"
+    assert _coerce("[unclosed") == "[unclosed"
+
+
+@os_agnostic
+def test_coerce_leaves_plain_scalars_untouched() -> None:
+    assert _coerce("hello") == "hello"
+    assert _coerce("10") == 10
+    assert _coerce("true") is True
+
+
+@os_agnostic
+def test_env_loader_parses_json_array_value() -> None:
+    environ = {"MYAPP___DATABASE__REPLICAS": '["replica1", "replica2"]'}
+    payload = DefaultEnvLoader(environ=environ).load("MYAPP")
+    assert payload["database"]["replicas"] == ["replica1", "replica2"]
+
+
+@os_agnostic
+def test_coerce_parses_nested_json_containers() -> None:
+    assert _coerce('[{"a": 1}, {"b": 2}]') == [{"a": 1}, {"b": 2}]
+    assert _coerce('{"tags": ["x", "y"]}') == {"tags": ["x", "y"]}
+    assert _coerce("[[1, 2], [3, 4]]") == [[1, 2], [3, 4]]
+
+
+@os_agnostic
+def test_env_loader_parses_nested_json_value() -> None:
+    environ = {"MYAPP___SERVICE__ENDPOINTS": '[{"host": "a", "port": 1}, {"host": "b", "port": 2}]'}
+    payload = DefaultEnvLoader(environ=environ).load("MYAPP")
+    assert payload["service"]["endpoints"] == [{"host": "a", "port": 1}, {"host": "b", "port": 2}]
+
+
+@os_agnostic
+def test_json_decoded_value_is_independent_between_loads() -> None:
+    """orjson allocates fresh objects, so mutating one load must not leak into the next."""
+    environ = {"MYAPP___ITEMS": '["a", "b"]'}
+    first = DefaultEnvLoader(environ=environ).load("MYAPP")
+    assert isinstance(first["items"], list)
+    first["items"].append("mutated")
+    second = DefaultEnvLoader(environ=environ).load("MYAPP")
+    assert second["items"] == ["a", "b"]

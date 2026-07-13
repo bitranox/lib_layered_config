@@ -1,4 +1,4 @@
-Here is the concept for **lib_layered_config** – translated to English, aligned with the current architecture, and ready to evolve with the codebase.
+Here is the concept for **lib_layered_config** - translated to English, aligned with the current architecture, and ready to evolve with the codebase.
 
 ---
 
@@ -27,7 +27,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 * [x] Deterministic precedence order `defaults → app → host → user → dotenv → env` implemented in `_layers.collect_layers` and enforced by tests.
 * [x] Structured file loaders (TOML/JSON core via `tomllib` stdlib 3.11+ or `tomli` fallback for 3.10, YAML behind optional extra).
 * [x] Immutable `Config` value object exposing `get`, `origin`, `as_dict`, `to_json`, `with_overrides`.
-* [x] Clean Architecture boundaries (Domain, Application, Adapters, Composition Root) reflected in module layout and import-linter contracts.
+* [x] Clean Architecture boundaries reflected in module layout and enforced by import-linter contracts (layer order `cli` -> `examples` -> `adapters` -> `application` -> `domain`; the composition root sits outside the hierarchy).
 * [x] Trace-aware structured logging provided by `observability` helpers, consumed by adapters/composition.
 * [x] Rich Click CLI (`lib_layered_config`) with commands for read/read-json, deploy, generate-examples, env-prefix, info, fail.
 * [x] Example tree generator and deployment helpers for docs/onboarding (`examples/generate`, `examples/deploy`).
@@ -53,7 +53,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 3. **Adapters**
    - Path resolvers per OS (Linux/XDG, macOS Application Support, Windows ProgramData/AppData) honour environment overrides; reused by deployment helpers.
    - Structured file loaders (TOML/JSON core, YAML optional) emit deterministic logging and raise `InvalidFormatError`/`NotFoundError`.
-   - Dotenv loader (upward search + platform extras, `__` nesting, quoting rules) and environment loader (namespace filtering, coercion for bool/null/int/float, provenance logging).
+   - Dotenv loader (upward search + platform extras, `__` nesting, quoting rules) and environment loader (namespace filtering, coercion for bool/null/int/float and JSON arrays/objects, provenance logging).
    - `.d` directory expansion (`adapters/file_loaders/_dot_d.py`) automatically discovers and merges companion `.d` directories for any config file.
    - `observability` module exposes trace-aware logging helpers shared across adapters and composition.
 

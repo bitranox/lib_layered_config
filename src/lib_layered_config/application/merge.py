@@ -20,14 +20,32 @@ System Role:
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
-from collections.abc import Mapping as MappingABC
-from collections.abc import Mapping as TypingMapping
 from dataclasses import dataclass
-from typing import TypeGuard, cast
+from enum import Enum
+from typing import Final, TypeGuard, cast
 
+from ..domain.errors import InvalidFormatError
 from ..domain.identifiers import Layer
 from ..observability import log_warn
 from .ports import SourceInfoPayload
+
+#: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
+#: recurse until Python raises an opaque ``RecursionError``; this bound turns that into a
+#: clear ``InvalidFormatError`` well before the interpreter stack limit.
+_MAX_MERGE_DEPTH: Final[int] = 100
+
+
+class ValueKind(str, Enum):
+    """Categorical value shape reported in a merge ``type_conflict`` warning.
+
+    Subclasses ``str`` (matching :class:`~lib_layered_config.domain.identifiers.Layer`)
+    so the member is its own wire/log string on Python 3.10+, where ``StrEnum`` is
+    unavailable.
+    """
+
+    MAPPING = "mapping"
+    SCALAR = "scalar"
+    LIST = "list"
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,7 +164,12 @@ def _descend(
 
     Side Effects:
         Mutates *target* and *provenance* as it walks through *incoming*.
+
+    Raises:
+        InvalidFormatError: When nesting exceeds :data:`_MAX_MERGE_DEPTH`.
     """
+    if len(segments) > _MAX_MERGE_DEPTH:
+        raise InvalidFormatError(f"Configuration nesting exceeds the maximum depth of {_MAX_MERGE_DEPTH}")
     for key, value in incoming.items():
         dotted = _join_segments(segments, key)
         if _looks_like_mapping(value):
@@ -185,11 +208,167 @@ def _store_branch(
         >>> target['child']['enabled']
         True
     """
+    existing = target.get(key)
+    if isinstance(existing, list) and _all_numeric_keys(value):
+        segments.append(key)
+        _merge_mapping_into_list(cast(list[object], existing), provenance, value, snapshot, segments)
+        segments.pop()
+        return
+
     branch = _ensure_branch(target, key, dotted, snapshot)
     segments.append(key)
     _descend(branch, provenance, value, snapshot, segments)
     segments.pop()
     _store_provenance_for_empty_branch(branch, dotted, provenance, snapshot)
+
+
+def _all_numeric_keys(value: Mapping[str, object]) -> bool:
+    """Return ``True`` when *value* is a non-empty mapping whose keys are all digit strings.
+
+    A numeric-only mapping arriving on top of an existing list is the signal that the
+    caller means to address list elements by index (e.g. ``PREFIX___HOSTS__0__NAME``),
+    rather than to replace the list with a dict. Requiring *every* key to be numeric keeps
+    a mixed mapping (``{"0": ..., "label": ...}``) on the ordinary replace path, so the
+    only behaviour that changes is the previously destructive list-clobber.
+
+    Args:
+        value: Incoming mapping from the higher-precedence layer.
+
+    Returns:
+        ``True`` when *value* has at least one key and every key is a base-10 digit string.
+
+    Examples:
+        >>> _all_numeric_keys({'0': 'a', '1': 'b'})
+        True
+        >>> _all_numeric_keys({'0': 'a', 'label': 'b'})
+        False
+        >>> _all_numeric_keys({})
+        False
+    """
+    return bool(value) and all(key.isdigit() for key in value)
+
+
+def _merge_mapping_into_list(
+    existing: list[object],
+    provenance: MutableMapping[str, SourceInfoPayload],
+    incoming: Mapping[str, object],
+    snapshot: LayerSnapshot,
+    segments: list[str],
+) -> None:
+    """Overlay a numeric-key mapping onto *existing* by list index.
+
+    Preserves the surrounding list instead of replacing it with a dict, so a single
+    element can be overridden from a higher layer without discarding its siblings.
+    Indices are applied in ascending order so appends land deterministically.
+
+    Args:
+        existing: List being mutated in place (already a defensive clone owned by the merge).
+        provenance: Provenance accumulator updated for each overridden leaf.
+        incoming: Numeric-key mapping whose keys are list indices.
+        snapshot: Layer metadata used for provenance and warnings.
+        segments: Path segments up to and including the list key.
+
+    Side Effects:
+        Mutates *existing*, *provenance*, and *segments* while overlaying elements.
+    """
+    for index_key in sorted(incoming, key=int):
+        override = incoming[index_key]
+        index = int(index_key)
+        dotted = _join_segments(segments, index_key)
+        if index < len(existing):
+            existing[index] = _merge_list_element(
+                existing[index], override, provenance, dotted, snapshot, segments, index_key
+            )
+        elif index == len(existing):
+            existing.append(_build_new_element(override, provenance, dotted, snapshot, segments, index_key))
+        else:
+            _warn_list_index_out_of_range(dotted, snapshot, index)
+
+
+def _merge_list_element(
+    element: object,
+    override: object,
+    provenance: MutableMapping[str, SourceInfoPayload],
+    dotted: str,
+    snapshot: LayerSnapshot,
+    segments: list[str],
+    index_key: str,
+) -> object:
+    """Return the merged value for one existing list slot.
+
+    Deep-merges when both the current element and the override are mappings so that
+    setting one field (``dataset.0.dsn``) leaves the element's other fields intact.
+    A nested list element with a numeric-key override recurses by index too, so
+    ``matrix.0.0`` overrides one cell without flattening the inner list. Otherwise the
+    slot is rebuilt from the override.
+
+    Args:
+        element: Current value occupying the slot.
+        override: Incoming value for the slot.
+        provenance: Provenance accumulator updated during the merge.
+        dotted: Dotted path of the slot (e.g. ``dataset.0``).
+        snapshot: Layer metadata used for provenance entries.
+        segments: Path segments up to and including the list key.
+        index_key: The numeric index as a string, appended while recursing.
+
+    Returns:
+        The merged element (the same mutated container, or a freshly built value).
+    """
+    if _looks_like_mapping(element) and _looks_like_mapping(override):
+        segments.append(index_key)
+        _descend(cast(MutableMapping[str, object], element), provenance, override, snapshot, segments)
+        segments.pop()
+        return element
+    if isinstance(element, list) and _looks_like_mapping(override) and _all_numeric_keys(override):
+        nested = cast(list[object], element)
+        segments.append(index_key)
+        _merge_mapping_into_list(nested, provenance, override, snapshot, segments)
+        segments.pop()
+        return nested
+    return _build_new_element(override, provenance, dotted, snapshot, segments, index_key)
+
+
+def _build_new_element(
+    override: object,
+    provenance: MutableMapping[str, SourceInfoPayload],
+    dotted: str,
+    snapshot: LayerSnapshot,
+    segments: list[str],
+    index_key: str,
+) -> object:
+    """Build a fresh list element from *override*, recording provenance per leaf.
+
+    A mapping override is woven into a new dict so nested leaves get their own dotted
+    provenance entries; a scalar (or other leaf) is cloned and recorded at *dotted*.
+
+    Args:
+        override: Incoming value for the new/replacement slot.
+        provenance: Provenance accumulator updated during the build.
+        dotted: Dotted path of the slot.
+        snapshot: Layer metadata used for provenance entries.
+        segments: Path segments up to and including the list key.
+        index_key: The numeric index as a string, appended while recursing.
+
+    Returns:
+        The value to place in the list slot.
+    """
+    if _looks_like_mapping(override):
+        new_element: dict[str, object] = {}
+        segments.append(index_key)
+        _descend(new_element, provenance, override, snapshot, segments)
+        segments.pop()
+        return new_element
+    provenance[dotted] = _provenance_entry(dotted, snapshot)
+    return _clone_leaf(override)
+
+
+def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfoPayload:
+    """Return the provenance record for a value contributed by *snapshot* at *dotted*."""
+    return {
+        "layer": snapshot.name.value if isinstance(snapshot.name, Layer) else snapshot.name,
+        "path": snapshot.origin,
+        "key": dotted,
+    }
 
 
 def _store_scalar(
@@ -207,14 +386,10 @@ def _store_scalar(
     """
     current = target.get(key)
     if _looks_like_mapping(current):
-        _warn_type_conflict(dotted, snapshot, "mapping", "scalar")
+        _warn_type_conflict(dotted, snapshot, ValueKind.MAPPING, ValueKind.SCALAR)
 
     target[key] = _clone_leaf(value)
-    provenance[dotted] = {
-        "layer": snapshot.name.value if isinstance(snapshot.name, Layer) else snapshot.name,
-        "path": snapshot.origin,
-        "key": dotted,
-    }
+    provenance[dotted] = _provenance_entry(dotted, snapshot)
 
 
 def _clone_dict(value: dict[str, object]) -> dict[str, object]:
@@ -285,7 +460,7 @@ def _ensure_branch(
         return cast(MutableMapping[str, object], current)
 
     if current is not None:
-        _warn_type_conflict(dotted, snapshot, "scalar", "mapping")
+        _warn_type_conflict(dotted, snapshot, ValueKind.SCALAR, ValueKind.MAPPING)
 
     new_branch: MutableMapping[str, object] = {}
     target[key] = new_branch
@@ -321,11 +496,7 @@ def _store_provenance_for_empty_branch(
     """
     if branch:
         return
-    provenance[dotted] = {
-        "layer": snapshot.name.value if isinstance(snapshot.name, Layer) else snapshot.name,
-        "path": snapshot.origin,
-        "key": dotted,
-    }
+    provenance[dotted] = _provenance_entry(dotted, snapshot)
 
 
 def _join_segments(segments: Sequence[str], key: str) -> str:
@@ -366,14 +537,14 @@ def _looks_like_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
         >>> _looks_like_mapping(['not', 'mapping'])
         False
     """
-    if not isinstance(value, MappingABC):
+    if not isinstance(value, Mapping):
         return False
-    mapping = cast(TypingMapping[object, object], value)
+    mapping = cast(Mapping[object, object], value)
     keys = cast(Iterable[object], mapping.keys())
     return all(isinstance(k, str) for k in keys)
 
 
-def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: str, new_type: str) -> None:
+def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: ValueKind, new_type: ValueKind) -> None:
     """Emit a warning when a type conflict occurs during merge.
 
     This indicates a potential configuration schema mismatch where one layer
@@ -386,6 +557,21 @@ def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: str, new
         path=snapshot.origin,
         old_type=old_type,
         new_type=new_type,
+    )
+
+
+def _warn_list_index_out_of_range(dotted: str, snapshot: LayerSnapshot, index: int) -> None:
+    """Emit a warning when a numeric-key override targets a slot past the list end.
+
+    A gap-filling index (beyond ``len``) is skipped rather than sparse-padded with
+    ``None``, so this flags the dropped override without corrupting the array.
+    """
+    log_warn(
+        "list_index_out_of_range",
+        key=dotted,
+        layer=snapshot.name,
+        path=snapshot.origin,
+        index=index,
     )
 
 

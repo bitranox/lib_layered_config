@@ -20,6 +20,8 @@ import os
 from collections.abc import Iterable, Iterator
 from typing import Final
 
+import orjson
+
 from ...observability import log_debug
 from .._nested_keys import assign_nested
 
@@ -28,6 +30,10 @@ _BOOL_TRUE: Final[str] = "true"
 _BOOL_FALSE: Final[str] = "false"
 _BOOL_LITERALS: Final[frozenset[str]] = frozenset({_BOOL_TRUE, _BOOL_FALSE})
 _NULL_LITERALS: Final[frozenset[str]] = frozenset({"null", "none"})
+# A value that opens with one of these is treated as JSON (arrays/objects for complex
+# types, per the documented `PREFIX___KEY='["a", "b"]'` form). Restricting the attempt
+# to container openers keeps plain scalar coercion, and any non-JSON string, unchanged.
+_JSON_CONTAINER_PREFIXES: Final[tuple[str, ...]] = ("[", "{")
 
 
 def default_env_prefix(slug: str) -> str:
@@ -191,16 +197,24 @@ def _coerce(value: str) -> object:
     Convert human-friendly strings (``true``, ``5``, ``3.14``) into their Python
     equivalents before merging.
 
-    Applies boolean, null, integer, and float heuristics in sequence, returning
-    the original string when none match.
+    Applies JSON-container, boolean, null, integer, and float heuristics in sequence,
+    returning the original string when none match.
 
     Returns:
-        Parsed primitive or original string when coercion is not possible.
+        Parsed primitive, list/dict for JSON containers, or the original string when
+        coercion is not possible.
 
     Examples:
         >>> _coerce('true'), _coerce('10'), _coerce('3.5'), _coerce('hello'), _coerce('null')
         (True, 10, 3.5, 'hello', None)
+        >>> _coerce('["a", "b"]')
+        ['a', 'b']
+        >>> _coerce('[not json')
+        '[not json'
     """
+    container = _maybe_json_container(value)
+    if container is not None:
+        return container
     lowered = value.lower()
     if _looks_like_bool(lowered):
         return lowered == _BOOL_TRUE
@@ -209,6 +223,38 @@ def _coerce(value: str) -> object:
     if _looks_like_int(value):
         return int(value)
     return _maybe_float(value)
+
+
+def _maybe_json_container(value: str) -> list[object] | dict[str, object] | None:
+    """Parse *value* as a JSON array/object when it opens like one, else ``None``.
+
+    Lets an env var carry a complex value (``REPLICAS='["a", "b"]'``) instead of only
+    scalars. Only container openers (``[`` / ``{``) are attempted, so plain strings and
+    the scalar heuristics are untouched; a string that merely looks like a container but
+    is not valid JSON is returned to the caller unparsed (``None`` sentinel).
+
+    Args:
+        value: Raw environment value.
+
+    Returns:
+        The parsed ``list``/``dict`` on success, otherwise ``None``.
+
+    Examples:
+        >>> _maybe_json_container('[1, 2]')
+        [1, 2]
+        >>> _maybe_json_container('{"a": 1}')
+        {'a': 1}
+        >>> _maybe_json_container('plain') is None
+        True
+        >>> _maybe_json_container('[bad') is None
+        True
+    """
+    if not value.startswith(_JSON_CONTAINER_PREFIXES):
+        return None
+    try:
+        return orjson.loads(value)
+    except orjson.JSONDecodeError:
+        return None
 
 
 def _looks_like_bool(value: str) -> bool:

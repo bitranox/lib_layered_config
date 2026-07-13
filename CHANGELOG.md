@@ -6,6 +6,36 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [5.6.0] 2026-07-13
+
+### Added
+
+- Environment variables can now override a single element of a file-defined array by numeric index (e.g. `MYAPP___DATASET__0__DSN`), deep-merging that element while leaving the rest of the array intact; nested arrays and end-of-array appends are supported.
+- Environment-variable values that open with `[` or `{` are parsed as JSON (arrays / objects).
+- `read` and `read-json` gain `--redact/--no-redact` (default off) to mask secret-shaped values in output.
+- A maximum config-file-size guard (10 MiB) raises `InvalidFormatError` on oversized structured files.
+- Recursion-depth guards in merge and redaction raise `InvalidFormatError` instead of an opaque `RecursionError` on pathologically nested config.
+- Ships a Claude Code skill and single-plugin marketplace (`skills/python-layered-config/`) that teaches an AI agent to install, use, and design configuration with the library across Linux, macOS, and Windows.
+- `ai-stance.md` and `ai-transparency.md` (how the project is built and who answers for it), linked from the README.
+
+### Changed
+
+- `ValidationError` now subclasses both `ConfigError` and `ValueError` and is raised by identifier / platform / deploy-target validation, so failures are catchable as `ConfigError` (the documented boundary type) while remaining backward compatible with `except ValueError`.
+- Redaction masks a broader set of secret-shaped keys (`apikey`, `aws_access_key_id`, `cookie`, `jwt`, any `_key` suffix, and more) while leaving a plain `key` field alone.
+- Deploy targets and layer-permission lookups are consolidated on the `Layer` enum.
+- README restructured: a concise overview, with the full CLI and Python API references moved to `docs/cli-reference.md` / `docs/python-api.md` and identifiers / file-structure to `docs/`. `docs/systemdesign/module_reference.md` slimmed to an architecture map.
+
+### Fixed
+
+- Deploying a kept-config `.ucf` sidecar now applies the same layer-appropriate permission hardening as the primary file (previously left at the umask default, which could expose secrets).
+- Deploy writes go through an owner-only temp file plus atomic rename, closing a TOCTOU window in which a secret could be briefly world-readable.
+- A numeric-key environment mapping over a nested array no longer flattens the inner array into a dict.
+- Two YAML error-path tests that were silently always-skipped now run.
+
+### Security
+
+- Pruned all stale `pip-audit` exclusions; documented the single remaining one (`PYSEC-2026-2132` / `CVE-2026-7246`, the `click.edit()` CVE present only in the dev/CI toolchain).
+
 ## [5.5.2] 2026-06-14
 
 ### Changed
@@ -27,7 +57,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Explicit dotenv file path** — New `dotenv_path` parameter for `read_config()`, `read_config_json()`, and `read_config_raw()` loads a specific `.env` file directly instead of searching upward from `start_dir`. CLI equivalent: `--env-file` flag on `read` and `read-json` commands.
+- **Explicit dotenv file path**  -  New `dotenv_path` parameter for `read_config()`, `read_config_json()`, and `read_config_raw()` loads a specific `.env` file directly instead of searching upward from `start_dir`. CLI equivalent: `--env-file` flag on `read` and `read-json` commands.
 - Added `__all__` exports to `domain/config.py`, `domain/permissions.py`, `domain/redaction.py`, and `cli/common.py`
 
 ### Changed
@@ -65,22 +95,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Unix file permissions for deployed configuration files** — The `deploy_config()` function now automatically sets appropriate Unix file permissions based on the target layer. This ensures configuration files have the right access controls without manual `chmod` commands.
+- **Unix file permissions for deployed configuration files**  -  The `deploy_config()` function now automatically sets appropriate Unix file permissions based on the target layer. This ensures configuration files have the right access controls without manual `chmod` commands.
 
   **Default permissions by layer:**
-  | Layer | Directory Mode | File Mode | Rationale |
-  |-------|---------------|-----------|-----------|
-  | `app` | `0o755` (rwxr-xr-x) | `0o644` (rw-r--r--) | System-wide config readable by all |
-  | `host` | `0o755` (rwxr-xr-x) | `0o644` (rw-r--r--) | Machine-specific config readable by all |
-  | `user` | `0o700` (rwx------) | `0o600` (rw-------) | Private user config |
+| Layer  | Directory Mode      | File Mode           | Rationale                               |
+|--------|---------------------|---------------------|-----------------------------------------|
+| `app`  | `0o755` (rwxr-xr-x) | `0o644` (rw-r--r--) | System-wide config readable by all      |
+| `host` | `0o755` (rwxr-xr-x) | `0o644` (rw-r--r--) | Machine-specific config readable by all |
+| `user` | `0o700` (rwx------) | `0o600` (rw-------) | Private user config                     |
 
   **New parameters for `deploy_config()`:**
-  - `set_permissions: bool = True` — Enable/disable permission setting (default: enabled)
-  - `dir_mode: int | None = None` — Override directory mode for all targets
-  - `file_mode: int | None = None` — Override file mode for all targets
+  - `set_permissions: bool = True`  -  Enable/disable permission setting (default: enabled)
+  - `dir_mode: int | None = None`  -  Override directory mode for all targets
+  - `file_mode: int | None = None`  -  Override file mode for all targets
 
   **CLI flag:**
-  - `--permissions / --no-permissions` — Enable/disable permission setting (default: `--permissions`)
+  - `--permissions / --no-permissions`  -  Enable/disable permission setting (default: `--permissions`)
 
   **Platform behavior:**
   - Linux/macOS: Full permission support via `chmod()`
@@ -106,18 +136,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
                 set_permissions=False)
   ```
 
-- **Permission constants exported in public API** — Four permission mode constants are now available from the main package:
-  - `DEFAULT_APP_DIR_MODE` — `0o755`
-  - `DEFAULT_APP_FILE_MODE` — `0o644`
-  - `DEFAULT_USER_DIR_MODE` — `0o700`
-  - `DEFAULT_USER_FILE_MODE` — `0o600`
+- **Permission constants exported in public API**  -  Four permission mode constants are now available from the main package:
+  - `DEFAULT_APP_DIR_MODE`  -  `0o755`
+  - `DEFAULT_APP_FILE_MODE`  -  `0o644`
+  - `DEFAULT_USER_DIR_MODE`  -  `0o700`
+  - `DEFAULT_USER_FILE_MODE`  -  `0o600`
 
-- **`domain/permissions.py` module** — New domain module containing:
-  - `set_permissions()` — Apply layer-aware default permissions
-  - `set_custom_permissions()` — Apply custom permission modes
-  - `LAYER_PERMISSIONS` — Mapping of layer names to permission modes
+- **`domain/permissions.py` module**  -  New domain module containing:
+  - `set_permissions()`  -  Apply layer-aware default permissions
+  - `set_custom_permissions()`  -  Apply custom permission modes
+  - `LAYER_PERMISSIONS`  -  Mapping of layer names to permission modes
 
-- **Profile name length validation** — Profile names are now validated for length with configurable limits for security and filesystem safety.
+- **Profile name length validation**  -  Profile names are now validated for length with configurable limits for security and filesystem safety.
 
   **Length limits:**
   - Default max length: 64 characters (`DEFAULT_MAX_PROFILE_LENGTH`)
@@ -126,12 +156,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   - Setting `max_length=0` or negative uses the absolute maximum (256 chars)
 
   **New public API exports:**
-  - `DEFAULT_MAX_PROFILE_LENGTH` — Constant (64 characters)
-  - `validate_profile_name(value, *, max_length=64)` — Raises `ValueError` on invalid
-  - `is_valid_profile_name(value, *, max_length=64)` — Returns `bool`, no exception
+  - `DEFAULT_MAX_PROFILE_LENGTH`  -  Constant (64 characters)
+  - `validate_profile_name(value, *, max_length=64)`  -  Raises `ValueError` on invalid
+  - `is_valid_profile_name(value, *, max_length=64)`  -  Returns `bool`, no exception
 
   **New parameter for `deploy_config()`:**
-  - `max_profile_length: int = 64` — Maximum allowed profile name length
+  - `max_profile_length: int = 64`  -  Maximum allowed profile name length
 
   **Security checks include:**
   - Path traversal prevention (`../`, `..\\`, absolute paths)
@@ -162,7 +192,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **README restructured by theme** — The README now has a cleaner organization with sections grouped by theme:
+- **README restructured by theme**  -  The README now has a cleaner organization with sections grouped by theme:
   - Getting Started (Key Features, Installation, Quick Start)
   - Core Concepts (Identifiers, Profiles, File Structure, Precedence)
   - Command Line Interface (all CLI commands)
@@ -172,19 +202,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Documentation
 
-- **Comprehensive security best practices** — New README sections covering:
+- **Comprehensive security best practices**  -  New README sections covering:
   - File permissions by layer with rationale
   - Recommended permissions for `.env` files (`0o600`)
   - macOS and Windows platform-specific considerations
   - Recommendations for sensitive data (env vars, secrets managers, redaction)
 
-- **Updated CLAUDE.md** — Added File Permissions section with API parameters, CLI flags, platform behavior, and implementation file references
+- **Updated CLAUDE.md**  -  Added File Permissions section with API parameters, CLI flags, platform behavior, and implementation file references
 
 ## [5.3.9] - 2026-01-29
 
 ### Changed
 
-- **Refactored config display using rtoml serialization** — The `display_config()` function now uses `rtoml.dumps()` for TOML serialization instead of custom formatting logic, then applies Rich styling to the output. This produces more accurate TOML output that matches standard TOML conventions and simplifies the codebase.
+- **Refactored config display using rtoml serialization**  -  The `display_config()` function now uses `rtoml.dumps()` for TOML serialization instead of custom formatting logic, then applies Rich styling to the output. This produces more accurate TOML output that matches standard TOML conventions and simplifies the codebase.
 
 ### Internal
 
@@ -197,45 +227,45 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Explanatory header in human output** — `display_config()` now prints a bright red header comment at the start of human-readable output explaining that nested dictionaries are displayed as `[section.subsection]` headers and may not match the original TOML structure. This helps users understand TOML serialization behavior.
+- **Explanatory header in human output**  -  `display_config()` now prints a bright red header comment at the start of human-readable output explaining that nested dictionaries are displayed as `[section.subsection]` headers and may not match the original TOML structure. This helps users understand TOML serialization behavior.
 
 ## [5.3.5] - 2026-01-29
 
 ### Added
 
-- **Provenance tracking for empty dicts** — The merge logic now stores provenance metadata for empty dict values (e.g., `console_styles: {}`). This allows `display_config()` to show source comments for empty dicts, matching the behavior for scalar values. Previously, empty dicts had no provenance and displayed without source information.
+- **Provenance tracking for empty dicts**  -  The merge logic now stores provenance metadata for empty dict values (e.g., `console_styles: {}`). This allows `display_config()` to show source comments for empty dicts, matching the behavior for scalar values. Previously, empty dicts had no provenance and displayed without source information.
 
 ### Changed
 
-- **`Config.origin()` returns data for empty dicts** — The `origin()` method now returns `SourceInfo` for empty dict keys instead of `None`, providing consistent provenance lookup across all value types.
+- **`Config.origin()` returns data for empty dicts**  -  The `origin()` method now returns `SourceInfo` for empty dict keys instead of `None`, providing consistent provenance lookup across all value types.
 
 ## [5.3.4] - 2026-01-29
 
 ### Changed
 
-- **`OutputFormat` moved to application layer** — The `OutputFormat` enum is now defined in `application.ports` instead of `cli.common` to satisfy Clean Architecture layer constraints. Both `cli` and `adapters.display` can now import it without violating import rules. The enum remains exported from the package root.
+- **`OutputFormat` moved to application layer**  -  The `OutputFormat` enum is now defined in `application.ports` instead of `cli.common` to satisfy Clean Architecture layer constraints. Both `cli` and `adapters.display` can now import it without violating import rules. The enum remains exported from the package root.
 
-- **Flat dicts rendered as inline tables** — `display_config()` now renders flat dicts (containing only primitive values, no nested dicts) as TOML inline tables (e.g., `scrub_patterns = { password = ".+", token = ".+" }`) instead of section headers. This matches the TOML source style and reduces visual noise.
+- **Flat dicts rendered as inline tables**  -  `display_config()` now renders flat dicts (containing only primitive values, no nested dicts) as TOML inline tables (e.g., `scrub_patterns = { password = ".+", token = ".+" }`) instead of section headers. This matches the TOML source style and reduces visual noise.
 
 ### Fixed
 
-- **Leaf values now appear under correct section header** — `display_config()` now prints all leaf values (scalars, lists, and flat dicts) for a section before recursing into nested subsections. Previously, values appearing after a nested dict in iteration order would visually appear under the subsection header (e.g., `rate_limit` appearing under `[lib_log_rich.scrub_patterns]` instead of `[lib_log_rich]`).
+- **Leaf values now appear under correct section header**  -  `display_config()` now prints all leaf values (scalars, lists, and flat dicts) for a section before recursing into nested subsections. Previously, values appearing after a nested dict in iteration order would visually appear under the subsection header (e.g., `rate_limit` appearing under `[lib_log_rich.scrub_patterns]` instead of `[lib_log_rich]`).
 
 ## [5.3.3] - 2026-01-29
 
 ### Changed
 
-- **`display_config` styling refinement** — Adjusted color scheme for better readability: keys now use light brown (`orange3`), the `=` separator is white (previously dimmed), and all values use green (previously yellow for non-strings).
+- **`display_config` styling refinement**  -  Adjusted color scheme for better readability: keys now use light brown (`orange3`), the `=` separator is white (previously dimmed), and all values use green (previously yellow for non-strings).
 
 ### Fixed
 
-- **Empty sections no longer displayed** — `display_config()` now skips empty dict values (e.g., `console_styles = {}`) instead of creating meaningless section headers like `[section.empty_table]`. Sections with no leaf values at any nesting level are omitted from output.
+- **Empty sections no longer displayed**  -  `display_config()` now skips empty dict values (e.g., `console_styles = {}`) instead of creating meaningless section headers like `[section.empty_table]`. Sections with no leaf values at any nesting level are omitted from output.
 
 ## [5.3.2] - 2026-01-29
 
 ### Added
 
-- **Rich-styled configuration display** — New `display_config()` function in `adapters.display` for enhanced configuration visualization with Rich console styling.
+- **Rich-styled configuration display**  -  New `display_config()` function in `adapters.display` for enhanced configuration visualization with Rich console styling.
 
   **Features:**
   - Human-readable TOML-like output with color-coded display (light brown keys, white `=`, green values)
@@ -254,12 +284,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   display_config(config, section="database")  # Display specific section only
   ```
 
-- **`OutputFormat` enum exported** — The `OutputFormat` enum (`OutputFormat.HUMAN`, `OutputFormat.JSON`) is now available from the main package for use with `display_config()`.
+- **`OutputFormat` enum exported**  -  The `OutputFormat` enum (`OutputFormat.HUMAN`, `OutputFormat.JSON`) is now available from the main package for use with `display_config()`.
 
 ## [5.3.1] - 2026-01-28
 
 ### Changed
-- **Provenance layer serialization** — `_store_scalar()` in `application/merge.py` now extracts the string `.value` from `Layer` enum instances before storing in the provenance dict. Previously, a `Layer` enum object could end up in the `"layer"` field, causing issues during JSON serialization
+- **Provenance layer serialization**  -  `_store_scalar()` in `application/merge.py` now extracts the string `.value` from `Layer` enum instances before storing in the provenance dict. Previously, a `Layer` enum object could end up in the `"layer"` field, causing issues during JSON serialization
 
 ## [5.3.0] - 2026-01-27
 
@@ -275,14 +305,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `Config.with_overrides()` now performs **deep recursive merge** instead of
   shallow top-level replacement. Nested dict keys are preserved when overriding
   a sub-key. Non-mapping values (scalars, lists) are still replaced entirely.
-- **TOML-style human-readable output** — `render_human()` now produces
+- **TOML-style human-readable output**  -  `render_human()` now produces
   `[section.subsection]` headers and `key = value` lines instead of flat
   dotted-path listings. Provenance is shown as `# source:` comments above
   each setting. Strings are double-quoted, lists use JSON array syntax.
 - Replaced stdlib `json` with `orjson` for JSON serialization/deserialization across all production modules (`domain/config.py`, `core.py`, `cli/common.py`, `cli/deploy.py`, `adapters/file_loaders/structured.py`).
 
 ### Fixed
-- **import-linter contracts** — Fixed `make test` to invoke `lint-imports` CLI
+- **import-linter contracts**  -  Fixed `make test` to invoke `lint-imports` CLI
   instead of a no-op `python -m importlinter.cli lint` command. Updated layers
   contract to use `containers` parameter (required by grimp v3.14). Corrected
   forbidden contract field name from `modules` to `source_modules`.
@@ -461,7 +491,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **Interactive conflict handling for `deploy` command** - When a destination file exists, the deploy command now offers two options:
-  - **Keep existing** (`k`) - Save new config as `.ucf` (Update Configuration File), preserving the original — **default**
+  - **Keep existing** (`k`) - Save new config as `.ucf` (Update Configuration File), preserving the original  -  **default**
   - **Overwrite** (`o`) - Backup original to `.bak`, then write new file
 
 - **`--batch` flag for `deploy` command** - Non-interactive mode that keeps existing files and writes new config as `.ucf` for manual review. Suitable for CI/CD pipelines and scripts where user customizations must be preserved.
@@ -635,13 +665,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Enhanced identifier validation** - All identifiers are now validated with comprehensive cross-platform filesystem safety rules:
 
   **Validation by Type:**
-  | Identifier | Spaces Allowed | Notes |
-  |------------|----------------|-------|
-  | `vendor` | ✅ Yes | For macOS/Windows paths |
-  | `app` | ✅ Yes | For macOS/Windows paths |
-  | `slug` | ❌ No | Linux paths, env var prefix |
-  | `profile` | ❌ No | Profile subdirectory |
-  | `hostname` | ❌ No | Host-specific files |
+| Identifier | Spaces Allowed | Notes                       |
+|------------|----------------|-----------------------------|
+| `vendor`   | OK Yes         | For macOS/Windows paths     |
+| `app`      | OK Yes         | For macOS/Windows paths     |
+| `slug`     | NO No          | Linux paths, env var prefix |
+| `profile`  | NO No          | Profile subdirectory        |
+| `hostname` | NO No          | Host-specific files         |
 
   **Common Rules (All Identifiers):**
   - ASCII-only characters (no UTF-8/Unicode)
@@ -653,13 +683,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
   **Examples:**
   ```python
-  # ✅ Valid
+  # OK Valid
   vendor="Acme Corp"    # Spaces OK in vendor
   app="Btx Fix Mcp"     # Spaces OK in app
   slug="my-app"         # No spaces in slug
   profile="production"  # No spaces in profile
 
-  # ❌ Invalid (raises ValueError)
+  # NO Invalid (raises ValueError)
   "../etc"      # Path traversal
   "café"        # Non-ASCII
   "CON"         # Windows reserved

@@ -34,6 +34,7 @@ from .._platform import normalise_examples_platform as _normalise_examples_platf
 from .._platform import normalise_resolver_platform as _normalise_resolver_platform
 from ..application.ports import OutputFormat, SourceInfoPayload
 from ..core import read_config, read_config_json, read_config_raw
+from ..domain.redaction import redact_mapping
 from .constants import DEFAULT_JSON_INDENT
 
 __all__ = [
@@ -261,7 +262,7 @@ def resolve_indent(enabled: bool) -> int | None:
     return DEFAULT_JSON_INDENT if enabled else None
 
 
-def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool) -> str:
+def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool, redact: bool = False) -> str:
     """Build a JSON payload for the provided query.
 
     Commands should share the same logic when emitting machine-readable output.
@@ -270,6 +271,7 @@ def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool)
         query: Normalised read parameters.
         indent: Indentation width or ``None`` for compact output.
         include_provenance: When ``True`` use :func:`read_config_json` to include source metadata.
+        redact: When ``True`` mask sensitive values (passwords, tokens, keys) before output.
 
     Returns:
         JSON document ready for ``click.echo``.
@@ -285,6 +287,7 @@ def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool)
             default_file=query.default_file,
             indent=indent,
             dotenv_path=query.dotenv_path,
+            redact=redact,
         )
     config = read_config(
         vendor=query.vendor,
@@ -296,7 +299,7 @@ def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool)
         default_file=query.default_file,
         dotenv_path=query.dotenv_path,
     )
-    return config.to_json(indent=indent)
+    return config.to_json(indent=indent, redact=redact)
 
 
 def render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfoPayload]) -> str:
@@ -394,10 +397,14 @@ def json_paths(paths: Iterable[Path]) -> str:
     return orjson.dumps([str(path) for path in paths], option=orjson.OPT_INDENT_2).decode()
 
 
-def human_payload(query: ReadQuery) -> str:
+def human_payload(query: ReadQuery, redact: bool = False) -> str:
     """Return prose describing config values and provenance.
 
     Offer a human-first view that mirrors the JSON content yet remains readable.
+
+    Args:
+        query: Normalised read parameters.
+        redact: When ``True`` mask sensitive values before rendering.
     """
     result = read_config_raw(
         vendor=query.vendor,
@@ -409,7 +416,8 @@ def human_payload(query: ReadQuery) -> str:
         default_file=query.default_file,
         dotenv_path=query.dotenv_path,
     )
-    return render_human(result.data, result.provenance)
+    data = redact_mapping(result.data) if redact else result.data
+    return render_human(data, result.provenance)
 
 
 def _fallback_info_lines() -> tuple[str, ...]:

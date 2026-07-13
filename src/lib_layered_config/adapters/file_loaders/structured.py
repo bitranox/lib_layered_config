@@ -24,13 +24,18 @@ from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
 from types import ModuleType
-from typing import Any, NoReturn
+from typing import Any, Final, NoReturn
 
 import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...observability import log_debug, log_error
+
+#: Maximum size of a single configuration file. A config file is normally a few KB; this
+#: generous 10 MiB ceiling bounds memory so an oversized or adversarial file (including
+#: one dropped into a ``.d`` directory) cannot exhaust memory during a read.
+MAX_CONFIG_FILE_BYTES: Final[int] = 10 * 1024 * 1024
 
 yaml: ModuleType | None = None
 
@@ -189,6 +194,11 @@ class BaseFileLoader:
         file_path = Path(path)
         if not file_path.is_file():
             raise NotFoundError(f"Configuration file not found: {path}")
+        size = file_path.stat().st_size
+        if size > MAX_CONFIG_FILE_BYTES:
+            raise InvalidFormatError(
+                f"Configuration file {path} is {size} bytes, exceeding the {MAX_CONFIG_FILE_BYTES}-byte limit"
+            )
         payload = file_path.read_bytes()
         _log_file_read(path, len(payload))
         return payload

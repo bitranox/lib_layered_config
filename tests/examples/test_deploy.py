@@ -644,7 +644,9 @@ def test_write_ucf_creates_ucf_file(tmp_path: Path) -> None:
     destination.write_text("existing content", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = deploy_module._write_ucf(destination, payload)
+    ucf_path = deploy_module._write_ucf(
+        destination, payload, layer="user", set_permissions_flag=False, dir_mode=None, file_mode=None
+    )
 
     assert ucf_path == tmp_path / "config.toml.ucf"
     assert ucf_path.read_bytes() == payload
@@ -658,10 +660,25 @@ def test_write_ucf_uses_numbered_suffix_when_ucf_exists(tmp_path: Path) -> None:
     existing_ucf.write_text("old ucf", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = deploy_module._write_ucf(destination, payload)
+    ucf_path = deploy_module._write_ucf(
+        destination, payload, layer="user", set_permissions_flag=False, dir_mode=None, file_mode=None
+    )
 
     assert ucf_path == tmp_path / "config.toml.ucf.1"
     assert ucf_path.read_bytes() == payload
+
+
+@posix_only
+def test_write_ucf_applies_user_layer_permissions(tmp_path: Path) -> None:
+    """A user-layer .ucf sidecar must be hardened to 0o600, not left at umask default."""
+    destination = tmp_path / "config.toml"
+    payload = b"secret_token = 'abc'"
+
+    ucf_path = deploy_module._write_ucf(
+        destination, payload, layer="user", set_permissions_flag=True, dir_mode=None, file_mode=None
+    )
+
+    assert (ucf_path.stat().st_mode & 0o777) == 0o600
 
 
 @os_agnostic

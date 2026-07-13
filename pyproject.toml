@@ -1,6 +1,6 @@
 [project]
 name = "lib_layered_config"
-version = "5.5.2"
+version = "5.6.0"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,21 +42,21 @@ Issues = "https://github.com/bitranox/lib_layered_config/issues"
 
 [project.optional-dependencies]
 dev = [
-  "build>=1.5.0",
-  "codecov-cli>=11.2.8",
-  "coverage[toml]>=7.14.1",
-  "httpx2>=2.4.0",
-  "hypothesis>=6.155.2",
-  "import-linter>=2.11",
+  "build>=1.5.1",
+  "codecov-cli>=11.3.1",
+  "coverage[toml]>=7.15.1",
+  "httpx2>=2.5.0",
+  "hypothesis>=6.156.6",
+  "import-linter>=2.13",
   "bandit>=1.9.4",
   "pip-audit>=2.10.1",
   "PyYAML>=6.0.3",
-  "pyright[nodejs]>=1.1.410",
-  "pytest>=9.1.0",
+  "pyright[nodejs]>=1.1.411",
+  "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-cov>=7.1.0",
-  "ruff>=0.15.17",
-  "textual>=8.2.7",
+  "ruff>=0.15.21",
+  "textual>=8.2.8",
   "twine>=6.2.0"
 ]
 yaml = [
@@ -68,7 +68,7 @@ lib_layered_config = "lib_layered_config.cli:main"
 lib-layered-config = "lib_layered_config.cli:main"
 
 [build-system]
-requires = ["hatchling>=1.30.1"]
+requires = ["hatchling>=1.31.0"]
 build-backend = "hatchling.build"
 
 
@@ -109,7 +109,7 @@ exclude = [
 [tool.pytest.ini_options]
 addopts = ["--maxfail=1", "--no-cov", "--doctest-modules", "--ignore=scripts/menu.py", "--ignore=tests/benchmark"]
 pythonpath = ["src"]
-doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
+doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
 testpaths = ["tests"]
 python_files = ["tests/**/test_*.py"]
 markers = [
@@ -177,6 +177,7 @@ type = "layers"
 containers = ["lib_layered_config"]
 layers = [
   "cli",
+  "examples",
   "adapters",
   "application",
   "domain",
@@ -190,11 +191,7 @@ forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.applicat
 
 [tool.pip-audit]
 # Known vulnerabilities to ignore (unfixable or accepted risk)
-# GHSA-4xh5-x5gv-qwph, PYSEC-2022-42969: py library ReDoS (no fix available, low risk)
-# PYSEC-2022-43012, PYSEC-2025-49, CVE-2024-6345: setuptools in CI/dev environments (not a runtime dependency)
-# CVE-2025-69277: pynacl (transitive, awaiting fix release)
-# CVE-2026-21441: urllib3 (transitive, awaiting fix release)
-# CVE-2026-22702: virtualenv (dev dependency, awaiting fix release)
-ignore-vulns = ["GHSA-4xh5-x5gv-qwph", "PYSEC-2022-42969", "PYSEC-2022-43012", "PYSEC-2025-49", "CVE-2024-6345",
-    "CVE-2025-69277", "CVE-2026-21441", "CVE-2026-22702","CVE-2026-1703", "CVE-2026-25990", "CVE-2026-26007", "CVE-2026-4539", "CVE-2026-25645",
-]
+# PYSEC-2026-2132 (CVE-2026-7246): click.edit() command injection. Fixed in click 8.3.3,
+#   but the dev/CI toolchain pins click<8.3.0 via codecov-cli, so there is no upgrade path
+#   here; not a runtime dependency and the library never calls click.edit().
+ignore-vulns = ["PYSEC-2026-2132", "CVE-2026-7246"]

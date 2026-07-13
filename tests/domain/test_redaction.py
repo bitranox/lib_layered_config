@@ -9,8 +9,21 @@ from lib_layered_config.domain.redaction import (
     is_sensitive,
     redact_mapping,
 )
+from lib_layered_config.domain.errors import InvalidFormatError
 
 from tests.support.os_markers import os_agnostic
+
+
+@os_agnostic
+def test_redact_mapping_raises_on_pathologically_deep_nesting() -> None:
+    root: dict[str, object] = {}
+    node = root
+    for _ in range(150):
+        child: dict[str, object] = {}
+        node["k"] = child
+        node = child
+    with pytest.raises(InvalidFormatError):
+        redact_mapping(root)
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +59,18 @@ from tests.support.os_markers import os_agnostic
         "DATABASE_PASSWORD",
         "API_TOKEN",
         "Secret_Key",
+        # broadened coverage (common real-world secret-naming conventions)
+        "apikey",
+        "access_key",
+        "aws_access_key_id",
+        "signing_key",
+        "encryption_key",
+        "cookie",
+        "session_id",
+        "sessionid",
+        "jwt",
+        "signature",
+        "passphrase",
     ],
 )
 def test_is_sensitive_detects_known_patterns(key: str) -> None:
@@ -66,6 +91,8 @@ def test_is_sensitive_detects_known_patterns(key: str) -> None:
         "tokenizer",
         "donkey",
         "keynote",
+        "key",
+        "key_binding",
         "hostname",
         "username",
         "database_host",

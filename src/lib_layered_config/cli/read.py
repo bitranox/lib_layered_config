@@ -64,6 +64,12 @@ from .typed_click import option
     show_default=True,
     help="Include provenance metadata in JSON output",
 )
+@option(
+    "--redact/--no-redact",
+    default=False,
+    show_default=True,
+    help="Mask sensitive values (passwords, tokens, keys) in the output",
+)
 def read_command(
     vendor: str,
     app: str,
@@ -76,14 +82,15 @@ def read_command(
     output_format: str,
     indent: bool,
     provenance: bool,
+    redact: bool,
 ) -> None:
     """Read configuration and print either human prose or JSON."""
     query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file, dotenv_path)
     fmt = parse_output_format(output_format)
     if wants_json(fmt):
-        click.echo(json_payload(query, resolve_indent(indent), provenance))
+        click.echo(json_payload(query, resolve_indent(indent), provenance, redact=redact))
         return
-    click.echo(human_payload(query))
+    click.echo(human_payload(query, redact=redact))
 
 
 @click.command("read-json", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -115,6 +122,12 @@ def read_command(
     show_default=True,
     help="Pretty-print JSON output",
 )
+@option(
+    "--redact/--no-redact",
+    default=False,
+    show_default=True,
+    help="Mask sensitive values (passwords, tokens, keys) in the output",
+)
 def read_json_command(
     vendor: str,
     app: str,
@@ -125,10 +138,11 @@ def read_json_command(
     default_file: Path | None,
     dotenv_path: Path | None,
     indent: bool,
+    redact: bool,
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
     query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file, dotenv_path)
-    click.echo(json_payload(query, resolve_indent(indent), include_provenance=True))
+    click.echo(json_payload(query, resolve_indent(indent), include_provenance=True, redact=redact))
 
 
 def register(cli_group: click.Group) -> None:

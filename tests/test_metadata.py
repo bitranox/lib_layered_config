@@ -78,6 +78,19 @@ def test_when_print_info_runs_it_lists_every_field(capsys: pytest.CaptureFixture
 
 
 @pytest.mark.os_agnostic
+def test_print_info_from_imported_module_emits_every_field(capsys: pytest.CaptureFixture[str]) -> None:
+    """Exercise the imported package module (not a runpy copy) so its body is covered."""
+    from lib_layered_config.__init__conf__ import print_info as imported_print_info
+
+    imported_print_info()
+    captured = capsys.readouterr().out
+
+    assert captured.startswith("Info for lib_layered_config:")
+    for label in TARGET_FIELDS:
+        assert label in captured
+
+
+@pytest.mark.os_agnostic
 def test_the_metadata_constants_match_the_project() -> None:
     pyproject = _load_pyproject()
     project_table = cast(dict[str, Any], pyproject["project"])

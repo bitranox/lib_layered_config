@@ -42,11 +42,13 @@ class InvalidFormatError(ConfigError):
     """
 
 
-class ValidationError(ConfigError):
-    """Placeholder for semantic configuration validation failures.
+class ValidationError(ConfigError, ValueError):
+    """Raised when an identifier or platform value fails validation.
 
-    The current release does not perform semantic validation, but the class is
-    reserved so downstream integrations already depend on a stable type.
+    Subclasses both :class:`ConfigError` (so a caller can catch every library error
+    with a single ``except ConfigError``) and the stdlib :class:`ValueError` (so the
+    long-standing ``except ValueError`` contract documented for the validation helpers
+    keeps working). Raising this instead of a bare ``ValueError`` is backward compatible.
     """
 
 

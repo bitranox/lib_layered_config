@@ -39,6 +39,8 @@ import re
 from enum import Enum
 from functools import lru_cache
 
+from .errors import ValidationError
+
 #: Default maximum length for profile names (characters).
 #: Profile names are used as path segments, so reasonable limits prevent
 #: filesystem issues and potential denial-of-service via excessively long names.
@@ -106,7 +108,7 @@ _VALID_HOSTNAME_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9.-
 def _check_not_empty(value: str, name: str) -> None:
     """Raise ValueError if value is empty."""
     if not value:
-        raise ValueError(f"{name} cannot be empty")
+        raise ValidationError(f"{name} cannot be empty")
 
 
 def _check_ascii_only(value: str, name: str) -> None:
@@ -114,13 +116,13 @@ def _check_ascii_only(value: str, name: str) -> None:
     try:
         value.encode("ascii")
     except UnicodeEncodeError:
-        raise ValueError(f"{name} contains non-ASCII characters: {value}") from None
+        raise ValidationError(f"{name} contains non-ASCII characters: {value}") from None
 
 
 def _check_no_invalid_chars(value: str, name: str) -> None:
     """Raise ValueError if value contains filesystem-invalid characters."""
     if _INVALID_CHARS_PATTERN.search(value):
-        raise ValueError(f"{name} contains invalid characters: {value}")
+        raise ValidationError(f"{name} contains invalid characters: {value}")
 
 
 def _check_not_windows_reserved(value: str, name: str, *, split_on_space: bool = False) -> None:
@@ -130,13 +132,13 @@ def _check_not_windows_reserved(value: str, name: str, *, split_on_space: bool =
     if split_on_space:
         base_name = base_name.split()[0]
     if base_name.upper() in _WINDOWS_RESERVED_NAMES:
-        raise ValueError(f"{name} is a Windows reserved name: {value}")
+        raise ValidationError(f"{name} is a Windows reserved name: {value}")
 
 
 def _check_no_trailing_dot_or_space(value: str, name: str) -> None:
     """Raise ValueError if value ends with dot or space (Windows restriction)."""
     if value.endswith(".") or value.endswith(" "):
-        raise ValueError(f"{name} cannot end with a dot or space: {value}")
+        raise ValidationError(f"{name} cannot end with a dot or space: {value}")
 
 
 def _raise_pattern_error(value: str, name: str, *, check_space_start: bool) -> None:
@@ -148,11 +150,11 @@ def _raise_pattern_error(value: str, name: str, *, check_space_start: bool) -> N
         check_space_start: If True, space is checked as an invalid start character.
     """
     if value.startswith("."):
-        raise ValueError(f"{name} cannot start with a dot: {value}")
+        raise ValidationError(f"{name} cannot start with a dot: {value}")
     invalid_starts = ("-", "_", " ") if check_space_start else ("-", "_")
     if any(value.startswith(c) for c in invalid_starts):
-        raise ValueError(f"{name} must start with an alphanumeric character: {value}")
-    raise ValueError(f"{name} contains invalid characters: {value}")
+        raise ValidationError(f"{name} must start with an alphanumeric character: {value}")
+    raise ValidationError(f"{name} contains invalid characters: {value}")
 
 
 def _check_permissive_pattern(value: str, name: str) -> None:
@@ -167,26 +169,26 @@ def _check_hostname_pattern(value: str, name: str) -> None:
     if _VALID_HOSTNAME_PATTERN.match(value):
         return
     if value.startswith(".") or value.startswith("-"):
-        raise ValueError(f"{name} must start with an alphanumeric character: {value}")
-    raise ValueError(f"{name} contains invalid characters: {value}")
+        raise ValidationError(f"{name} must start with an alphanumeric character: {value}")
+    raise ValidationError(f"{name} contains invalid characters: {value}")
 
 
 def _check_no_trailing_space(value: str, name: str) -> None:
     """Raise ValueError if value ends with space."""
     if value.endswith(" "):
-        raise ValueError(f"{name} cannot end with a space: {value}")
+        raise ValidationError(f"{name} cannot end with a space: {value}")
 
 
 def _check_no_control_chars(value: str, name: str) -> None:
     """Raise ValueError if value contains control characters."""
     if _CONTROL_CHAR_PATTERN.search(value):
-        raise ValueError(f"{name} contains control characters: {value!r}")
+        raise ValidationError(f"{name} contains control characters: {value!r}")
 
 
 def _check_max_length(value: str, name: str, max_length: int) -> None:
     """Raise ValueError if value exceeds maximum length."""
     if len(value) > max_length:
-        raise ValueError(f"{name} exceeds maximum length of {max_length}: {len(value)} characters")
+        raise ValidationError(f"{name} exceeds maximum length of {max_length}: {len(value)} characters")
 
 
 class Layer(str, Enum):
@@ -284,7 +286,7 @@ def validate_identifier(value: str, name: str) -> str:
         >>> validate_identifier("../etc", "slug")
         Traceback (most recent call last):
             ...
-        ValueError: slug contains invalid characters: ../etc
+        ValidationError: slug contains invalid characters: ../etc
     """
     return validate_path_segment(value, name, allow_dots=False)
 
@@ -318,7 +320,7 @@ def validate_vendor_app(value: str, name: str) -> str:
         >>> validate_vendor_app("../etc", "vendor")
         Traceback (most recent call last):
             ...
-        ValueError: vendor contains invalid characters: ../etc
+        ValidationError: vendor contains invalid characters: ../etc
     """
     _check_not_empty(value, name)
     _check_ascii_only(value, name)
@@ -363,7 +365,7 @@ def validate_profile(
         >>> validate_profile("../etc")
         Traceback (most recent call last):
             ...
-        ValueError: profile contains invalid characters: ../etc
+        ValidationError: profile contains invalid characters: ../etc
     """
     if value is None:
         return None
@@ -418,19 +420,19 @@ def validate_profile_name(
         >>> validate_profile_name("")
         Traceback (most recent call last):
             ...
-        ValueError: profile cannot be empty
+        ValidationError: profile cannot be empty
         >>> validate_profile_name("../etc/passwd")
         Traceback (most recent call last):
             ...
-        ValueError: profile contains invalid characters: ../etc/passwd
+        ValidationError: profile contains invalid characters: ../etc/passwd
         >>> validate_profile_name("a" * 100)
         Traceback (most recent call last):
             ...
-        ValueError: profile exceeds maximum length of 64: 100 characters
+        ValidationError: profile exceeds maximum length of 64: 100 characters
         >>> validate_profile_name("test\\x00inject")
         Traceback (most recent call last):
             ...
-        ValueError: profile contains control characters: 'test\\x00inject'
+        ValidationError: profile contains control characters: 'test\\x00inject'
     """
     _check_not_empty(value, "profile")
     _check_no_control_chars(value, "profile")
@@ -529,11 +531,11 @@ def validate_hostname(value: str) -> str:
         >>> validate_hostname("../etc")
         Traceback (most recent call last):
             ...
-        ValueError: hostname contains invalid characters: ../etc
+        ValidationError: hostname contains invalid characters: ../etc
         >>> validate_hostname("café")
         Traceback (most recent call last):
             ...
-        ValueError: hostname contains non-ASCII characters: café
+        ValidationError: hostname contains non-ASCII characters: café
     """
     _check_not_empty(value, "hostname")
     _check_ascii_only(value, "hostname")

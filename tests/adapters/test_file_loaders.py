@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,12 @@ from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, 
 from lib_layered_config.domain.errors import InvalidFormatError, NotFoundError
 
 from tests.support.os_markers import os_agnostic
+
+# Check installation with find_spec, not `structured_module.yaml`. That module global is
+# populated lazily on first use (_load_yaml_module), so at test-collection time it is
+# still None even when PyYAML is installed - a plain `yaml is None` skipif silently skips
+# these tests forever.
+_YAML_INSTALLED = importlib.util.find_spec("yaml") is not None
 
 
 @os_agnostic
@@ -43,13 +50,21 @@ def test_json_loader_affirms_boolean_truth(tmp_path: Path) -> None:
 
 
 @os_agnostic
+def test_loader_rejects_file_over_size_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(structured_module, "MAX_CONFIG_FILE_BYTES", 10)
+    path = _write(tmp_path / "big.toml", "key = 'aaaaaaaaaaaaaaaaaaaaaaaa'\n")
+    with pytest.raises(InvalidFormatError):
+        TOMLFileLoader().load(str(path))
+
+
+@os_agnostic
 def test_toml_loader_refuses_unfinished_lists(tmp_path: Path) -> None:
     path = _write(tmp_path / "broken.toml", "not = ['valid'", encoding="utf-8")
     with pytest.raises(InvalidFormatError):
         TOMLFileLoader().load(str(path))
 
 
-@pytest.mark.skipif(structured_module.yaml is None, reason="PyYAML not available")
+@pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML not available")
 @os_agnostic
 def test_yaml_loader_whispers_only_silence_for_empty_files(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.yaml", "# empty file\n")
@@ -71,7 +86,7 @@ def test_loader_mapping_guard_rejects_naked_scalars() -> None:
         structured_module.BaseFileLoader._ensure_mapping(7, path="demo.toml")
 
 
-@pytest.mark.skipif(structured_module.yaml is None, reason="PyYAML not available")
+@pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML not available")
 @os_agnostic
 def test_yaml_loader_cries_out_on_illegal_syntax(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.yaml", "key: : :\n", encoding="utf-8")

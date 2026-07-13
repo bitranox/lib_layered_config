@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from .domain.errors import ValidationError
+
 #: Canonical resolver identifiers used when wiring the path resolver adapter.
 #: Values mirror ``sys.platform`` strings so downstream code can branch safely.
 _CANONICAL_RESOLVER: Final[dict[str, str]] = {
@@ -77,13 +79,13 @@ def _sanitize(alias: str | None) -> str | None:
         >>> _sanitize('   ')
         Traceback (most recent call last):
         ...
-        ValueError: Platform alias cannot be empty.
+        ValidationError: Platform alias cannot be empty.
     """
     if alias is None:
         return None
     stripped = alias.strip().lower()
     if not stripped:
-        raise ValueError("Platform alias cannot be empty.")
+        raise ValidationError("Platform alias cannot be empty.")
     return stripped
 
 
@@ -115,7 +117,7 @@ def normalise_resolver_platform(alias: str | None) -> str | None:
         >>> normalise_resolver_platform('beos')
         Traceback (most recent call last):
         ...
-        ValueError: Platform must be one of: darwin, linux, mac, macos, posix, win, win32, windows, wine.
+        ValidationError: Platform must be one of: darwin, linux, mac, macos, posix, win, win32, windows, wine.
     """
     sanitized = _sanitize(alias)
     if sanitized is None:
@@ -124,7 +126,7 @@ def normalise_resolver_platform(alias: str | None) -> str | None:
         return _CANONICAL_RESOLVER[sanitized]
     except KeyError as exc:  # pragma: no cover - exercised via caller tests
         allowed = ", ".join(sorted(_CANONICAL_RESOLVER))
-        raise ValueError(f"Platform must be one of: {allowed}.") from exc
+        raise ValidationError(f"Platform must be one of: {allowed}.") from exc
 
 
 def normalise_examples_platform(alias: str | None) -> str | None:
@@ -154,7 +156,7 @@ def normalise_examples_platform(alias: str | None) -> str | None:
         >>> normalise_examples_platform('amiga')
         Traceback (most recent call last):
         ...
-        ValueError: Platform must be one of: darwin, linux, mac, macos, posix, win, win32, windows, wine.
+        ValidationError: Platform must be one of: darwin, linux, mac, macos, posix, win, win32, windows, wine.
     """
     sanitized = _sanitize(alias)
     if sanitized is None:
@@ -163,4 +165,4 @@ def normalise_examples_platform(alias: str | None) -> str | None:
         return _CANONICAL_EXAMPLES[sanitized]
     except KeyError as exc:  # pragma: no cover - exercised via caller tests
         allowed = ", ".join(sorted(_CANONICAL_EXAMPLES))
-        raise ValueError(f"Platform must be one of: {allowed}.") from exc
+        raise ValidationError(f"Platform must be one of: {allowed}.") from exc

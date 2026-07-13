@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from lib_layered_config.application.merge import LayerSnapshot, MergeResult, merge_layers
+from lib_layered_config.domain.errors import InvalidFormatError
 
 from tests.support.os_markers import os_agnostic
+
+
+def _deeply_nested(depth: int) -> dict[str, object]:
+    root: dict[str, object] = {}
+    node = root
+    for _ in range(depth):
+        child: dict[str, object] = {}
+        node["k"] = child
+        node = child
+    return root
+
+
+@os_agnostic
+def test_when_nesting_is_pathologically_deep_merge_raises_invalid_format() -> None:
+    with pytest.raises(InvalidFormatError):
+        merge_story(snapshot("app", _deeply_nested(150)))
 
 
 def _nested_contains(actual: object | None, expected: object) -> bool:
@@ -185,6 +203,88 @@ def test_latest_non_empty_layer_wins_like_a_final_verse(first, second) -> None:
         if not (isinstance(value, dict) and not value)
     )
     assert chorus is True
+
+
+@os_agnostic
+def test_when_env_numbers_a_slot_the_list_keeps_its_shape() -> None:
+    """A numeric-key mapping over an existing list overrides that element and stays a list."""
+    result = merge_story(
+        snapshot("app", {"dataset": [{"name": "a", "port": 5}, {"name": "b"}]}, "app.toml"),
+        snapshot("env", {"dataset": {"0": {"name": "x"}}}),
+    )
+    assert isinstance(result.data["dataset"], list)
+    assert result.data["dataset"][0] == {"name": "x", "port": 5}
+    assert result.data["dataset"][1] == {"name": "b"}
+
+
+@os_agnostic
+def test_when_env_indexes_past_the_end_it_appends_the_new_verse() -> None:
+    result = merge_story(
+        snapshot("app", {"hosts": [{"name": "a"}]}, "app.toml"),
+        snapshot("env", {"hosts": {"1": {"name": "b"}}}),
+    )
+    assert result.data["hosts"] == [{"name": "a"}, {"name": "b"}]
+
+
+@os_agnostic
+def test_when_env_index_leaps_beyond_the_next_slot_it_warns_and_skips(caplog) -> None:
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    result = merge_story(
+        snapshot("app", {"hosts": [{"name": "a"}]}, "app.toml"),
+        snapshot("env", {"hosts": {"5": {"name": "z"}}}),
+    )
+    assert result.data["hosts"] == [{"name": "a"}]
+    assert any(record.message == "list_index_out_of_range" for record in caplog.records)
+
+
+@os_agnostic
+def test_when_numeric_keys_have_no_list_they_stay_a_dict() -> None:
+    """Without an underlying list the numeric segments keep their current dict semantics."""
+    result = merge_story(
+        snapshot("env", {"shards": {"0": "a", "1": "b"}}),
+    )
+    assert result.data["shards"] == {"0": "a", "1": "b"}
+
+
+@os_agnostic
+def test_when_mapping_mixes_numbers_and_words_over_a_list_it_stays_current_behavior() -> None:
+    """Mixed numeric/alpha keys do NOT trigger index merge; today's replace behavior stands."""
+    result = merge_story(
+        snapshot("app", {"items": [{"name": "a"}]}, "app.toml"),
+        snapshot("env", {"items": {"0": {"name": "x"}, "label": "top"}}),
+    )
+    assert result.data["items"] == {"0": {"name": "x"}, "label": "top"}
+
+
+@os_agnostic
+def test_when_env_overrides_element_provenance_points_to_env() -> None:
+    result = merge_story(
+        snapshot("app", {"dataset": [{"dsn": "old"}]}, "app.toml"),
+        snapshot("env", {"dataset": {"0": {"dsn": "new"}}}),
+    )
+    assert result.data["dataset"][0]["dsn"] == "new"
+    assert result.provenance["dataset.0.dsn"]["layer"] == "env"
+
+
+@os_agnostic
+def test_when_env_indexes_a_nested_list_it_overrides_one_cell() -> None:
+    """A nested array-of-arrays keeps its inner list; only the addressed cell changes."""
+    result = merge_story(
+        snapshot("app", {"matrix": [[1, 2], [3, 4]]}, "app.toml"),
+        snapshot("env", {"matrix": {"0": {"0": 9}}}),
+    )
+    assert result.data["matrix"] == [[9, 2], [3, 4]]
+
+
+@os_agnostic
+def test_when_env_replaces_element_with_scalar_it_swaps_the_slot() -> None:
+    result = merge_story(
+        snapshot("app", {"ports": [{"n": 1}, {"n": 2}]}, "app.toml"),
+        snapshot("env", {"ports": {"0": 8080}}),
+    )
+    assert result.data["ports"] == [8080, {"n": 2}]
 
 
 @os_agnostic

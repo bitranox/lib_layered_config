@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any, cast
+from typing import cast
 
 import rich_click as click
 from lib_cli_exit_tools import cli_session
+from lib_cli_exit_tools.application.runner import SessionOverrides
 
 from .common import version_string
 from .constants import CLICK_CONTEXT_SETTINGS, TRACEBACK_SUMMARY, TRACEBACK_VERBOSE
@@ -43,7 +44,7 @@ def main(argv: Sequence[str] | None = None, *, restore_traceback: bool = True) -
     with cli_session(
         summary_limit=TRACEBACK_SUMMARY,
         verbose_limit=TRACEBACK_VERBOSE,
-        overrides=cast(Any, overrides or None),
+        overrides=overrides or None,
         restore=restore_traceback,
     ) as run:
         runner = cast("Callable[..., int]", run)
@@ -54,22 +55,22 @@ def main(argv: Sequence[str] | None = None, *, restore_traceback: bool = True) -
         )
 
 
-def _session_overrides(argv: Sequence[str] | None) -> dict[str, object]:
+def _session_overrides(argv: Sequence[str] | None) -> SessionOverrides:
     """Derive configuration overrides for ``cli_session`` based on CLI args."""
     if not argv:
-        return {}
+        return SessionOverrides()
 
     try:
         ctx = cli.make_context("lib_layered_config", list(argv), resilient_parsing=True)
     except click.ClickException:
-        return {}
+        return SessionOverrides()
 
     try:
         enabled = bool(ctx.params.get("traceback", False))
     finally:
         ctx.close()
 
-    return {"traceback": enabled} if enabled else {}
+    return SessionOverrides(traceback=enabled) if enabled else SessionOverrides()
 
 
 def _register_commands() -> None:

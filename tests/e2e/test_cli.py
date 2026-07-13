@@ -65,6 +65,34 @@ def test_cli_read_json_without_provenance_returns_config_data(sandbox: LayeredSa
 
 
 @os_agnostic
+def test_cli_read_redacts_secrets_when_requested(sandbox: LayeredSandbox) -> None:
+    layer(sandbox, "app", "config.toml", """[db]\npassword = "s3cret"\nhost = "localhost"\n""")
+    base_args = [
+        "read",
+        "--vendor",
+        VENDOR,
+        "--app",
+        APP,
+        "--slug",
+        SLUG,
+        "--format",
+        "json",
+        "--no-indent",
+        "--no-provenance",
+    ]
+
+    plain = make_runner().invoke(cli.cli, base_args, env=sandbox.env)
+    assert plain.exit_code == 0
+    assert "s3cret" in plain.output  # default is opt-in: not redacted
+
+    redacted = make_runner().invoke(cli.cli, [*base_args, "--redact"], env=sandbox.env)
+    assert redacted.exit_code == 0
+    payload = json.loads(redacted.output)
+    assert payload["db"]["password"] == "***REDACTED***"
+    assert payload["db"]["host"] == "localhost"
+
+
+@os_agnostic
 def test_cli_read_json_with_provenance_includes_layer_metadata(sandbox: LayeredSandbox) -> None:
     layer(
         sandbox,

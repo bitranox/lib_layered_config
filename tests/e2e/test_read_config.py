@@ -214,3 +214,35 @@ def test_read_config_dotenv_path_provenance_records_explicit_file(
     assert result.data["service"]["region"] == "us-east"  # type: ignore[index]
     assert result.provenance["service.region"]["layer"] == "dotenv"
     assert result.provenance["service.region"]["path"] == str(explicit_env)
+
+
+@os_agnostic
+def test_env_var_overrides_one_array_element_end_to_end(
+    monkeypatch: pytest.MonkeyPatch, sandbox: LayeredSandbox
+) -> None:
+    """A prefixed env var with a numeric segment overrides one element of a file-defined array."""
+    sandbox.apply_env(monkeypatch)
+    sandbox.write(
+        "app",
+        "config.toml",
+        content=dedent(
+            """
+            [[dataset]]
+            name = "primary"
+            dsn = "postgres://old"
+
+            [[dataset]]
+            name = "secondary"
+            """
+        ),
+    )
+    monkeypatch.setenv("CONFIG_KIT___DATASET__0__DSN", "postgres://new")
+
+    result = read_config_raw(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(sandbox.start_dir))
+
+    dataset = result.data["dataset"]  # type: ignore[index]
+    assert isinstance(dataset, list)
+    assert dataset[0]["dsn"] == "postgres://new"
+    assert dataset[0]["name"] == "primary"
+    assert dataset[1]["name"] == "secondary"
+    assert result.provenance["dataset.0.dsn"]["layer"] == "env"
