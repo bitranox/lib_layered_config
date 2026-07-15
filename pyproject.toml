@@ -42,7 +42,9 @@ Issues = "https://github.com/bitranox/lib_layered_config/issues"
 
 [project.optional-dependencies]
 dev = [
-  "build>=1.5.1",
+  # 1.5.1 was yanked upstream (unintended breaking changes), so 1.5.0 is the newest usable
+  # release; a >=1.5.1 floor has ZERO candidates and makes this extra unresolvable.
+  "build>=1.5.0",
   # codecov-cli is disabled, not dropped: it requires click<8.3.0, which drags click back to
   # 8.2.1 - the version with CVE-2026-7246 (command injection in click.edit(), fixed in 8.3.3).
   # Nothing else here caps click, so with this line active the audit gate goes red on every
@@ -53,7 +55,7 @@ dev = [
   # Transitive CVE pins
   "click>=8.4.2",                # CVE-2026-7246
   "coverage[toml]>=7.15.1",
-  "httpx2>=2.6.0",
+  "httpx2>=2.7.0",
   "hypothesis>=6.156.6",
   "import-linter>=2.13",
   "bandit>=1.9.4",
@@ -199,7 +201,6 @@ forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.applicat
 
 [tool.pip-audit]
 # Known vulnerabilities to ignore (unfixable or accepted risk)
-# PYSEC-2026-2132 (CVE-2026-7246): click.edit() command injection. Fixed in click 8.3.3,
 #   but the dev/CI toolchain pins click<8.3.0 via codecov-cli, so there is no upgrade path
 #   here; not a runtime dependency and the library never calls click.edit().
-ignore-vulns = ["PYSEC-2026-2132", "CVE-2026-7246"]
+ignore-vulns = ["CVE-2026-7246"]
