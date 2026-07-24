@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+from lib_layered_config.domain.errors import InvalidFormatError
 from lib_layered_config.domain.redaction import (
     REDACTED_PLACEHOLDER,
     is_sensitive,
     redact_mapping,
 )
-from lib_layered_config.domain.errors import InvalidFormatError
-
 from tests.support.os_markers import os_agnostic
 
 
@@ -167,7 +166,7 @@ def test_redact_mapping_replaces_sensitive_list_value_entirely() -> None:
 
 
 # ---------------------------------------------------------------------------
-# redact_mapping: non-mutating
+# redact_mapping - non-mutating
 # ---------------------------------------------------------------------------
 
 

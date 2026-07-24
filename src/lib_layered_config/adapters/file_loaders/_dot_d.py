@@ -18,8 +18,11 @@ Contents:
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _ALLOWED_EXTENSIONS = (".toml", ".yaml", ".yml", ".json")
 """File suffixes considered when expanding ``.d`` directories.

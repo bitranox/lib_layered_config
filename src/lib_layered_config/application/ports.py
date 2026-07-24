@@ -118,13 +118,13 @@ class Merger(Protocol):
 
 
 __all__ = [
-    "OutputFormat",
-    "SourceInfoPayload",
     "ConfigData",
-    "ProvenanceData",
-    "PathResolver",
-    "FileLoader",
     "DotEnvLoader",
     "EnvLoader",
+    "FileLoader",
     "Merger",
+    "OutputFormat",
+    "PathResolver",
+    "ProvenanceData",
+    "SourceInfoPayload",
 ]

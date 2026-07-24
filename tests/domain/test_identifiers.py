@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
+from lib_layered_config.domain.errors import ConfigError, ValidationError
+
+# Import internal constant for testing
 from lib_layered_config.domain.identifiers import (
+    ABSOLUTE_MAX_PROFILE_LENGTH,
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
     is_valid_profile_name,
@@ -15,10 +19,6 @@ from lib_layered_config.domain.identifiers import (
     validate_profile_name,
     validate_vendor_app,
 )
-
-# Import internal constant for testing
-from lib_layered_config.domain.identifiers import ABSOLUTE_MAX_PROFILE_LENGTH
-from lib_layered_config.domain.errors import ConfigError, ValidationError
 
 
 def test_profile_validation_failure_is_catchable_as_config_error() -> None:

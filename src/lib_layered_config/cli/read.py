@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import rich_click as click
 
@@ -17,6 +17,9 @@ from .common import (
 )
 from .constants import CLICK_CONTEXT_SETTINGS
 from .typed_click import option
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @click.command("read", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -71,6 +74,7 @@ from .typed_click import option
     help="Mask sensitive values (passwords, tokens, keys) in the output",
 )
 def read_command(
+    *,
     vendor: str,
     app: str,
     slug: str,
@@ -85,10 +89,19 @@ def read_command(
     redact: bool,
 ) -> None:
     """Read configuration and print either human prose or JSON."""
-    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file, dotenv_path)
+    query = build_read_query(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        profile=profile,
+        prefer=prefer,
+        start_dir=start_dir,
+        default_file=default_file,
+        dotenv_path=dotenv_path,
+    )
     fmt = parse_output_format(output_format)
     if wants_json(fmt):
-        click.echo(json_payload(query, resolve_indent(indent), provenance, redact=redact))
+        click.echo(json_payload(query, resolve_indent(enabled=indent), include_provenance=provenance, redact=redact))
         return
     click.echo(human_payload(query, redact=redact))
 
@@ -129,6 +142,7 @@ def read_command(
     help="Mask sensitive values (passwords, tokens, keys) in the output",
 )
 def read_json_command(
+    *,
     vendor: str,
     app: str,
     slug: str,
@@ -141,8 +155,17 @@ def read_json_command(
     redact: bool,
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
-    query = build_read_query(vendor, app, slug, profile, prefer, start_dir, default_file, dotenv_path)
-    click.echo(json_payload(query, resolve_indent(indent), include_provenance=True, redact=redact))
+    query = build_read_query(
+        vendor=vendor,
+        app=app,
+        slug=slug,
+        profile=profile,
+        prefer=prefer,
+        start_dir=start_dir,
+        default_file=default_file,
+        dotenv_path=dotenv_path,
+    )
+    click.echo(json_payload(query, resolve_indent(enabled=indent), include_provenance=True, redact=redact))
 
 
 def register(cli_group: click.Group) -> None:

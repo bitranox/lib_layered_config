@@ -8,7 +8,6 @@ from lib_layered_config.adapters.file_loaders._dot_d import (
     _collect_dot_d_files,
     expand_dot_d,
 )
-
 from tests.support.os_markers import os_agnostic
 
 

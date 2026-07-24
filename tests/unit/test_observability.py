@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-
-import pytest
+from typing import TYPE_CHECKING
 
 from lib_layered_config import bind_trace_id, get_logger
-from lib_layered_config.observability import TRACE_ID, log_info, make_event, _merge_payload
-
+from lib_layered_config.observability import TRACE_ID, _merge_payload, log_info, make_event
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    import pytest
 
 
 @os_agnostic
@@ -24,7 +25,7 @@ def test_log_info_carries_trace_context(caplog: pytest.LogCaptureFixture) -> Non
     bind_trace_id("trace-123")
     log_info("merge-complete", layer="env", path=None)
     record = caplog.records[-1]
-    assert getattr(record, "context") == {"trace_id": "trace-123", "layer": "env", "path": None}
+    assert record.context == {"trace_id": "trace-123", "layer": "env", "path": None}
 
 
 @os_agnostic

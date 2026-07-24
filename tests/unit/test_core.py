@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 import runpy
 import sys
 
-from lib_layered_config import core
+import pytest
 
+from lib_layered_config import core
 from tests.support.os_markers import os_agnostic
 
 

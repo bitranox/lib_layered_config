@@ -10,18 +10,21 @@ so that dependency inversion remains enforceable through automated tests.
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from lib_layered_config.application import ports
 from lib_layered_config.adapters.dotenv.default import DefaultDotEnvLoader
 from lib_layered_config.adapters.env.default import DefaultEnvLoader, default_env_prefix
 from lib_layered_config.adapters.file_loaders import structured as structured_module
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
+from lib_layered_config.application import ports
 from tests.support import create_layered_sandbox
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture()

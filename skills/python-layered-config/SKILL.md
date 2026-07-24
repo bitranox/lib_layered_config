@@ -39,9 +39,9 @@ Requires Python 3.10+. Install the `yaml` extra only if you ship `.yml` files.
 from lib_layered_config import read_config
 
 config = read_config(vendor="Acme Corp", app="My App", slug="my-app")
-config.get("service.timeout", default=30)   # dotted-path access
-config["database"]["host"]                    # mapping access
-config.origin("service.timeout")              # -> which layer + file set it (provenance)
+config.get("service.timeout", default=30)  # dotted-path access
+config["database"]["host"]  # mapping access
+config.origin("service.timeout")  # -> which layer + file set it (provenance)
 ```
 
 - `vendor` and `app` are used **verbatim** (spaces and case preserved) in the macOS and

@@ -1,12 +1,12 @@
 [project]
 name = "lib_layered_config"
-version = "5.6.0"
+version = "5.6.1"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "rich-click>=1.9.8",
-  "lib_cli_exit_tools>=2.3.2",
+  "lib_cli_exit_tools>=2.3.3",
   "rtoml>=0.13.0",
   "orjson>=3.11.9",
 ]
@@ -54,9 +54,9 @@ dev = [
   # "codecov-cli>=11.3.1",
   # Transitive CVE pins
   "click>=8.4.2",                # CVE-2026-7246
-  "coverage[toml]>=7.15.1",
-  "httpx2>=2.7.0",
-  "hypothesis>=6.156.6",
+  "coverage[toml]>=7.15.2",
+  "httpx2>=2.9.1",
+  "hypothesis>=6.161.2",
   "import-linter>=2.13",
   "bandit>=1.9.4",
   "pip-audit>=2.10.1",
@@ -65,7 +65,7 @@ dev = [
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-cov>=7.1.0",
-  "ruff>=0.15.21",
+  "ruff>=0.16.0",
   "textual>=8.2.8",
   "twine>=6.2.0"
 ]
@@ -95,6 +95,31 @@ extend-exclude = [
   "tests/benchmark",
 ]
 
+[tool.ruff.lint]
+select = [
+  "E", "W",     # pycodestyle
+  "F",           # pyflakes
+  "I",           # isort
+  "N",           # pep8-naming
+  "UP",          # pyupgrade
+  "B",           # bugbear
+  "A",           # builtins shadowing
+  "C4",          # comprehension simplification
+  "SIM",         # simplification
+  "TCH",         # type-checking imports
+  "RUF",         # ruff-specific
+  "G",           # logging format (catches f-string in logger)
+  "T20",         # print statements
+  "PTH",         # pathlib preference
+  "PLC", "PLE",  # pylint conventions/errors
+  "S",           # flake8-bandit security checks
+  "PERF",        # performance anti-patterns
+  "ERA",         # eradicate dead/commented-out code
+  "FBT",         # boolean trap (boolean positional args)
+  "PLR",         # pylint refactor
+  "PLW",         # pylint warnings
+]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
@@ -102,6 +127,22 @@ convention = "google"
 # ignore the "unused import sys" in the jupyter notebook - which we need (it is a linter hickup)
 "notebooks/*.ipynb" = ["F401"]
 "notebooks/Quickstart.ipynb" = ["E999"]
+# Tests: assert is standard, test fixtures have passwords, magic values are clearer inline, temp
+# paths are fine. PLC0415: local/deferred imports are a deliberate test idiom - several tests
+# import inside the test body to exercise import-time and cache behaviour. PLR0911: a helper that
+# mirrors a coercion chain under test reads clearest as one branch per case.
+"tests/**/*.py" = ["S101", "S105", "S106", "S108", "T20", "PLR2004", "PLR0913", "PLR0911", "FBT001", "FBT003", "PLC0415"]
+# These modules are the composition/orchestration layer: every function threads the same
+# many named identifiers (vendor/app/slug/profile/prefer/start_dir/default_file/dotenv_path)
+# or merge-recursion state (target/provenance/key/value/dotted/snapshot/segments) through
+# keyword-only parameters by design; splitting them into a params object would be a real
+# API/behaviour change, not a lint fix.
+"src/lib_layered_config/core.py" = ["PLR0913"]
+"src/lib_layered_config/_layers.py" = ["PLR0913"]
+"src/lib_layered_config/application/merge.py" = ["PLR0913"]
+"src/lib_layered_config/adapters/path_resolvers/default.py" = ["PLR0913"]
+"src/lib_layered_config/cli/*.py" = ["PLR0913"]
+"src/lib_layered_config/examples/*.py" = ["PLR0913"]
 
 [tool.pyright]
 typeCheckingMode = "strict"

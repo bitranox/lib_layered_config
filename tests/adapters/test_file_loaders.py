@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 
 from lib_layered_config.adapters.file_loaders import structured as structured_module
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from lib_layered_config.domain.errors import InvalidFormatError, NotFoundError
-
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # Check installation with find_spec, not `structured_module.yaml`. That module global is
 # populated lazily on first use (_load_yaml_module), so at test-collection time it is
@@ -103,13 +105,13 @@ def test_yaml_parser_returns_empty_dict_when_document_is_none(monkeypatch: pytes
 
 @os_agnostic
 def test_yaml_parser_wraps_yaml_errors_with_context(monkeypatch: pytest.MonkeyPatch) -> None:
-    class Boom(Exception):
+    class BoomError(Exception):
         pass
 
     def explode(_: bytes) -> None:
-        raise Boom("boom")
+        raise BoomError("boom")
 
-    fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=Boom)
+    fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=BoomError)
     with pytest.raises(InvalidFormatError) as exc:
         structured_module._parse_yaml_bytes(b"", fake_yaml, "memory.yaml")
     assert "memory.yaml" in str(exc.value)

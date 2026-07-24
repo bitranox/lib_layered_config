@@ -17,18 +17,22 @@ separate from adapters while remaining independent of the domain layer.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.file_loaders._dot_d import expand_dot_d
 from .adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
-from .adapters.path_resolvers.default import DefaultPathResolver
 from .application.merge import LayerSnapshot, MergeResult, merge_layers
 from .domain.errors import InvalidFormatError, NotFoundError
 from .domain.identifiers import Layer
 from .observability import log_debug, log_info, make_event
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator, Mapping, Sequence
+
+    from .adapters.dotenv.default import DefaultDotEnvLoader
+    from .adapters.path_resolvers.default import DefaultPathResolver
 
 #: Mapping from file suffix to loader instance. The ordering preserves the
 #: precedence documented for structured configuration formats while keeping all

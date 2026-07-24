@@ -5,8 +5,8 @@ functions construct read queries, choose output modes, format human summaries,
 and surface metadata drawn from ``__init__conf__``.
 
 Contents:
-    * :class:`ReadQuery` — frozen bundle capturing the parameters for configuration reads.
-    * :class:`OutputFormat` — enum for CLI output format selection (re-exported from application.ports).
+    * :class:`ReadQuery` - frozen bundle capturing the parameters for configuration reads.
+    * :class:`OutputFormat` - enum for CLI output format selection (re-exported from application.ports).
     * Metadata helpers (:func:`version_string`, :func:`describe_distribution`).
     * Query shaping (:func:`build_read_query`, :func:`normalise_prefer`, :func:`stringify`).
     * Output shaping (:func:`json_payload`, :func:`human_payload`, :func:`render_human`).
@@ -23,8 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import orjson
 import rich_click as click
@@ -37,14 +36,17 @@ from ..core import read_config, read_config_json, read_config_raw
 from ..domain.redaction import redact_mapping
 from .constants import DEFAULT_JSON_INDENT
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 __all__ = [
     "OutputFormat",
     "ReadQuery",
     "build_read_query",
     "describe_distribution",
     "human_payload",
-    "json_payload",
     "json_paths",
+    "json_payload",
     "normalise_examples_platform_option",
     "normalise_platform_option",
     "normalise_prefer",
@@ -78,7 +80,7 @@ class _PackageMetadata(Protocol):
         ...
 
 
-package_metadata: _PackageMetadata = cast(_PackageMetadata, __init__conf__)
+package_metadata: _PackageMetadata = cast("_PackageMetadata", __init__conf__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,12 +132,13 @@ def describe_distribution() -> Iterable[str]:
     """
     lines_provider = getattr(package_metadata, "info_lines", None)
     if callable(lines_provider):
-        yield from cast(Iterable[str], lines_provider())
+        yield from cast("Iterable[str]", lines_provider())
         return
     yield from _fallback_info_lines()
 
 
 def build_read_query(
+    *,
     vendor: str,
     app: str,
     slug: str,
@@ -254,7 +257,7 @@ def parse_output_format(value: str) -> OutputFormat:
     return OutputFormat(value.strip().lower())
 
 
-def resolve_indent(enabled: bool) -> int | None:
+def resolve_indent(*, enabled: bool) -> int | None:
     """Return the default JSON indentation when pretty-printing is enabled.
 
     Provide a single source for the CLI's JSON formatting decision.
@@ -262,7 +265,7 @@ def resolve_indent(enabled: bool) -> int | None:
     return DEFAULT_JSON_INDENT if enabled else None
 
 
-def json_payload(query: ReadQuery, indent: int | None, include_provenance: bool, redact: bool = False) -> str:
+def json_payload(query: ReadQuery, indent: int | None, *, include_provenance: bool, redact: bool = False) -> str:
     """Build a JSON payload for the provided query.
 
     Commands should share the same logic when emitting machine-readable output.
@@ -316,7 +319,9 @@ def render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfo
         Multi-line TOML-style representation with provenance comments.
 
     Examples:
-        >>> render_human({"db": {"host": "localhost"}}, {"db.host": {"layer": "app", "path": "/etc/app.toml", "key": "db.host"}})
+        >>> render_human(
+        ...     {"db": {"host": "localhost"}}, {"db.host": {"layer": "app", "path": "/etc/app.toml", "key": "db.host"}}
+        ... )
         '\\n[db]\\n  # source: layer=app, path=/etc/app.toml\\n  host = "localhost"'
     """
     if not data:
@@ -359,7 +364,7 @@ def _render_section(
 
     for key, value in data.items():
         if isinstance(value, Mapping):
-            nested = cast(Mapping[str, object], value)
+            nested = cast("Mapping[str, object]", value)
             _render_section(nested, provenance, lines, (*section_path, key))
 
 
@@ -384,7 +389,7 @@ def _format_toml_value(value: object) -> str:
     if isinstance(value, str):
         return f'"{value}"'
     if isinstance(value, list):
-        items = cast(list[object], value)
+        items = cast("list[object]", value)
         return orjson.dumps(items).decode()
     return str(value)
 
@@ -397,7 +402,7 @@ def json_paths(paths: Iterable[Path]) -> str:
     return orjson.dumps([str(path) for path in paths], option=orjson.OPT_INDENT_2).decode()
 
 
-def human_payload(query: ReadQuery, redact: bool = False) -> str:
+def human_payload(query: ReadQuery, *, redact: bool = False) -> str:
     """Return prose describing config values and provenance.
 
     Offer a human-first view that mirrors the JSON content yet remains readable.
@@ -424,7 +429,7 @@ def _fallback_info_lines() -> tuple[str, ...]:
     """Construct info lines from metadata constants when helpers are absent."""
     fields_provider = getattr(package_metadata, "metadata_fields", None)
     if callable(fields_provider):
-        fields = cast(tuple[tuple[str, str], ...], fields_provider())
+        fields = cast("tuple[tuple[str, str], ...]", fields_provider())
     else:
         fields: tuple[tuple[str, str], ...] = (
             ("name", package_metadata.name),

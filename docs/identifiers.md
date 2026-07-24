@@ -170,26 +170,16 @@ C:\ProgramData\Acme\MyApp\profile\production\config.d\10-database.toml
 from lib_layered_config import read_config
 
 # Load production configuration
-prod_config = read_config(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp",
-    profile="production"
-)
+prod_config = read_config(vendor="Acme", app="MyApp", slug="myapp", profile="production")
 
 # Load test configuration (different paths, completely isolated)
-test_config = read_config(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp",
-    profile="test"
-)
+test_config = read_config(vendor="Acme", app="MyApp", slug="myapp", profile="test")
 
 # Load default configuration (no profile, original paths)
 default_config = read_config(
     vendor="Acme",
     app="MyApp",
-    slug="myapp"
+    slug="myapp",
     # profile=None (default)
 )
 ```
@@ -229,9 +219,9 @@ from lib_layered_config import read_config
 
 # Define your application identity (without profile)
 config = read_config(
-    vendor="Acme",           # Your company name
-    app="DatabaseManager",   # Your application's display name
-    slug="db-manager"        # Filesystem/environment-friendly identifier
+    vendor="Acme",  # Your company name
+    app="DatabaseManager",  # Your application's display name
+    slug="db-manager",  # Filesystem/environment-friendly identifier
 )
 
 # Or with a profile for environment-specific configuration
@@ -239,7 +229,7 @@ prod_config = read_config(
     vendor="Acme",
     app="DatabaseManager",
     slug="db-manager",
-    profile="production"     # Optional: isolates config in profile subdirectory
+    profile="production",  # Optional: isolates config in profile subdirectory
 )
 ```
 
@@ -341,20 +331,10 @@ Profiles allow you to organize environment-specific configurations (e.g., `test`
 from lib_layered_config import read_config
 
 # Load production configuration
-config = read_config(
-    vendor="Acme",
-    app="ConfigKit",
-    slug="config-kit",
-    profile="production"
-)
+config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit", profile="production")
 
 # Load test configuration
-test_config = read_config(
-    vendor="Acme",
-    app="ConfigKit",
-    slug="config-kit",
-    profile="test"
-)
+test_config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit", profile="test")
 ```
 
 #### Using Profiles in CLI

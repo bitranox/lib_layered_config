@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lib_layered_config.examples.generate import generate_examples
-
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @os_agnostic

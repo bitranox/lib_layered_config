@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from .cli import main
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def run_module(arguments: Sequence[str] | None = None) -> int:

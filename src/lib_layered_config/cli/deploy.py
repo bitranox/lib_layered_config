@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import orjson
 import rich_click as click
@@ -13,6 +13,9 @@ from ..examples import deploy_config as deploy_config_impl
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
 from .typed_click import option
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def _prompt_for_action(destination: Path) -> DeployAction:
@@ -124,6 +127,7 @@ def _format_results(results: list[DeployResult]) -> str:
     help="Set Unix permissions (755/644 for app/host, 700/600 for user)",
 )
 def deploy_command(
+    *,
     source: Path,
     vendor: str,
     app: str,

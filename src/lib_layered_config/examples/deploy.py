@@ -308,7 +308,7 @@ class WindowsDeployment(DeploymentStrategy):
         return Path(
             self.resolver.env.get(
                 "LIB_LAYERED_CONFIG_PROGRAMDATA",
-                self.resolver.env.get("ProgramData", os.environ.get("ProgramData", r"C:\\ProgramData")),  # noqa: SIM112
+                self.resolver.env.get("ProgramData", os.environ.get("PROGRAMDATA", r"C:\\ProgramData")),
             )
         )
 
@@ -573,10 +573,10 @@ def _deploy_dot_d_files(
 def _handle_conflict(
     destination: Path,
     payload: bytes,
+    *,
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
-    *,
     layer: str,
     set_permissions_flag: bool,
     dir_mode: int | None,
@@ -650,9 +650,9 @@ def _deploy_single(
     return _handle_conflict(
         destination,
         payload,
-        force,
-        batch,
-        conflict_resolver,
+        force=force,
+        batch=batch,
+        conflict_resolver=conflict_resolver,
         layer=layer,
         set_permissions_flag=set_permissions_flag,
         dir_mode=dir_mode,
@@ -866,7 +866,7 @@ def _write_bytes(path: Path, payload: bytes, *, restrict: bool = False) -> None:
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
-        os.replace(tmp_path, path)
+        tmp_path.replace(path)
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise

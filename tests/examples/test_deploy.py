@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import socket
 from pathlib import Path
 from textwrap import dedent
-
-import socket
 
 import pytest
 

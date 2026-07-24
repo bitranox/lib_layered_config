@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import rich_click as click
 from lib_cli_exit_tools import cli_session
 from lib_cli_exit_tools.application.runner import SessionOverrides
 
+from . import deploy, fail, generate, info, read
 from .common import version_string
 from .constants import CLICK_CONTEXT_SETTINGS, TRACEBACK_SUMMARY, TRACEBACK_VERBOSE
-from .typed_click import option, version_option
 from .read import read_command as cli_read_config
 from .read import read_json_command as cli_read_config_json
+from .typed_click import option, version_option
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 
 @click.group(
@@ -32,7 +35,7 @@ from .read import read_json_command as cli_read_config_json
     default=False,
     help="Show full Python traceback on errors",
 )
-def cli(traceback: bool) -> None:  # noqa: ARG001 - handled by _session_overrides
+def cli(*, traceback: bool) -> None:
     """Root command for the CLI group."""
 
 
@@ -74,8 +77,6 @@ def _session_overrides(argv: Sequence[str] | None) -> SessionOverrides:
 
 
 def _register_commands() -> None:
-    from . import deploy, fail, generate, info, read
-
     for module in (read, deploy, generate, info, fail):
         module.register(cli)
 
@@ -85,7 +86,7 @@ _register_commands()
 
 __all__ = [
     "cli",
-    "main",
     "cli_read_config",
     "cli_read_config_json",
+    "main",
 ]

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from lib_layered_config.domain.permissions import (
@@ -14,9 +14,10 @@ from lib_layered_config.domain.permissions import (
     set_custom_permissions,
     set_permissions,
 )
-
 from tests.support.os_markers import os_agnostic, posix_only
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Permission constant values

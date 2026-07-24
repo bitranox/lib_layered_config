@@ -331,7 +331,7 @@ config = read_config(
     vendor="Acme",
     app="MyApp",
     slug="myapp",
-    default_file="./defaults.toml"  # Also checks ./defaults.d/*.{toml,yaml,json}
+    default_file="./defaults.toml",  # Also checks ./defaults.d/*.{toml,yaml,json}
 )
 ```
 
@@ -487,6 +487,7 @@ When a later layer overwrites a scalar value with a mapping (or vice versa), a w
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.WARNING)
 
 # If user.toml has: service = "disabled"

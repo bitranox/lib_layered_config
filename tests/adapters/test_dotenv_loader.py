@@ -1,20 +1,23 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from lib_layered_config.adapters._nested_keys import assign_nested as assign
 from lib_layered_config.adapters.dotenv.default import (
     DefaultDotEnvLoader,
+)
+from lib_layered_config.adapters.dotenv.default import (
     _parse_dotenv as parse,
 )
 from lib_layered_config.domain.errors import InvalidFormatError
-
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _write_sample_dotenv(tmp_path: Path) -> tuple[DefaultDotEnvLoader, dict[str, object], Path]:
@@ -29,19 +32,19 @@ def _write_sample_dotenv(tmp_path: Path) -> tuple[DefaultDotEnvLoader, dict[str,
 
 @os_agnostic
 def test_dotenv_loader_preserves_plain_text_host(tmp_path: Path) -> None:
-    loader, data, _ = _write_sample_dotenv(tmp_path)
+    _loader, data, _ = _write_sample_dotenv(tmp_path)
     assert data["db"]["host"] == "localhost"
 
 
 @os_agnostic
 def test_dotenv_loader_preserves_password_literal(tmp_path: Path) -> None:
-    loader, data, _ = _write_sample_dotenv(tmp_path)
+    _loader, data, _ = _write_sample_dotenv(tmp_path)
     assert data["db"]["password"] == "s3cret"
 
 
 @os_agnostic
 def test_dotenv_loader_keeps_uncoerced_feature_value(tmp_path: Path) -> None:
-    loader, data, _ = _write_sample_dotenv(tmp_path)
+    _loader, data, _ = _write_sample_dotenv(tmp_path)
     assert data["feature"] == "true"
 
 
@@ -75,7 +78,7 @@ def _no_prefix(paths):
 def dotenv_entries(draw):
     path_lists = draw(st.lists(st.lists(SEGMENT, min_size=1, max_size=3), min_size=1, max_size=5).filter(_no_prefix))
     values = draw(st.lists(DOTENV_VALUE, min_size=len(path_lists), max_size=len(path_lists)))
-    return {"__".join(parts): value for parts, value in zip(path_lists, values)}
+    return {"__".join(parts): value for parts, value in zip(path_lists, values, strict=False)}
 
 
 @os_agnostic

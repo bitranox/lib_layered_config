@@ -50,7 +50,7 @@ def _linux_context(tmp_path: Path):
 @posix_only
 def test_linux_resolver_first_app_path_points_to_config(tmp_path: Path) -> None:
     resolver, _ = _linux_context(tmp_path)
-    first_path = list(resolver.app())[0]
+    first_path = next(iter(resolver.app()))
     assert first_path.endswith("config.toml")
 
 
@@ -110,21 +110,21 @@ def _mac_context(tmp_path: Path):
 @mac_only
 def test_macos_resolver_app_path_uses_application_support(tmp_path: Path) -> None:
     resolver, _ = _mac_context(tmp_path)
-    first_path = Path(list(resolver.app())[0]).as_posix()
+    first_path = Path(next(iter(resolver.app()))).as_posix()
     assert first_path.endswith("Library/Application Support/Acme/ConfigKit/config.toml")
 
 
 @mac_only
 def test_macos_resolver_host_path_uses_hosts_directory(tmp_path: Path) -> None:
     resolver, _ = _mac_context(tmp_path)
-    host_path = Path(list(resolver.host())[0]).as_posix()
+    host_path = Path(next(iter(resolver.host()))).as_posix()
     assert host_path.endswith("Library/Application Support/Acme/ConfigKit/hosts/mac-host.toml")
 
 
 @mac_only
 def test_macos_resolver_user_path_uses_home_library(tmp_path: Path) -> None:
     resolver, _ = _mac_context(tmp_path)
-    user_path = Path(list(resolver.user())[0]).as_posix()
+    user_path = Path(next(iter(resolver.user()))).as_posix()
     assert user_path.endswith("HomeLibrary/Application Support/Acme/ConfigKit/config.toml")
 
 

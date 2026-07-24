@@ -13,12 +13,11 @@ from hypothesis import strategies as st
 from lib_layered_config.adapters._nested_keys import assign_nested
 from lib_layered_config.adapters.env.default import (
     DefaultEnvLoader,
-    default_env_prefix,
-    _normalize_prefix,
-    _iter_namespace_entries,
     _coerce,
+    _iter_namespace_entries,
+    _normalize_prefix,
+    default_env_prefix,
 )
-
 from tests.support.os_markers import os_agnostic
 
 

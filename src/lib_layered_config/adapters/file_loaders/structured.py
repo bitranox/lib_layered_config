@@ -23,14 +23,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
-from types import ModuleType
-from typing import Any, Final, NoReturn
+from typing import TYPE_CHECKING, Any, Final, NoReturn
 
 import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...observability import log_debug, log_error
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 #: Maximum size of a single configuration file. A config file is normally a few KB; this
 #: generous 10 MiB ceiling bounds memory so an oversized or adversarial file (including
@@ -148,7 +150,7 @@ def _load_yaml_module() -> ModuleType | None:
     Returns:
         The PyYAML module when available; otherwise ``None``.
     """
-    global yaml
+    global yaml  # noqa: PLW0603 - module-level cache for an optional dependency, populated once
     if yaml is not None:
         return yaml
     try:

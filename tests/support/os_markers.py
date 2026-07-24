@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 import pytest
 
@@ -16,12 +17,12 @@ IS_MAC = sys.platform == "darwin"
 IS_POSIX = os.name == "posix"
 
 __all__ = [
-    "IS_WINDOWS",
     "IS_MAC",
     "IS_POSIX",
+    "IS_WINDOWS",
+    "mac_only",
     "os_agnostic",
     "posix_only",
-    "mac_only",
     "windows_only",
 ]
 

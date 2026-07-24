@@ -37,11 +37,11 @@ from lib_layered_config import Layer
 
 # Available layers (in precedence order, lowest to highest):
 Layer.DEFAULTS  # "defaults" - bundled application defaults
-Layer.APP       # "app" - system-wide application config
-Layer.HOST      # "host" - machine-specific overrides
-Layer.USER      # "user" - per-user preferences
-Layer.DOTENV    # "dotenv" - project-local .env file
-Layer.ENV       # "env" - environment variables (highest precedence)
+Layer.APP  # "app" - system-wide application config
+Layer.HOST  # "host" - machine-specific overrides
+Layer.USER  # "user" - per-user preferences
+Layer.DOTENV  # "dotenv" - project-local .env file
+Layer.ENV  # "env" - environment variables (highest precedence)
 
 # Layer values are strings, so they work seamlessly with provenance:
 origin = config.origin("service.timeout")
@@ -152,8 +152,8 @@ for key in keys_to_check:
     origin = config.origin(key)
 
     if origin:
-        layer = origin['layer']
-        source = origin['path'] or '(ephemeral)'
+        layer = origin["layer"]
+        source = origin["path"] or "(ephemeral)"
         print(f"{key}: {value} [from {layer}] {source}")
     else:
         print(f"{key}: Not configured")
@@ -173,7 +173,7 @@ sensitive_keys = ["api.secret_key", "database.password"]
 for key in sensitive_keys:
     origin = config.origin(key)
     if origin:
-        if origin['layer'] not in ['env', 'dotenv']:
+        if origin["layer"] not in ["env", "dotenv"]:
             print(f"WARNING: {key} should come from env/dotenv, not {origin['layer']}")
             print(f"  Currently in: {origin['path']}")
     else:
@@ -289,16 +289,12 @@ from lib_layered_config import read_config
 config = read_config(vendor="Acme", app="Demo", slug="demo")
 
 # Create a version with production overrides
-prod_config = config.with_overrides({
-    "service": {
-        "endpoint": "https://prod-api.example.com",
-        "timeout": 60
-    },
-    "database": {
-        "host": "prod-db.example.com",
-        "pool_size": 100
+prod_config = config.with_overrides(
+    {
+        "service": {"endpoint": "https://prod-api.example.com", "timeout": 60},
+        "database": {"host": "prod-db.example.com", "pool_size": 100},
     }
-})
+)
 
 print(f"Dev endpoint: {config.get('service.endpoint')}")
 print(f"Prod endpoint: {prod_config.get('service.endpoint')}")
@@ -310,13 +306,7 @@ print(f"Prod endpoint: {prod_config.get('service.endpoint')}")
 **Example 2: Testing with feature flags**
 ```python
 # Enable feature flags for testing
-test_config = config.with_overrides({
-    "features": {
-        "new_ui": True,
-        "experimental_api": True,
-        "debug_mode": True
-    }
-})
+test_config = config.with_overrides({"features": {"new_ui": True, "experimental_api": True, "debug_mode": True}})
 
 # Use test_config in your tests
 if test_config.get("features.new_ui"):
@@ -395,11 +385,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 from lib_layered_config import read_config
 
 # Simplest usage - just specify your app identity
-config = read_config(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp"
-)
+config = read_config(vendor="Acme", app="MyApp", slug="myapp")
 
 # Access configuration values
 timeout = config.get("service.timeout", default=30)
@@ -414,12 +400,7 @@ print(f"Service will connect to {endpoint} with {timeout}s timeout")
 from lib_layered_config import read_config
 
 # Prefer TOML files over JSON when both exist
-config = read_config(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp",
-    prefer=["toml", "json", "yaml"]
-)
+config = read_config(vendor="Acme", app="MyApp", slug="myapp", prefer=["toml", "json", "yaml"])
 
 # If both config.toml and config.json exist in the same directory,
 # config.toml will be loaded because it appears first in the prefer list
@@ -432,12 +413,7 @@ from pathlib import Path
 from lib_layered_config import read_config
 
 # Start with application defaults before applying environment-specific overrides
-config = read_config(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp",
-    default_file=Path("./config/defaults.toml")
-)
+config = read_config(vendor="Acme", app="MyApp", slug="myapp", default_file=Path("./config/defaults.toml"))
 
 # Precedence order now becomes:
 # 1. defaults.toml (lowest)
@@ -456,12 +432,7 @@ from lib_layered_config import read_config
 
 # Specify where to start searching for .env files
 project_root = Path(__file__).parent.parent
-config = read_config(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp",
-    start_dir=str(project_root)
-)
+config = read_config(vendor="Acme", app="MyApp", slug="myapp", start_dir=str(project_root))
 
 # The library will search for .env files starting from project_root
 # and moving upward through parent directories
@@ -474,12 +445,7 @@ from pathlib import Path
 from lib_layered_config import read_config
 
 # Load a specific .env file instead of searching upward
-config = read_config(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp",
-    dotenv_path=Path("/opt/myapp/secrets/.env.production")
-)
+config = read_config(vendor="Acme", app="MyApp", slug="myapp", dotenv_path=Path("/opt/myapp/secrets/.env.production"))
 
 # The library loads /opt/myapp/secrets/.env.production directly
 # without searching parent directories for .env files
@@ -497,8 +463,8 @@ config = read_config(
     app="MyApp",
     slug="myapp",
     prefer=["toml", "json"],  # TOML preferred
-    start_dir=Path.cwd(),      # Search .env from current directory
-    default_file=Path(__file__).parent / "defaults.toml"  # Ship defaults
+    start_dir=Path.cwd(),  # Search .env from current directory
+    default_file=Path(__file__).parent / "defaults.toml",  # Ship defaults
 )
 
 # Use the configuration
@@ -544,6 +510,7 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
+
 @app.route("/api/config")
 def get_config():
     # Load and return configuration as JSON with provenance
@@ -551,9 +518,10 @@ def get_config():
         vendor="Acme",
         app="MyApp",
         slug="myapp",
-        indent=2  # Pretty-printed for readability
+        indent=2,  # Pretty-printed for readability
     )
-    return json_payload, 200, {'Content-Type': 'application/json'}
+    return json_payload, 200, {"Content-Type": "application/json"}
+
 
 # The response includes both config values and their sources
 ```
@@ -565,12 +533,7 @@ from lib_layered_config import read_config_json
 import json
 
 # Load configuration with provenance
-payload = read_config_json(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp",
-    indent=2
-)
+payload = read_config_json(vendor="Acme", app="MyApp", slug="myapp", indent=2)
 
 data = json.loads(payload)
 
@@ -600,7 +563,7 @@ compact_json = read_config_json(
     vendor="Acme",
     app="MyApp",
     slug="myapp",
-    indent=None  # Compact output
+    indent=None,  # Compact output
 )
 
 # Log the configuration snapshot
@@ -634,11 +597,7 @@ from lib_layered_config import read_config_raw
 from jinja2 import Template
 
 # Load configuration as raw dictionaries
-data, provenance = read_config_raw(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp"
-)
+data, provenance = read_config_raw(vendor="Acme", app="MyApp", slug="myapp")
 
 # Use in template rendering
 template = Template("""
@@ -662,11 +621,7 @@ print(output)
 from lib_layered_config import read_config_raw
 
 # Load configuration
-data, provenance = read_config_raw(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp"
-)
+data, provenance = read_config_raw(vendor="Acme", app="MyApp", slug="myapp")
 
 # Validate required fields
 required_keys = [
@@ -703,11 +658,7 @@ else:
 from lib_layered_config import read_config_raw
 
 # Load base configuration
-data, provenance = read_config_raw(
-    vendor="Acme",
-    app="MyApp",
-    slug="myapp"
-)
+data, provenance = read_config_raw(vendor="Acme", app="MyApp", slug="myapp")
 
 # Apply runtime overrides (e.g., from command-line arguments)
 if args.db_host:
@@ -767,6 +718,7 @@ os.environ[f"{prefix}SERVICE__TIMEOUT"] = "5"
 
 # Now when you load configuration, these will be picked up
 from lib_layered_config import read_config
+
 config = read_config(vendor="Acme", app="MyApp", slug="myapp")
 
 print(f"DB Host: {config.get('database.host')}")  # test-db.example.com
@@ -854,7 +806,7 @@ results = deploy_config(
     vendor="Acme",
     app="MyApp",
     targets=["app"],  # Deploy to system-wide location
-    slug="myapp"
+    slug="myapp",
 )
 
 # On Linux, this copies to: /etc/xdg/myapp/config.toml (+ config.d/ if exists)
@@ -880,7 +832,7 @@ results = deploy_config(
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    batch=True  # Non-interactive, creates .ucf for review
+    batch=True,  # Non-interactive, creates .ucf for review
 )
 
 for result in results:
@@ -906,7 +858,7 @@ results = deploy_config(
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    force=True  # Backup to .bak, then overwrite
+    force=True,  # Backup to .bak, then overwrite
 )
 
 for result in results:
@@ -932,7 +884,7 @@ results = deploy_config(
     app="MyApp",
     targets=["app", "user"],  # Deploy to both system and user directories
     slug="myapp",
-    force=True
+    force=True,
 )
 
 print(f"Deployed to {len(results)} locations:")
@@ -960,7 +912,7 @@ try:
         app="MyApp",
         targets=["app"],
         slug="myapp",
-        batch=True  # Non-interactive for scripts
+        batch=True,  # Non-interactive for scripts
     )
 
     for result in results:
@@ -989,7 +941,7 @@ results = deploy_config(
     app="MyApp",
     targets=["app"],
     slug="myapp",
-    profile="production"  # Deploy to profile-specific subdirectory
+    profile="production",  # Deploy to profile-specific subdirectory
 )
 
 # On Linux: /etc/xdg/myapp/profile/production/config.toml (+ config.d/ if exists)
@@ -1006,7 +958,7 @@ test_results = deploy_config(
     app="MyApp",
     targets=["app", "user"],
     slug="myapp",
-    profile="test"  # Completely isolated from production
+    profile="test",  # Completely isolated from production
 )
 
 # On Linux: /etc/xdg/myapp/profile/test/config.toml (+ config.d/)
@@ -1036,7 +988,7 @@ for env in environments:
         targets=["app"],
         slug="myapp",
         profile=env,
-        force=True  # Update existing configs (creates backups)
+        force=True,  # Update existing configs (creates backups)
     )
 
     for result in results:
@@ -1063,7 +1015,7 @@ results = deploy_config(
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    set_permissions=True  # Default - sets 700/600 for user layer
+    set_permissions=True,  # Default - sets 700/600 for user layer
 )
 
 # Deploy with custom permissions (e.g., group-readable)
@@ -1073,7 +1025,7 @@ results = deploy_config(
     app="MyApp",
     targets=["app"],
     slug="myapp",
-    dir_mode=0o750,   # rwxr-x--- (owner + group read/execute)
+    dir_mode=0o750,  # rwxr-x--- (owner + group read/execute)
     file_mode=0o640,  # rw-r----- (owner + group read)
 )
 
@@ -1092,6 +1044,7 @@ for result in results:
         print(f"Created: {result.destination}")
         # Check actual permissions (Linux/macOS)
         import stat
+
         mode = result.destination.stat().st_mode
         print(f"  Mode: {stat.filemode(mode)}")
 ```
@@ -1127,7 +1080,7 @@ created_files = generate_examples(
     slug="myapp",
     vendor="Acme",
     app="MyApp",
-    platform="posix"  # Generate Linux/macOS examples
+    platform="posix",  # Generate Linux/macOS examples
 )
 
 print(f"Generated {len(created_files)} example files:")
@@ -1156,7 +1109,7 @@ created_files = generate_examples(
     slug="myapp",
     vendor="Acme",
     app="MyApp",
-    platform="windows"  # Force Windows layout
+    platform="windows",  # Force Windows layout
 )
 
 print("Windows configuration examples:")
@@ -1178,6 +1131,7 @@ for file_path in created_files:
 from lib_layered_config import generate_examples
 from pathlib import Path
 
+
 def onboard_user(username: str):
     """Generate personalized configuration examples for a new user."""
 
@@ -1186,12 +1140,7 @@ def onboard_user(username: str):
     user_examples.mkdir(exist_ok=True)
 
     # Generate example files
-    created = generate_examples(
-        destination=user_examples,
-        slug="myapp",
-        vendor="Acme",
-        app="MyApp"
-    )
+    created = generate_examples(destination=user_examples, slug="myapp", vendor="Acme", app="MyApp")
 
     print(f"Generated {len(created)} example files for {username}:")
 
@@ -1207,6 +1156,7 @@ def onboard_user(username: str):
     print("Copy these files to get started:")
     for f in created:
         print(f"  {f.relative_to(user_examples)}")
+
 
 # Run onboarding
 onboard_user("alice")
@@ -1225,7 +1175,7 @@ created = generate_examples(
     slug="myapp",
     vendor="Acme",
     app="MyApp",
-    force=True  # Overwrite existing examples
+    force=True,  # Overwrite existing examples
 )
 
 print(f"Regenerated {len(created)} example files")
@@ -1240,6 +1190,7 @@ print(f"Regenerated {len(created)} example files")
 from lib_layered_config import generate_examples
 from pathlib import Path
 
+
 def generate_all_examples():
     """Generate examples for all platforms."""
 
@@ -1247,26 +1198,19 @@ def generate_all_examples():
 
     # Generate POSIX examples
     posix_files = generate_examples(
-        destination=base_dir / "linux-macos",
-        slug="myapp",
-        vendor="Acme",
-        app="MyApp",
-        platform="posix"
+        destination=base_dir / "linux-macos", slug="myapp", vendor="Acme", app="MyApp", platform="posix"
     )
     print(f"Generated {len(posix_files)} POSIX examples")
 
     # Generate Windows examples
     windows_files = generate_examples(
-        destination=base_dir / "windows",
-        slug="myapp",
-        vendor="Acme",
-        app="MyApp",
-        platform="windows"
+        destination=base_dir / "windows", slug="myapp", vendor="Acme", app="MyApp", platform="windows"
     )
     print(f"Generated {len(windows_files)} Windows examples")
 
     print(f"\nTotal: {len(posix_files) + len(windows_files)} example files")
     print(f"Location: {base_dir}")
+
 
 generate_all_examples()
 ```
@@ -1351,10 +1295,10 @@ from lib_layered_config import (
     DEFAULT_USER_FILE_MODE,
 )
 
-print(f"App dir mode: {oct(DEFAULT_APP_DIR_MODE)}")   # 0o755
-print(f"App file mode: {oct(DEFAULT_APP_FILE_MODE)}") # 0o644
-print(f"User dir mode: {oct(DEFAULT_USER_DIR_MODE)}") # 0o700
-print(f"User file mode: {oct(DEFAULT_USER_FILE_MODE)}") # 0o600
+print(f"App dir mode: {oct(DEFAULT_APP_DIR_MODE)}")  # 0o755
+print(f"App file mode: {oct(DEFAULT_APP_FILE_MODE)}")  # 0o644
+print(f"User dir mode: {oct(DEFAULT_USER_DIR_MODE)}")  # 0o700
+print(f"User file mode: {oct(DEFAULT_USER_FILE_MODE)}")  # 0o600
 ```
 
 **Explanation:** App/host layers use world-readable permissions since system-wide configuration should be accessible by all processes. User layer uses private permissions since personal configuration should not be accessible by other users. On Windows, permissions are skipped (Windows uses ACLs instead).
@@ -1393,8 +1337,8 @@ from lib_layered_config import validate_profile_name
 
 # Valid profile names
 profile = validate_profile_name("production")  # Returns "production"
-profile = validate_profile_name("test-v2")     # Returns "test-v2"
-profile = validate_profile_name("dev_local")   # Returns "dev_local"
+profile = validate_profile_name("test-v2")  # Returns "test-v2"
+profile = validate_profile_name("dev_local")  # Returns "dev_local"
 ```
 
 **Example 2: Handling invalid input**
@@ -1451,28 +1395,26 @@ Check if a profile name is valid without raising an exception.
 ```python
 from lib_layered_config import is_valid_profile_name, read_config
 
+
 def load_config_with_profile(profile: str | None):
     """Load configuration, validating the profile name first."""
     if not is_valid_profile_name(profile):
         print(f"Invalid profile name: {profile}")
         return None
 
-    return read_config(
-        vendor="Acme",
-        app="MyApp",
-        slug="myapp",
-        profile=profile
-    )
+    return read_config(vendor="Acme", app="MyApp", slug="myapp", profile=profile)
+
 
 # Usage
 config = load_config_with_profile("production")  # Valid
-config = load_config_with_profile("../etc")      # Invalid, returns None
-config = load_config_with_profile(None)          # Valid (no profile)
+config = load_config_with_profile("../etc")  # Invalid, returns None
+config = load_config_with_profile(None)  # Valid (no profile)
 ```
 
 **Example 2: User input validation**
 ```python
 from lib_layered_config import is_valid_profile_name
+
 
 def get_valid_profile():
     """Prompt user for a valid profile name."""
@@ -1494,6 +1436,6 @@ profiles = ["production", "test", "../hack", "staging-v2", "my profile"]
 valid_profiles = [p for p in profiles if is_valid_profile_name(p)]
 invalid_profiles = [p for p in profiles if not is_valid_profile_name(p)]
 
-print(f"Valid: {valid_profiles}")    # ['production', 'test', 'staging-v2']
+print(f"Valid: {valid_profiles}")  # ['production', 'test', 'staging-v2']
 print(f"Invalid: {invalid_profiles}")  # ['../hack', 'my profile']
 ```

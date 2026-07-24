@@ -34,7 +34,7 @@ import orjson
 
 from .redaction import redact_mapping
 
-__all__ = ["Config", "EMPTY_CONFIG", "SourceInfo"]
+__all__ = ["EMPTY_CONFIG", "Config", "SourceInfo"]
 
 
 class SourceInfo(TypedDict):
@@ -181,7 +181,9 @@ class Config(MappingABC[str, Any]):
             The resolved value or *default* when missing.
 
         Examples:
-            >>> cfg = Config({"db": {"host": "localhost"}}, {"db.host": {"layer": "app", "path": None, "key": "db.host"}})
+            >>> cfg = Config(
+            ...     {"db": {"host": "localhost"}}, {"db.host": {"layer": "app", "path": None, "key": "db.host"}}
+            ... )
             >>> cfg.get("db.host")
             'localhost'
             >>> cfg.get("db.port", default=5432)
@@ -279,8 +281,8 @@ def _deep_merge(
         base_value = merged.get(key)
         if isinstance(base_value, MappingABC) and isinstance(override_value, MappingABC):
             merged[key] = _deep_merge(
-                cast(MappingType[str, Any], base_value),
-                cast(MappingType[str, Any], override_value),
+                cast("MappingType[str, Any]", base_value),
+                cast("MappingType[str, Any]", override_value),
             )
         else:
             merged[key] = override_value
@@ -315,7 +317,7 @@ def _follow_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:
         if fragment not in current:
             return default
         current = current[fragment]
-    return cast(Any, current)
+    return cast("Any", current)
 
 
 def _clone_map(mapping: MappingType[str, Any]) -> dict[str, Any]:
@@ -359,16 +361,16 @@ def _clone_value(value: Any) -> Any:
         False
     """
     if isinstance(value, MappingABC):
-        nested = cast(MappingType[str, Any], value)
+        nested = cast("MappingType[str, Any]", value)
         return _clone_map(nested)
     if isinstance(value, list):
-        items = cast(list[Any], value)
+        items = cast("list[Any]", value)
         return [_clone_value(item) for item in items]
     if isinstance(value, set):
-        items = cast(set[Any], value)
+        items = cast("set[Any]", value)
         return {_clone_value(item) for item in items}
     if isinstance(value, tuple):
-        items = cast(tuple[Any, ...], value)
+        items = cast("tuple[Any, ...]", value)
         return tuple(_clone_value(item) for item in items)
     return value
 
@@ -389,10 +391,7 @@ def _looks_like_mapping(value: object) -> TypeGuard[MappingType[str, Any]]:
     """
     if not isinstance(value, MappingABC):
         return False
-    for key in cast(Iterable[object], value.keys()):
-        if not isinstance(key, str):
-            return False
-    return True
+    return all(isinstance(key, str) for key in cast("Iterable[object]", value.keys()))
 
 
 EMPTY_CONFIG = Config(MappingProxyType({}), MappingProxyType({}))

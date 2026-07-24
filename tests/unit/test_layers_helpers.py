@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from lib_layered_config._layers import (
     _default_snapshots,
@@ -16,6 +15,9 @@ from lib_layered_config._layers import (
     merge_or_empty,
 )
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    import pytest
 
 
 @os_agnostic

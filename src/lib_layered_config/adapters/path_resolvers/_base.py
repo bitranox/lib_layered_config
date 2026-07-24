@@ -17,9 +17,12 @@ Contents:
 from __future__ import annotations
 
 import abc
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 #: Supported structured configuration file extensions used when expanding
 #: ``config.d`` directories.

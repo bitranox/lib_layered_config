@@ -6,13 +6,16 @@ implicitly through the public API.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from lib_layered_config import Config, OutputFormat, display_config
-from lib_layered_config.domain.config import SourceInfo
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from lib_layered_config.domain.config import SourceInfo
 
 
 @pytest.fixture

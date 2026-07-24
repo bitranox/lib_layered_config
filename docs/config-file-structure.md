@@ -272,14 +272,8 @@ verify = true
     "database": {
         "host": "localhost",
         "port": 5432,
-        "pool": {
-            "size": 10,
-            "timeout": 30
-        },
-        "ssl": {
-            "enabled": true,
-            "verify": true
-        }
+        "pool": {"size": 10, "timeout": 30},
+        "ssl": {"enabled": true, "verify": true},
     }
 }
 ```

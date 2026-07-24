@@ -8,10 +8,12 @@ system design documented under ``docs/systemdesign``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict
 import sys
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass(slots=True)
@@ -45,8 +47,8 @@ class LayeredSandbox:
     app: str
     slug: str
     platform: str
-    roots: Dict[str, Path]
-    env: Dict[str, str]
+    roots: dict[str, Path]
+    env: dict[str, str]
     start_dir: Path
 
     def write(self, layer: str, relative_path: str, *, content: str) -> Path:
@@ -70,7 +72,9 @@ class LayeredSandbox:
         >>> with TemporaryDirectory() as tmp:
         ...     root = Path(tmp)
         ...     sandbox = LayeredSandbox('Acme', 'Demo', 'demo', 'linux',
-        ...         {'app': root / 'etc' / 'xdg' / 'demo', 'host': root / 'etc' / 'xdg' / 'demo' / 'hosts', 'user': root / 'xdg' / 'demo'},
+        ...         {'app': root / 'etc' / 'xdg' / 'demo',
+        ...          'host': root / 'etc' / 'xdg' / 'demo' / 'hosts',
+        ...          'user': root / 'xdg' / 'demo'},
         ...         {}, root / 'xdg' / 'demo')
         ...     created = sandbox.write('app', 'config.toml', content='payload')
         ...     assert created.relative_to(root).as_posix() == 'etc/xdg/demo/config.toml'
@@ -89,6 +93,7 @@ class LayeredSandbox:
 
         Examples
         --------
+        >>> from pathlib import Path
         >>> class DummyPatch:
         ...     def __init__(self):
         ...         self.captured = {}
@@ -144,8 +149,8 @@ def create_layered_sandbox(
     """
 
     resolved_platform = platform or sys.platform
-    roots: Dict[str, Path]
-    env: Dict[str, str]
+    roots: dict[str, Path]
+    env: dict[str, str]
 
     if resolved_platform.startswith("win"):
         program_data = tmp_path / "ProgramData"

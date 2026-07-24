@@ -26,15 +26,17 @@ from rich.console import Console
 from rich.text import Text
 
 from ...application.ports import OutputFormat
-from ...domain.config import Config
 from ...domain.redaction import redact_mapping
 
 if TYPE_CHECKING:
-    from ...domain.config import SourceInfo
+    from ...domain.config import Config, SourceInfo
 
 _REDACTED = "***REDACTED***"
 _DEFAULT_CONSOLE = Console(highlight=False)
-_OUTPUT_HEADER = r"# Note: Nested dictionaries are displayed as \[section.subsection] headers and might not match the actual TOML \[section]"
+_OUTPUT_HEADER = (
+    r"# Note: Nested dictionaries are displayed as \[section.subsection] headers"
+    r" and might not match the actual TOML \[section]"
+)
 
 # Regex patterns for parsing TOML output
 _SECTION_PATTERN = re.compile(r"^\[([^\]]+)\]$")

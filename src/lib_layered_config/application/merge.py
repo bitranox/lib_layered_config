@@ -8,7 +8,7 @@ Contents:
     - ``LayerSnapshot``: immutable record describing a layer name, payload, and
       origin path.
     - ``merge_layers``: public API returning merged data and provenance mappings.
-    - Internal helpers (``_weave_layer``, ``_descend`` …) that manage recursive
+    - Internal helpers (``_weave_layer``, ``_descend`` ...) that manage recursive
       merging, branch clearing, and dotted-key generation.
 
 System Role:
@@ -22,12 +22,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final, TypeGuard, cast
+from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
 from ..domain.errors import InvalidFormatError
 from ..domain.identifiers import Layer
 from ..observability import log_warn
-from .ports import SourceInfoPayload
+
+if TYPE_CHECKING:
+    from .ports import SourceInfoPayload
 
 #: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
 #: recurse until Python raises an opaque ``RecursionError``; this bound turns that into a
@@ -173,13 +175,16 @@ def _descend(
     for key, value in incoming.items():
         dotted = _join_segments(segments, key)
         if _looks_like_mapping(value):
-            _store_branch(target, provenance, key, value, dotted, snapshot, segments)
+            _store_branch(
+                target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot, segments=segments
+            )
         else:
-            _store_scalar(target, provenance, key, value, dotted, snapshot)
+            _store_scalar(target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot)
 
 
 def _store_branch(
     target: MutableMapping[str, object],
+    *,
     provenance: MutableMapping[str, SourceInfoPayload],
     key: str,
     value: Mapping[str, object],
@@ -204,14 +209,17 @@ def _store_branch(
     Examples:
         >>> target, prov = {}, {}
         >>> branch_snapshot = LayerSnapshot('env', {'child': {'enabled': True}}, None)
-        >>> _store_branch(target, prov, 'child', {'enabled': True}, 'child', branch_snapshot, [])
+        >>> _store_branch(
+        ...     target, provenance=prov, key='child', value={'enabled': True}, dotted='child',
+        ...     snapshot=branch_snapshot, segments=[],
+        ... )
         >>> target['child']['enabled']
         True
     """
     existing = target.get(key)
     if isinstance(existing, list) and _all_numeric_keys(value):
         segments.append(key)
-        _merge_mapping_into_list(cast(list[object], existing), provenance, value, snapshot, segments)
+        _merge_mapping_into_list(cast("list[object]", existing), provenance, value, snapshot, segments)
         segments.pop()
         return
 
@@ -277,16 +285,32 @@ def _merge_mapping_into_list(
         dotted = _join_segments(segments, index_key)
         if index < len(existing):
             existing[index] = _merge_list_element(
-                existing[index], override, provenance, dotted, snapshot, segments, index_key
+                existing[index],
+                override=override,
+                provenance=provenance,
+                dotted=dotted,
+                snapshot=snapshot,
+                segments=segments,
+                index_key=index_key,
             )
         elif index == len(existing):
-            existing.append(_build_new_element(override, provenance, dotted, snapshot, segments, index_key))
+            existing.append(
+                _build_new_element(
+                    override,
+                    provenance=provenance,
+                    dotted=dotted,
+                    snapshot=snapshot,
+                    segments=segments,
+                    index_key=index_key,
+                )
+            )
         else:
             _warn_list_index_out_of_range(dotted, snapshot, index)
 
 
 def _merge_list_element(
     element: object,
+    *,
     override: object,
     provenance: MutableMapping[str, SourceInfoPayload],
     dotted: str,
@@ -316,20 +340,23 @@ def _merge_list_element(
     """
     if _looks_like_mapping(element) and _looks_like_mapping(override):
         segments.append(index_key)
-        _descend(cast(MutableMapping[str, object], element), provenance, override, snapshot, segments)
+        _descend(cast("MutableMapping[str, object]", element), provenance, override, snapshot, segments)
         segments.pop()
         return element
     if isinstance(element, list) and _looks_like_mapping(override) and _all_numeric_keys(override):
-        nested = cast(list[object], element)
+        nested = cast("list[object]", element)
         segments.append(index_key)
         _merge_mapping_into_list(nested, provenance, override, snapshot, segments)
         segments.pop()
         return nested
-    return _build_new_element(override, provenance, dotted, snapshot, segments, index_key)
+    return _build_new_element(
+        override, provenance=provenance, dotted=dotted, snapshot=snapshot, segments=segments, index_key=index_key
+    )
 
 
 def _build_new_element(
     override: object,
+    *,
     provenance: MutableMapping[str, SourceInfoPayload],
     dotted: str,
     snapshot: LayerSnapshot,
@@ -373,6 +400,7 @@ def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfoPayload
 
 def _store_scalar(
     target: MutableMapping[str, object],
+    *,
     provenance: MutableMapping[str, SourceInfoPayload],
     key: str,
     value: object,
@@ -434,13 +462,13 @@ def _clone_leaf(value: object) -> object:
         1
     """
     if isinstance(value, dict):
-        return _clone_dict(cast(dict[str, object], value))
+        return _clone_dict(cast("dict[str, object]", value))
     if isinstance(value, list):
-        return _clone_list(cast(list[object], value))
+        return _clone_list(cast("list[object]", value))
     if isinstance(value, set):
-        return _clone_set(cast(set[object], value))
+        return _clone_set(cast("set[object]", value))
     if isinstance(value, tuple):
-        return _clone_tuple(cast(tuple[object, ...], value))
+        return _clone_tuple(cast("tuple[object, ...]", value))
     return value
 
 
@@ -457,7 +485,7 @@ def _ensure_branch(
     """
     current = target.get(key)
     if _looks_like_mapping(current):
-        return cast(MutableMapping[str, object], current)
+        return cast("MutableMapping[str, object]", current)
 
     if current is not None:
         _warn_type_conflict(dotted, snapshot, ValueKind.SCALAR, ValueKind.MAPPING)
@@ -539,8 +567,8 @@ def _looks_like_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
     """
     if not isinstance(value, Mapping):
         return False
-    mapping = cast(Mapping[object, object], value)
-    keys = cast(Iterable[object], mapping.keys())
+    mapping = cast("Mapping[object, object]", value)
+    keys = cast("Iterable[object]", mapping.keys())
     return all(isinstance(k, str) for k in keys)
 
 

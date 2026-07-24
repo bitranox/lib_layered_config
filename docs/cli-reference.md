@@ -611,7 +611,7 @@ results = deploy_config(
     app="MyApp",
     targets=["app"],
     slug="myapp",
-    dir_mode=0o750,   # Override directory mode
+    dir_mode=0o750,  # Override directory mode
     file_mode=0o640,  # Override file mode
 )
 
@@ -778,7 +778,7 @@ results = deploy_config(
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    batch=True  # Keep existing, write new as .ucf for review
+    batch=True,  # Keep existing, write new as .ucf for review
 )
 
 for result in results:
@@ -793,7 +793,7 @@ results = deploy_config(
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    force=True  # Creates .bak backup before overwriting
+    force=True,  # Creates .bak backup before overwriting
 )
 
 for result in results:

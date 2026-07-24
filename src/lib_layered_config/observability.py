@@ -21,9 +21,11 @@ System Integration:
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from contextvars import ContextVar
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 TRACE_ID: ContextVar[str | None] = ContextVar("lib_layered_config_trace_id", default=None)
 """Current trace identifier propagated through logging helpers.
@@ -132,7 +134,8 @@ def make_event(
         payload: Optional mapping with extra diagnostic detail.
 
     Returns:
-        dict[str, Any]: Data safe to unpack into :func:`log_debug`, :func:`log_info`, :func:`log_warn`, or :func:`log_error`.
+        dict[str, Any]: Data safe to unpack into :func:`log_debug`, :func:`log_info`, :func:`log_warn`,
+        or :func:`log_error`.
 
     Examples:
         >>> make_event('env', None, {'keys': 3})

@@ -21,11 +21,14 @@ System Role:
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .._platform import normalise_examples_platform
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 """Filename stub used for host-specific example files (documented in README)."""
@@ -93,7 +96,7 @@ def generate_examples(
         platform=platform,
     )
     specs = _build_specs(plan.destination, slug=plan.slug, vendor=plan.vendor, app=plan.app, platform=plan.platform)
-    return _write_examples(plan.destination, specs, plan.force)
+    return _write_examples(plan.destination, specs, force=plan.force)
 
 
 def _build_example_plan(
@@ -129,7 +132,7 @@ def _build_example_plan(
     )
 
 
-def _write_examples(destination: Path, specs: Iterator[ExampleSpec], force: bool) -> list[Path]:
+def _write_examples(destination: Path, specs: Iterator[ExampleSpec], *, force: bool) -> list[Path]:
     """Write all ``specs`` under *destination* honouring the *force* flag.
 
     Centralise the loop that applies ``force`` semantics and records written paths.
@@ -148,7 +151,7 @@ def _write_examples(destination: Path, specs: Iterator[ExampleSpec], force: bool
     written: list[Path] = []
     for spec in specs:
         path = destination / spec.relative_path
-        if not _should_write(path, force):
+        if not _should_write(path, force=force):
             continue
         _ensure_parent(path)
         _write_spec(path, spec)
@@ -171,7 +174,7 @@ def _write_spec(path: Path, spec: ExampleSpec) -> None:
     path.write_text(spec.content, encoding="utf-8")
 
 
-def _should_write(path: Path, force: bool) -> bool:
+def _should_write(path: Path, *, force: bool) -> bool:
     """Return ``True`` when *path* should be written respecting *force*.
 
     Avoid clobbering existing content unless the caller explicitly requests it.

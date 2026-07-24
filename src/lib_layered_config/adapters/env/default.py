@@ -17,13 +17,15 @@ Contents:
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable, Iterator
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import orjson
 
 from ...observability import log_debug
 from .._nested_keys import assign_nested
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 # Constants for environment variable value coercion
 _BOOL_TRUE: Final[str] = "true"

@@ -17,8 +17,8 @@ from __future__ import annotations
 import os
 import socket
 import sys
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ...domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
@@ -34,6 +34,9 @@ from ._dotenv import DotenvPathFinder
 from ._linux import LinuxStrategy
 from ._macos import MacOSStrategy
 from ._windows import WindowsStrategy
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 class DefaultPathResolver:
@@ -139,7 +142,9 @@ class DefaultPathResolver:
             >>> (root / 'demo').mkdir(parents=True, exist_ok=True)
             >>> body = os.linesep.join(['[settings]', 'value=1'])
             >>> _ = (root / 'demo' / 'config.toml').write_text(body, encoding='utf-8')
-            >>> resolver = DefaultPathResolver(vendor='Acme', app='Demo', slug='demo', env={'LIB_LAYERED_CONFIG_ETC': str(root)}, platform='linux')
+            >>> resolver = DefaultPathResolver(
+            ...     vendor='Acme', app='Demo', slug='demo', env={'LIB_LAYERED_CONFIG_ETC': str(root)}, platform='linux'
+            ... )
             >>> [Path(p).name for p in resolver.app()]
             ['config.toml']
             >>> tmp.cleanup()

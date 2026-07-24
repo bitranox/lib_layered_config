@@ -6,7 +6,6 @@ from hypothesis import strategies as st
 
 from lib_layered_config.application.merge import LayerSnapshot, MergeResult, merge_layers
 from lib_layered_config.domain.errors import InvalidFormatError
-
 from tests.support.os_markers import os_agnostic
 
 

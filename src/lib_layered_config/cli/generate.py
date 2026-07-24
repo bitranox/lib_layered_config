@@ -34,6 +34,7 @@ from .typed_click import option
     help="Overwrite existing example files",
 )
 def generate_examples_command(
+    *,
     destination: Path,
     slug: str,
     vendor: str,

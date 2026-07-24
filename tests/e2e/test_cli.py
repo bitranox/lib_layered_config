@@ -6,10 +6,9 @@ import importlib
 import json
 from pathlib import Path
 
+import lib_cli_exit_tools
 import pytest
 from click.testing import CliRunner
-
-import lib_cli_exit_tools
 
 from lib_layered_config import cli
 from lib_layered_config.cli import common as cli_common
@@ -318,7 +317,7 @@ def test_cli_generate_examples_force_overwrites_payload(tmp_path: Path) -> None:
     created = [Path(item) for item in json.loads(initial.output)]
     target = created[0]
     target.write_text("overwrite", encoding="utf-8")
-    forced = runner.invoke(cli.cli, command + ["--force"])
+    forced = runner.invoke(cli.cli, [*command, "--force"])
     assert forced.exit_code == 0 and "overwrite" not in target.read_text(encoding="utf-8")
 
 

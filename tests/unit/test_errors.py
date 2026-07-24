@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from lib_layered_config.domain.errors import ConfigError, InvalidFormatError, NotFoundError, ValidationError
-
 from tests.support.os_markers import os_agnostic
 
 

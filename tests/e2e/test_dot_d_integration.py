@@ -9,14 +9,17 @@ This allows mixed formats (TOML, YAML, JSON) in the same .d directory.
 
 from __future__ import annotations
 
-from pathlib import Path
 from textwrap import dedent
+from typing import TYPE_CHECKING
 
 import pytest
 
 from lib_layered_config import read_config, read_config_raw
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 VENDOR = "Acme"
 APP = "DotDTest"

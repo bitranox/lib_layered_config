@@ -17,19 +17,22 @@ semantics as the environment adapter.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from ...domain.errors import InvalidFormatError
 from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 # Constants for dotenv parsing
 _QUOTE_CHARS: Final[frozenset[str]] = frozenset({'"', "'"})
 _COMMENT_CHAR: Final[str] = "#"
 _INLINE_COMMENT_DELIMITER: Final[str] = " #"
 _KEY_VALUE_DELIMITER: Final[str] = "="
+_MIN_QUOTED_LENGTH: Final[int] = 2  # shortest possible quoted value, e.g. '' or ""
 
 DOTENV_LAYER = "dotenv"
 """Layer name for structured logging calls."""
@@ -142,7 +145,7 @@ def _process_line(
 
 def _is_quoted(value: str) -> bool:
     """Check if value is wrapped in matching quotes."""
-    return len(value) >= 2 and value[0] == value[-1] and value[0] in _QUOTE_CHARS
+    return len(value) >= _MIN_QUOTED_LENGTH and value[0] == value[-1] and value[0] in _QUOTE_CHARS
 
 
 def _strip_inline_comment(value: str) -> str:

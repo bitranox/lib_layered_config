@@ -24,11 +24,11 @@ from .deploy import ConflictResolver, DeployAction, DeployResult, deploy_config
 from .generate import DEFAULT_HOST_PLACEHOLDER, ExampleSpec, generate_examples
 
 __all__ = (
+    "DEFAULT_HOST_PLACEHOLDER",
     "ConflictResolver",
-    "deploy_config",
     "DeployAction",
     "DeployResult",
     "ExampleSpec",
-    "DEFAULT_HOST_PLACEHOLDER",
+    "deploy_config",
     "generate_examples",
 )

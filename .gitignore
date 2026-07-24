@@ -206,3 +206,6 @@ CLAUDE.md
 *.local.json
 # bitranox curated memory (local; CLAUDE.local.md @imports it)
 CLAUDE.local.md
+
+# Python virtual environments (managed by bmk)
+.venv*/

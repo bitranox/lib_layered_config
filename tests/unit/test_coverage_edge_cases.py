@@ -6,13 +6,15 @@ by the main test suite. Each test is laser-focused on a single edge case.
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 
 from tests.support.os_markers import os_agnostic
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # =============================================================================
 # CLI Helpers: describe_distribution fallback paths
@@ -130,8 +132,8 @@ def test_path_resolver_unknown_platform_returns_none_strategy() -> None:
 @os_agnostic
 def test_linux_host_fallback_to_etc_location(tmp_path: Path) -> None:
     """When XDG host file is missing, Linux falls back to /etc location."""
-    from tests.support import create_layered_sandbox
     from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
+    from tests.support import create_layered_sandbox
 
     sandbox = create_layered_sandbox(
         tmp_path,

@@ -118,9 +118,9 @@ def ensure_child_mapping(
     child = mapping[resolved]
     if not isinstance(child, dict):
         raise error_cls(f"Cannot override scalar with mapping for key {key}")
-    typed_child = cast(dict[str, object], child)
+    typed_child = cast("dict[str, object]", child)
     mapping[resolved] = typed_child
     return typed_child
 
 
-__all__ = ["assign_nested", "resolve_key", "ensure_child_mapping"]
+__all__ = ["assign_nested", "ensure_child_mapping", "resolve_key"]

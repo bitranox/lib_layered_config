@@ -6,6 +6,34 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [5.6.1] 2026-07-24 16:50:15
+
+### Fixed
+
+- Latest ruff (0.16) widened its default rule set to ~920 rules; the project had no explicit
+  `[tool.ruff.lint].select`, so CI went red on hundreds of newly-enforced, previously-unpoliced
+  rules. Pinned the curated bitranox rule policy instead of chasing the default set.
+
+### Changed
+
+- Added an explicit `[tool.ruff.lint].select` (pycodestyle/pyflakes/isort/pep8-naming/pyupgrade/
+  bugbear/builtins/comprehensions/simplify/type-checking-imports/ruff-specific/logging/print/
+  pathlib/pylint/bandit/perf/eradicate/boolean-trap) plus per-file-ignores for tests and for the
+  composition/orchestration modules that genuinely need more than five named parameters
+  (`core.py`, `_layers.py`, `application/merge.py`, `adapters/path_resolvers/default.py`,
+  `cli/*.py`, `examples/*.py`).
+- Converted CLI command callbacks and internal helpers (`application/merge.py` recursion
+  helpers, `cli/common.py` query builders, `domain/identifiers._check_strict_pattern`,
+  `examples/deploy.py`/`examples/generate.py` private helpers) to keyword-only parameters where
+  every caller already passes by keyword; updated the few positional call sites and doctests to
+  match.
+- Moved several first-party/typing-only imports into `TYPE_CHECKING` blocks and sorted imports;
+  made one doctest (`tests/support/layered.py::LayeredSandbox.apply_env`) self-contained with its
+  own `from pathlib import Path` after the type-only import move.
+- Replaced a magic `2` in `_is_quoted` with a named `_MIN_QUOTED_LENGTH` constant, `os.replace()`
+  with `Path.replace()` in `examples/deploy.py`, and a non-raw regex anchor pattern in
+  `tests/unit/test_testing.py` with a raw string.
+
 ## [5.6.0] 2026-07-13
 
 ### Added
@@ -121,19 +149,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   from lib_layered_config import deploy_config
 
   # Default: layer-aware permissions
-  deploy_config(source="config.toml", vendor="Acme", app="MyApp",
-                targets=["user"], slug="myapp")
+  deploy_config(source="config.toml", vendor="Acme", app="MyApp", targets=["user"], slug="myapp")
   # User layer files get 700/600 permissions
 
   # Custom permissions
-  deploy_config(source="config.toml", vendor="Acme", app="MyApp",
-                targets=["app"], slug="myapp",
-                dir_mode=0o750, file_mode=0o640)
+  deploy_config(
+      source="config.toml", vendor="Acme", app="MyApp", targets=["app"], slug="myapp", dir_mode=0o750, file_mode=0o640
+  )
 
   # Disable permissions
-  deploy_config(source="config.toml", vendor="Acme", app="MyApp",
-                targets=["user"], slug="myapp",
-                set_permissions=False)
+  deploy_config(source="config.toml", vendor="Acme", app="MyApp", targets=["user"], slug="myapp", set_permissions=False)
   ```
 
 - **Permission constants exported in public API**  -  Four permission mode constants are now available from the main package:
@@ -180,7 +205,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
   # Validate with exception
   validate_profile_name("production")  # OK
-  validate_profile_name("a" * 100)     # Raises ValueError
+  validate_profile_name("a" * 100)  # Raises ValueError
 
   # Check without exception
   if is_valid_profile_name(user_input):
@@ -684,18 +709,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   **Examples:**
   ```python
   # OK Valid
-  vendor="Acme Corp"    # Spaces OK in vendor
-  app="Btx Fix Mcp"     # Spaces OK in app
-  slug="my-app"         # No spaces in slug
-  profile="production"  # No spaces in profile
+  vendor = "Acme Corp"  # Spaces OK in vendor
+  app = "Btx Fix Mcp"  # Spaces OK in app
+  slug = "my-app"  # No spaces in slug
+  profile = "production"  # No spaces in profile
 
   # NO Invalid (raises ValueError)
-  "../etc"      # Path traversal
-  "café"        # Non-ASCII
-  "CON"         # Windows reserved
-  slug="my app" # Slug cannot have spaces
-  ".hidden"     # Starts with dot
-  "app<test>"   # Windows-invalid character
+  "../etc"  # Path traversal
+  "café"  # Non-ASCII
+  "CON"  # Windows reserved
+  slug = "my app"  # Slug cannot have spaces
+  ".hidden"  # Starts with dot
+  "app<test>"  # Windows-invalid character
   ```
 
 ## [3.0.1] - 2025-11-30

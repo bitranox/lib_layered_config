@@ -83,6 +83,7 @@ def test_quickstart_notebook_executes_cells(tmp_path: Path) -> None:
     try:
         os.chdir(tmp_path)
         for source in iter_executable_cells():
-            exec(compile(source, NOTEBOOK_PATH.name, "exec"), namespace, namespace)
+            # Executes this repo's own trusted Quickstart notebook, not untrusted input.
+            exec(compile(source, NOTEBOOK_PATH.name, "exec"), namespace, namespace)  # noqa: S102
     finally:
         os.chdir(original_cwd)

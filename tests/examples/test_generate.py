@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lib_layered_config.examples import generate_examples
 from lib_layered_config.examples.generate import (
@@ -11,6 +11,9 @@ from lib_layered_config.examples.generate import (
     _split_override_body,
 )
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 SLUG = "demo"
 VENDOR = "Acme"

@@ -4,7 +4,6 @@ import json
 
 from lib_layered_config.domain import config as config_module
 from lib_layered_config.domain.config import Config, SourceInfo
-
 from tests.support.os_markers import os_agnostic
 
 

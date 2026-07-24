@@ -9,10 +9,13 @@ Contents:
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ._base import PlatformStrategy, collect_layer
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 class LinuxStrategy(PlatformStrategy):

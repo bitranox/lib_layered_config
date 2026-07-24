@@ -21,8 +21,8 @@ System Role:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import orjson
 
@@ -30,9 +30,6 @@ from ._layers import collect_layers, merge_or_empty
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.path_resolvers.default import DefaultPathResolver
-from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
-from .application.merge import MergeResult
-from .application.ports import SourceInfoPayload
 from .domain.config import EMPTY_CONFIG, Config
 from .domain.errors import (
     ConfigError,
@@ -40,7 +37,15 @@ from .domain.errors import (
     NotFoundError,
     ValidationError,
 )
+from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
+from .domain.redaction import redact_mapping
 from .observability import bind_trace_id
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from .application.merge import MergeResult
+    from .application.ports import SourceInfoPayload
 
 
 class LayerLoadError(ConfigError):
@@ -129,7 +134,8 @@ def read_config_json(
     CLI commands and automation scripts often prefer JSON to Python objects.
 
     Args:
-        vendor / app / slug / profile / prefer / start_dir / default_file / dotenv_path: Same meaning as :func:`read_config`.
+        vendor / app / slug / profile / prefer / start_dir / default_file / dotenv_path: Same meaning as
+            :func:`read_config`.
         indent: Optional indentation level.  Any non-``None`` value produces
             2-space indented output (orjson only supports 2-space indentation).
         redact: When ``True``, sensitive values (passwords, tokens, secrets,
@@ -143,8 +149,6 @@ def read_config_json(
     Raises:
         ValueError: When profile name is invalid (too long, path traversal, etc.).
     """
-    from .domain.redaction import redact_mapping
-
     result = read_config_raw(
         vendor=vendor,
         app=app,
@@ -351,11 +355,11 @@ __all__ = [
     "Config",
     "ConfigError",
     "InvalidFormatError",
-    "ValidationError",
-    "NotFoundError",
     "LayerLoadError",
+    "NotFoundError",
+    "ValidationError",
+    "default_env_prefix",
     "read_config",
     "read_config_json",
     "read_config_raw",
-    "default_env_prefix",
 ]

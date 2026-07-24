@@ -121,9 +121,9 @@ def _redact_dict(mapping: dict[str, Any], _depth: int = 0) -> dict[str, Any]:
         if is_sensitive(key):
             result[key] = REDACTED_PLACEHOLDER
         elif isinstance(value, dict):
-            result[key] = _redact_dict(cast(dict[str, Any], value), _depth + 1)
+            result[key] = _redact_dict(cast("dict[str, Any]", value), _depth + 1)
         elif isinstance(value, list):
-            result[key] = _redact_list(cast(list[Any], value), _depth + 1)
+            result[key] = _redact_list(cast("list[Any]", value), _depth + 1)
         else:
             result[key] = value
     return result
@@ -149,7 +149,7 @@ def _redact_list(items: list[Any], _depth: int = 0) -> list[Any]:
     result: list[Any] = []
     for item in items:
         if isinstance(item, dict):
-            result.append(_redact_dict(cast(dict[str, Any], item), _depth + 1))
+            result.append(_redact_dict(cast("dict[str, Any]", item), _depth + 1))
         else:
             result.append(item)
     return result

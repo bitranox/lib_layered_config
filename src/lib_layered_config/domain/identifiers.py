@@ -128,7 +128,7 @@ def _check_no_invalid_chars(value: str, name: str) -> None:
 def _check_not_windows_reserved(value: str, name: str, *, split_on_space: bool = False) -> None:
     """Raise ValueError if value is a Windows reserved name."""
     # Extract base name (before first dot, optionally before first space)
-    base_name = value.split(".")[0]
+    base_name = value.split(".", maxsplit=1)[0]
     if split_on_space:
         base_name = base_name.split()[0]
     if base_name.upper() in _WINDOWS_RESERVED_NAMES:
@@ -241,13 +241,13 @@ def validate_path_segment(value: str, name: str, *, allow_dots: bool = False) ->
     _check_not_empty(value, name)
     _check_ascii_only(value, name)
     _check_no_invalid_chars(value, name)
-    _check_strict_pattern(value, name, allow_dots)
+    _check_strict_pattern(value, name, allow_dots=allow_dots)
     _check_not_windows_reserved(value, name)
     _check_no_trailing_dot_or_space(value, name)
     return value
 
 
-def _check_strict_pattern(value: str, name: str, allow_dots: bool) -> None:
+def _check_strict_pattern(value: str, name: str, *, allow_dots: bool) -> None:
     """Check value matches strict identifier pattern (no spaces)."""
     if allow_dots:
         return

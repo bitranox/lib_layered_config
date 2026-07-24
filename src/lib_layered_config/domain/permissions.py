@@ -16,9 +16,12 @@ Unix-style permission bits.
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .identifiers import Layer
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 __all__ = [
     "DEFAULT_APP_DIR_MODE",

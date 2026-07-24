@@ -53,19 +53,19 @@ from .observability import bind_trace_id, get_logger
 from .testing import i_should_fail
 
 __all__ = [
-    "Config",
-    "ConfigError",
     "DEFAULT_APP_DIR_MODE",
     "DEFAULT_APP_FILE_MODE",
     "DEFAULT_MAX_PROFILE_LENGTH",
     "DEFAULT_USER_DIR_MODE",
     "DEFAULT_USER_FILE_MODE",
+    "REDACTED_PLACEHOLDER",
+    "Config",
+    "ConfigError",
     "InvalidFormatError",
     "Layer",
     "LayerLoadError",
     "NotFoundError",
     "OutputFormat",
-    "REDACTED_PLACEHOLDER",
     "ValidationError",
     "bind_trace_id",
     "default_env_prefix",
