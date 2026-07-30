@@ -38,7 +38,12 @@ Requires Python 3.10+. Install the `yaml` extra only if you ship `.yml` files.
 ```python
 from lib_layered_config import read_config
 
-config = read_config(vendor="Acme Corp", app="My App", slug="my-app")
+config = read_config(
+    vendor="Acme Corp",
+    app="My App",
+    slug="my-app",
+    default_file="defaults.toml",  # seeds the `defaults` layer (the lowest one)
+)
 config.get("service.timeout", default=30)  # dotted-path access
 config["database"]["host"]  # mapping access
 config.origin("service.timeout")  # -> which layer + file set it (provenance)
@@ -48,6 +53,8 @@ config.origin("service.timeout")  # -> which layer + file set it (provenance)
   Windows paths.
 - `slug` (lowercase-with-hyphens) is the Linux directory name AND the environment-variable
   prefix.
+- `default_file` seeds the `defaults` layer. It is the ONLY way to supply that layer - omit it
+  and there are no defaults at all, whatever the precedence chain says.
 - `read_config` returns a frozen `Config`; `read_config_raw(...)` returns `.data` plus
   `.provenance`; `read_config_json(...)` returns a JSON string of config + provenance.
 
