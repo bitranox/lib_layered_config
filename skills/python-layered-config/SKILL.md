@@ -81,7 +81,7 @@ An env var overriding a config key is built as:
 
 So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__HOST`**
 (not `MY_APP_DATABASE__HOST`, not `MYAPP___...`). Compute the prefix with
-`lib_layered_config env-prefix --slug my-app` (prints `MY_APP___`) or
+`lib_layered_config env-prefix my-app` (the slug is POSITIONAL; prints `MY_APP___`) or
 `default_env_prefix("my-app")` in Python.
 
 - Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string.
@@ -118,7 +118,9 @@ config = read_config(vendor="Acme Corp", app="My App", slug="my-app", profile="p
 This inserts a `profile/<name>/` segment into every layer path, e.g.
 `/etc/xdg/my-app/profile/production/config.toml`. Without a profile you get the base paths.
 Profile names are validated (no path traversal, control chars, reserved names, non-ASCII;
-max 64 chars). Deploy to a profile with the CLI `deploy --profile production`.
+max 64 chars). `--profile` is an OPTION on `deploy`, not a command on its own - the required
+flags come too: `deploy --source cfg.toml --vendor acme --app my-app --slug my-app --target user
+--profile production`.
 
 ## CLI commands
 

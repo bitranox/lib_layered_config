@@ -1,7 +1,7 @@
 {
   "name": "lib_layered_config",
   "description": "Load layered, cross-platform application configuration in Python (defaults, app, host, user, .env, environment variables) merged into one immutable object with provenance and profiles. Ships the python-layered-config skill: install and use the library and CLI, design config files, compute env-var override names, manage per-OS paths and profiles, and find out which layer and file a setting came from.",
-  "version": "5.6.2",
+  "version": "5.6.3",
   "author": {
     "name": "bitranox"
   },
