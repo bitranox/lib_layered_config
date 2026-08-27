@@ -135,8 +135,17 @@ Same engine as the library. Run any command with `-h` for full flags.
 | `env-prefix`        | Print the `<SLUG>___` env-var prefix for a slug.                                                                                                    |
 | `info`              | Print resolved package metadata.                                                                                                                    |
 
-Common flags: `--vendor`, `--app`, `--slug`, `--profile`, `--env-file <path>` (load an
-explicit `.env`), `--redact` (mask secrets in output).
+Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
+
+| Flag                                          | read | read-json | deploy | generate-examples | env-prefix | info |
+|-----------------------------------------------|------|-----------|--------|-------------------|------------|------|
+| `--vendor` / `--app` / `--slug`               | yes  | yes       | yes    | yes               | no         | no   |
+| `--profile`                                   | yes  | yes       | yes    | no                | no         | no   |
+| `--env-file <path>` (load an explicit `.env`) | yes  | yes       | no     | no                | no         | no   |
+| `--redact` (mask secrets in output)           | yes  | yes       | no     | no                | no         | no   |
+
+`env-prefix` and `info` accept no options at all beyond `--help` (`env-prefix` takes a
+positional SLUG). Passing one of the others raises `NoSuchOption`.
 
 ## Designing config files
 
