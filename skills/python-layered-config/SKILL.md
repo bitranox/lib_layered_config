@@ -68,6 +68,23 @@ The whole point of the library. To answer "why is this value what it is":
   prints the merged config **and** the provenance map. `read --format json` does the same;
   human output (`read`) prints a `# source:` comment above each value.
 
+**A `--set` style override keeps the provenance of the layer it REPLACED.** `with_overrides`
+returns the merged data with the ORIGINAL provenance map, by design, so the value shown is the new
+one while the source beside it still names the file that used to supply it. The value is right and
+the answer to "where did this come from" is wrong, which is the one question the provenance map
+exists to answer, and no test of the value catches it.
+
+Rebuild provenance for exactly the keys the override supplied - layer `cli`, path `None` - and
+leave every other key's source alone. Two details decide whether that lands:
+
+- the dotted key is the SECTION plus the key path, because a parsed override's key path EXCLUDES
+  its section; joining only the key path matches nothing and silently changes no entry.
+- overriding a key that no file defined must still record a source, or the key appears with a
+  value and no origin at all.
+
+Assert it end to end, by running the command and reading the printed source, not by unit-testing
+the merge: the merge is correct in isolation, and the defect only exists in what is displayed.
+
 ## Environment-variable overrides (the trap)
 
 An env var overriding a config key is built as:
