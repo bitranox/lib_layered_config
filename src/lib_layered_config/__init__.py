@@ -35,6 +35,7 @@ from .core import (
     read_config_json,
     read_config_raw,
 )
+from .domain.config import OVERRIDE_LAYER
 from .domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
@@ -58,6 +59,7 @@ __all__ = [
     "DEFAULT_MAX_PROFILE_LENGTH",
     "DEFAULT_USER_DIR_MODE",
     "DEFAULT_USER_FILE_MODE",
+    "OVERRIDE_LAYER",
     "REDACTED_PLACEHOLDER",
     "Config",
     "ConfigError",

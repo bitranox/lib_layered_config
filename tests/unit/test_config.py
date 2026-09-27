@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from lib_layered_config.domain import config as config_module
-from lib_layered_config.domain.config import Config, SourceInfo
+from lib_layered_config.domain.config import OVERRIDE_LAYER, Config, SourceInfo
 from tests.support.os_markers import os_agnostic
 
 
@@ -109,10 +109,95 @@ def test_config_with_overrides_preserves_original_story() -> None:
 
 
 @os_agnostic
-def test_config_with_overrides_reuses_metadata() -> None:
+def test_config_with_overrides_names_the_override_as_the_source() -> None:
+    """The replaced value no longer lives in the file the old provenance named.
+
+    Keeping that entry sent a reader of ``config`` output to a file holding the
+    OLD value.
+    """
     config = make_config()
     replaced = config.with_overrides({"feature": False})
-    assert replaced.origin("feature") == config.origin("feature")
+    assert replaced.origin("feature") == {"layer": OVERRIDE_LAYER, "path": None, "key": "feature"}
+
+
+@os_agnostic
+def test_config_with_overrides_keeps_the_source_of_untouched_keys() -> None:
+    config = make_config()
+    replaced = config.with_overrides({"db": {"host": "newhost"}})
+    assert replaced.origin("db.port") == config.origin("db.port")
+    assert replaced.origin("db.host") == {"layer": OVERRIDE_LAYER, "path": None, "key": "db.host"}
+
+
+@os_agnostic
+def test_config_with_overrides_names_the_override_for_a_new_key() -> None:
+    replaced = make_config().with_overrides({"cache": {"ttl": 60}})
+    assert replaced.origin("cache.ttl") == {"layer": OVERRIDE_LAYER, "path": None, "key": "cache.ttl"}
+
+
+@os_agnostic
+def test_config_with_overrides_drops_the_sources_of_a_replaced_subtree() -> None:
+    """A scalar replacing a table leaves no ``db.host`` to have a source."""
+    replaced = make_config().with_overrides({"db": "sqlite:///db.sqlite"})
+    assert replaced.origin("db.host") is None
+    assert replaced.origin("db.port") is None
+    assert replaced.origin("db") == {"layer": OVERRIDE_LAYER, "path": None, "key": "db"}
+
+
+@os_agnostic
+def test_config_with_overrides_names_the_override_where_a_table_replaces_a_scalar() -> None:
+    replaced = make_config().with_overrides({"feature": {"on": True}})
+    assert replaced.origin("feature") is None
+    assert replaced.origin("feature.on") == {"layer": OVERRIDE_LAYER, "path": None, "key": "feature.on"}
+
+
+def _config_with_loader_shaped_keys() -> Config:
+    """Provenance the loader writes for more than plain leaves: list elements that are tables,
+    and an empty table."""
+    data = {"servers": [{"name": "a"}], "empty": {}, "feature": True}
+    meta = {
+        "servers.0.name": SourceInfo(layer="app", path="/etc/app.toml", key="servers.0.name"),
+        "empty": SourceInfo(layer="user", path="/home/u/app.toml", key="empty"),
+        "feature": SourceInfo(layer="env", path=None, key="feature"),
+    }
+    return Config(data, meta)
+
+
+@os_agnostic
+def test_config_with_overrides_keeps_list_element_sources_it_did_not_touch() -> None:
+    config = _config_with_loader_shaped_keys()
+    replaced = config.with_overrides({"feature": False})
+    assert replaced.origin("servers.0.name") == config.origin("servers.0.name")
+    assert replaced.origin("empty") == config.origin("empty")
+
+
+@os_agnostic
+def test_config_with_overrides_names_the_override_for_a_replaced_list() -> None:
+    replaced = _config_with_loader_shaped_keys().with_overrides({"servers": [{"name": "b"}]})
+    assert replaced.origin("servers.0.name") is None
+    assert replaced.origin("servers") == {"layer": OVERRIDE_LAYER, "path": None, "key": "servers"}
+
+
+@os_agnostic
+def test_config_with_overrides_of_an_empty_table_onto_a_table_changes_no_source() -> None:
+    """Merging ``{}`` into an existing table changes no value, so no source may change."""
+    config = make_config()
+    replaced = config.with_overrides({"db": {}})
+    assert replaced.origin("db.host") == config.origin("db.host")
+    assert replaced.origin("db") is None
+
+
+@os_agnostic
+def test_config_with_overrides_leaves_the_original_provenance_alone() -> None:
+    config = make_config()
+    config.with_overrides({"feature": False})
+    assert config.origin("feature") == {"layer": "env", "path": None, "key": "feature"}
+
+
+@os_agnostic
+def test_override_layer_is_exported_from_the_package() -> None:
+    import lib_layered_config
+
+    assert lib_layered_config.OVERRIDE_LAYER == OVERRIDE_LAYER == "override"
 
 
 @os_agnostic

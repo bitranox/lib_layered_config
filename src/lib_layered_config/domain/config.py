@@ -34,7 +34,14 @@ import orjson
 
 from .redaction import redact_mapping
 
-__all__ = ["EMPTY_CONFIG", "Config", "SourceInfo"]
+__all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo"]
+
+OVERRIDE_LAYER = "override"
+"""The ``layer`` that :meth:`Config.with_overrides` records for every key it supplies.
+
+Not a :class:`~lib_layered_config.domain.identifiers.Layer` member: those name the
+sources the loader reads, and an override is applied in code after loading.
+"""
 
 
 class SourceInfo(TypedDict):
@@ -225,15 +232,74 @@ class Config(MappingABC[str, Any]):
             overrides: Mapping of keys and values to merge.
 
         Returns:
-            New configuration instance sharing provenance with the original.
+            New configuration instance. Every key *overrides* supplies is recorded
+            with layer :data:`OVERRIDE_LAYER` and no path, since the value no longer
+            comes from the file the old provenance named; every other key keeps its
+            original provenance, and keys that no longer exist lose theirs.
 
         Examples:
-            >>> cfg = Config({"db": {"host": "localhost", "port": 5432}}, {})
-            >>> cfg.with_overrides({"db": {"host": "newhost"}})["db"]["port"]
-            5432
+            >>> meta = {"db.host": {"layer": "app", "path": "/etc/app.toml", "key": "db.host"},
+            ...         "db.port": {"layer": "app", "path": "/etc/app.toml", "key": "db.port"}}
+            >>> cfg = Config({"db": {"host": "localhost", "port": 5432}}, meta)
+            >>> merged = cfg.with_overrides({"db": {"host": "newhost"}})
+            >>> merged["db"]["port"], merged.origin("db.host")["layer"], merged.origin("db.port")["layer"]
+            (5432, 'override', 'app')
         """
-        merged = _deep_merge(self._data, overrides)
-        return Config(merged, self._meta)
+        replaced: list[tuple[str, Any]] = []
+        merged = _deep_merge(self._data, overrides, replaced=replaced)
+        return Config(merged, _override_provenance(self._meta, replaced))
+
+
+def _override_keys(value: Any, dotted: str) -> Iterator[str]:
+    """Yield the keys an override value occupies at *dotted*: its leaves, or *dotted* itself.
+
+    A non-empty table contributes one key per leaf; a scalar, a list or an empty
+    table is one value at *dotted*.
+
+    Examples:
+        >>> sorted(_override_keys({"b": 1, "c": {"d": [2]}, "e": {}}, "a"))
+        ['a.b', 'a.c.d', 'a.e']
+        >>> list(_override_keys([1, 2], "a"))
+        ['a']
+    """
+    if isinstance(value, MappingABC) and value:
+        for key, child in cast("MappingType[str, Any]", value).items():
+            yield from _override_keys(child, f"{dotted}.{key}")
+    else:
+        yield dotted
+
+
+def _is_at_or_below(dotted: str, paths: frozenset[str]) -> bool:
+    """Whether *dotted* is one of *paths* or lies inside one of them.
+
+    Examples:
+        >>> _is_at_or_below("db.host", frozenset({"db"})), _is_at_or_below("dbx", frozenset({"db"}))
+        (True, False)
+    """
+    parts = dotted.split(".")
+    return any(".".join(parts[:end]) in paths for end in range(1, len(parts) + 1))
+
+
+def _override_provenance(meta: Mapping[str, SourceInfo], replaced: list[tuple[str, Any]]) -> dict[str, SourceInfo]:
+    """Provenance after a merge: the override for every path it replaced, the old source elsewhere.
+
+    Only a path the merge actually REPLACED changes. Entries at or below it are
+    dropped, since those values are gone, and every other entry is kept exactly as
+    the loader wrote it, including the ones that are not plain leaves (a table
+    inside a list, an empty table).
+
+    Examples:
+        >>> meta = {"a.b": {"layer": "app", "path": "/x.toml", "key": "a.b"},
+        ...         "c": {"layer": "env", "path": None, "key": "c"}}
+        >>> sorted(_override_provenance(meta, [("a", 1)]).items())
+        [('a', {'layer': 'override', 'path': None, 'key': 'a'}), ('c', {'layer': 'env', 'path': None, 'key': 'c'})]
+    """
+    paths = frozenset(path for path, _ in replaced)
+    provenance = {key: info for key, info in meta.items() if not _is_at_or_below(key, paths)}
+    for path, value in replaced:
+        for dotted in _override_keys(value, path):
+            provenance[dotted] = SourceInfo(layer=OVERRIDE_LAYER, path=None, key=dotted)
+    return provenance
 
 
 def _lock_map(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -258,6 +324,9 @@ def _lock_map(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
 def _deep_merge(
     base: Mapping[str, Any],
     overrides: Mapping[str, Any],
+    *,
+    replaced: list[tuple[str, Any]] | None = None,
+    prefix: str = "",
 ) -> dict[str, Any]:
     """Recursively merge *overrides* into *base*, returning a new dictionary.
 
@@ -268,6 +337,10 @@ def _deep_merge(
     Args:
         base: Original mapping.
         overrides: Mapping whose values are merged into *base*.
+        replaced: When given, receives ``(dotted_path, value)`` for every slot the
+            override REPLACED rather than merged into, so provenance can change
+            exactly there.
+        prefix: Dotted path of *base* inside the whole tree, ending in a dot.
 
     Returns:
         New dictionary with recursively merged values.
@@ -283,9 +356,13 @@ def _deep_merge(
             merged[key] = _deep_merge(
                 cast("MappingType[str, Any]", base_value),
                 cast("MappingType[str, Any]", override_value),
+                replaced=replaced,
+                prefix=f"{prefix}{key}.",
             )
         else:
             merged[key] = override_value
+            if replaced is not None:
+                replaced.append((f"{prefix}{key}", override_value))
     return merged
 
 

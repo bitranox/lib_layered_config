@@ -6,6 +6,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [5.7.0] 2026-09-27 21:56:37
+
+### Changed
+
+- **`Config.with_overrides()` names the override as the source of every key it supplies.**
+  `origin()` for such a key now returns layer `"override"` (exported as `OVERRIDE_LAYER`), path
+  `None`, instead of the provenance of the value it replaced, which named a file that no longer
+  held the value shown. Keys the override did not touch keep their source exactly as loaded,
+  including list elements and empty tables, and keys it removed (a table replaced by a scalar)
+  have none. A caller that rebuilt provenance itself keeps working; it can drop that code if
+  `override` is the label it wants.
+- **The shipped skill describes the new provenance behaviour**, keeping the rebuild recipe for
+  callers on an older floor or wanting the layer named `cli`.
+- **`docs/python-api.md` describes `with_overrides` as the deep merge it has been since 5.3.0**, not
+  a shallow top-level one.
+
 ## [5.6.2] 2026-07-30 18:09:42
 
 ### Changed

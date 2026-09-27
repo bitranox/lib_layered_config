@@ -272,12 +272,12 @@ print(compact_json)
 
 ##### `Config.with_overrides(overrides)`
 
-Return a new configuration with shallow top-level overrides applied.
+Return a new configuration with *overrides* deep-merged in: nested tables merge key by key, while scalars and lists replace the value they meet.
 
 **Parameters:**
-- `overrides` (Mapping[str, Any], required): Dictionary of top-level keys and values to override.
+- `overrides` (Mapping[str, Any], required): Nested mapping of keys and values to merge in.
 
-**Returns:** New `Config` instance with overrides applied, sharing provenance with the original.
+**Returns:** New `Config` instance with overrides applied. Every key the override supplies reports `origin()` as layer `"override"` (`OVERRIDE_LAYER`), path `None`; keys it did not touch keep their original source, and keys it removed have none. The original instance is unchanged.
 
 **Examples:**
 

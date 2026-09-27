@@ -68,14 +68,27 @@ The whole point of the library. To answer "why is this value what it is":
   prints the merged config **and** the provenance map. `read --format json` does the same;
   human output (`read`) prints a `# source:` comment above each value.
 
-**A `--set` style override keeps the provenance of the layer it REPLACED.** `with_overrides`
-returns the merged data with the ORIGINAL provenance map, by design, so the value shown is the new
-one while the source beside it still names the file that used to supply it. The value is right and
-the answer to "where did this come from" is wrong, which is the one question the provenance map
-exists to answer, and no test of the value catches it.
+**A `--set` style override names itself as the source (5.7.0 and later).** Every key
+`with_overrides` supplies reads back from `origin()` as layer `override` (the exported
+`OVERRIDE_LAYER`), path `None`, so a caller content with that label needs no provenance code of
+its own. Keys it did not touch keep their file. When a scalar replaces a table, the scalar's key
+(`db`) reads as `override` and the keys it removed (`db.host`) have no source at all:
 
-Rebuild provenance for exactly the keys the override supplied - layer `cli`, path `None` - and
-leave every other key's source alone. Two details decide whether that lands:
+```python
+from lib_layered_config import Config
+
+cfg = Config({"db": {"host": "a"}}, {"db.host": {"layer": "app", "path": "/etc/app.toml", "key": "db.host"}})
+cfg.with_overrides({"db": {"host": "b"}}).origin("db.host")
+# {'layer': 'override', 'path': None, 'key': 'db.host'}
+```
+
+Before 5.7.0 it returned the ORIGINAL provenance map, so a `--set` value was shown beside the file
+it replaced: the value right, the answer to "where did this come from" wrong, and no test of the
+value catches it. Check the floor in `pyproject.toml` before relying on the new behaviour.
+
+To label the layer `cli` instead, or to support a floor below 5.7.0, rebuild provenance for exactly
+the keys the override supplied - layer `cli`, path `None` - and leave every other key's source
+alone. Two details decide whether that lands:
 
 - the dotted key is the SECTION plus the key path, because a parsed override's key path EXCLUDES
   its section; joining only the key path matches nothing and silently changes no entry.

@@ -1,6 +1,6 @@
 [project]
 name = "lib_layered_config"
-version = "5.6.2"
+version = "5.7.0"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -54,9 +54,9 @@ dev = [
   # "codecov-cli>=11.3.1",
   # Transitive CVE pins
   "click>=8.5.0",                # CVE-2026-7246
-  "coverage[toml]>=7.16.0",
-  "httpx2>=2.12.0",
-  "hypothesis>=6.168.0",
+  "coverage[toml]>=7.16.2",
+  "httpx2>=2.13.1",
+  "hypothesis>=6.168.2",
   "import-linter>=2.15",
   "bandit>=1.9.4",
   "pip-audit>=2.10.1",
@@ -65,7 +65,7 @@ dev = [
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-cov>=7.1.0",
-  "ruff>=0.16.7",
+  "ruff>=0.16.9",
   "textual>=8.2.8",
   "twine>=7.0.0"
 ]
@@ -78,7 +78,7 @@ lib_layered_config = "lib_layered_config.cli:main"
 lib-layered-config = "lib_layered_config.cli:main"
 
 [build-system]
-requires = ["hatchling>=1.32.0"]
+requires = ["hatchling>=1.32.4"]
 build-backend = "hatchling.build"
 
 
