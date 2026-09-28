@@ -5,12 +5,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
+
+from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from lib_layered_config.domain.permissions import (
     DEFAULT_APP_DIR_MODE,
     DEFAULT_APP_FILE_MODE,
     DEFAULT_USER_DIR_MODE,
     DEFAULT_USER_FILE_MODE,
     LAYER_PERMISSIONS,
+    apply_mode,
     set_custom_permissions,
     set_permissions,
 )
@@ -215,6 +219,37 @@ class TestSetCustomPermissionsWindows:
 
         # Mode unchanged on Windows
         assert test_file.stat().st_mode == original_mode
+
+
+# ---------------------------------------------------------------------------
+# apply_mode: Guarded chmod sink
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+def test_set_custom_permissions_refuses_a_negative_mode_on_every_platform(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text("x", encoding="utf-8")
+    with pytest.raises(DeployModeError, match=r"mode -1 is outside 0\.\.0o7777"):
+        set_custom_permissions(target, dir_mode=None, file_mode=-1, is_dir=False)
+
+
+@posix_only
+def test_set_custom_permissions_leaves_the_mode_alone_when_it_refuses(tmp_path: Path) -> None:
+    target = tmp_path / "conf"
+    target.mkdir()
+    target.chmod(0o700)
+    with pytest.raises(DeployModeError, match=r"world write \(0o002\)"):
+        set_custom_permissions(target, dir_mode=0o777, file_mode=None, is_dir=True)
+    assert (target.stat().st_mode & 0o7777) == 0o700
+
+
+@posix_only
+def test_apply_mode_sets_the_mode(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text("x", encoding="utf-8")
+    apply_mode(target, DeployMode(0o640, ModeKind.FILE))
+    assert (target.stat().st_mode & 0o7777) == 0o640
 
 
 # ---------------------------------------------------------------------------

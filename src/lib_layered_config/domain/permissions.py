@@ -9,8 +9,8 @@ files based on their target layer:
 - **User layer**: Private to user (700/600)
   Personal configuration that should not be accessible by other users.
 
-On Windows, permissions are skipped since Windows uses ACLs rather than
-Unix-style permission bits.
+On Windows, modes are skipped since Windows uses ACLs rather than Unix-style
+permission bits; a refused mode is refused on every platform.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
+from .deploy_mode import DeployMode, ModeKind
 from .identifiers import Layer
 
 if TYPE_CHECKING:
@@ -29,6 +30,8 @@ __all__ = [
     "DEFAULT_USER_DIR_MODE",
     "DEFAULT_USER_FILE_MODE",
     "LAYER_PERMISSIONS",
+    "apply_mode",
+    "modes_apply",
     "set_custom_permissions",
     "set_permissions",
 ]
@@ -49,23 +52,32 @@ LAYER_PERMISSIONS: dict[str, dict[str, int]] = {
 }
 
 
+def modes_apply() -> bool:
+    """Return whether this platform applies Unix permission modes (POSIX); Windows uses ACLs."""
+    return os.name == "posix"
+
+
+def apply_mode(path: Path, mode: DeployMode) -> None:
+    """Set *mode* on *path* where the platform applies modes; a no-op on Windows.
+
+    Taking a :class:`DeployMode` rather than an int is the guard: an unsafe mode cannot be
+    constructed, so it cannot reach ``chmod``.
+    """
+    if modes_apply():
+        path.chmod(mode.value)
+
+
 def set_permissions(path: Path, layer: str, *, is_dir: bool = False) -> None:
-    """Set appropriate permissions based on layer (POSIX only).
+    """Set the built-in mode for *layer* (POSIX only).
 
     Args:
         path: Path to set permissions on.
-        layer: Target layer ("app", "host", or "user").
+        layer: Target layer ("app", "host", or "user"); an unknown layer uses the app layer's.
         is_dir: True if path is a directory.
-
-    Note:
-        No-op on non-POSIX systems (Windows).
     """
-    if os.name != "posix":
-        return
-
     perms = LAYER_PERMISSIONS.get(layer, LAYER_PERMISSIONS[Layer.APP.value])
-    mode = perms["dir"] if is_dir else perms["file"]
-    path.chmod(mode)
+    kind = ModeKind.DIRECTORY if is_dir else ModeKind.FILE
+    apply_mode(path, DeployMode(perms["dir"] if is_dir else perms["file"], kind))
 
 
 def set_custom_permissions(
@@ -75,7 +87,7 @@ def set_custom_permissions(
     file_mode: int | None,
     is_dir: bool = False,
 ) -> None:
-    """Set custom permissions (POSIX only).
+    """Set a caller-chosen mode (POSIX only); ``None`` skips.
 
     Args:
         path: Path to set permissions on.
@@ -83,12 +95,11 @@ def set_custom_permissions(
         file_mode: Mode for files (None = skip).
         is_dir: True if path is a directory.
 
-    Note:
-        No-op on non-POSIX systems (Windows) or if mode is None.
+    Raises:
+        DeployModeError: The chosen mode is out of range or unsafe. Checked on every platform,
+            before any ``chmod``.
     """
-    if os.name != "posix":
-        return
-
     mode = dir_mode if is_dir else file_mode
-    if mode is not None:
-        path.chmod(mode)
+    if mode is None:
+        return
+    apply_mode(path, DeployMode(mode, ModeKind.DIRECTORY if is_dir else ModeKind.FILE))
