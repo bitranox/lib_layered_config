@@ -7,7 +7,9 @@ protocol by scanning for `.env` files using the search discipline captured in
 Contents:
     - ``DefaultDotEnvLoader``: public loader that composes the helpers.
     - ``_iter_candidates`` / ``_build_search_list``: gather candidate paths.
-    - ``_parse_dotenv``: strict parser converting dotenv files into nested dicts.
+    - ``_parse_dotenv``: strict parser converting dotenv files into nested dicts. Values stay
+      strings, except an unquoted JSON array or object, which becomes a list or table like in
+      the environment layer; a quoted value is always the literal text.
     - ``_log_dotenv_*``: logging helpers that narrate discovery and parsing outcomes.
     - Constants for parsing quote characters and delimiters.
 
@@ -25,6 +27,7 @@ from ...domain.errors import InvalidFormatError
 from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
 from .._text_decoding import decode_utf8
+from .._value_coercion import parse_json_container
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -143,7 +146,23 @@ def _process_line(
         _log_dotenv_error(path, line_number)
         raise InvalidFormatError(f"Malformed line {line_number} in {path}")
     key, value = line.split(_KEY_VALUE_DELIMITER, 1)
-    assign_nested(result, key.strip(), _strip_quotes(value.strip()), error_cls=InvalidFormatError)
+    assign_nested(result, key.strip(), _dotenv_value(value.strip()), error_cls=InvalidFormatError)
+
+
+def _dotenv_value(raw: str) -> str | list[object] | dict[str, object]:
+    """Return a dotenv value: quoted stays the literal text; unquoted JSON array/object becomes a list/table.
+
+    Quoting is the only way to keep a literal string in .env, so it is never parsed further.
+
+    Examples:
+        >>> _dotenv_value('[1, 2]'), _dotenv_value("'[1, 2]'"), _dotenv_value('plain # note')
+        ([1, 2], '[1, 2]', 'plain')
+    """
+    if _is_quoted(raw):
+        return raw[1:-1]
+    text = _strip_quotes(raw)  # the unquoted branch: comment and inline-comment handling
+    container = parse_json_container(text)
+    return text if container is None else container
 
 
 def _is_quoted(value: str) -> bool:
