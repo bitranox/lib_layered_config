@@ -31,7 +31,7 @@ import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...observability import log_debug, log_error
-from .._text_decoding import decode_utf8
+from .._text_decoding import decode_utf8, decode_yaml_text
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -316,7 +316,11 @@ class TOMLFileLoader(BaseFileLoader):
             >>> Path(tmp.name).unlink()
         """
         raw_bytes = self._read(path)
-        decoded = decode_utf8(raw_bytes, path=path)
+        try:
+            decoded = decode_utf8(raw_bytes, path=path)
+        except InvalidFormatError as exc:
+            _log_file_invalid(path, "toml", str(exc))
+            raise
         failed_at: tuple[int, int] | None = None
         failed = False
         parsed: object = None
@@ -362,7 +366,12 @@ class JSONFileLoader(BaseFileLoader):
             True
             >>> Path(tmp.name).unlink()
         """
-        decoded = decode_utf8(self._read(path), path=path)
+        raw_bytes = self._read(path)
+        try:
+            decoded = decode_utf8(raw_bytes, path=path)
+        except InvalidFormatError as exc:
+            _log_file_invalid(path, "json", str(exc))
+            raise
         failed_at: tuple[int, int] | None = None
         failed = False
         payload: Any = None
@@ -415,7 +424,11 @@ class YAMLFileLoader(BaseFileLoader):
         _ensure_yaml_available()
         yaml_module = _require_yaml_module()
         raw_bytes = self._read(path)
-        decoded = decode_utf8(raw_bytes, path=path)
+        try:
+            decoded = decode_yaml_text(raw_bytes, path=path)
+        except InvalidFormatError as exc:
+            _log_file_invalid(path, "yaml", str(exc))
+            raise
         parsed = _parse_yaml_text(decoded, yaml_module, path)
         mapping = self._ensure_mapping(parsed, path=path)
         _log_file_loaded(path, "yaml")
