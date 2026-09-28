@@ -234,20 +234,20 @@ lib_layered_config deploy --source ./config/app.toml \
 
 **Parameters:**
 
-| Parameter                            | Type   | Required | Default                       | Description                                                                                                                                                  |
-|--------------------------------------|--------|----------|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--source`                           | path   | Yes      | -                             | Path to the configuration file to copy. Must be an existing file                                                                                             |
-| `--vendor`                           | string | Yes      | -                             | Vendor namespace                                                                                                                                             |
-| `--app`                              | string | Yes      | -                             | Application name                                                                                                                                             |
-| `--slug`                             | string | Yes      | -                             | Configuration slug                                                                                                                                           |
-| `--profile`                          | string | No       | -                             | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths                                                  |
-| `--target`                           | choice | Yes      | -                             | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user`                        |
-| `--platform`                         | string | No       | auto-detect                   | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win`                                                             |
-| `--force`                            | flag   | No       | `false`                       | When file exists with different content: backup existing file to `.bak` and overwrite                                                                        |
-| `--batch`                            | flag   | No       | `false`                       | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Ignored if `--force` is set                         |
-| `--permissions` / `--no-permissions` | flag   | No       | configured `enabled`, else on | Set Unix file permissions on deployed files. Uses layer-specific defaults: app/host = 755/644 (world-readable), user = 700/600 (private). Skipped on Windows |
-| `--dir-mode`                         | string | No       | -                             | Directory mode for every target, octal (`750` or `0o750`). Refused when unsafe (see File Permissions)                                                        |
-| `--file-mode`                        | string | No       | -                             | File mode for every target, octal (`640` or `0o640`). Refused when unsafe (see File Permissions)                                                             |
+| Parameter                            | Type   | Required | Default                       | Description                                                                                                                                                    |
+|--------------------------------------|--------|----------|-------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--source`                           | path   | Yes      | -                             | Path to the configuration file to copy. Must be an existing file                                                                                               |
+| `--vendor`                           | string | Yes      | -                             | Vendor namespace                                                                                                                                               |
+| `--app`                              | string | Yes      | -                             | Application name                                                                                                                                               |
+| `--slug`                             | string | Yes      | -                             | Configuration slug                                                                                                                                             |
+| `--profile`                          | string | No       | -                             | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths                                                    |
+| `--target`                           | choice | Yes      | -                             | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user`                          |
+| `--platform`                         | string | No       | auto-detect                   | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win`                                                               |
+| `--force`                            | flag   | No       | `false`                       | When file exists with different content: backup existing file to `.bak` and overwrite                                                                          |
+| `--batch`                            | flag   | No       | `false`                       | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Ignored if `--force` is set                           |
+| `--permissions` / `--no-permissions` | flag   | No       | configured `enabled`, else on | Set Unix file permissions on deployed files. Uses the configured modes, else app/host = 755/644 (world-readable), user = 700/600 (private). Skipped on Windows |
+| `--dir-mode`                         | string | No       | -                             | Directory mode for every target, octal (`750` or `0o750`). Refused when unsafe (see File Permissions)                                                          |
+| `--file-mode`                        | string | No       | -                             | File mode for every target, octal (`640` or `0o640`). Refused when unsafe (see File Permissions)                                                               |
 
 **Returns:** JSON object with keys for each action taken:
 - `created`: Array of paths for newly created files
@@ -618,7 +618,8 @@ settings only when a configured value can change the result, from the deployed s
 app, host and user files it does not itself write, and the environment. It never reads `.env` (whose search
 starts at the working directory), and the file being replaced never decides its replacement's mode, so a broken
 destination does not block `deploy --force`. If those settings cannot be read, or the section is invalid,
-`deploy` stops with one line per problem, naming the file and line but never its content. Both `--dir-mode` and
+`deploy` stops with one line per problem, naming the key and its source (and the line, for a file that cannot
+be parsed) but never its content. Both `--dir-mode` and
 `--file-mode` deploy anyway; `--no-permissions` does too, but leaves every mode to the umask, which can make a
 user file that holds secrets readable by other accounts. `--no-permissions` together with a mode option is a
 usage error.

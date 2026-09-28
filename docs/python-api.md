@@ -388,8 +388,9 @@ Load and merge all configuration layers into an immutable `Config` object with p
 **Returns:** Immutable `Config` object with merged configuration and provenance tracking.
 
 **Raises:** `LayerLoadError` (a `ConfigError`) when a layer file cannot be decoded or parsed: `"<path> is not
-valid <FORMAT> (line N, column M)"`, or `"<path> is not valid UTF-8 (line N, byte offset M)"` for an
-undecodable file, never quoting the file's content.
+valid <FORMAT>"`, plus `" (line N, column M)"` when the parser reports a position; `"<path> is not valid UTF-8
+(line N, byte offset M)"` for an undecodable file, or `"<path> is not valid UTF-16|UTF-32 (byte offset M)"` for
+a BOM-marked YAML file that does not decode; never quoting the file's content.
 
 **Examples:**
 
@@ -805,11 +806,11 @@ Copy a source configuration file into one or more layer directories with conflic
 [cli-reference.md#-file-permissions](cli-reference.md#-file-permissions) for the full resolution order and the
 refusal rule.
 
-**Raises:** `FileNotFoundError` (source file does not exist), `ValidationError` (an unknown target, before
-anything is written), `DeployModeError` (a refused `dir_mode` / `file_mode`, or one given with
-`set_permissions=False`), `DeployPermissionsError` (the permission settings are not readable, the section is
-invalid, a refused `permission_overrides` value, or `permission_overrides` combined with `permissions`; nothing
-is written).
+**Raises:** `FileNotFoundError` (source file does not exist), `ValueError` (an invalid `profile` name),
+`ValidationError` (an unknown target, before anything is written), `DeployModeError` (a refused `dir_mode` /
+`file_mode`, or one given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
+not readable, the section is invalid, a refused `permission_overrides` value, or `permission_overrides`
+combined with `permissions`; nothing is written).
 
 **Examples:**
 
@@ -1289,73 +1290,6 @@ print(f"Profile names are limited to {DEFAULT_MAX_PROFILE_LENGTH} characters by 
 # Output: Profile names are limited to 64 characters by default
 ```
 
----
-
-### Permission Constants
-
-The library exports constants for Unix file permissions used during deployment. These constants define sensible defaults for different configuration layers.
-
-#### `DEFAULT_APP_DIR_MODE`
-
-Directory permission mode for app/host layers (system-wide configs).
-
-**Value:** `0o755` (rwxr-xr-x)
-
-#### `DEFAULT_APP_FILE_MODE`
-
-File permission mode for app/host layers (system-wide configs).
-
-**Value:** `0o644` (rw-r--r--)
-
-#### `DEFAULT_USER_DIR_MODE`
-
-Directory permission mode for user layer (private configs).
-
-**Value:** `0o700` (rwx------)
-
-#### `DEFAULT_USER_FILE_MODE`
-
-File permission mode for user layer (private configs).
-
-**Value:** `0o600` (rw-------)
-
-**Example:**
-```python
-from lib_layered_config import (
-    DEFAULT_APP_DIR_MODE,
-    DEFAULT_APP_FILE_MODE,
-    DEFAULT_USER_DIR_MODE,
-    DEFAULT_USER_FILE_MODE,
-)
-
-print(f"App dir mode: {oct(DEFAULT_APP_DIR_MODE)}")  # 0o755
-print(f"App file mode: {oct(DEFAULT_APP_FILE_MODE)}")  # 0o644
-print(f"User dir mode: {oct(DEFAULT_USER_DIR_MODE)}")  # 0o700
-print(f"User file mode: {oct(DEFAULT_USER_FILE_MODE)}")  # 0o600
-```
-
-**Explanation:** App/host layers use world-readable permissions since system-wide configuration should be accessible by all processes. User layer uses private permissions since personal configuration should not be accessible by other users. On Windows, permissions are skipped (Windows uses ACLs instead).
-
----
-
-### Deploy permission types
-
-Exported from the package root, used to configure or override `deploy_config`'s permission handling.
-
-- `DeployMode`: An immutable, validated Unix permission mode; an unsafe one cannot be constructed.
-- `ModeKind`: Whether a mode applies to a directory or a file (`DIRECTORY`, `FILE`).
-- `LayerModes`: The directory mode and the file mode one layer is deployed with.
-- `DeployPermissions`: Directory and file modes per deployment layer, plus whether to set them at all;
-  `.defaults()` returns the built-in layer modes, `.for_layer(layer)` returns one layer's `LayerModes`.
-- `deploy_permissions_from_config`: Reads `[lib_layered_config.default_permissions]` from a merged
-  configuration, with an `overrides=` mapping laid over the configured values for runtime overrides.
-- `DeployModeError`: A permission mode was refused; the message names the reason or every offending bit.
-- `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
-  per bad value, and `.hint` (optional) suggests a way to deploy anyway.
-- `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.
-
----
-
 #### `validate_profile_name`
 
 Validate a profile name for safe use in filesystem paths.
@@ -1490,3 +1424,69 @@ invalid_profiles = [p for p in profiles if not is_valid_profile_name(p)]
 print(f"Valid: {valid_profiles}")  # ['production', 'test', 'staging-v2']
 print(f"Invalid: {invalid_profiles}")  # ['../hack', 'my profile']
 ```
+
+---
+
+### Permission Constants
+
+The library exports constants for Unix file permissions used during deployment. These constants define sensible defaults for different configuration layers.
+
+#### `DEFAULT_APP_DIR_MODE`
+
+Directory permission mode for app/host layers (system-wide configs).
+
+**Value:** `0o755` (rwxr-xr-x)
+
+#### `DEFAULT_APP_FILE_MODE`
+
+File permission mode for app/host layers (system-wide configs).
+
+**Value:** `0o644` (rw-r--r--)
+
+#### `DEFAULT_USER_DIR_MODE`
+
+Directory permission mode for user layer (private configs).
+
+**Value:** `0o700` (rwx------)
+
+#### `DEFAULT_USER_FILE_MODE`
+
+File permission mode for user layer (private configs).
+
+**Value:** `0o600` (rw-------)
+
+**Example:**
+```python
+from lib_layered_config import (
+    DEFAULT_APP_DIR_MODE,
+    DEFAULT_APP_FILE_MODE,
+    DEFAULT_USER_DIR_MODE,
+    DEFAULT_USER_FILE_MODE,
+)
+
+print(f"App dir mode: {oct(DEFAULT_APP_DIR_MODE)}")  # 0o755
+print(f"App file mode: {oct(DEFAULT_APP_FILE_MODE)}")  # 0o644
+print(f"User dir mode: {oct(DEFAULT_USER_DIR_MODE)}")  # 0o700
+print(f"User file mode: {oct(DEFAULT_USER_FILE_MODE)}")  # 0o600
+```
+
+**Explanation:** App/host layers use world-readable permissions since system-wide configuration should be accessible by all processes. User layer uses private permissions since personal configuration should not be accessible by other users. On Windows, permissions are skipped (Windows uses ACLs instead).
+
+---
+
+### Deploy permission types
+
+Exported from the package root, used to configure or override `deploy_config`'s permission handling.
+
+- `DeployMode`: An immutable, validated Unix permission mode; an unsafe one cannot be constructed.
+- `ModeKind`: Whether a mode applies to a directory or a file (`DIRECTORY`, `FILE`).
+- `LayerModes`: The directory mode and the file mode one layer is deployed with.
+- `DeployPermissions`: Directory and file modes per deployment layer, plus whether to set them at all;
+  `.defaults()` returns the built-in layer modes, `.for_layer(layer)` returns one layer's `LayerModes`.
+- `deploy_permissions_from_config`: Reads `[lib_layered_config.default_permissions]` from a merged
+  configuration, with an `overrides=` mapping laid over the configured values for runtime overrides.
+- `DeployModeError`: A permission mode was refused; the message names the reason or every offending bit.
+- `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
+  per bad value, and `.hint` (optional) suggests a way to deploy anyway.
+- `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.
+

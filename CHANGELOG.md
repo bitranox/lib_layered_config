@@ -12,7 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the section's own setting names (`permission_overrides={"user_file": "0o640"}`), laid over the deploy's own
   read, validated like configured values and reported as `(source: override)`; `{"enabled": False}` turns
   permission setting off without reading the configuration only when `set_permissions` is `None` and no
-  `dir_mode`/`file_mode` is given (an explicit mode, or `set_permissions=True`, still reads and applies it).
+  `dir_mode`/`file_mode` is given (an explicit mode or `set_permissions=True` sets modes whatever `enabled` says).
   `permissions=` still takes a complete `DeployPermissions`, but cannot be combined with `permission_overrides`,
   and one built from an application's normal `read_config` includes `.env` and the deployed files, which the
   deploy's own read leaves out on purpose: use `permission_overrides` for runtime overrides.
@@ -29,12 +29,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   applying it.** A mode must be an integer in 0..0o7777 without the setuid, setgid or sticky bit and without
   group or world write; a directory mode must keep owner rwx, a file mode owner rw and no execute bit.
   `dir_mode=-1` used to leave the directory at 0o7777, and the decimal integer 444 (meant as octal) applied
-  0o674 to a file that can hold credentials. Every refusal is a `DeployModeError` naming each offending bit,
-  raised before anything is written. `set_custom_permissions` applies the same rule.
+  0o674 to a file that can hold credentials. A refused `dir_mode`/`file_mode` or `set_custom_permissions` mode
+  raises `DeployModeError` naming the reason or each offending bit, raised before anything is written. A
+  refused configured or override value raises `DeployPermissionsError`, one line per problem. The CLI reports
+  a refused `--dir-mode`/`--file-mode` as a usage error.
 - **A configuration file that cannot be decoded or parsed is reported without its content.** The error names
-  the file, the format and the line and column (or byte offset); the parser's own text, which for YAML echoed
-  the offending source line, is no longer in the message, the exception chain or the `config_file_invalid`
-  log event.
+  the file, the format and the line and column (or byte offset), when the parser reports one; the parser's own
+  text, which for YAML echoed the offending source line, is no longer in the message, the exception chain or
+  the `config_file_invalid` log event.
 
 ### Fixed
 
@@ -63,13 +65,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   decimal, the TOML literal `0o640` also arrives as an integer, and so does `--set ...user_file=640`. `enabled`
   must be a boolean; an unknown key is refused, its name shown shortened. Each problem is one line
   `<dotted key>: <reason> (source: <file, layer or override>)` in a `DeployPermissionsError`.
-- When the permission settings cannot be read, or the section is invalid, `deploy_config` refuses instead of
-  falling back to the built-in modes, unless both modes are given or permission setting is off.
-- **A malformed deployed source file now blocks deploy.** `deploy_config` reads the permission section from
-  the deployed source (the defaults layer) whenever a configured value can change the outcome; when that file
-  cannot be decoded or parsed, deploy refuses with a `DeployPermissionsError` naming the file and reason
-  instead of falling back to the built-in modes, unless both `dir_mode` and `file_mode` are given, or
-  `set_permissions=False`.
+- **A malformed deployed source file now blocks deploy.** When the permission settings cannot be read, or the
+  section is invalid, `deploy_config` refuses with a `DeployPermissionsError` naming the file and reason
+  instead of falling back to the built-in modes - for example, when the deployed source (the defaults layer)
+  cannot be decoded or parsed and a configured value could otherwise change the outcome. This does not apply
+  when both `dir_mode` and `file_mode` are given, when `set_permissions=False`, when a complete `permissions=`
+  object is passed (the configuration is never read), or on Windows (modes are not applied there).
 - An unknown `targets` entry is refused before anything is written; it used to fail after the targets before it
   had been deployed.
 - **Type change, environment layer:** a value becomes an int or float only when the number reads back as the
@@ -80,8 +81,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the environment. A quoted value stays the literal text, and scalars in `.env` stay strings.
 - **Exception type change:** a `.env` that is not valid UTF-8 raised `UnicodeDecodeError` (a `ValueError`); it
   now raises `InvalidFormatError`, surfacing from `read_config` as `LayerLoadError`, which is a `ConfigError`
-  and NOT a `ValueError`. Every loader's parse message changed to `<path> is not valid <FORMAT> (line N, column
-  M)`.
+  and NOT a `ValueError`. TOML/JSON/YAML parse errors now read `<path> is not valid <FORMAT>`, plus ` (line N,
+  column M)` when a position is known; an undecodable file reads `<path> is not valid UTF-8 (line N, byte
+  offset M)`, or for a BOM-marked YAML file `<path> is not valid UTF-16|UTF-32 (byte offset M)`. The `.env`
+  malformed-line message (`Malformed line N in <path>`) is unchanged.
 
 Migration: write configured modes as quoted strings (`user_file = "0o640"`; in the environment
 `<PREFIX>___LIB_LAYERED_CONFIG__DEFAULT_PERMISSIONS__USER_FILE=0o640`, since a bare `640` there is a number,

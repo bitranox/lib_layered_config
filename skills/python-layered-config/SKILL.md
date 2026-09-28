@@ -204,7 +204,7 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
 | Slugifying vendor/app for macOS/Windows paths                                        | `vendor`/`app` are used verbatim (spaces kept); only `slug` is normalized.                                                                             |
 | Hunting for "why is this value X" by hand                                            | Use `config.origin(key)` or `read-json` - provenance is built in.                                                                                      |
 | Committing a `.env` with secrets                                                     | `.env` is for local secrets only; never commit it; keep mode `0o600`.                                                                                  |
-| Writing `user_file = 640` (a TOML int is decimal)                                    | Quote it: `user_file = "0o640"`; deploy refuses a bare integer and any group-writable, world-writable or executable mode.                              |
+| Writing `user_file = 640` (a TOML int is decimal)                                    | Quote it: `user_file = "0o640"`; deploy refuses a bare integer and any group-writable, world-writable mode, or an execute bit on a file.               |
 | Reaching for `--no-permissions` when deploy refuses a broken config                  | Give both `--dir-mode` and `--file-mode`; `--no-permissions` leaves a secrets file to the umask.                                                       |
 | Building `permissions=` from the application's `read_config(...)` to carry a `--set` | Pass `permission_overrides={"user_file": "0o640"}`: the application's read includes `.env` and the deployed files, which deploy leaves out on purpose. |
 
