@@ -99,7 +99,7 @@ def test_yaml_loader_cries_out_on_illegal_syntax(tmp_path: Path) -> None:
 @os_agnostic
 def test_yaml_parser_returns_empty_dict_when_document_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_yaml = SimpleNamespace(safe_load=lambda _: None, YAMLError=Exception)
-    empty_mapping = structured_module._parse_yaml_bytes(b"", fake_yaml, "memory.yaml")
+    empty_mapping = structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")
     assert empty_mapping == {}
 
 
@@ -113,7 +113,7 @@ def test_yaml_parser_wraps_yaml_errors_with_context(monkeypatch: pytest.MonkeyPa
 
     fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=BoomError)
     with pytest.raises(InvalidFormatError) as exc:
-        structured_module._parse_yaml_bytes(b"", fake_yaml, "memory.yaml")
+        structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")
     assert "memory.yaml" in str(exc.value)
 
 

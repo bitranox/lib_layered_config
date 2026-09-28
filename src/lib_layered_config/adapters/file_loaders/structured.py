@@ -20,16 +20,18 @@ before passing the results to the merge policy.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, NoReturn
+from typing import TYPE_CHECKING, Any, Final
 
 import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...observability import log_debug, log_error
+from .._text_decoding import decode_utf8
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -76,39 +78,93 @@ def _log_file_loaded(path: str, format_name: str) -> None:
     log_debug("config_file_loaded", layer=FILE_LAYER, path=path, format=format_name)
 
 
-def _log_file_invalid(path: str, format_name: str, exc: Exception) -> None:
-    """Capture parser failures for diagnostics.
+#: rtoml's message is read only for the numbers in it; "line 1 column 4" (toml 0.5) and
+#: "line 1, column 4" (newer renderers, which also print a source snippet) both match.
+_TOML_POSITION: Final[re.Pattern[str]] = re.compile(r"line (\d+),? column (\d+)")
 
-    Surface parse errors with enough context (path, format, message) for quick
-    troubleshooting.
+
+def _log_file_invalid(path: str, format_name: str, message: str) -> None:
+    """Log a parse failure with the content-free message the caller will see.
 
     Args:
         path: File path that failed to parse.
         format_name: Parser identifier.
-        exc: Exception raised by the parser.
+        message: The content-free message the caller will also see.
     """
-    log_error(
-        "config_file_invalid",
-        layer=FILE_LAYER,
-        path=path,
-        format=format_name,
-        error=str(exc),
-    )
+    log_error("config_file_invalid", layer=FILE_LAYER, path=path, format=format_name, error=message)
 
 
-def _raise_invalid_format(path: str, format_name: str, exc: Exception) -> NoReturn:
-    """Log and raise :class:`InvalidFormatError` for parser errors.
+def _invalid_format(path: str, format_name: str, position: tuple[int, int] | None) -> InvalidFormatError:
+    """Build (and log) the error for an unparsable file: path, format and, when known, line and column.
 
-    Reuse logging side-effects while presenting callers with a uniform
-    exception type.
+    The caller raises it OUTSIDE its ``except`` block, so the parser's exception, whose message or
+    mark can hold file content, is not reachable through ``__context__``.
 
     Args:
         path: File path being parsed.
-        format_name: Parser identifier.
-        exc: Original exception raised by the parser.
+        format_name: Parser identifier (e.g. ``"toml"``).
+        position: 1-based (line, column), or ``None`` when the parser reported none.
+
+    Returns:
+        The error to raise.
+
+    Examples:
+        >>> print(_invalid_format("a.toml", "toml", (2, 5)))
+        a.toml is not valid TOML (line 2, column 5)
+        >>> print(_invalid_format("a.yaml", "yaml", None))
+        a.yaml is not valid YAML
     """
-    _log_file_invalid(path, format_name, exc)
-    raise InvalidFormatError(f"Invalid {format_name.upper()} in {path}: {exc}") from exc
+    where = f" (line {position[0]}, column {position[1]})" if position is not None else ""
+    message = f"{path} is not valid {format_name.upper()}{where}"
+    _log_file_invalid(path, format_name, message)
+    return InvalidFormatError(message)
+
+
+def _toml_position(message: str) -> tuple[int, int] | None:
+    """Return the 1-based line and column rtoml reports, or None.
+
+    Args:
+        message: The text of the ``rtoml.TomlParsingError``.
+
+    Returns:
+        The (line, column) pair, or ``None`` when the message carries no position.
+
+    Examples:
+        >>> _toml_position("expected an equals, found eof at line 1 column 4")
+        (1, 4)
+        >>> _toml_position("TOML parse error at line 3, column 7")
+        (3, 7)
+        >>> _toml_position("boom") is None
+        True
+    """
+    found = _TOML_POSITION.search(message)
+    return (int(found.group(1)), int(found.group(2))) if found else None
+
+
+def _yaml_position(exc: BaseException) -> tuple[int, int] | None:
+    """Return the 1-based line and column of a PyYAML ``MarkedYAMLError``, or None.
+
+    Args:
+        exc: The exception PyYAML raised.
+
+    Returns:
+        The (line, column) pair, or ``None`` when the exception carries no mark.
+
+    Examples:
+        >>> from types import SimpleNamespace
+        >>> error = Exception()
+        >>> error.problem_mark = SimpleNamespace(line=1, column=9)
+        >>> _yaml_position(error)
+        (2, 10)
+        >>> _yaml_position(Exception()) is None
+        True
+    """
+    mark: object = getattr(exc, "problem_mark", None)
+    line: object = getattr(mark, "line", None)
+    column: object = getattr(mark, "column", None)
+    if isinstance(line, int) and isinstance(column, int):
+        return line + 1, column + 1
+    return None
 
 
 def _ensure_yaml_available() -> None:
@@ -259,12 +315,17 @@ class TOMLFileLoader(BaseFileLoader):
             'value'
             >>> Path(tmp.name).unlink()
         """
+        raw_bytes = self._read(path)
+        decoded = decode_utf8(raw_bytes, path=path)
+        failed_at: tuple[int, int] | None = None
+        failed = False
+        parsed: object = None
         try:
-            raw_bytes = self._read(path)
-            decoded = raw_bytes.decode("utf-8")
             parsed = rtoml.loads(decoded)
-        except (UnicodeDecodeError, rtoml.TomlParsingError) as exc:
-            _raise_invalid_format(path, "toml", exc)
+        except rtoml.TomlParsingError as exc:
+            failed, failed_at = True, _toml_position(str(exc))
+        if failed:
+            raise _invalid_format(path, "toml", failed_at)
         result = self._ensure_mapping(parsed, path=path)
         _log_file_loaded(path, "toml")
         return result
@@ -301,10 +362,16 @@ class JSONFileLoader(BaseFileLoader):
             True
             >>> Path(tmp.name).unlink()
         """
+        decoded = decode_utf8(self._read(path), path=path)
+        failed_at: tuple[int, int] | None = None
+        failed = False
+        payload: Any = None
         try:
-            payload: Any = orjson.loads(self._read(path))
+            payload = orjson.loads(decoded)
         except orjson.JSONDecodeError as exc:
-            _raise_invalid_format(path, "json", exc)
+            failed, failed_at = True, (exc.lineno, exc.colno)
+        if failed:
+            raise _invalid_format(path, "json", failed_at)
         result = self._ensure_mapping(payload, path=path)
         _log_file_loaded(path, "json")
         return result
@@ -348,20 +415,21 @@ class YAMLFileLoader(BaseFileLoader):
         _ensure_yaml_available()
         yaml_module = _require_yaml_module()
         raw_bytes = self._read(path)
-        parsed = _parse_yaml_bytes(raw_bytes, yaml_module, path)
+        decoded = decode_utf8(raw_bytes, path=path)
+        parsed = _parse_yaml_text(decoded, yaml_module, path)
         mapping = self._ensure_mapping(parsed, path=path)
         _log_file_loaded(path, "yaml")
         return mapping
 
 
-def _parse_yaml_bytes(payload: bytes, module: ModuleType, path: str) -> object:
-    """Turn YAML bytes into a Python shape that mirrors the file.
+def _parse_yaml_text(document: str, module: ModuleType, path: str) -> object:
+    """Turn a decoded YAML document into a Python shape that mirrors the file.
 
     Normalise the PyYAML parsing contract so callers always receive a mapping,
     raising a domain-specific error when the parser signals invalid syntax.
 
     Args:
-        payload: Raw YAML document supplied as bytes.
+        document: Decoded YAML document.
         module: PyYAML module providing ::func:`safe_load` and the ``YAMLError`` base class.
         path: Source identifier used to enrich error messages.
 
@@ -369,16 +437,21 @@ def _parse_yaml_bytes(payload: bytes, module: ModuleType, path: str) -> object:
         Parsed document; an empty dict when the YAML payload evaluates to ``None``.
 
     Raises:
-        InvalidFormatError: When PyYAML raises ``YAMLError`` while parsing the payload.
+        InvalidFormatError: When PyYAML raises ``YAMLError`` while parsing the document.
 
     Examples:
         >>> from types import SimpleNamespace
-        >>> fake = SimpleNamespace(safe_load=lambda data: {"key": data.decode("utf-8")}, YAMLError=Exception)
-        >>> _parse_yaml_bytes(b"value", fake, "memory.yaml")  # doctest: +ELLIPSIS
+        >>> fake = SimpleNamespace(safe_load=lambda data: {"key": data}, YAMLError=Exception)
+        >>> _parse_yaml_text("value", fake, "memory.yaml")  # doctest: +ELLIPSIS
         {'key': 'value'}
     """
+    failed_at: tuple[int, int] | None = None
+    failed = False
+    parsed: object = None
     try:
-        document = module.safe_load(payload)
+        parsed = module.safe_load(document)
     except module.YAMLError as exc:  # type: ignore[attr-defined]
-        _raise_invalid_format(path, "yaml", exc)
-    return {} if document is None else document
+        failed, failed_at = True, _yaml_position(exc)
+    if failed:
+        raise _invalid_format(path, "yaml", failed_at)
+    return {} if parsed is None else parsed

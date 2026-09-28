@@ -17,12 +17,14 @@ semantics as the environment adapter.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from ...domain.errors import InvalidFormatError
 from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
+from .._text_decoding import decode_utf8
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -113,11 +115,12 @@ def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
 
 
 def _parse_dotenv(path: Path) -> Mapping[str, object]:
-    """Parse dotenv file into nested dict. Raises InvalidFormatError on malformed lines."""
+    """Parse dotenv file into nested dict. Raises InvalidFormatError on malformed lines or bytes."""
     result: dict[str, object] = {}
-    with path.open("r", encoding="utf-8") as handle:
-        for line_number, raw_line in enumerate(handle, start=1):
-            _process_line(result, raw_line, line_number, path)
+    text = decode_utf8(path.read_bytes(), path=path)
+    # StringIO with newline=None keeps the universal-newline line splitting the text-mode open() had.
+    for line_number, raw_line in enumerate(io.StringIO(text, newline=None), start=1):
+        _process_line(result, raw_line, line_number, path)
     return result
 
 
