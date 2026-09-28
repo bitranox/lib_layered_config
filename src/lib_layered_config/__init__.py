@@ -36,6 +36,14 @@ from .core import (
     read_config_raw,
 )
 from .domain.config import OVERRIDE_LAYER
+from .domain.deploy_mode import DeployMode, DeployModeError, ModeKind
+from .domain.deploy_permissions import (
+    DeployPermissions,
+    DeployPermissionsError,
+    LayerModes,
+    PermissionProblem,
+    deploy_permissions_from_config,
+)
 from .domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
@@ -63,15 +71,23 @@ __all__ = [
     "REDACTED_PLACEHOLDER",
     "Config",
     "ConfigError",
+    "DeployMode",
+    "DeployModeError",
+    "DeployPermissions",
+    "DeployPermissionsError",
     "InvalidFormatError",
     "Layer",
     "LayerLoadError",
+    "LayerModes",
+    "ModeKind",
     "NotFoundError",
     "OutputFormat",
+    "PermissionProblem",
     "ValidationError",
     "bind_trace_id",
     "default_env_prefix",
     "deploy_config",
+    "deploy_permissions_from_config",
     "display_config",
     "generate_examples",
     "get_logger",

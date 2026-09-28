@@ -6,6 +6,8 @@ loading, environment ingestion, and defaults injection before passing
 
 Contents:
 - ``collect_layers``: orchestrator returning a list of snapshots.
+- ``collect_deploy_layers``: the narrower set that decides deploy modes (no dotenv,
+  the files a deploy writes skipped).
 - ``merge_or_empty``: convenience wrapper combining collect/merge behaviour.
 - Internal generators that yield defaults, filesystem, dotenv, and environment
   snapshots in documented precedence order.
@@ -44,7 +46,7 @@ _FILE_LOADERS = {
     ".yml": YAMLFileLoader(),
 }
 
-__all__ = ["collect_layers", "merge_or_empty"]
+__all__ = ["collect_deploy_layers", "collect_layers", "merge_or_empty"]
 
 
 def collect_layers(
@@ -75,6 +77,26 @@ def collect_layers(
             dotenv_path=dotenv_path,
         )
     )
+
+
+def collect_deploy_layers(
+    *,
+    resolver: DefaultPathResolver,
+    default_file: str,
+    env_loader: DefaultEnvLoader,
+    skip: frozenset[Path],
+) -> list[LayerSnapshot]:
+    """Return the layers that decide deploy modes: defaults, the app/host/user files not in *skip*, env.
+
+    There is no dotenv layer: its search starts at the working directory, which would give whoever
+    controls the directory a deploy runs from a say over the modes of system files. *skip* holds
+    the resolved paths the deploy is about to write, so a file never decides its own replacement.
+    """
+    return [
+        *_default_snapshots(default_file),
+        *_filesystem_snapshots(resolver, None, skip=skip),
+        *_env_snapshots(env_loader, resolver.slug),
+    ]
 
 
 def _snapshots_in_merge_sequence(
@@ -157,12 +179,18 @@ def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
         yield snapshot
 
 
-def _filesystem_snapshots(resolver: DefaultPathResolver, prefer: Sequence[str] | None) -> Iterator[LayerSnapshot]:
+def _filesystem_snapshots(
+    resolver: DefaultPathResolver,
+    prefer: Sequence[str] | None,
+    *,
+    skip: frozenset[Path] = frozenset(),
+) -> Iterator[LayerSnapshot]:
     """Yield filesystem-backed layer snapshots in precedence order.
 
     Args:
         resolver: Path resolver supplying candidate paths per layer.
         prefer: Optional suffix ordering applied when multiple files exist.
+        skip: Resolved paths that are not loaded (empty for every normal read).
 
     Yields:
         LayerSnapshot: Snapshots for ``app``/``host``/``user`` layers.
@@ -172,7 +200,7 @@ def _filesystem_snapshots(resolver: DefaultPathResolver, prefer: Sequence[str] |
         (Layer.HOST, resolver.host()),
         (Layer.USER, resolver.user()),
     ):
-        snapshots = list(_snapshots_from_paths(layer, paths, prefer))
+        snapshots = list(_snapshots_from_paths(layer, paths, prefer, skip=skip))
         if snapshots:
             _note_layer_loaded(layer, None, {"files": len(snapshots)})
             yield from snapshots
@@ -219,7 +247,13 @@ def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapsho
     yield LayerSnapshot(Layer.ENV, data, None)
 
 
-def _snapshots_from_paths(layer: str, paths: Iterable[str], prefer: Sequence[str] | None) -> Iterator[LayerSnapshot]:
+def _snapshots_from_paths(
+    layer: str,
+    paths: Iterable[str],
+    prefer: Sequence[str] | None,
+    *,
+    skip: frozenset[Path] = frozenset(),
+) -> Iterator[LayerSnapshot]:
     """Yield snapshots for every supported file inside *paths*.
 
     Each path is expanded to include any companion ``.d`` directory files.
@@ -228,12 +262,13 @@ def _snapshots_from_paths(layer: str, paths: Iterable[str], prefer: Sequence[str
         layer: Logical layer name the files belong to.
         paths: Iterable of candidate file paths.
         prefer: Optional suffix ordering hint passed by the CLI/API.
+        skip: Resolved paths that are not loaded (empty for every normal read).
 
     Yields:
         LayerSnapshot: Snapshot for each successfully loaded file.
     """
     for path in _paths_in_preferred_order(paths, prefer):
-        yield from _load_entry_with_dot_d(layer, path)
+        yield from _load_entry_with_dot_d(layer, path, skip=skip)
 
 
 def _load_entry(layer: str, path: str) -> LayerSnapshot | None:
@@ -265,7 +300,7 @@ def _load_entry(layer: str, path: str) -> LayerSnapshot | None:
     return LayerSnapshot(layer, data, path)
 
 
-def _load_entry_with_dot_d(layer: str, path: str) -> Iterator[LayerSnapshot]:
+def _load_entry_with_dot_d(layer: str, path: str, *, skip: frozenset[Path] = frozenset()) -> Iterator[LayerSnapshot]:
     """Load *path* and any companion .d directory files as snapshots.
 
     For a file ``foo.toml``, checks for ``foo.toml.d/`` directory and yields
@@ -278,6 +313,8 @@ def _load_entry_with_dot_d(layer: str, path: str) -> Iterator[LayerSnapshot]:
     Args:
         layer: Logical layer name associated with the files.
         path: Absolute path to the base configuration file.
+        skip: Resolved paths that are not loaded, base file or ``.d`` entry alike (empty for
+            every normal read).
 
     Yields:
         LayerSnapshot: Snapshot for each file (base + .d entries) in merge order.
@@ -290,6 +327,8 @@ def _load_entry_with_dot_d(layer: str, path: str) -> Iterator[LayerSnapshot]:
         _note_dot_d_expanded(path, len(expanded_paths) - 1)
 
     for expanded_path in expanded_paths:
+        if skip and Path(expanded_path).resolve() in skip:
+            continue
         snapshot = _load_entry(layer, expanded_path)
         if snapshot is not None:
             yield snapshot

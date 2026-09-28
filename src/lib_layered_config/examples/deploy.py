@@ -26,19 +26,73 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from ..adapters.path_resolvers.default import DefaultPathResolver
+from ..core import read_config_for_deploy
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
-from ..domain.deploy_permissions import DeployPermissions, LayerModes
-from ..domain.errors import ValidationError
+from ..domain.deploy_permissions import (
+    OVERRIDE_SOURCE,
+    SECTION_KEY,
+    DeployPermissions,
+    DeployPermissionsError,
+    LayerModes,
+    PermissionProblem,
+    deploy_permissions_from_config,
+    parse_deploy_permissions,
+)
+from ..domain.errors import ConfigError, ValidationError
 from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
-from ..domain.permissions import apply_mode
+from ..domain.permissions import apply_mode, modes_apply
 
 _VALID_TARGETS = {Layer.APP.value, Layer.HOST.value, Layer.USER.value}
+
+#: How to deploy when the configured modes cannot be read. Both modes come first: turning permission
+#: setting off leaves every mode to the umask, which can make a user file that holds secrets readable
+#: by other accounts. The CLI replaces this with its own spelling (Task 7).
+_DEPLOY_ANYWAY_HINT = (
+    "to deploy anyway, give both modes (dir_mode and file_mode; the built-in ones are 0o700 and 0o600 for "
+    "user, 0o755 and 0o644 for app and host); set_permissions=False also deploys, but leaves every mode to "
+    "the umask, which can make a user file that holds secrets readable by other accounts"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _ModeRequest:
+    """What the caller asked for about permissions, validated."""
+
+    set_permissions: bool | None
+    dir_mode: DeployMode | None
+    file_mode: DeployMode | None
+    permissions: DeployPermissions | None
+    overrides: Mapping[str, object] | None
+
+    @property
+    def modes_decided(self) -> bool:
+        """Both modes came with the call, so no configured value can change the outcome."""
+        return self.dir_mode is not None and self.file_mode is not None
+
+    @property
+    def any_explicit(self) -> bool:
+        """At least one mode came with the call; an explicit mode means modes are set."""
+        return self.dir_mode is not None or self.file_mode is not None
+
+    @property
+    def overrides_turn_modes_off(self) -> bool:
+        """``permission_overrides`` holds ``enabled: False`` (a real bool: validated up front, D15).
+
+        With ``set_permissions=None`` and no explicit mode that decides no mode is set, so no
+        configured value can change the outcome and the read is skipped (D6, re-review m-d).
+        """
+        return (
+            self.set_permissions is None
+            and not self.any_explicit
+            and self.overrides is not None
+            and self.overrides.get("enabled") is False
+        )
 
 
 class DeployAction(Enum):
@@ -224,6 +278,118 @@ def _resolve_layer_modes(
         dir_mode if dir_mode is not None else configured.directory,
         file_mode if file_mode is not None else configured.file,
     )
+
+
+def _override_source(_key: str) -> str:
+    """Every key checked on its own below came from ``permission_overrides``."""
+    return OVERRIDE_SOURCE
+
+
+def _mode_request(
+    *,
+    set_permissions: bool | None,
+    dir_mode: int | None,
+    file_mode: int | None,
+    permissions: DeployPermissions | None,
+    permission_overrides: Mapping[str, object] | None,
+) -> _ModeRequest:
+    """Validate the permission arguments; a mode given with permission setting off is refused.
+
+    ``permission_overrides`` are checked here on every call and platform, like an explicit mode,
+    even when the settings are never read (D15); combining them with ``permissions`` is refused.
+    """
+    explicit_dir, explicit_file = _explicit_modes(dir_mode=dir_mode, file_mode=file_mode)
+    request = _ModeRequest(set_permissions, explicit_dir, explicit_file, permissions, permission_overrides)
+    if set_permissions is False and request.any_explicit:
+        raise DeployModeError(
+            "dir_mode/file_mode given with set_permissions=False: a mode cannot be applied while "
+            "permission setting is off; drop the mode, or drop set_permissions=False"
+        )
+    if permission_overrides is not None:
+        if permissions is not None:
+            reason = (
+                "cannot be combined with permissions; put the overrides into the DeployPermissions you pass, "
+                "or drop permissions and let deploy read the settings"
+            )
+            raise DeployPermissionsError([PermissionProblem("permission_overrides", reason)])
+        parse_deploy_permissions(permission_overrides, source_of=_override_source)
+    return request
+
+
+def _permission_settings(
+    request: _ModeRequest,
+    *,
+    load: Callable[[], DeployPermissions],
+) -> DeployPermissions | None:
+    """Return the settings that decide each mode, or None when no mode is set.
+
+    An explicit mode means modes are set; otherwise set_permissions decides, and when it is None
+    the configured (or given) ``enabled`` does, an ``enabled: False`` override first. The
+    configuration is read only when it can change the outcome: modes may be set, the platform
+    applies them, a side is open, no settings object was passed, and no override already turned
+    modes off.
+    """
+    if request.set_permissions is False or request.overrides_turn_modes_off:
+        return None
+    given = request.permissions
+    if request.modes_decided or not modes_apply():
+        return given if given is not None else DeployPermissions.defaults()
+    settings = given if given is not None else load()
+    if request.set_permissions is None and not request.any_explicit and not settings.enabled:
+        return None
+    return settings
+
+
+def _paths_written(destinations: Sequence[tuple[Path, str]], dot_d_files: Sequence[Path]) -> frozenset[Path]:
+    """Every file this call may write, resolved: each destination and each of its ``.d`` copies."""
+    written: set[Path] = set()
+    for destination, _layer in destinations:
+        written.add(destination.resolve())
+        dest_dot_d = _get_dot_d_dir(destination)
+        written.update((dest_dot_d / source_file.name).resolve() for source_file in dot_d_files)
+    return frozenset(written)
+
+
+def _describe_load_failure(exc: Exception) -> str:
+    """One line naming what failed: an OSError by its path and reason, else the (content-free) message."""
+    if isinstance(exc, OSError):
+        reason = exc.strerror or type(exc).__name__
+        return f"{exc.filename}: {reason}" if exc.filename else reason
+    return " ".join(str(exc).split())
+
+
+def _load_configured_permissions(
+    *,
+    resolver: DefaultPathResolver,
+    source: Path,
+    written: frozenset[Path],
+    overrides: Mapping[str, object] | None,
+) -> DeployPermissions:
+    """Read the section from the source, the files this call does not write, and the environment.
+
+    The caller's *overrides* are laid over the merged section and validated with it (D15).
+
+    Raises:
+        DeployPermissionsError: The configuration cannot be loaded, or the section is invalid.
+            Raised outside the ``except`` blocks, so no loader exception is reachable from it.
+    """
+    try:
+        config = read_config_for_deploy(resolver=resolver, default_file=source, skip=written)
+    except (ConfigError, OSError, ValueError) as exc:
+        # ValueError: the environment loader reports a scalar/mapping collision as a plain ValueError.
+        problems = [
+            PermissionProblem(
+                SECTION_KEY,
+                "the configuration could not be loaded, so the configured modes are unknown: "
+                + _describe_load_failure(exc),
+            )
+        ]
+    else:
+        try:
+            return deploy_permissions_from_config(config, overrides=overrides)
+        except DeployPermissionsError as exc:
+            problems = list(exc.problems)
+    raise DeployPermissionsError(problems, hint=_DEPLOY_ANYWAY_HINT)
 
 
 class DeploymentStrategy:
@@ -451,9 +617,11 @@ def deploy_config(
     batch: bool = False,
     conflict_resolver: ConflictResolver | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
-    set_permissions: bool = True,
+    set_permissions: bool | None = None,
     dir_mode: int | None = None,
     file_mode: int | None = None,
+    permissions: DeployPermissions | None = None,
+    permission_overrides: Mapping[str, object] | None = None,
 ) -> list[DeployResult]:
     """Copy source into the requested configuration layers with conflict handling.
 
@@ -477,13 +645,29 @@ def deploy_config(
             Called with destination Path, should return DeployAction.
         max_profile_length: Maximum allowed profile name length (default: 64).
             Set to 0 or negative to disable length checking.
-        set_permissions: If True (default), set Unix permissions on deployed files.
-            Uses layer-specific defaults: app/host = 755/644, user = 700/600.
-            Skipped on Windows (uses ACLs instead).
-        dir_mode: Override the directory mode for every target (None = the layer's mode).
-            Refused with DeployModeError when out of range or unsafe, before anything is written.
-        file_mode: Override the file mode for every target (None = the layer's mode).
-            Refused with DeployModeError when out of range or unsafe, before anything is written.
+        set_permissions: True sets modes, False leaves them to the umask, None (default) follows
+            the configured ``[lib_layered_config.default_permissions].enabled`` (true when unset).
+            An explicit dir_mode or file_mode means modes are set; giving one together with
+            False is refused. Skipped on Windows (ACLs).
+        dir_mode: Directory mode for every target, overriding the configured and built-in ones.
+        file_mode: File mode for every target, overriding the configured and built-in ones.
+        permissions: A complete settings object to use instead of reading the configuration, for a
+            caller that builds one on purpose. One built from an application's normal read_config
+            includes ``.env`` and every deployed destination, which deploy's own read leaves out,
+            so it is not the way to pass runtime overrides; use permission_overrides for those.
+        permission_overrides: Runtime values for keys of ``[lib_layered_config.default_permissions]``
+            (``{"user_file": "0o640"}``; flat setting names only), laid over deploy's own read and
+            validated like configured values, a refusal naming ``(source: override)``. Validated on
+            every call; applied when the settings are read. ``{"enabled": False}`` (with
+            set_permissions None and no mode) turns permission setting off without reading the
+            configuration, like set_permissions=False. Cannot be combined with permissions.
+
+    Each side resolves on its own: the explicit mode, else the configured setting for the target's
+    layer, else the built-in layer mode (app/host 755/644, user 700/600). The configured setting is
+    read only when it can change the outcome, from this source (the defaults layer), the app, host
+    and user files this call does not write, and the environment, with permission_overrides laid
+    over it; never from ``.env``. Modes are applied to each file this call writes; a file whose
+    content is unchanged is skipped and keeps its mode.
 
     Returns:
         List of DeployResult objects describing what was done for each destination.
@@ -492,9 +676,20 @@ def deploy_config(
     Raises:
         FileNotFoundError: If the source file does not exist.
         ValueError: When profile name is invalid (too long, path traversal, etc.).
-        DeployModeError: dir_mode or file_mode is out of range or unsafe.
+        ValidationError: An unknown target, refused before anything is written.
+        DeployModeError: dir_mode or file_mode is out of range or unsafe, or a mode was given
+            with set_permissions=False.
+        DeployPermissionsError: The configuration cannot be loaded, its permission section is
+            invalid, a permission_overrides value is refused, or permission_overrides came with
+            permissions; nothing has been written.
     """
-    explicit_dir, explicit_file = _explicit_modes(dir_mode=dir_mode, file_mode=file_mode)
+    request = _mode_request(
+        set_permissions=set_permissions,
+        dir_mode=dir_mode,
+        file_mode=file_mode,
+        permissions=permissions,
+        permission_overrides=permission_overrides,
+    )
     source_path = Path(source)
     if not source_path.is_file():
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
@@ -509,15 +704,26 @@ def deploy_config(
         platform=platform,
         max_profile_length=max_profile_length,
     )
-    settings = DeployPermissions.defaults() if set_permissions else None
+    # Materialised up front: the self-read must know every path this call writes, and an invalid
+    # target is now refused before anything is written.
+    destinations = list(_destinations_for(resolver, targets))
+    settings = _permission_settings(
+        request,
+        load=lambda: _load_configured_permissions(
+            resolver=resolver,
+            source=source_path,
+            written=_paths_written(destinations, dot_d_files),
+            overrides=request.overrides,
+        ),
+    )
     payload = source_path.read_bytes()
     results: list[DeployResult] = []
 
-    for destination, layer in _destinations_for(resolver, targets):
+    for destination, layer in destinations:
         modes = (
             None
             if settings is None
-            else _resolve_layer_modes(settings, layer, dir_mode=explicit_dir, file_mode=explicit_file)
+            else _resolve_layer_modes(settings, layer, dir_mode=request.dir_mode, file_mode=request.file_mode)
         )
         result = _deploy_to_destination(
             destination=destination,

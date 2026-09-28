@@ -8,6 +8,8 @@ JSON output and CLI wiring.
 Contents:
     - ``read_config`` / ``read_config_json`` / ``read_config_raw``: public APIs used
       by library consumers and the CLI.
+    - ``read_config_for_deploy``: the narrower read ``deploy_config`` uses to decide
+      modes (not exported from the package root).
     - ``LayerLoadError``: wraps adapter failures with a consistent exception type.
     - Private helpers for resolver/builder construction, JSON dumping, and
       configuration composition.
@@ -26,7 +28,7 @@ from typing import TYPE_CHECKING
 
 import orjson
 
-from ._layers import collect_layers, merge_or_empty
+from ._layers import collect_deploy_layers, collect_layers, merge_or_empty
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.path_resolvers.default import DefaultPathResolver
@@ -221,6 +223,32 @@ def read_config_raw(
     return merge_or_empty(layers)
 
 
+def read_config_for_deploy(
+    *,
+    resolver: DefaultPathResolver,
+    default_file: Path,
+    skip: frozenset[Path],
+) -> Config:
+    """Merge what decides deploy modes; see :func:`lib_layered_config._layers.collect_deploy_layers`.
+
+    Unlike :func:`read_config` it takes the deploy's own resolver (so a ``platform`` override reads
+    that platform's paths), never reads ``.env``, skips the files the deploy writes, and leaves the
+    caller's bound trace id alone.
+
+    Raises:
+        LayerLoadError: A layer file cannot be decoded or parsed (a content-free message).
+        ValueError: The environment layer sets a key both as a scalar and as a table.
+    """
+    try:
+        layers = collect_deploy_layers(
+            resolver=resolver, default_file=str(default_file), env_loader=DefaultEnvLoader(), skip=skip
+        )
+        result = merge_or_empty(layers)
+    except InvalidFormatError as exc:
+        raise LayerLoadError(str(exc)) from exc
+    return _compose_config(result.data, result.provenance)
+
+
 def _compose_config(
     data: dict[str, object],
     raw_meta: dict[str, SourceInfoPayload],
@@ -360,6 +388,7 @@ __all__ = [
     "ValidationError",
     "default_env_prefix",
     "read_config",
+    "read_config_for_deploy",
     "read_config_json",
     "read_config_raw",
 ]
