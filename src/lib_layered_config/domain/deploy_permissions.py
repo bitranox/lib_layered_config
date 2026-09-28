@@ -40,7 +40,8 @@ __all__ = [
 ]
 
 SECTION_KEY: Final[str] = "lib_layered_config.default_permissions"
-#: The source a refusal names for a value the caller passed as a runtime override (``--set``).
+#: The source a refusal names for a value the caller passed as a runtime
+#: override (such as an application's ``--set``).
 OVERRIDE_SOURCE: Final[str] = "override"
 _NAMESPACE_KEY: Final[str] = "lib_layered_config"
 _ENABLED: Final[str] = "enabled"

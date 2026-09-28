@@ -9,12 +9,13 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from lib_layered_config.domain.config import Config
-from lib_layered_config.domain.deploy_mode import ModeKind, brief_repr
+from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, ModeKind, brief_repr
 from lib_layered_config.domain.deploy_permissions import (
     OVERRIDE_SOURCE,
     SECTION_KEY,
     DeployPermissions,
     DeployPermissionsError,
+    LayerModes,
     PermissionProblem,
     deploy_permissions_from_config,
     parse_deploy_permissions,
@@ -136,6 +137,14 @@ def test_layer_modes_keep_their_kinds() -> None:
     modes = DeployPermissions.defaults().for_layer("user")
     assert modes.directory.kind is ModeKind.DIRECTORY
     assert modes.file.kind is ModeKind.FILE
+
+
+@os_agnostic
+def test_layer_modes_refuses_swapped_kinds() -> None:
+    dir_mode = DeployMode.from_text("0o755", ModeKind.DIRECTORY)
+    file_mode = DeployMode.from_text("0o644", ModeKind.FILE)
+    with pytest.raises(DeployModeError, match="in that order"):
+        LayerModes(directory=file_mode, file=dir_mode)
 
 
 def _via_reduce(error: DeployPermissionsError) -> DeployPermissionsError:
