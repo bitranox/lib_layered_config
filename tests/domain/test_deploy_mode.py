@@ -33,7 +33,7 @@ def test_parse_mode_text_reads_a_plain_octal_literal(text: str, expected: int) -
 @os_agnostic
 @pytest.mark.parametrize(
     "text",
-    ["-1", "7_5_0", " 750", "750 ", "0O750", "0x1ed", "", "0o", "8", "٧٥٠", "750\n"],
+    ["-1", "7_5_0", " 750", "750 ", "0O750", "0x1ed", "", "0o", "8", "\u0667\u0665\u0660", "750\n"],
 )
 def test_parse_mode_text_refuses_anything_but_a_plain_octal_literal(text: str) -> None:
     with pytest.raises(DeployModeError, match="is not a plain octal literal"):
