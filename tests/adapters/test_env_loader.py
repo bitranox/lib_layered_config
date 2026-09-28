@@ -11,6 +11,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from lib_layered_config.adapters._nested_keys import assign_nested
+from lib_layered_config.adapters._value_coercion import parse_number
 from lib_layered_config.adapters.env.default import (
     DefaultEnvLoader,
     _coerce,
@@ -82,14 +83,8 @@ def test_env_loader_handles_random_namespace(entries) -> None:
             return False
         if lowered in {"none", "null"}:
             return None
-        if lowered.startswith("-") and lowered[1:].isdigit():
-            return int(lowered)
-        if lowered.isdigit():
-            return int(lowered)
-        try:
-            return float(value)
-        except ValueError:
-            return value
+        number = parse_number(value)
+        return value if number is None else number
 
     def _lookup(root: dict[str, object], key: str) -> object:
         node: object = root

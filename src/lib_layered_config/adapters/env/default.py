@@ -8,7 +8,8 @@ Contents:
     - ``default_env_prefix``: canonical prefix builder for a slug.
     - ``DefaultEnvLoader``: orchestrates filtering, coercion, and nesting.
     - ``_coerce`` plus tiny predicate helpers that translate strings into
-      Python primitives.
+      Python primitives, delegating JSON-container and number parsing to
+      ``.._value_coercion``.
     - ``_normalize_prefix`` / ``_iter_namespace_entries`` / ``_collect_keys``:
       small verbs that keep the loader body declarative.
     - Constants for boolean and null literal detection.
@@ -19,10 +20,9 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Final
 
-import orjson
-
 from ...observability import log_debug
 from .._nested_keys import assign_nested
+from .._value_coercion import parse_json_container, parse_number
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -32,10 +32,6 @@ _BOOL_TRUE: Final[str] = "true"
 _BOOL_FALSE: Final[str] = "false"
 _BOOL_LITERALS: Final[frozenset[str]] = frozenset({_BOOL_TRUE, _BOOL_FALSE})
 _NULL_LITERALS: Final[frozenset[str]] = frozenset({"null", "none"})
-# A value that opens with one of these is treated as JSON (arrays/objects for complex
-# types, per the documented `PREFIX___KEY='["a", "b"]'` form). Restricting the attempt
-# to container openers keeps plain scalar coercion, and any non-JSON string, unchanged.
-_JSON_CONTAINER_PREFIXES: Final[tuple[str, ...]] = ("[", "{")
 
 
 def default_env_prefix(slug: str) -> str:
@@ -199,8 +195,9 @@ def _coerce(value: str) -> object:
     Convert human-friendly strings (``true``, ``5``, ``3.14``) into their Python
     equivalents before merging.
 
-    Applies JSON-container, boolean, null, integer, and float heuristics in sequence,
-    returning the original string when none match.
+    Applies JSON-container, boolean, and null heuristics, then converts a value to a
+    number only when it reads back as the same text, returning the original string
+    when nothing matches.
 
     Returns:
         Parsed primitive, list/dict for JSON containers, or the original string when
@@ -213,8 +210,10 @@ def _coerce(value: str) -> object:
         ['a', 'b']
         >>> _coerce('[not json')
         '[not json'
+        >>> _coerce('007')
+        '007'
     """
-    container = _maybe_json_container(value)
+    container = parse_json_container(value)
     if container is not None:
         return container
     lowered = value.lower()
@@ -222,41 +221,8 @@ def _coerce(value: str) -> object:
         return lowered == _BOOL_TRUE
     if _looks_like_null(lowered):
         return None
-    if _looks_like_int(value):
-        return int(value)
-    return _maybe_float(value)
-
-
-def _maybe_json_container(value: str) -> list[object] | dict[str, object] | None:
-    """Parse *value* as a JSON array/object when it opens like one, else ``None``.
-
-    Lets an env var carry a complex value (``REPLICAS='["a", "b"]'``) instead of only
-    scalars. Only container openers (``[`` / ``{``) are attempted, so plain strings and
-    the scalar heuristics are untouched; a string that merely looks like a container but
-    is not valid JSON is returned to the caller unparsed (``None`` sentinel).
-
-    Args:
-        value: Raw environment value.
-
-    Returns:
-        The parsed ``list``/``dict`` on success, otherwise ``None``.
-
-    Examples:
-        >>> _maybe_json_container('[1, 2]')
-        [1, 2]
-        >>> _maybe_json_container('{"a": 1}')
-        {'a': 1}
-        >>> _maybe_json_container('plain') is None
-        True
-        >>> _maybe_json_container('[bad') is None
-        True
-    """
-    if not value.startswith(_JSON_CONTAINER_PREFIXES):
-        return None
-    try:
-        return orjson.loads(value)
-    except orjson.JSONDecodeError:
-        return None
+    number = parse_number(value)
+    return value if number is None else number
 
 
 def _looks_like_bool(value: str) -> bool:
@@ -293,44 +259,3 @@ def _looks_like_null(value: str) -> bool:
         (True, True, False)
     """
     return value in _NULL_LITERALS
-
-
-def _looks_like_int(value: str) -> bool:
-    """Return ``True`` when *value* can be parsed as an integer.
-
-    Let `_coerce` distinguish integers before attempting float conversion.
-
-    Args:
-        value: String to inspect (not yet normalised).
-
-    Returns:
-        ``True`` when the value represents a base-10 integer literal.
-
-    Examples:
-        >>> _looks_like_int('42'), _looks_like_int('-7'), _looks_like_int('3.14')
-        (True, True, False)
-    """
-    if value.startswith("-"):
-        return value[1:].isdigit()
-    return value.isdigit()
-
-
-def _maybe_float(value: str) -> object:
-    """Return a float when *value* looks numeric; otherwise return the original string.
-
-    Provide a final numeric coercion step after integer detection fails.
-
-    Args:
-        value: String candidate for float conversion.
-
-    Returns:
-        Float value or the original string when conversion fails.
-
-    Examples:
-        >>> _maybe_float('2.5'), _maybe_float('not-a-number')
-        (2.5, 'not-a-number')
-    """
-    try:
-        return float(value)
-    except ValueError:
-        return value
