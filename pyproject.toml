@@ -161,7 +161,7 @@ exclude = [
 addopts = ["--maxfail=1", "--no-cov", "--doctest-modules", "--ignore=scripts/menu.py", "--ignore=tests/benchmark"]
 pythonpath = ["src"]
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
-testpaths = ["tests"]
+testpaths = ["tests", "src"]
 python_files = ["tests/**/test_*.py"]
 markers = [
   "slow: marks tests as slow (deselect with -m 'not slow')",

@@ -84,9 +84,9 @@ def _collect_dot_d_files(dot_d_dir: Path) -> Iterable[str]:
         >>> d = Path(tmp.name) / "config.toml.d"
         >>> d.mkdir()
         >>> (d / "10-db.toml").write_text("[db]\\nhost = 'localhost'", encoding="utf-8")
-        8
+        23
         >>> (d / "20-cache.yaml").write_text("cache:\\n  enabled: true", encoding="utf-8")
-        24
+        22
         >>> (d / "README.md").write_text("ignore me", encoding="utf-8")  # Not a config file
         9
         >>> [Path(p).name for p in _collect_dot_d_files(d)]

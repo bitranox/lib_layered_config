@@ -95,9 +95,9 @@ def read_config(
         ValueError: When profile name is invalid (too long, path traversal, etc.).
 
     Examples:
-        >>> from pathlib import Path
-        >>> tmp = Path('.')  # doctest: +SKIP (illustrative)
-        >>> config = read_config(vendor="Acme", app="Demo", slug="demo", start_dir=str(tmp))  # doctest: +SKIP
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     config = read_config(vendor="Acme", app="Demo", slug="demo", start_dir=tmp)
         >>> isinstance(config, Config)
         True
     """
@@ -319,8 +319,8 @@ def _stringify_path(value: str | Path | None) -> str | None:
         Stringified path or ``None`` when *value* is ``None``.
 
     Examples:
-        >>> _stringify_path(Path('/tmp/config.toml'))
-        '/tmp/config.toml'
+        >>> Path(_stringify_path(Path('config.toml'))) == Path('config.toml')
+        True
         >>> _stringify_path(None) is None
         True
     """
@@ -344,7 +344,7 @@ def _dump_json(payload: object, indent: int | None) -> str:
     Examples:
         >>> _dump_json({"a": 1}, indent=None)
         '{"a":1}'
-        >>> "\n" in _dump_json({"a": 1}, indent=2)
+        >>> "\\n" in _dump_json({"a": 1}, indent=2)
         True
     """
     option = orjson.OPT_INDENT_2 if indent is not None else 0
