@@ -37,26 +37,28 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 
 ### Composition root and shared plumbing
 
-| Module              | Responsibility                                                                                                                            |
-|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `__init__.py`       | Public API surface: re-exports the read functions, `Config`, `Layer`, deploy/generate, and the validation and permission constants.       |
-| `__init__conf__.py` | Generated package-metadata constants, synced from `pyproject.toml`.                                                                       |
-| `__main__.py`       | `python -m lib_layered_config` entry point; delegates to the CLI.                                                                         |
-| `core.py`           | Composition root: `read_config` / `read_config_json` / `read_config_raw` wire the adapters and the merge; defines `LayerLoadError`.       |
-| `_layers.py`        | Layer assembly: `collect_layers` builds the ordered `LayerSnapshot` list (defaults, app, host, user, dotenv, env), incl. `.d` and dotenv. |
-| `_platform.py`      | Normalizes user-supplied platform aliases (`normalise_resolver_platform`, `normalise_examples_platform`); raises `ValidationError`.       |
-| `observability.py`  | Structured logging helpers (`log_debug`/`log_info`/`log_warn`/`log_error`, trace-id binding) so adapters log without coupling the domain. |
-| `testing.py`        | Small diagnostics helper (`i_should_fail`) for consumers' failure-path tests and the CLI `fail` command.                                  |
+| Module              | Responsibility                                                                                                                                                                                                                                           |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `__init__.py`       | Public API surface: re-exports the read functions, `Config`, `Layer`, deploy/generate, and the validation and permission constants.                                                                                                                      |
+| `__init__conf__.py` | Generated package-metadata constants, synced from `pyproject.toml`.                                                                                                                                                                                      |
+| `__main__.py`       | `python -m lib_layered_config` entry point; delegates to the CLI.                                                                                                                                                                                        |
+| `core.py`           | Composition root: `read_config` / `read_config_json` / `read_config_raw` wire the adapters and the merge; defines `LayerLoadError`; `read_config_for_deploy` reads the merged configuration `deploy_config` uses to resolve configured permission modes. |
+| `_layers.py`        | Layer assembly: `collect_layers` builds the ordered `LayerSnapshot` list (defaults, app, host, user, dotenv, env), incl. `.d` and dotenv; `collect_deploy_layers` builds the same for `read_config_for_deploy`, skipping the files a deploy call writes. |
+| `_platform.py`      | Normalizes user-supplied platform aliases (`normalise_resolver_platform`, `normalise_examples_platform`); raises `ValidationError`.                                                                                                                      |
+| `observability.py`  | Structured logging helpers (`log_debug`/`log_info`/`log_warn`/`log_error`, trace-id binding) so adapters log without coupling the domain.                                                                                                                |
+| `testing.py`        | Small diagnostics helper (`i_should_fail`) for consumers' failure-path tests and the CLI `fail` command.                                                                                                                                                 |
 
 ### domain/ - pure business logic (no I/O)
 
-| Module           | Responsibility                                                                                                                                        |
-|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `config.py`      | Immutable `Config` value object: dotted-path `get`/`__getitem__`, `origin` provenance lookup, `as_dict`/`to_json` (optional redaction); `SourceInfo`. |
-| `errors.py`      | Exception taxonomy: `ConfigError` base, `InvalidFormatError`, `ValidationError` (subclasses `ConfigError` and `ValueError`), `NotFoundError`.         |
-| `identifiers.py` | `Layer` enum and identifier/profile validation (path traversal, reserved names, control chars, non-ASCII, length); raises `ValidationError`.          |
-| `redaction.py`   | Secret masking: `is_sensitive` (password/token/apikey/`_key`/cookie/jwt/... patterns), `redact_mapping` (depth-guarded), `REDACTED_PLACEHOLDER`.      |
-| `permissions.py` | Per-layer Unix permission policy: `LAYER_PERMISSIONS` (keyed by `Layer` values), `set_permissions` / `set_custom_permissions`, mode constants.        |
+| Module                  | Responsibility                                                                                                                                                                            |
+|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `config.py`             | Immutable `Config` value object: dotted-path `get`/`__getitem__`, `origin` provenance lookup, `as_dict`/`to_json` (optional redaction); `SourceInfo`.                                     |
+| `errors.py`             | Exception taxonomy: `ConfigError` base, `InvalidFormatError`, `ValidationError` (subclasses `ConfigError` and `ValueError`), `NotFoundError`.                                             |
+| `identifiers.py`        | `Layer` enum and identifier/profile validation (path traversal, reserved names, control chars, non-ASCII, length); raises `ValidationError`.                                              |
+| `redaction.py`          | Secret masking: `is_sensitive` (password/token/apikey/`_key`/cookie/jwt/... patterns), `redact_mapping` (depth-guarded), `REDACTED_PLACEHOLDER`.                                          |
+| `permissions.py`        | Per-layer Unix permission policy: `LAYER_PERMISSIONS` (keyed by `Layer` values), `set_permissions` / `set_custom_permissions`, mode constants, `apply_mode` / `modes_apply`.              |
+| `deploy_mode.py`        | `DeployMode`/`ModeKind`/`DeployModeError`: the one rule for a safe deploy mode; `parse_mode_text`.                                                                                        |
+| `deploy_permissions.py` | `DeployPermissions`/`LayerModes`: per-layer modes and `enabled`, read from `[lib_layered_config.default_permissions]` in one pass with one-line problems, runtime overrides laid over it. |
 
 ### application/ - use cases and ports
 
@@ -67,18 +69,20 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 
 ### adapters/ - infrastructure
 
-| Module                                               | Responsibility                                                                                                         |
-|------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| `_nested_keys.py`                                    | Shared `__`-delimited nested-key assignment (`assign_nested`) used by the dotenv and env loaders.                      |
-| `path_resolvers/default.py`                          | `DefaultPathResolver`: selects a per-OS strategy and yields ordered candidate paths per layer.                         |
-| `path_resolvers/_base.py`                            | `PlatformContext`, the `PlatformStrategy` base, and `collect_layer` (a config file plus its `.d`).                     |
-| `path_resolvers/_linux.py` `_macos.py` `_windows.py` | Per-platform directory layouts (XDG, Application Support, ProgramData).                                                |
-| `path_resolvers/_dotenv.py`                          | Ordered `.env` search-path discovery.                                                                                  |
-| `file_loaders/structured.py`                         | TOML / JSON / YAML loaders (`BaseFileLoader`), with a maximum-file-size guard.                                         |
-| `file_loaders/_dot_d.py`                             | `.d` directory expansion (`expand_dot_d`), filtered by config extension.                                               |
-| `dotenv/default.py`                                  | `DefaultDotEnvLoader`: parse a `.env` file via upward search or an explicit path.                                      |
-| `env/default.py`                                     | `DefaultEnvLoader`: prefix-filter environment variables and coerce values (bool/null/int/float + JSON arrays/objects). |
-| `display/rich.py`                                    | Rich-styled human rendering of the merged TOML with per-key provenance comments.                                       |
+| Module                                               | Responsibility                                                                                                                                                                                                   |
+|------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `_nested_keys.py`                                    | Shared `__`-delimited nested-key assignment (`assign_nested`) used by the dotenv and env loaders.                                                                                                                |
+| `_value_coercion.py`                                 | Shared value rules for the env and dotenv loaders: `parse_json_container` (a value opening like JSON is parsed as an array/object), `parse_number` (int/float only when the number reads back as the same text). |
+| `_text_decoding.py`                                  | `decode_utf8` / `decode_yaml_text`: decode file bytes, refusing content-free on failure (path, line, byte offset); `decode_yaml_text` also honors a YAML file's UTF-16/UTF-32 byte-order mark.                   |
+| `path_resolvers/default.py`                          | `DefaultPathResolver`: selects a per-OS strategy and yields ordered candidate paths per layer.                                                                                                                   |
+| `path_resolvers/_base.py`                            | `PlatformContext`, the `PlatformStrategy` base, and `collect_layer` (a config file plus its `.d`).                                                                                                               |
+| `path_resolvers/_linux.py` `_macos.py` `_windows.py` | Per-platform directory layouts (XDG, Application Support, ProgramData).                                                                                                                                          |
+| `path_resolvers/_dotenv.py`                          | Ordered `.env` search-path discovery.                                                                                                                                                                            |
+| `file_loaders/structured.py`                         | TOML / JSON / YAML loaders (`BaseFileLoader`), with a maximum-file-size guard; reports an unparsable file's place and reason, never its content.                                                                 |
+| `file_loaders/_dot_d.py`                             | `.d` directory expansion (`expand_dot_d`), filtered by config extension.                                                                                                                                         |
+| `dotenv/default.py`                                  | `DefaultDotEnvLoader`: parse a `.env` file via upward search or an explicit path.                                                                                                                                |
+| `env/default.py`                                     | `DefaultEnvLoader`: prefix-filter environment variables and coerce values (bool/null/int/float + JSON arrays/objects).                                                                                           |
+| `display/rich.py`                                    | Rich-styled human rendering of the merged TOML with per-key provenance comments.                                                                                                                                 |
 
 ### cli/ - command-line interface (package)
 
@@ -96,10 +100,10 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 
 ### examples/ - deployment and scaffolding (its own layer between cli and adapters)
 
-| Module        | Responsibility                                                                                                                                                                         |
-|---------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `deploy.py`   | `deploy_config` and the per-OS `DeploymentStrategy`; conflict handling (backup `.bak`, keep-as-`.ucf`), atomic writes, and layer permission hardening; `DeployAction`, `DeployResult`. |
-| `generate.py` | Scaffold example config trees (`generate_examples`, `ExamplePlan`, `ExampleSpec`).                                                                                                     |
+| Module        | Responsibility                                                                                                                                                                                                                                                                                                                                  |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `deploy.py`   | `deploy_config` and the per-OS `DeploymentStrategy`; conflict handling (backup `.bak`, keep-as-`.ucf`), atomic writes, and layer permission hardening; `DeployAction`, `DeployResult`; resolves each layer's modes (explicit, configured, built-in) and reads the configured section when it matters, never from `.env` or the files it writes. |
+| `generate.py` | Scaffold example config trees (`generate_examples`, `ExamplePlan`, `ExampleSpec`).                                                                                                                                                                                                                                                              |
 
 ## Where the detail lives
 

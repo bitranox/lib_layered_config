@@ -25,6 +25,15 @@ from lib_layered_config import (
     DEFAULT_APP_FILE_MODE,
     DEFAULT_USER_DIR_MODE,
     DEFAULT_USER_FILE_MODE,
+    # Deploy permission types (for deploy_config's dir_mode/file_mode/permissions/permission_overrides)
+    DeployMode,
+    ModeKind,
+    DeployModeError,
+    LayerModes,
+    DeployPermissions,
+    DeployPermissionsError,
+    PermissionProblem,
+    deploy_permissions_from_config,
 )
 ```
 
@@ -377,6 +386,10 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `dotenv_path` (str | Path | None, optional): Explicit path to a `.env` file. When set, this file is loaded directly instead of searching upward from `start_dir`. Default: `None` (use directory search).
 
 **Returns:** Immutable `Config` object with merged configuration and provenance tracking.
+
+**Raises:** `LayerLoadError` (a `ConfigError`) when a layer file cannot be decoded or parsed: `"<path> is not
+valid <FORMAT> (line N, column M)"`, or `"<path> is not valid UTF-8 (line N, byte offset M)"` for an
+undecodable file, never quoting the file's content.
 
 **Examples:**
 
@@ -769,9 +782,11 @@ Copy a source configuration file into one or more layer directories with conflic
 - `force` (bool, optional): When True and file exists with different content, backup to `.bak` and overwrite. Default: `False`.
 - `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`.
 - `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Custom callback for conflict resolution. Default: `None`.
-- `set_permissions` (bool, optional): Set Unix permissions on deployed files. Uses layer-specific defaults: app/host = 755/644, user = 700/600. Skipped on Windows. Default: `True`.
-- `dir_mode` (int | None, optional): Override directory mode for all targets. Default: `None` (use layer defaults).
-- `file_mode` (int | None, optional): Override file mode for all targets. Default: `None` (use layer defaults).
+- `set_permissions` (bool | None, optional): `True` sets modes, `False` leaves them to the umask, `None` follows the configured `[lib_layered_config.default_permissions].enabled` (true when unset). An explicit `dir_mode` or `file_mode` means modes are set; one given with `False` is refused. Skipped on Windows. Default: `None`.
+- `dir_mode` (int | None, optional): Directory mode for every target, overriding the configured and built-in ones. Default: `None`.
+- `file_mode` (int | None, optional): File mode for every target, overriding the configured and built-in ones. Default: `None`.
+- `permissions` (DeployPermissions | None, optional): A complete settings object to use instead of reading the configuration, for a caller that builds one on purpose. One built with `deploy_permissions_from_config(read_config(...))` includes `.env` and the deployed files, which the deploy's own read leaves out; use `permission_overrides` for runtime overrides. Default: `None`.
+- `permission_overrides` (Mapping[str, object] | None, optional): Runtime values for keys of `[lib_layered_config.default_permissions]`, by setting name (`{"user_file": "0o640"}`), laid over the deploy's own read and validated like configured values; a refusal names `(source: override)`. Validated on every call. `{"enabled": False}` with `set_permissions=None` and no mode turns permission setting off without reading the configuration. Cannot be combined with `permissions`. Default: `None`.
 
 **Returns:** `list[DeployResult]` - Each result contains:
 - `destination`: Path to the target file
@@ -784,14 +799,17 @@ Copy a source configuration file into one or more layer directories with conflic
 
 **Smart Skipping:** If the source content is byte-identical to the existing destination file, the file is skipped without creating backups (regardless of `force` or `batch` flags). This applies to both base files and `.d` directory files.
 
-**Permissions:** By default (`set_permissions=True`), Unix file permissions are set automatically based on the target layer:
-- **App/Host layers:** `755` for directories, `644` for files (world-readable)
-- **User layer:** `700` for directories, `600` for files (private to user)
-- **Windows:** Permissions skipped (Windows uses ACLs)
+**Permissions:** Each side (directory, file) resolves as `dir_mode`/`file_mode`, else the configured
+`[lib_layered_config.default_permissions]` setting for that layer, else the built-in layer mode (app/host
+755/644, user 700/600); an unsafe mode is refused before anything is written. See
+[cli-reference.md#-file-permissions](cli-reference.md#-file-permissions) for the full resolution order and the
+refusal rule.
 
-Use `dir_mode` and `file_mode` to override defaults, or `set_permissions=False` to skip entirely.
-
-**Raises:** `FileNotFoundError` if source file does not exist.
+**Raises:** `FileNotFoundError` (source file does not exist), `ValidationError` (an unknown target, before
+anything is written), `DeployModeError` (a refused `dir_mode` / `file_mode`, or one given with
+`set_permissions=False`), `DeployPermissionsError` (the permission settings are not readable, the section is
+invalid, a refused `permission_overrides` value, or `permission_overrides` combined with `permissions`; nothing
+is written).
 
 **Examples:**
 
@@ -1006,19 +1024,18 @@ for env in environments:
 from lib_layered_config import deploy_config
 from lib_layered_config.examples.deploy import DeployAction
 
-# Deploy with layer defaults (recommended)
-# - App layer: 755 dirs, 644 files (world-readable)
-# - User layer: 700 dirs, 600 files (private)
+# Deploy with configured or built-in layer defaults (the default: set_permissions=None)
+# - App layer: 755 dirs, 644 files (world-readable), unless configured otherwise
+# - User layer: 700 dirs, 600 files (private), unless configured otherwise
 results = deploy_config(
     source="./config.toml",
     vendor="Acme",
     app="MyApp",
     targets=["user"],
     slug="myapp",
-    set_permissions=True,  # Default - sets 700/600 for user layer
 )
 
-# Deploy with custom permissions (e.g., group-readable)
+# Deploy with custom permissions (e.g., group-readable) - explicit modes win over configured ones
 results = deploy_config(
     source="./config.toml",
     vendor="Acme",
@@ -1039,6 +1056,17 @@ results = deploy_config(
     set_permissions=False,  # Skip chmod, use system umask
 )
 
+# Runtime override of one setting (e.g. from an application's own --set option), laid over
+# whatever deploy_config would otherwise read from the configured section
+results = deploy_config(
+    source="./config.toml",
+    vendor="Acme",
+    app="MyApp",
+    targets=["user"],
+    slug="myapp",
+    permission_overrides={"user_file": "0o640"},
+)
+
 for result in results:
     if result.action == DeployAction.CREATED:
         print(f"Created: {result.destination}")
@@ -1048,7 +1076,12 @@ for result in results:
         mode = result.destination.stat().st_mode
         print(f"  Mode: {stat.filemode(mode)}")
 ```
-**Explanation:** Use `set_permissions=True` (default) for automatic layer-aware permissions. Use `dir_mode` and `file_mode` to override defaults for special requirements (e.g., group-readable configs). Use `set_permissions=False` when permissions should be inherited from umask. On Windows, permission setting is automatically skipped.
+**Explanation:** Leave `set_permissions` at its default (`None`) for configured-or-built-in, layer-aware
+permissions. Use `dir_mode` and `file_mode` to override them for special requirements (e.g., group-readable
+configs); an unsafe mode is refused. Use `set_permissions=False` when permissions should be inherited from
+umask. Use `permission_overrides` for a runtime value (such as a `--set` option) laid over deploy's own read,
+rather than building a `permissions=` object from `read_config(...)`, which includes `.env` and the deployed
+files. On Windows, permission setting is automatically skipped.
 
 ---
 
@@ -1302,6 +1335,24 @@ print(f"User file mode: {oct(DEFAULT_USER_FILE_MODE)}")  # 0o600
 ```
 
 **Explanation:** App/host layers use world-readable permissions since system-wide configuration should be accessible by all processes. User layer uses private permissions since personal configuration should not be accessible by other users. On Windows, permissions are skipped (Windows uses ACLs instead).
+
+---
+
+### Deploy permission types
+
+Exported from the package root, used to configure or override `deploy_config`'s permission handling.
+
+- `DeployMode`: An immutable, validated Unix permission mode; an unsafe one cannot be constructed.
+- `ModeKind`: Whether a mode applies to a directory or a file (`DIRECTORY`, `FILE`).
+- `LayerModes`: The directory mode and the file mode one layer is deployed with.
+- `DeployPermissions`: Directory and file modes per deployment layer, plus whether to set them at all;
+  `.defaults()` returns the built-in layer modes, `.for_layer(layer)` returns one layer's `LayerModes`.
+- `deploy_permissions_from_config`: Reads `[lib_layered_config.default_permissions]` from a merged
+  configuration, with an `overrides=` mapping laid over the configured values for runtime overrides.
+- `DeployModeError`: A permission mode was refused; the message names the reason or every offending bit.
+- `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
+  per bad value, and `.hint` (optional) suggests a way to deploy anyway.
+- `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.
 
 ---
 

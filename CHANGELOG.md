@@ -6,6 +6,90 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`deploy_config(permission_overrides=...)` for runtime overrides** (such as a `--set` option): keys are
+  the section's own setting names (`permission_overrides={"user_file": "0o640"}`), laid over the deploy's own
+  read, validated like configured values and reported as `(source: override)`; `{"enabled": False}` turns
+  permission setting off without reading the configuration only when `set_permissions` is `None` and no
+  `dir_mode`/`file_mode` is given (an explicit mode, or `set_permissions=True`, still reads and applies it).
+  `permissions=` still takes a complete `DeployPermissions`, but cannot be combined with `permission_overrides`,
+  and one built from an application's normal `read_config` includes `.env` and the deployed files, which the
+  deploy's own read leaves out on purpose: use `permission_overrides` for runtime overrides.
+- **Public deploy permission types:** `DeployMode`, `ModeKind`, `DeployModeError`, `LayerModes`,
+  `DeployPermissions`, `DeployPermissionsError` (`problems`, `hint`), `PermissionProblem` and
+  `deploy_permissions_from_config`, exported from the package root.
+- **`lib_layered_config deploy --dir-mode MODE --file-mode MODE`**, each an octal string (`750` or `0o750`).
+- **The YAML loader also decodes a UTF-32 file that starts with a UTF-32 byte-order mark.** UTF-16 with a BOM
+  keeps working as before; every other YAML/TOML/JSON/`.env` file stays strict UTF-8.
+
+### Security
+
+- **`deploy_config` and `lib_layered_config deploy` refuse an unsafe or malformed permission mode instead of
+  applying it.** A mode must be an integer in 0..0o7777 without the setuid, setgid or sticky bit and without
+  group or world write; a directory mode must keep owner rwx, a file mode owner rw and no execute bit.
+  `dir_mode=-1` used to leave the directory at 0o7777, and the decimal integer 444 (meant as octal) applied
+  0o674 to a file that can hold credentials. Every refusal is a `DeployModeError` naming each offending bit,
+  raised before anything is written. `set_custom_permissions` applies the same rule.
+- **A configuration file that cannot be decoded or parsed is reported without its content.** The error names
+  the file, the format and the line and column (or byte offset); the parser's own text, which for YAML echoed
+  the offending source line, is no longer in the message, the exception chain or the `config_file_invalid`
+  log event.
+
+### Fixed
+
+- **The configured `[lib_layered_config.default_permissions]` modes are applied.** Whenever a configured value
+  can change a mode, `deploy_config` reads the section from the deployed source (the defaults layer), the app,
+  host and user files this call does not write, and the environment, and resolves every target layer on its
+  own. It never reads `.env`, and the file being replaced never decides its replacement's mode. Modes are
+  applied to each file the deploy writes; a file whose content is unchanged is skipped and keeps its mode.
+- **A deployed copy's own section is not consulted by the deploy that writes or keeps it.** With `--batch` a
+  kept file stays live, but the directory and the `.ucf` beside it get their modes from the other layers; and
+  with `--target app --target user` the app `config.toml` is a destination, so its `user_*` settings are not
+  read (`--target user` alone reads them). Put local settings in a file the package does not ship, such as
+  `config.d/99-local.toml`, which deploy never writes, so it is read whenever the configured modes are.
+
+### Changed (breaking)
+
+- `deploy_config(set_permissions=...)` defaults to `None`: follow the configured `enabled` (true when unset).
+  `--permissions/--no-permissions` defaults the same way. An explicit `dir_mode` or `file_mode` means modes are
+  set; one given together with `set_permissions=False` (CLI: `--no-permissions`) is refused.
+- **File mode change for a partial override.** With only `dir_mode` (or only `file_mode`), the other side now
+  gets the configured or built-in layer mode, as the parameters were documented. An app- or host-layer file
+  deployed with only `dir_mode` used to keep the temporary file's 0o600; it now gets 0o644 unless `app_file` /
+  `host_file` is configured.
+- The permission section is validated in one pass. A bare integer is refused with a hint to write it as an
+  octal string, `"0o640"` (quoted) in a file and `0o640` in the environment or a `--set`: a TOML integer is
+  decimal, the TOML literal `0o640` also arrives as an integer, and so does `--set ...user_file=640`. `enabled`
+  must be a boolean; an unknown key is refused, its name shown shortened. Each problem is one line
+  `<dotted key>: <reason> (source: <file, layer or override>)` in a `DeployPermissionsError`.
+- When the permission settings cannot be read, or the section is invalid, `deploy_config` refuses instead of
+  falling back to the built-in modes, unless both modes are given or permission setting is off.
+- **A malformed deployed source file now blocks deploy.** `deploy_config` reads the permission section from
+  the deployed source (the defaults layer) whenever a configured value can change the outcome; when that file
+  cannot be decoded or parsed, deploy refuses with a `DeployPermissionsError` naming the file and reason
+  instead of falling back to the built-in modes, unless both `dir_mode` and `file_mode` are given, or
+  `set_permissions=False`.
+- An unknown `targets` entry is refused before anything is written; it used to fail after the targets before it
+  had been deployed.
+- **Type change, environment layer:** a value becomes an int or float only when the number reads back as the
+  same text. `007123`, `0640`, `-007`, `1.50`, `+5`, `1_000`, `1e5`, `nan`, `Infinity`, non-ASCII digits and
+  integers of 20 or more digits now arrive as the string that was set; `5`, `-7`, `3.5`, `true` and `null`
+  convert as before. A 5000-digit value no longer raises a bare `ValueError`.
+- **Type change, `.env`:** an UNQUOTED value that is a JSON array or object now becomes a list or table, as in
+  the environment. A quoted value stays the literal text, and scalars in `.env` stay strings.
+- **Exception type change:** a `.env` that is not valid UTF-8 raised `UnicodeDecodeError` (a `ValueError`); it
+  now raises `InvalidFormatError`, surfacing from `read_config` as `LayerLoadError`, which is a `ConfigError`
+  and NOT a `ValueError`. Every loader's parse message changed to `<path> is not valid <FORMAT> (line N, column
+  M)`.
+
+Migration: write configured modes as quoted strings (`user_file = "0o640"`; in the environment
+`<PREFIX>___LIB_LAYERED_CONFIG__DEFAULT_PERMISSIONS__USER_FILE=0o640`, since a bare `640` there is a number,
+while `0640` now stays the string "0640" and is read as 0o640). A broken file at the destination no longer
+blocks `deploy --force`; a broken file elsewhere does, and then give both mode options (`--no-permissions` also
+works but leaves the modes to the umask). Code that caught `ValueError` for an undecodable `.env` catches
+`ConfigError`. Code that relied on the environment turning `0640`-style text into a number converts it itself.
+
 ## [5.7.0] 2026-09-27 21:56:37
 
 ### Changed

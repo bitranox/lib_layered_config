@@ -115,7 +115,12 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 `default_env_prefix("my-app")` in Python.
 
 - Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string.
-- A value starting with `[` or `{` is parsed as JSON (`REPLICAS='["a","b"]'`).
+- A value starting with `[` or `{` is parsed as JSON, in the environment AND unquoted in `.env`
+  (`REPLICAS='["a","b"]'` in a shell, `REPLICAS=["a","b"]` in `.env`); a quoted `.env` value is always literal
+  text; a comma list is never split.
+- A number converts only when it reads back as the same text: `5` and `3.5` do, `007123`, `0640` and `1.50`
+  stay strings.
+- In `.env`, scalars stay strings (only the environment converts `true`/`5`/`none`).
 - A numeric segment overrides one element of a file-defined array:
   `MY_APP___DATASET__0__DSN=...` overrides element 0's `dsn`, leaving the rest of the array.
 
@@ -156,14 +161,14 @@ flags come too: `deploy --source cfg.toml --vendor acme --app my-app --slug my-a
 
 Same engine as the library. Run any command with `-h` for full flags.
 
-| Command             | Purpose                                                                                                                                             |
-|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
-| `read`              | Load and print config (human by default; `--format json`, `--redact`).                                                                              |
-| `read-json`         | Print merged config + provenance as JSON.                                                                                                           |
-| `deploy`            | Copy a config file into app/host/user layers (`--target`, `--profile`, `--force`/`--batch`, `.bak`/`.ucf` conflict handling, permission hardening). |
-| `generate-examples` | Scaffold an example config tree to bootstrap a project.                                                                                             |
-| `env-prefix`        | Print the `<SLUG>___` env-var prefix for a slug.                                                                                                    |
-| `info`              | Print resolved package metadata.                                                                                                                    |
+| Command             | Purpose                                                                                                                                                                         |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `read`              | Load and print config (human by default; `--format json`, `--redact`).                                                                                                          |
+| `read-json`         | Print merged config + provenance as JSON.                                                                                                                                       |
+| `deploy`            | Copy a config file into app/host/user layers (`--target`, `--profile`, `--force`/`--batch`, `--dir-mode`/`--file-mode`, `.bak`/`.ucf` conflict handling, permission hardening). |
+| `generate-examples` | Scaffold an example config tree to bootstrap a project.                                                                                                                         |
+| `env-prefix`        | Print the `<SLUG>___` env-var prefix for a slug.                                                                                                                                |
+| `info`              | Print resolved package metadata.                                                                                                                                                |
 
 Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
 
@@ -192,13 +197,16 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
 
 ## Common mistakes
 
-| Mistake                                                    | Fix                                                                        |
-|------------------------------------------------------------|----------------------------------------------------------------------------|
-| Env prefix with a single/double underscore (`MY_APP_...`)  | The prefix ends in a **triple** underscore: `MY_APP___`. Run `env-prefix`. |
-| Forgetting the `defaults` layer or the `env`-wins ordering | Precedence is `defaults -> app -> host -> user -> dotenv -> env`.          |
-| Slugifying vendor/app for macOS/Windows paths              | `vendor`/`app` are used verbatim (spaces kept); only `slug` is normalized. |
-| Hunting for "why is this value X" by hand                  | Use `config.origin(key)` or `read-json` - provenance is built in.          |
-| Committing a `.env` with secrets                           | `.env` is for local secrets only; never commit it; keep mode `0o600`.      |
+| Mistake                                                                              | Fix                                                                                                                                                    |
+|--------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Env prefix with a single/double underscore (`MY_APP_...`)                            | The prefix ends in a **triple** underscore: `MY_APP___`. Run `env-prefix`.                                                                             |
+| Forgetting the `defaults` layer or the `env`-wins ordering                           | Precedence is `defaults -> app -> host -> user -> dotenv -> env`.                                                                                      |
+| Slugifying vendor/app for macOS/Windows paths                                        | `vendor`/`app` are used verbatim (spaces kept); only `slug` is normalized.                                                                             |
+| Hunting for "why is this value X" by hand                                            | Use `config.origin(key)` or `read-json` - provenance is built in.                                                                                      |
+| Committing a `.env` with secrets                                                     | `.env` is for local secrets only; never commit it; keep mode `0o600`.                                                                                  |
+| Writing `user_file = 640` (a TOML int is decimal)                                    | Quote it: `user_file = "0o640"`; deploy refuses a bare integer and any group-writable, world-writable or executable mode.                              |
+| Reaching for `--no-permissions` when deploy refuses a broken config                  | Give both `--dir-mode` and `--file-mode`; `--no-permissions` leaves a secrets file to the umask.                                                       |
+| Building `permissions=` from the application's `read_config(...)` to carry a `--set` | Pass `permission_overrides={"user_file": "0o640"}`: the application's read includes `.env` and the deployed files, which deploy leaves out on purpose. |
 
 ## Full detail
 

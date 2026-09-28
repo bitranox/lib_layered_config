@@ -229,23 +229,25 @@ lib_layered_config deploy --source ./config/app.toml \
   [--profile production] \
   [--platform linux|darwin|windows] \
   [--force] [--batch] \
-  [--permissions | --no-permissions]
+  [--permissions | --no-permissions] [--dir-mode MODE] [--file-mode MODE]
 ```
 
 **Parameters:**
 
-| Parameter                            | Type   | Required | Default         | Description                                                                                                                                                  |
-|--------------------------------------|--------|----------|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--source`                           | path   | Yes      | -               | Path to the configuration file to copy. Must be an existing file                                                                                             |
-| `--vendor`                           | string | Yes      | -               | Vendor namespace                                                                                                                                             |
-| `--app`                              | string | Yes      | -               | Application name                                                                                                                                             |
-| `--slug`                             | string | Yes      | -               | Configuration slug                                                                                                                                           |
-| `--profile`                          | string | No       | -               | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths                                                  |
-| `--target`                           | choice | Yes      | -               | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user`                        |
-| `--platform`                         | string | No       | auto-detect     | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win`                                                             |
-| `--force`                            | flag   | No       | `false`         | When file exists with different content: backup existing file to `.bak` and overwrite                                                                        |
-| `--batch`                            | flag   | No       | `false`         | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Ignored if `--force` is set                         |
-| `--permissions` / `--no-permissions` | flag   | No       | `--permissions` | Set Unix file permissions on deployed files. Uses layer-specific defaults: app/host = 755/644 (world-readable), user = 700/600 (private). Skipped on Windows |
+| Parameter                            | Type   | Required | Default                       | Description                                                                                                                                                  |
+|--------------------------------------|--------|----------|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--source`                           | path   | Yes      | -                             | Path to the configuration file to copy. Must be an existing file                                                                                             |
+| `--vendor`                           | string | Yes      | -                             | Vendor namespace                                                                                                                                             |
+| `--app`                              | string | Yes      | -                             | Application name                                                                                                                                             |
+| `--slug`                             | string | Yes      | -                             | Configuration slug                                                                                                                                           |
+| `--profile`                          | string | No       | -                             | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths                                                  |
+| `--target`                           | choice | Yes      | -                             | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user`                        |
+| `--platform`                         | string | No       | auto-detect                   | Override platform. Valid values: `linux`, `darwin`, `windows`, or any string starting with `win`                                                             |
+| `--force`                            | flag   | No       | `false`                       | When file exists with different content: backup existing file to `.bak` and overwrite                                                                        |
+| `--batch`                            | flag   | No       | `false`                       | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Ignored if `--force` is set                         |
+| `--permissions` / `--no-permissions` | flag   | No       | configured `enabled`, else on | Set Unix file permissions on deployed files. Uses layer-specific defaults: app/host = 755/644 (world-readable), user = 700/600 (private). Skipped on Windows |
+| `--dir-mode`                         | string | No       | -                             | Directory mode for every target, octal (`750` or `0o750`). Refused when unsafe (see File Permissions)                                                        |
+| `--file-mode`                        | string | No       | -                             | File mode for every target, octal (`640` or `0o640`). Refused when unsafe (see File Permissions)                                                             |
 
 **Returns:** JSON object with keys for each action taken:
 - `created`: Array of paths for newly created files
@@ -568,7 +570,13 @@ done
 
 The `deploy` command automatically sets appropriate Unix file permissions based on the target layer. This ensures configuration files have the right access controls without manual `chmod` commands.
 
-#### Default Permissions by Layer
+#### Which mode is applied
+
+For each target layer and each side (directory, file), the first of these wins:
+
+1. `--dir-mode` / `--file-mode` (Python: `dir_mode` / `file_mode`);
+2. the configured `[lib_layered_config.default_permissions]` setting for that layer;
+3. the built-in layer mode:
 
 | Layer  | Directory Mode    | File Mode         | Rationale                                         |
 |--------|-------------------|-------------------|---------------------------------------------------|
@@ -576,17 +584,60 @@ The `deploy` command automatically sets appropriate Unix file permissions based 
 | `host` | `755` (rwxr-xr-x) | `644` (rw-r--r--) | Machine-specific config readable by all processes |
 | `user` | `700` (rwx------) | `600` (rw-------) | Private user config not accessible by others      |
 
-#### CLI Usage
+`--permissions` / `--no-permissions` turns permission setting on or off; without either, a mode option turns it
+on, and otherwise the configured `enabled` decides (on when unset).
+
+#### Which modes are refused
+
+A deployed file can hold credentials, so a mode may widen read access but nothing else. Refused, with every
+offending bit named, before anything is written:
+
+- anything outside 0..0o7777, and any text that is not a plain octal literal (`-1`, `7_5_0`, `0x1ed`, `10000`);
+- the setuid, setgid and sticky bits;
+- group write and world write (a group can be every local account, `staff` on macOS);
+- for a directory, a mode without owner rwx; for a file, any execute bit or a mode without owner rw.
+
+#### Configuring the modes
+
+The deployed application's configuration can set the modes per layer:
+
+```toml
+[lib_layered_config.default_permissions]
+app_directory = "0o750"
+app_file = "0o640"
+user_file = "0o600"
+enabled = true
+```
+
+Write each mode as a quoted octal string. A bare integer is refused rather than guessed at: TOML reads
+`user_file = 400` as the decimal 400 (0o620), and the TOML literal `0o640` arrives as the integer 416. In the
+environment use the `0o` prefix (`MYAPP___LIB_LAYERED_CONFIG__DEFAULT_PERMISSIONS__USER_FILE=0o640`), since a
+bare `640` there is a number (`0640` stays text and also works); the same goes for an application's `--set`
+option, where `...user_file=640` arrives as a number and `...user_file=0o640` as text. `deploy` reads these
+settings only when a configured value can change the result, from the deployed source (the defaults layer), the
+app, host and user files it does not itself write, and the environment. It never reads `.env` (whose search
+starts at the working directory), and the file being replaced never decides its replacement's mode, so a broken
+destination does not block `deploy --force`. If those settings cannot be read, or the section is invalid,
+`deploy` stops with one line per problem, naming the file and line but never its content. Both `--dir-mode` and
+`--file-mode` deploy anyway; `--no-permissions` does too, but leaves every mode to the umask, which can make a
+user file that holds secrets readable by other accounts. `--no-permissions` together with a mode option is a
+usage error.
+
+Modes are applied to each file `deploy` writes. A file whose content already matches is skipped and keeps its
+mode, so changing a configured mode and redeploying the same release changes nothing on disk; `chmod` the
+file, or remove it and deploy again.
+
+A deployed copy's own section is never consulted by the deploy that writes or keeps it. Two effects follow:
+with `--batch` a file that differs is KEPT (the new content goes to a `.ucf` beside it) and stays the live
+configuration, but the directory and the `.ucf` get their modes from the other layers, not from the kept copy;
+and the result depends on the targets, since `--target app --target user` treats the app `config.toml` as a
+destination and does not read its `user_*` settings, while `--target user` alone does. Put local settings in a
+file the package does not ship, such as `config.d/99-local.toml` in the layer directory, which `deploy` never
+writes, so it is read whenever the configured modes are.
 
 ```bash
-# Default: permissions enabled with layer-appropriate defaults
 lib_layered_config deploy --source ./config.toml \
-  --vendor Acme --app MyApp --slug myapp --target user
-# Result: ~/.config/myapp/config.toml with mode 600
-
-# Disable automatic permissions (use umask defaults)
-lib_layered_config deploy --source ./config.toml \
-  --vendor Acme --app MyApp --slug myapp --target user --no-permissions
+  --vendor Acme --app MyApp --slug myapp --target user --dir-mode 750 --file-mode 640
 ```
 
 #### Python API Usage
@@ -594,37 +645,32 @@ lib_layered_config deploy --source ./config.toml \
 ```python
 from lib_layered_config import deploy_config
 
-# Default: set_permissions=True with layer defaults
-results = deploy_config(
-    source="./config.toml",
-    vendor="Acme",
-    app="MyApp",
-    targets=["user"],
-    slug="myapp",
-)
-# User layer files get 700/600 permissions
+# Configured or built-in modes per layer
+deploy_config(source="./config.toml", vendor="Acme", app="MyApp", slug="myapp", targets=["user"])
 
-# Custom permissions override
-results = deploy_config(
-    source="./config.toml",
-    vendor="Acme",
-    app="MyApp",
-    targets=["app"],
-    slug="myapp",
-    dir_mode=0o750,  # Override directory mode
-    file_mode=0o640,  # Override file mode
+# Explicit modes win over the configured ones
+deploy_config(
+    source="./config.toml", vendor="Acme", app="MyApp", slug="myapp", targets=["app"], dir_mode=0o750, file_mode=0o640
 )
 
-# Disable permissions entirely
-results = deploy_config(
+# Runtime overrides of the section (for example from a --set option) go on top of deploy's own read
+deploy_config(
     source="./config.toml",
     vendor="Acme",
     app="MyApp",
-    targets=["user"],
     slug="myapp",
-    set_permissions=False,
+    targets=["user"],
+    permission_overrides={"user_file": "0o640"},
 )
 ```
+
+`permission_overrides` takes the section's own setting names (`app_directory`, `app_file`, `host_directory`,
+`host_file`, `user_directory`, `user_file`, `enabled`); a refused value is reported as `(source: override)`.
+`{"enabled": False}` turns permission setting off without reading the configuration, like `set_permissions=False`
+(unless a mode or `set_permissions=True` is also given, which set modes whatever `enabled` says).
+`permissions=` takes a complete `DeployPermissions` instead and cannot be combined with it. Do not build that
+object from your application's `read_config(...)` to carry overrides: that read includes `.env` (searched upward
+from the working directory) and the deployed files, which the deploy's own read leaves out on purpose.
 
 #### Platform Behavior
 

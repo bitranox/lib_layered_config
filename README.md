@@ -351,7 +351,10 @@ config = read_config(
 The command-line interface mirrors the Python API: read and inspect configuration, deploy
 files across the app/host/user layers, scaffold example trees, and compute environment
 prefixes. It also documents the file-overwrite and backup behavior and the per-layer
-permission and secret-handling guidance.
+permission and secret-handling guidance. `deploy` sets each layer's modes from
+`--dir-mode`/`--file-mode`, the configured `[lib_layered_config.default_permissions]`, or the
+built-in 755/644 and 700/600, applies them to each file it writes, and refuses any mode that
+would let the group or the world write a file that can hold credentials.
 
 The full command reference lives in **[docs/cli-reference.md](docs/cli-reference.md)**.
 

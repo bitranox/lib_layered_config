@@ -433,6 +433,40 @@ MYAPP___DATASET__0__DSN=postgres://new-host/db
 
 ---
 
+### Lists and tables from the environment and `.env`
+
+Both the environment and `.env` take a JSON array or object:
+
+```bash
+# Environment (a shell variable, quoted so the shell keeps it as one string)
+export MYAPP___EMAIL__SMTP_HOSTS='["a.example:587", "b.example:587"]'
+```
+
+```bash
+# .env, UNQUOTED - quoting a value in .env always keeps it as literal text, so a JSON-looking
+# value there stays the string unless it is left unquoted
+EMAIL__SMTP_HOSTS=["a.example:587","b.example:587"]
+```
+
+- A quoted `.env` value is always the literal text, so quote a secret that happens to look like JSON.
+- An unquoted `.env` value is cut at the first ` #` (space then `#`), so a JSON value containing ` #` needs
+  to be set per index instead (see below).
+- A comma list (`a,b,c`) stays one string in both the environment and `.env`; it is never split.
+- Per-index keys (`EMAIL__SMTP_HOSTS__0=...`) fill an array a lower layer already defines, the same as the
+  numeric-index override described above.
+
+Scalars in `.env` stay strings. The environment layer additionally turns `true`/`false` and `null`/`none`
+into booleans and null, and a value into an int or float only when the number reads back as the same text:
+`5`, `-7` and `3.5` convert; `007123`, `0640`, `1.50`, `+5`, `1_000` and `nan` stay strings.
+
+### Deploy permission settings
+
+`deploy` and `deploy_config` read `[lib_layered_config.default_permissions]` to decide the Unix mode of each
+deployed file and directory. See [cli-reference.md's "Configuring the modes"](cli-reference.md#configuring-the-modes)
+for the settings, the resolution order, and the refusal rule.
+
+---
+
 ### JSON and YAML Equivalents
 
 The same structure in JSON:
