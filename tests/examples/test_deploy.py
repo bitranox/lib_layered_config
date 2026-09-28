@@ -9,6 +9,7 @@ from textwrap import dedent
 import pytest
 
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
+from lib_layered_config.domain.deploy_permissions import DeployPermissions
 from lib_layered_config.examples import deploy as deploy_module
 from lib_layered_config.examples.deploy import DeployAction, DeployResult, deploy_config
 from tests.support import LayeredSandbox, create_layered_sandbox
@@ -381,14 +382,7 @@ def test_copy_payload_creates_parent_directories(tmp_path: Path) -> None:
     payload = b"echo"
     destination = tmp_path / "nested" / "config.toml"
 
-    deploy_module._copy_payload(
-        destination,
-        payload,
-        layer="app",
-        set_permissions_flag=False,
-        dir_mode=None,
-        file_mode=None,
-    )
+    deploy_module._copy_payload(destination, payload, modes=None)
 
     assert destination.read_bytes() == payload
 
@@ -643,9 +637,7 @@ def test_write_ucf_creates_ucf_file(tmp_path: Path) -> None:
     destination.write_text("existing content", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = deploy_module._write_ucf(
-        destination, payload, layer="user", set_permissions_flag=False, dir_mode=None, file_mode=None
-    )
+    ucf_path = deploy_module._write_ucf(destination, payload, modes=None)
 
     assert ucf_path == tmp_path / "config.toml.ucf"
     assert ucf_path.read_bytes() == payload
@@ -659,9 +651,7 @@ def test_write_ucf_uses_numbered_suffix_when_ucf_exists(tmp_path: Path) -> None:
     existing_ucf.write_text("old ucf", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = deploy_module._write_ucf(
-        destination, payload, layer="user", set_permissions_flag=False, dir_mode=None, file_mode=None
-    )
+    ucf_path = deploy_module._write_ucf(destination, payload, modes=None)
 
     assert ucf_path == tmp_path / "config.toml.ucf.1"
     assert ucf_path.read_bytes() == payload
@@ -673,9 +663,7 @@ def test_write_ucf_applies_user_layer_permissions(tmp_path: Path) -> None:
     destination = tmp_path / "config.toml"
     payload = b"secret_token = 'abc'"
 
-    ucf_path = deploy_module._write_ucf(
-        destination, payload, layer="user", set_permissions_flag=True, dir_mode=None, file_mode=None
-    )
+    ucf_path = deploy_module._write_ucf(destination, payload, modes=DeployPermissions.defaults().for_layer("user"))
 
     assert (ucf_path.stat().st_mode & 0o777) == 0o600
 

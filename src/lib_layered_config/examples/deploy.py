@@ -13,8 +13,8 @@ Contents:
       (``force``), keep-and-write-``.ucf`` (``batch``), or an interactive resolver, with
       identical-content smart-skip.
     - Permission helpers (``_copy_payload`` / ``_write_ucf`` / ``_write_bytes``): write via
-      an owner-only temp file then apply the layer mode, so secrets are never briefly
-      world-readable.
+      an owner-only temp file then apply the layer's ``LayerModes``, so secrets are never
+      briefly world-readable.
 
 System Role:
     Invoked by ``cli/deploy.py`` (and re-exported from the package root as
@@ -32,9 +32,11 @@ from enum import Enum
 from pathlib import Path
 
 from ..adapters.path_resolvers.default import DefaultPathResolver
+from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
+from ..domain.deploy_permissions import DeployPermissions, LayerModes
 from ..domain.errors import ValidationError
 from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
-from ..domain.permissions import set_custom_permissions, set_permissions
+from ..domain.permissions import apply_mode
 
 _VALID_TARGETS = {Layer.APP.value, Layer.HOST.value, Layer.USER.value}
 
@@ -136,16 +138,8 @@ def _backup_file(path: Path) -> Path:
     return backup
 
 
-def _write_ucf(
-    destination: Path,
-    payload: bytes,
-    *,
-    layer: str,
-    set_permissions_flag: bool,
-    dir_mode: int | None,
-    file_mode: int | None,
-) -> Path:
-    """Write new config as .ucf variant (with numbered suffix if needed).
+def _write_ucf(destination: Path, payload: bytes, *, modes: LayerModes | None) -> Path:
+    """Write new config as .ucf variant (numbered suffix if needed), hardened like the primary file.
 
     The .ucf sidecar can hold the same secrets as the primary file, so it gets the
     same layer-appropriate permission hardening (e.g. 0o600 for the user layer) rather
@@ -154,21 +148,18 @@ def _write_ucf(
     Args:
         destination: Original destination path.
         payload: File content to write.
-        layer: Target layer ("app", "host", or "user").
-        set_permissions_flag: If True, set Unix permissions.
-        dir_mode: Override directory mode (None = use layer defaults).
-        file_mode: Override file mode (None = use layer defaults).
+        modes: The directory and file mode to set, or None to leave permissions to the umask.
 
     Returns:
         Path to the created .ucf file.
     """
     ucf_path = _next_available_path(destination, ".ucf")
     ucf_path.parent.mkdir(parents=True, exist_ok=True)
-    if set_permissions_flag:
-        _apply_directory_permissions(ucf_path.parent, layer, dir_mode, file_mode)
-    _write_bytes(ucf_path, payload, restrict=set_permissions_flag)
-    if set_permissions_flag:
-        _apply_file_permissions(ucf_path, layer, dir_mode, file_mode)
+    if modes is not None:
+        apply_mode(ucf_path.parent, modes.directory)
+    _write_bytes(ucf_path, payload, restrict=modes is not None)
+    if modes is not None:
+        apply_mode(ucf_path, modes.file)
     return ucf_path
 
 
@@ -195,6 +186,44 @@ def _validate_target(target: str) -> str:
     if normalised not in _VALID_TARGETS:
         raise ValidationError(f"Unsupported deployment target: {target}")
     return normalised
+
+
+def _checked_mode(name: str, value: int | None, kind: ModeKind) -> tuple[DeployMode | None, str | None]:
+    """Return (mode, None) when *value* is safe, or (None, one refusal line) when it is not."""
+    try:
+        return (None if value is None else DeployMode(value, kind)), None
+    except DeployModeError as exc:
+        return None, f"{name}: {exc}"
+
+
+def _explicit_modes(*, dir_mode: int | None, file_mode: int | None) -> tuple[DeployMode | None, DeployMode | None]:
+    """Validate the caller-given modes, one refusal line per bad parameter, both checked first."""
+    checked = [
+        _checked_mode(name, value, kind)
+        for name, value, kind in (
+            ("dir_mode", dir_mode, ModeKind.DIRECTORY),
+            ("file_mode", file_mode, ModeKind.FILE),
+        )
+    ]
+    problems = [problem for _, problem in checked if problem is not None]
+    if problems:
+        raise DeployModeError("\n".join(problems))
+    return checked[0][0], checked[1][0]
+
+
+def _resolve_layer_modes(
+    settings: DeployPermissions,
+    layer: str,
+    *,
+    dir_mode: DeployMode | None,
+    file_mode: DeployMode | None,
+) -> LayerModes:
+    """Each side: the explicit mode when given, else the setting for *layer*."""
+    configured = settings.for_layer(layer)
+    return LayerModes(
+        dir_mode if dir_mode is not None else configured.directory,
+        file_mode if file_mode is not None else configured.file,
+    )
 
 
 class DeploymentStrategy:
@@ -364,10 +393,7 @@ def _deploy_to_destination(
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
-    layer: str,
-    set_permissions_flag: bool,
-    dir_mode: int | None,
-    file_mode: int | None,
+    modes: LayerModes | None,
 ) -> DeployResult | None:
     """Deploy to a single destination with optional .d directory handling.
 
@@ -380,10 +406,7 @@ def _deploy_to_destination(
         force: If True, backup and overwrite.
         batch: If True, keep existing and write as .ucf.
         conflict_resolver: Callback for interactive conflict resolution.
-        layer: Target layer ("app", "host", or "user").
-        set_permissions_flag: If True, set Unix permissions.
-        dir_mode: Override directory mode (None = use layer defaults).
-        file_mode: Override file mode (None = use layer defaults).
+        modes: The directory and file mode to set, or None to leave permissions to the umask.
 
     Returns:
         DeployResult or None if source and destination are the same.
@@ -397,10 +420,7 @@ def _deploy_to_destination(
         force=force,
         batch=batch,
         conflict_resolver=conflict_resolver,
-        layer=layer,
-        set_permissions_flag=set_permissions_flag,
-        dir_mode=dir_mode,
-        file_mode=file_mode,
+        modes=modes,
     )
 
     if dot_d_files:
@@ -412,10 +432,7 @@ def _deploy_to_destination(
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
-            layer=layer,
-            set_permissions_flag=set_permissions_flag,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
+            modes=modes,
         )
 
     return result
@@ -463,8 +480,10 @@ def deploy_config(
         set_permissions: If True (default), set Unix permissions on deployed files.
             Uses layer-specific defaults: app/host = 755/644, user = 700/600.
             Skipped on Windows (uses ACLs instead).
-        dir_mode: Override directory mode for all targets (None = use layer defaults).
-        file_mode: Override file mode for all targets (None = use layer defaults).
+        dir_mode: Override the directory mode for every target (None = the layer's mode).
+            Refused with DeployModeError when out of range or unsafe, before anything is written.
+        file_mode: Override the file mode for every target (None = the layer's mode).
+            Refused with DeployModeError when out of range or unsafe, before anything is written.
 
     Returns:
         List of DeployResult objects describing what was done for each destination.
@@ -473,15 +492,15 @@ def deploy_config(
     Raises:
         FileNotFoundError: If the source file does not exist.
         ValueError: When profile name is invalid (too long, path traversal, etc.).
+        DeployModeError: dir_mode or file_mode is out of range or unsafe.
     """
+    explicit_dir, explicit_file = _explicit_modes(dir_mode=dir_mode, file_mode=file_mode)
     source_path = Path(source)
     if not source_path.is_file():
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
 
-    # Check for companion .d directory
     source_dot_d = _get_dot_d_dir(source_path)
     dot_d_files = _collect_dot_d_sources(source_dot_d)
-
     resolver = _prepare_resolver(
         vendor=vendor,
         app=app,
@@ -490,10 +509,16 @@ def deploy_config(
         platform=platform,
         max_profile_length=max_profile_length,
     )
+    settings = DeployPermissions.defaults() if set_permissions else None
     payload = source_path.read_bytes()
     results: list[DeployResult] = []
 
     for destination, layer in _destinations_for(resolver, targets):
+        modes = (
+            None
+            if settings is None
+            else _resolve_layer_modes(settings, layer, dir_mode=explicit_dir, file_mode=explicit_file)
+        )
         result = _deploy_to_destination(
             destination=destination,
             source_path=source_path,
@@ -503,10 +528,7 @@ def deploy_config(
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
-            layer=layer,
-            set_permissions_flag=set_permissions,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
+            modes=modes,
         )
         if result is not None:
             results.append(result)
@@ -522,10 +544,7 @@ def _deploy_dot_d_files(
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
-    layer: str,
-    set_permissions_flag: bool,
-    dir_mode: int | None,
-    file_mode: int | None,
+    modes: LayerModes | None,
 ) -> list[DeployResult]:
     """Deploy files from source .d directory to destination .d directory.
 
@@ -536,10 +555,7 @@ def _deploy_dot_d_files(
         force: If True, backup existing files and overwrite.
         batch: If True, keep existing files and write new as .ucf.
         conflict_resolver: Callback to resolve conflicts interactively.
-        layer: Target layer ("app", "host", or "user").
-        set_permissions_flag: If True, set Unix permissions.
-        dir_mode: Override directory mode (None = use layer defaults).
-        file_mode: Override file mode (None = use layer defaults).
+        modes: The directory and file mode to set, or None to leave permissions to the umask.
 
     Returns:
         List of DeployResult objects for each .d file deployed.
@@ -560,10 +576,7 @@ def _deploy_dot_d_files(
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
-            layer=layer,
-            set_permissions_flag=set_permissions_flag,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
+            modes=modes,
         )
         results.append(result)
 
@@ -577,10 +590,7 @@ def _handle_conflict(
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
-    layer: str,
-    set_permissions_flag: bool,
-    dir_mode: int | None,
-    file_mode: int | None,
+    modes: LayerModes | None,
 ) -> DeployResult:
     """Handle deployment when file exists with different content.
 
@@ -590,10 +600,7 @@ def _handle_conflict(
         force: If True, backup and overwrite.
         batch: If True, keep existing and write as .ucf.
         conflict_resolver: Callback for interactive conflict resolution.
-        layer: Target layer ("app", "host", or "user").
-        set_permissions_flag: If True, set Unix permissions.
-        dir_mode: Override directory mode (None = use layer defaults).
-        file_mode: Override file mode (None = use layer defaults).
+        modes: The directory and file mode to set, or None to leave permissions to the umask.
 
     Returns:
         DeployResult describing the action taken.
@@ -609,15 +616,7 @@ def _handle_conflict(
     else:
         return DeployResult(destination=destination, action=DeployAction.SKIPPED)
 
-    return _execute_action(
-        destination,
-        payload,
-        action,
-        layer=layer,
-        set_permissions_flag=set_permissions_flag,
-        dir_mode=dir_mode,
-        file_mode=file_mode,
-    )
+    return _execute_action(destination, payload, action, modes=modes)
 
 
 def _deploy_single(
@@ -627,36 +626,18 @@ def _deploy_single(
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
-    layer: str,
-    set_permissions_flag: bool,
-    dir_mode: int | None,
-    file_mode: int | None,
+    modes: LayerModes | None,
 ) -> DeployResult:
     """Deploy to a single destination with conflict handling."""
     if not destination.exists():
-        _copy_payload(
-            destination,
-            payload,
-            layer=layer,
-            set_permissions_flag=set_permissions_flag,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
-        )
+        _copy_payload(destination, payload, modes=modes)
         return DeployResult(destination=destination, action=DeployAction.CREATED)
 
     if _content_matches(destination, payload):
         return DeployResult(destination=destination, action=DeployAction.SKIPPED)
 
     return _handle_conflict(
-        destination,
-        payload,
-        force=force,
-        batch=batch,
-        conflict_resolver=conflict_resolver,
-        layer=layer,
-        set_permissions_flag=set_permissions_flag,
-        dir_mode=dir_mode,
-        file_mode=file_mode,
+        destination, payload, force=force, batch=batch, conflict_resolver=conflict_resolver, modes=modes
     )
 
 
@@ -665,10 +646,7 @@ def _execute_action(
     payload: bytes,
     action: DeployAction,
     *,
-    layer: str,
-    set_permissions_flag: bool,
-    dir_mode: int | None,
-    file_mode: int | None,
+    modes: LayerModes | None,
 ) -> DeployResult:
     """Execute the chosen action for a conflict."""
     if action == DeployAction.OVERWRITTEN:
@@ -676,14 +654,7 @@ def _execute_action(
         if _content_matches(destination, payload):
             return DeployResult(destination=destination, action=DeployAction.SKIPPED)
         backup_path = _backup_file(destination)
-        _copy_payload(
-            destination,
-            payload,
-            layer=layer,
-            set_permissions_flag=set_permissions_flag,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
-        )
+        _copy_payload(destination, payload, modes=modes)
         return DeployResult(
             destination=destination,
             action=DeployAction.OVERWRITTEN,
@@ -694,14 +665,7 @@ def _execute_action(
         # Smart skip if content is identical (no need for UCF)
         if _content_matches(destination, payload):
             return DeployResult(destination=destination, action=DeployAction.SKIPPED)
-        ucf_path = _write_ucf(
-            destination,
-            payload,
-            layer=layer,
-            set_permissions_flag=set_permissions_flag,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
-        )
+        ucf_path = _write_ucf(destination, payload, modes=modes)
         return DeployResult(
             destination=destination,
             action=DeployAction.KEPT,
@@ -773,80 +737,14 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
             yield destination, normalised
 
 
-def _copy_payload(
-    destination: Path,
-    payload: bytes,
-    *,
-    layer: str,
-    set_permissions_flag: bool,
-    dir_mode: int | None,
-    file_mode: int | None,
-) -> None:
-    """Copy payload to destination, optionally setting Unix permissions.
-
-    Args:
-        destination: Target file path.
-        payload: File content to write.
-        layer: Target layer ("app", "host", or "user").
-        set_permissions_flag: If True, set Unix permissions.
-        dir_mode: Override directory mode (None = use layer defaults).
-        file_mode: Override file mode (None = use layer defaults).
-    """
+def _copy_payload(destination: Path, payload: bytes, *, modes: LayerModes | None) -> None:
+    """Copy payload to destination; with *modes*, harden the directory and then the file."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-
-    # Set directory permissions on all parent directories we may have created
-    if set_permissions_flag:
-        _apply_directory_permissions(destination.parent, layer, dir_mode, file_mode)
-
-    _write_bytes(destination, payload, restrict=set_permissions_flag)
-
-    # Set file permissions
-    if set_permissions_flag:
-        _apply_file_permissions(destination, layer, dir_mode, file_mode)
-
-
-def _apply_directory_permissions(
-    directory: Path,
-    layer: str,
-    dir_mode: int | None,
-    file_mode: int | None,
-) -> None:
-    """Apply permissions to a directory.
-
-    Args:
-        directory: Directory to set permissions on.
-        layer: Target layer for default permission selection.
-        dir_mode: Override directory mode (None = use layer defaults).
-        file_mode: Unused, for signature consistency.
-    """
-    if dir_mode is not None or file_mode is not None:
-        # Custom mode specified - use it for directory
-        set_custom_permissions(directory, dir_mode=dir_mode, file_mode=file_mode, is_dir=True)
-    else:
-        # Use layer defaults
-        set_permissions(directory, layer, is_dir=True)
-
-
-def _apply_file_permissions(
-    file_path: Path,
-    layer: str,
-    dir_mode: int | None,
-    file_mode: int | None,
-) -> None:
-    """Apply permissions to a file.
-
-    Args:
-        file_path: File to set permissions on.
-        layer: Target layer for default permission selection.
-        dir_mode: Unused, for signature consistency.
-        file_mode: Override file mode (None = use layer defaults).
-    """
-    if dir_mode is not None or file_mode is not None:
-        # Custom mode specified - use it for file
-        set_custom_permissions(file_path, dir_mode=dir_mode, file_mode=file_mode, is_dir=False)
-    else:
-        # Use layer defaults
-        set_permissions(file_path, layer, is_dir=False)
+    if modes is not None:
+        apply_mode(destination.parent, modes.directory)
+    _write_bytes(destination, payload, restrict=modes is not None)
+    if modes is not None:
+        apply_mode(destination, modes.file)
 
 
 def _write_bytes(path: Path, payload: bytes, *, restrict: bool = False) -> None:
