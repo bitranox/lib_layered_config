@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -175,6 +176,23 @@ def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path, monkeypatch: pyt
     loader = DefaultDotEnvLoader()
     data = loader.load(str(tmp_path))
     assert data["a"] == "1"
+
+
+@os_agnostic
+def test_dotenv_loader_explicit_path_directory_warns_and_returns_empty(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    directory = tmp_path / "config.env"
+    directory.mkdir()
+    caplog.set_level(logging.WARNING, logger="lib_layered_config")
+    loader = DefaultDotEnvLoader()
+    data = loader.load(dotenv_path=str(directory))
+    assert data == {}
+    assert loader.last_loaded_path is None
+    assert any(
+        record.message == "config_directory_skipped" and str(directory) in repr(vars(record))
+        for record in caplog.records
+    )
 
 
 @os_agnostic

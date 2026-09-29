@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lib_layered_config.adapters.file_loaders._dot_d import (
     _collect_dot_d_files,
     expand_dot_d,
 )
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    import pytest
 
 
 @os_agnostic
@@ -202,6 +207,40 @@ def test_expand_dot_d_with_json_base_file(tmp_path: Path) -> None:
     result = list(expand_dot_d(str(base)))
 
     assert result == [str(base), str(dot_d / "10-extra.json")]
+
+
+@os_agnostic
+def test_expand_dot_d_warns_and_skips_when_base_path_is_a_directory(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A configured file path that is actually a directory is skipped, not raised, but warned about."""
+    base = tmp_path / "config.toml"
+    base.mkdir()
+    caplog.set_level(logging.WARNING, logger="lib_layered_config")
+
+    result = list(expand_dot_d(str(base)))
+
+    assert result == []
+    assert any(
+        record.message == "config_directory_skipped" and str(base) in repr(vars(record)) for record in caplog.records
+    )
+
+
+@os_agnostic
+def test_expand_dot_d_does_not_warn_for_the_legitimate_dot_d_companion_directory(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The expected `<name>.d/` companion directory must never trigger the directory warning."""
+    base = tmp_path / "config.toml"
+    dot_d = tmp_path / "config.d"
+    dot_d.mkdir()
+    (dot_d / "10-extra.toml").write_text("[extra]\nx = 1\n", encoding="utf-8")
+    caplog.set_level(logging.WARNING, logger="lib_layered_config")
+
+    result = list(expand_dot_d(str(base)))
+
+    assert result == [str(dot_d / "10-extra.toml")]
+    assert not any(record.message == "config_directory_skipped" for record in caplog.records)
 
 
 @os_agnostic

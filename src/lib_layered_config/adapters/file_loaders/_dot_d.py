@@ -21,6 +21,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ...observability import log_warn
+from .structured import FILE_LAYER
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -64,8 +67,23 @@ def expand_dot_d(path: str) -> Iterable[str]:
 
     if base_path.is_file():
         yield str(base_path)
+    elif base_path.is_dir():
+        # A configured file path that is actually a directory on disk (never the expected
+        # `<name>.d/` companion, which is dot_d_dir, a distinct path never checked here) is
+        # refusal-worthy in a future major version but is only skipped today; surface it so
+        # the operator learns why their configuration is silently absent.
+        _warn_directory_skipped(base_path)
 
     yield from _collect_dot_d_files(dot_d_dir)
+
+
+def _warn_directory_skipped(path: Path) -> None:
+    """Warn that a configured configuration-file path is a directory and was skipped.
+
+    Args:
+        path: The configured path that resolved to a directory on disk.
+    """
+    log_warn("config_directory_skipped", layer=FILE_LAYER, path=str(path))
 
 
 def _collect_dot_d_files(dot_d_dir: Path) -> Iterable[str]:
