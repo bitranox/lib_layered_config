@@ -6,6 +6,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **A `.env` file is capped at the same 10 MiB (`MAX_CONFIG_FILE_BYTES`) as the structured configuration
+  files**, checked before the file is read, and refused with the same `InvalidFormatError` message.
+
+### Fixed
+
+- **A configured file path that is a directory is no longer skipped without a trace.** A defaults, app, host
+  or user file path, or an explicit `dotenv_path`, that is a directory logs a `config_directory_skipped`
+  warning naming the path; the `<name>.d/` companion directory is unaffected. It is still skipped rather than
+  refused, which would be a breaking change.
+- **`display_config()` builds its Rich console per call instead of once at import**, so `FORCE_COLOR` and
+  `NO_COLOR` as they are when the output is written decide its colour, not the values at import time.
+
 ### Deprecated
 
 - **`lib_layered_config.domain.permissions.set_permissions` and `set_custom_permissions`** emit a
