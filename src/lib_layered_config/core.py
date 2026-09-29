@@ -409,7 +409,6 @@ __all__ = [
     "ValidationError",
     "default_env_prefix",
     "read_config",
-    "read_config_for_deploy",
     "read_config_json",
     "read_config_raw",
 ]
