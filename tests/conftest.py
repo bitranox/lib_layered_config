@@ -54,27 +54,21 @@ def _plain_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
     test session sees a pinned, non-forced terminal regardless of what
     ``GITHUB_ACTIONS``/``FORCE_COLOR`` were at interpreter start-up.
 
-    ``adapters/display/rich.py`` has the same shape of problem for its own
-    ``_DEFAULT_CONSOLE``: a module-level ``rich.console.Console()`` built at
-    import time with no explicit ``force_terminal``. ``Console.__init__``
-    caches TWO separate decisions at construction, not just one:
-    ``self._force_terminal`` (used by ``is_terminal``) and, from that same
-    ``is_terminal`` read, ``self._color_system`` (``_detect_color_system()``
-    at ``rich/console.py``). The ``color_system`` property returns the
-    cached ``_color_system`` directly whenever it is not ``None``, ignoring
-    ``is_terminal`` entirely afterwards - so patching only ``_force_terminal``
-    leaves every already-resolved colour system in effect. Pin both private
-    attributes so a ``FORCE_COLOR=1`` ambient environment at interpreter
-    start-up cannot colour ``display_config()`` output either.
+    ``adapters/display/rich.py`` builds its console per call (``_build_console()``),
+    so it reads ``FORCE_COLOR``/``NO_COLOR`` fresh at call time and no internal
+    Rich attribute needs patching - but the value matters, not just presence:
+    ``Console.is_terminal`` (``rich/console.py``) reads ``FORCE_COLOR`` as
+    ``environ.get("FORCE_COLOR") is not None: return force_color != ""``, so
+    an explicit ``FORCE_COLOR=0`` is itself a non-empty value and FORCES a
+    terminal - the opposite of what the name suggests (https://force-color.org/
+    documents this: presence forces colour, only an EMPTY value or its total
+    absence leaves detection to ``NO_COLOR``/``isatty()``). Remove the var
+    instead of setting it to "0", so ambient FORCE_COLOR from the calling
+    shell cannot leak into the suite either.
     """
-    monkeypatch.setenv("FORCE_COLOR", "0")
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setattr("rich_click.rich_click.FORCE_TERMINAL", False)
-
-    from lib_layered_config.adapters.display.rich import _DEFAULT_CONSOLE
-
-    monkeypatch.setattr(_DEFAULT_CONSOLE, "_force_terminal", False)
-    monkeypatch.setattr(_DEFAULT_CONSOLE, "_color_system", None)
 
 
 # =============================================================================

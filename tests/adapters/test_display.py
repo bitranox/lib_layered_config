@@ -419,3 +419,34 @@ def test_display_human_scalar_section_redacted(capsys: pytest.CaptureFixture[str
     output = capsys.readouterr().out
     assert "***REDACTED***" in output
     assert "secret123" not in output
+
+
+# ======================== display_config - console built at call time ========================
+
+
+def test_display_config_console_reads_environment_at_call_time(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The console must read FORCE_COLOR at CALL time, not at import time.
+
+    A console cached at import time freezes whatever the environment was
+    when the module was first imported (during test collection, before this
+    test's ``monkeypatch.setenv`` ever runs), so a later ``FORCE_COLOR=1``
+    set from inside a test has no effect on it and the rendered text stays
+    plain. Building the console fresh on every call reads the environment
+    that is actually in force at the moment of the call, so the same
+    ``FORCE_COLOR=1`` here produces real ANSI colour escapes.
+
+    This is the control for the fix: it fails against a module-level
+    ``_DEFAULT_CONSOLE`` built once at import (plain output, no escapes)
+    and passes once the console is built per call.
+    """
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+
+    config = Config({"key": "value"}, {})
+    display_config(config, output_format=OutputFormat.HUMAN)
+
+    output = capsys.readouterr().out
+    assert "\x1b[" in output
