@@ -50,10 +50,11 @@ def decode_utf8(raw: bytes, *, path: str | Path) -> str:
 def decode_yaml_text(raw: bytes, *, path: str | Path) -> str:
     """Return *raw* decoded as YAML source text, honoring a UTF-16/UTF-32 BOM.
 
-    PyYAML's own reader detects a UTF-16 or UTF-32 byte-order mark and decodes accordingly
-    (a YAML file saved by PowerShell 5 ``Out-File`` or Notepad "Unicode" carries one); every
-    other YAML file, like every TOML/JSON/.env file, stays strict UTF-8 (a UTF-8 BOM keeps
-    working as before, via :func:`decode_utf8`).
+    PyYAML's own reader detects a UTF-16 byte-order mark and decodes accordingly (a YAML file
+    saved by PowerShell 5 ``Out-File`` or Notepad "Unicode" carries one); this module's own BOM
+    check extends that to UTF-32, which PyYAML's reader does not detect on its own. Every other
+    YAML file, like every TOML/JSON/.env file, stays strict UTF-8 (a UTF-8 BOM keeps working as
+    before, via :func:`decode_utf8`).
 
     Args:
         raw: Raw file bytes.

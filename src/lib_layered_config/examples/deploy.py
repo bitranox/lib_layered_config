@@ -128,7 +128,7 @@ def _get_dot_d_dir(source_path: Path) -> Path:
     """Get the companion .d directory path for a source file.
 
     Uses the same naming convention as expand_dot_d:
-    config.toml → config.d (not config.toml.d)
+    config.toml -> config.d (not config.toml.d)
 
     Args:
         source_path: Path to the source configuration file.

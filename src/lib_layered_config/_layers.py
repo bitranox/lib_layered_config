@@ -60,7 +60,7 @@ def collect_layers(
     start_dir: str | None,
     dotenv_path: str | None = None,
 ) -> list[LayerSnapshot]:
-    """Return layer snapshots in precedence order (defaults → app → host → user → dotenv → env).
+    """Return layer snapshots in precedence order (defaults -> app -> host -> user -> dotenv -> env).
 
     Centralises discovery so callers stay focused on error handling.
     Emits structured logging events when layers are discovered.
@@ -112,7 +112,7 @@ def _snapshots_in_merge_sequence(
 ) -> Iterator[LayerSnapshot]:
     """Yield layer snapshots in the documented merge order.
 
-    Capture the precedence hierarchy (`defaults → app → host → user → dotenv → env`)
+    Capture the precedence hierarchy (`defaults -> app -> host -> user -> dotenv -> env`)
     in one generator so callers cannot accidentally skip a layer.
 
     Args:
