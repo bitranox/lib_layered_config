@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from ...domain.config import Config, SourceInfo
 
 _REDACTED = "***REDACTED***"
-_DEFAULT_CONSOLE = Console(highlight=False)
 _OUTPUT_HEADER = (
     r"# Note: Nested dictionaries are displayed as \[section.subsection] headers"
     r" and might not match the actual TOML \[section]"
@@ -41,6 +40,23 @@ _OUTPUT_HEADER = (
 # Regex patterns for parsing TOML output
 _SECTION_PATTERN = re.compile(r"^\[([^\]]+)\]$")
 _KEY_VALUE_PATTERN = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(.*)$")
+
+
+def _build_console() -> Console:
+    """Build a Rich console that reads the environment at call time.
+
+    ``rich.console.Console`` decides colour support (``_force_terminal``,
+    ``_color_system``) once, in ``__init__``, from the environment present at
+    that moment. A console built once at import time freezes that decision
+    for the process lifetime, so a caller's ``FORCE_COLOR``/``NO_COLOR``
+    setting made or changed after import (as every test that pins plain
+    output must do) has no effect on it. Building a fresh console per call
+    makes the environment at CALL time the one that decides.
+
+    Returns:
+        A new ``Console`` with syntax highlighting disabled.
+    """
+    return Console(highlight=False)
 
 
 def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | None = None) -> str:
@@ -199,7 +215,7 @@ def _display_human(
     Uses rtoml.dumps() to serialize configuration data to proper TOML format,
     then applies Rich styling for display.
     """
-    con = console or _DEFAULT_CONSOLE
+    con = console or _build_console()
     con.print(_OUTPUT_HEADER, style="bright_red")
     con.print()
 
