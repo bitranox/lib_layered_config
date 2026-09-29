@@ -24,7 +24,7 @@ import re
 from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 import orjson
 import rtoml
@@ -32,16 +32,17 @@ import rtoml
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...observability import log_debug, log_error
 from .._text_decoding import decode_utf8, decode_yaml_text
+from ._yaml_facade import as_yaml_module
 
 if TYPE_CHECKING:
-    from types import ModuleType
+    from ._yaml_facade import YAMLModule
 
 #: Maximum size of a single configuration file. A config file is normally a few KB; this
 #: generous 10 MiB ceiling bounds memory so an oversized or adversarial file (including
 #: one dropped into a ``.d`` directory) cannot exhaust memory during a read.
 MAX_CONFIG_FILE_BYTES: Final[int] = 10 * 1024 * 1024
 
-yaml: ModuleType | None = None
+yaml: YAMLModule | None = None
 
 
 FILE_LAYER = "file"
@@ -179,7 +180,7 @@ def _ensure_yaml_available() -> None:
     _require_yaml_module()
 
 
-def _require_yaml_module() -> ModuleType:
+def _require_yaml_module() -> YAMLModule:
     """Fetch the PyYAML module or explain its absence.
 
     Downstream helpers need the module object for access to both ``safe_load``
@@ -197,7 +198,7 @@ def _require_yaml_module() -> ModuleType:
     return module
 
 
-def _load_yaml_module() -> ModuleType | None:
+def _load_yaml_module() -> YAMLModule | None:
     """Import PyYAML on demand, caching the result for future readers.
 
     Avoid importing optional dependencies unless they are genuinely needed,
@@ -210,7 +211,7 @@ def _load_yaml_module() -> ModuleType | None:
     if yaml is not None:
         return yaml
     try:
-        yaml = import_module("yaml")
+        yaml = as_yaml_module(import_module("yaml"))
     except ModuleNotFoundError:  # pragma: no cover - optional dependency
         yaml = None
     return yaml
@@ -301,7 +302,11 @@ class BaseFileLoader:
         """
         if not isinstance(data, Mapping):
             raise InvalidFormatError(f"File {path} did not produce a mapping")
-        return data  # type: ignore[return-value]
+        # A parsed TOML/JSON/YAML document uses only string keys by construction (each format's
+        # object/mapping syntax requires a quoted or bare string key); the isinstance check above
+        # proves the runtime type is Mapping, so this narrows the still-unparameterized generic
+        # rather than asserting anything the check did not.
+        return cast("Mapping[str, object]", data)
 
 
 class TOMLFileLoader(BaseFileLoader):
@@ -451,7 +456,7 @@ class YAMLFileLoader(BaseFileLoader):
         return mapping
 
 
-def _parse_yaml_text(document: str, module: ModuleType, path: str) -> object:
+def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
     """Turn a decoded YAML document into a Python shape that mirrors the file.
 
     Normalise the PyYAML parsing contract so callers always receive a mapping,
@@ -482,7 +487,7 @@ def _parse_yaml_text(document: str, module: ModuleType, path: str) -> object:
     parsed: object = None
     try:
         parsed = module.safe_load(document)
-    except module.YAMLError as exc:  # type: ignore[attr-defined]
+    except module.YAMLError as exc:
         failed, failed_at = True, _yaml_position(exc)
     except (ValueError, RecursionError):
         failed = True
