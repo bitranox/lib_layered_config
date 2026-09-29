@@ -77,6 +77,18 @@ def test_a_refused_mode_is_a_usage_error_and_writes_nothing(
     assert not (sandbox.roots["user"] / "config.toml").exists()
 
 
+@os_agnostic
+def test_a_ci_terminal_env_var_cannot_colour_the_refusal(sandbox: LayeredSandbox, source: Path) -> None:
+    # rich-click forces a terminal (and colours the error panel) when GITHUB_ACTIONS is set
+    # truthy and neither FORCE_COLOR nor PY_COLORS is present first; the suite-wide
+    # tests/conftest.py::_plain_cli_output fixture pins FORCE_COLOR=0 so this stays plain
+    # even under the real CI environment. Without that pin this assertion fails on CI.
+    env = {**sandbox.env, "COLUMNS": "400", "GITHUB_ACTIONS": "true"}
+    result = CliRunner().invoke(cli.cli, _args(source, "--dir-mode", "770"), env=env)
+    assert result.exit_code == 2
+    assert "\x1b" not in result.output
+
+
 @posix_only
 def test_both_modes_are_applied(sandbox: LayeredSandbox, source: Path) -> None:
     result = CliRunner().invoke(cli.cli, _args(source, "--dir-mode", "750", "--file-mode", "0o640"), env=sandbox.env)
