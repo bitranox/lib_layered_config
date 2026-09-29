@@ -242,7 +242,7 @@ def _validate_target(target: str) -> str:
     return normalised
 
 
-def _checked_mode(name: str, value: int | None, kind: ModeKind) -> tuple[DeployMode | None, str | None]:
+def _checked_mode(name: str, *, value: int | None, kind: ModeKind) -> tuple[DeployMode | None, str | None]:
     """Return (mode, None) when *value* is safe, or (None, one refusal line) when it is not."""
     try:
         return (None if value is None else DeployMode(value, kind)), None
@@ -253,7 +253,7 @@ def _checked_mode(name: str, value: int | None, kind: ModeKind) -> tuple[DeployM
 def _explicit_modes(*, dir_mode: int | None, file_mode: int | None) -> tuple[DeployMode | None, DeployMode | None]:
     """Validate the caller-given modes, one refusal line per bad parameter, both checked first."""
     checked = [
-        _checked_mode(name, value, kind)
+        _checked_mode(name, value=value, kind=kind)
         for name, value, kind in (
             ("dir_mode", dir_mode, ModeKind.DIRECTORY),
             ("file_mode", file_mode, ModeKind.FILE),
@@ -299,7 +299,13 @@ def _mode_request(
     even when the settings are never read (D15); combining them with ``permissions`` is refused.
     """
     explicit_dir, explicit_file = _explicit_modes(dir_mode=dir_mode, file_mode=file_mode)
-    request = _ModeRequest(set_permissions, explicit_dir, explicit_file, permissions, permission_overrides)
+    request = _ModeRequest(
+        set_permissions=set_permissions,
+        dir_mode=explicit_dir,
+        file_mode=explicit_file,
+        permissions=permissions,
+        overrides=permission_overrides,
+    )
     if set_permissions is False and request.any_explicit:
         raise DeployModeError(
             "dir_mode/file_mode given with set_permissions=False: a mode cannot be applied while "
@@ -340,7 +346,7 @@ def _permission_settings(
     return settings
 
 
-def _paths_written(destinations: Sequence[tuple[Path, str]], dot_d_files: Sequence[Path]) -> frozenset[Path]:
+def _paths_written(destinations: Sequence[tuple[Path, str]], *, dot_d_files: Sequence[Path]) -> frozenset[Path]:
     """Every file this call may write, resolved: each destination and each of its ``.d`` copies."""
     written: set[Path] = set()
     for destination, _layer in destinations:
@@ -712,7 +718,7 @@ def deploy_config(
         load=lambda: _load_configured_permissions(
             resolver=resolver,
             source=source_path,
-            written=_paths_written(destinations, dot_d_files),
+            written=_paths_written(destinations, dot_d_files=dot_d_files),
             overrides=request.overrides,
         ),
     )
