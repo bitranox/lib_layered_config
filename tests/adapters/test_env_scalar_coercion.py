@@ -39,7 +39,7 @@ UNCHANGED = [
     "nan",
     "inf",
     "Infinity",
-    "١٢٣",  # Arabic-Indic digits: str.isdigit() is True, the text is not ASCII
+    "\u0661\u0662\u0663",  # Arabic-Indic digits: str.isdigit() is True, the text is not ASCII
     "12345678901234567890",  # twenty digits: past the int bound
     " 5",
     "5 ",

@@ -190,3 +190,37 @@ def test_a_truncated_utf16_yaml_body_is_refused_content_free(tmp_path: Path) -> 
     assert f"{path} is not valid UTF-16" in str(caught.value)
     assert MARK.decode() not in str(caught.value)
     _assert_no_content(caught.value)
+
+
+@os_agnostic
+def test_a_utf32_bom_yaml_body_that_does_not_decode_is_refused_content_free(tmp_path: Path) -> None:
+    text = "password: " + MARK.decode() + "\n"
+    # A trailing odd byte after a whole number of UTF-32 code units truncates the last one.
+    body = _UTF32_BOM_LE + text.encode("utf-32-le") + b"\x41"
+    path = tmp_path / "bad.yaml"
+    path.write_bytes(body)
+    with pytest.raises(ConfigError) as caught:
+        _read(path)
+    with pytest.raises(UnicodeDecodeError) as decode_error:
+        body.decode("utf-32")
+    offset = decode_error.value.start
+    assert f"{path} is not valid UTF-32 (byte offset {offset})" in str(caught.value)
+    assert MARK.decode() not in str(caught.value)
+    _assert_no_content(caught.value)
+
+
+@os_agnostic
+def test_a_utf16_yaml_body_with_a_lone_surrogate_is_refused_content_free(tmp_path: Path) -> None:
+    text = "password: " + MARK.decode() + "\n"
+    lone_high_surrogate = b"\x00\xd8"  # 0xD800 in UTF-16LE, never followed by a low surrogate.
+    body = _UTF16_BOM_LE + text.encode("utf-16-le") + lone_high_surrogate
+    path = tmp_path / "bad.yaml"
+    path.write_bytes(body)
+    with pytest.raises(ConfigError) as caught:
+        _read(path)
+    with pytest.raises(UnicodeDecodeError) as decode_error:
+        body.decode("utf-16")
+    offset = decode_error.value.start
+    assert f"{path} is not valid UTF-16 (byte offset {offset})" in str(caught.value)
+    assert MARK.decode() not in str(caught.value)
+    _assert_no_content(caught.value)

@@ -64,7 +64,9 @@ def test_a_refused_mode_stops_the_deploy_before_anything_is_written(
         _deploy(source, targets=["user"], **kwargs)
     for fragment in fragments:
         assert fragment in str(caught.value)
-    assert not _destination(sandbox, "user").exists()
+    destination = _destination(sandbox, "user")
+    assert not destination.exists()
+    assert not destination.parent.exists()
 
 
 @os_agnostic
