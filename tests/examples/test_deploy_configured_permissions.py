@@ -416,6 +416,23 @@ def test_a_huge_permission_override_is_refused_with_a_bounded_message_not_a_bare
 
 
 @os_agnostic
+def test_a_4000_digit_permission_override_is_refused_with_a_bounded_message(
+    sandbox: LayeredSandbox, source: Path
+) -> None:
+    """4000 digits sits under CPython's default 4300-digit int-to-str conversion limit, so the
+    old sys.get_int_max_str_digits()-based decision stringified it in full instead of bounding
+    the message."""
+    huge = 10**4000
+    with pytest.raises(DeployPermissionsError) as caught:
+        _deploy(source, permission_overrides={"user_file": huge})
+    (line,) = str(caught.value).splitlines()
+    assert len(line) < 400
+    assert line.startswith(f"{SECTION_KEY}.user_file: a bare integer is read as decimal (<int, ")
+    assert line.endswith("(source: override)")
+    assert not _user_destination(sandbox).exists()
+
+
+@os_agnostic
 def test_permission_overrides_with_a_permissions_object_are_refused(sandbox: LayeredSandbox, source: Path) -> None:
     with pytest.raises(DeployPermissionsError, match=r"^permission_overrides: cannot be combined with permissions"):
         _deploy(source, permissions=DeployPermissions.defaults(), permission_overrides={"user_file": "0o640"})

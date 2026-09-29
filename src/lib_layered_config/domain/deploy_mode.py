@@ -14,7 +14,6 @@ System Role:
 from __future__ import annotations
 
 import re
-import sys
 from dataclasses import dataclass
 from enum import Enum
 from typing import Final
@@ -46,6 +45,10 @@ _WORLD_WRITE: Final[int] = 0o002
 _ANY_EXECUTE: Final[int] = 0o111
 _OWNER_DIRECTORY: Final[int] = 0o700
 _OWNER_FILE: Final[int] = 0o600
+#: A safe mode fits in a handful of octal digits; 64 bits (about 20 decimal digits) is generous
+#: headroom while staying far below any CPython int-to-str conversion limit, so the decision does
+#: not depend on `sys.get_int_max_str_digits` or `PYTHONINTMAXSTRDIGITS` at all.
+_MAX_SAFE_BITS: Final[int] = 64
 
 
 class ModeKind(Enum):
@@ -56,21 +59,24 @@ class ModeKind(Enum):
 
 
 class DeployModeError(ValidationError):
-    """A permission mode was refused; the message names the reason or every offending bit."""
+    """A permission setting was refused; the message names the reason or every offending bit.
+
+    Raised for an unsafe or malformed mode itself, and also for a caller-built ``LayerModes`` or
+    ``DeployPermissions`` whose field does not match its declared type (a non-``DeployMode``
+    directory/file, a non-``LayerModes`` layer, or a non-``bool`` ``enabled``).
+    """
 
 
 def _int_is_safe_to_stringify(value: int) -> bool:
-    """Return whether ``str()``/``repr()``/``oct()`` can convert *value* without raising.
+    """Return whether *value* is small enough to format as decimal/octal text.
 
-    CPython bounds int-to-str conversion (`sys.get_int_max_str_digits`, 4300 by default, 640 the
-    lowest a caller can configure) and raises a bare ``ValueError`` past it. ``bit_length()`` is
-    cheap and never performs that conversion, so it is safe to call on a hostile value first.
+    This is decided purely from ``bit_length()``, which never converts the value to a string, so
+    it cannot raise: a huge int is never handed to ``str()``/``repr()``/``oct()`` to find out.
+    Deciding by size also keeps the bound independent of the interpreter's own int-to-str
+    conversion limit (`sys.get_int_max_str_digits` / `PYTHONINTMAXSTRDIGITS`, 4300 digits by
+    default) - that limit only prevents a crash, not a multi-thousand-character message.
     """
-    limit = sys.get_int_max_str_digits()
-    if limit == 0:  # the conversion limit is disabled
-        return True
-    approx_decimal_digits = value.bit_length() * 0.30103 + 1  # log10(2), rounded up by the +1
-    return approx_decimal_digits < limit
+    return value.bit_length() <= _MAX_SAFE_BITS
 
 
 def brief_repr(value: object, limit: int = 40) -> str:
