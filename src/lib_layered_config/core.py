@@ -97,9 +97,30 @@ def read_config(
         ValueError: When profile name is invalid (too long, path traversal, etc.).
 
     Examples:
+        >>> import os
         >>> from tempfile import TemporaryDirectory
         >>> with TemporaryDirectory() as tmp:
-        ...     config = read_config(vendor="Acme", app="Demo", slug="demo", start_dir=tmp)
+        ...     old_etc = os.environ.get("LIB_LAYERED_CONFIG_ETC")
+        ...     old_xdg = os.environ.get("XDG_CONFIG_HOME")
+        ...     os.environ["LIB_LAYERED_CONFIG_ETC"] = tmp
+        ...     os.environ["XDG_CONFIG_HOME"] = tmp
+        ...     try:
+        ...         config = read_config(
+        ...             vendor="Acme",
+        ...             app="Demo",
+        ...             slug="core-doctest-read-config",
+        ...             start_dir=tmp,
+        ...             dotenv_path=str(Path(tmp) / "missing.env"),
+        ...         )
+        ...     finally:
+        ...         if old_etc is None:
+        ...             del os.environ["LIB_LAYERED_CONFIG_ETC"]
+        ...         else:
+        ...             os.environ["LIB_LAYERED_CONFIG_ETC"] = old_etc
+        ...         if old_xdg is None:
+        ...             del os.environ["XDG_CONFIG_HOME"]
+        ...         else:
+        ...             os.environ["XDG_CONFIG_HOME"] = old_xdg
         >>> isinstance(config, Config)
         True
     """
@@ -347,8 +368,8 @@ def _stringify_path(value: str | Path | None) -> str | None:
         Stringified path or ``None`` when *value* is ``None``.
 
     Examples:
-        >>> Path(_stringify_path(Path('config.toml'))) == Path('config.toml')
-        True
+        >>> _stringify_path(Path('config.toml'))
+        'config.toml'
         >>> _stringify_path(None) is None
         True
     """
