@@ -216,6 +216,26 @@ def _load_yaml_module() -> ModuleType | None:
     return yaml
 
 
+def ensure_within_size_cap(path: str, size: int) -> None:
+    """Raise :class:`InvalidFormatError` when *size* exceeds :data:`MAX_CONFIG_FILE_BYTES`.
+
+    Shared by every adapter that reads a whole configuration file into memory (the
+    structured file loaders below, and the dotenv adapter) so the cap, its check order
+    (called before the file content is read), and the refusal message stay in one place.
+
+    Args:
+        path: File path being sized, used only for the error message.
+        size: The file's size in bytes, as reported by ``stat()`` before any read.
+
+    Raises:
+        InvalidFormatError: When *size* is greater than :data:`MAX_CONFIG_FILE_BYTES`.
+    """
+    if size > MAX_CONFIG_FILE_BYTES:
+        raise InvalidFormatError(
+            f"Configuration file {path} is {size} bytes, exceeding the {MAX_CONFIG_FILE_BYTES}-byte limit"
+        )
+
+
 class BaseFileLoader:
     """Common utilities shared by the structured file loaders.
 
@@ -252,11 +272,7 @@ class BaseFileLoader:
         file_path = Path(path)
         if not file_path.is_file():
             raise NotFoundError(f"Configuration file not found: {path}")
-        size = file_path.stat().st_size
-        if size > MAX_CONFIG_FILE_BYTES:
-            raise InvalidFormatError(
-                f"Configuration file {path} is {size} bytes, exceeding the {MAX_CONFIG_FILE_BYTES}-byte limit"
-            )
+        ensure_within_size_cap(path, file_path.stat().st_size)
         payload = file_path.read_bytes()
         _log_file_read(path, len(payload))
         return payload

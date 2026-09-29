@@ -28,6 +28,7 @@ from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
 from .._text_decoding import decode_utf8
 from .._value_coercion import parse_json_container
+from ..file_loaders.structured import ensure_within_size_cap
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -118,8 +119,16 @@ def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
 
 
 def _parse_dotenv(path: Path) -> Mapping[str, object]:
-    """Parse dotenv file into nested dict. Raises InvalidFormatError on malformed lines or bytes."""
+    """Parse dotenv file into nested dict.
+
+    Raises:
+        InvalidFormatError: On malformed lines or bytes, or when the file is larger than
+            :data:`~lib_layered_config.adapters.file_loaders.structured.MAX_CONFIG_FILE_BYTES`
+            (checked before the file is read, the same cap and refusal shape structured
+            configuration files use).
+    """
     result: dict[str, object] = {}
+    ensure_within_size_cap(str(path), path.stat().st_size)
     text = decode_utf8(path.read_bytes(), path=path)
     # StringIO with newline=None keeps the universal-newline line splitting the text-mode open() had.
     for line_number, raw_line in enumerate(io.StringIO(text, newline=None), start=1):
