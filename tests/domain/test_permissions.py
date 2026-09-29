@@ -24,7 +24,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 # The two setters are deprecated; the tests below still pin what they do until they are removed.
-pytestmark = pytest.mark.filterwarnings("ignore:(set_permissions|set_custom_permissions) is deprecated:DeprecationWarning")
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:(set_permissions|set_custom_permissions) is deprecated:DeprecationWarning"
+)
 
 # ---------------------------------------------------------------------------
 # Permission constant values

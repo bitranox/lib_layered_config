@@ -70,7 +70,10 @@ def apply_mode(path: Path, mode: DeployMode) -> None:
 
 def _deprecation(name: str) -> str:
     """Return the deprecation message for the setter *name*, naming its replacement."""
-    return f"{name} is deprecated and will be removed in a future major version; use apply_mode(path, DeployMode(mode, kind))"
+    return (
+        f"{name} is deprecated and will be removed in a future major version; "
+        "use apply_mode(path, DeployMode(mode, kind))"
+    )
 
 
 def set_permissions(path: Path, layer: str, *, is_dir: bool = False) -> None:
