@@ -65,10 +65,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   decimal, the TOML literal `0o640` also arrives as an integer, and so does `--set ...user_file=640`. `enabled`
   must be a boolean; an unknown key is refused, its name shown shortened. Each problem is one line
   `<dotted key>: <reason> (source: <file, layer or override>)` in a `DeployPermissionsError`.
-- **A malformed deployed source file now blocks deploy.** When the permission settings cannot be read, or the
-  section is invalid, `deploy_config` refuses with a `DeployPermissionsError` naming the file and reason
-  instead of falling back to the built-in modes - for example, when the deployed source (the defaults layer)
-  cannot be decoded or parsed and a configured value could otherwise change the outcome. This does not apply
+- **An explicit `dir_mode`/`file_mode` (or `set_custom_permissions`) is now checked, with no opt-out.** Before,
+  any integer was accepted and applied as-is; now the same safety rule above applies to it too (`DeployModeError`
+  refuses group or world write, a setuid/setgid/sticky bit, a directory without owner `rwx`, or a file with an
+  execute bit or without owner `rw`). There is no override for an explicit mode. `dir_mode=-1` used to leave the
+  directory at `0o7777`, and the decimal integer `444` (meant as octal) used to apply `0o674` to a file that can
+  hold credentials. `set_custom_permissions` now validates on every platform, including Windows, where an unsafe
+  mode used to be silently accepted and simply never applied.
+- **`deploy_config` now reads the configuration and refuses when it cannot.** Any unreadable or broken
+  non-destination app/host/user file (a decode or parse failure, a `PermissionError` reading it, or an
+  environment scalar/table collision) blocks a default POSIX deploy with a `DeployPermissionsError` naming the
+  file and reason, instead of falling back to the built-in modes. This does not apply
   when both `dir_mode` and `file_mode` are given, when `set_permissions=False`, when a complete `permissions=`
   object is passed (the configuration is never read), or on Windows (modes are not applied there).
 - An unknown `targets` entry is refused before anything is written; it used to fail after the targets before it
@@ -81,10 +88,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the environment. A quoted value stays the literal text, and scalars in `.env` stay strings.
 - **Exception type change:** a `.env` that is not valid UTF-8 raised `UnicodeDecodeError` (a `ValueError`); it
   now raises `InvalidFormatError`, surfacing from `read_config` as `LayerLoadError`, which is a `ConfigError`
-  and NOT a `ValueError`. TOML/JSON/YAML parse errors now read `<path> is not valid <FORMAT>`, plus ` (line N,
-  column M)` when a position is known; an undecodable file reads `<path> is not valid UTF-8 (line N, byte
-  offset M)`, or for a BOM-marked YAML file `<path> is not valid UTF-16|UTF-32 (byte offset M)`. The `.env`
-  malformed-line message (`Malformed line N in <path>`) is unchanged.
+  and NOT a `ValueError`. TOML/JSON/YAML parse errors used to read `Invalid <FORMAT> in <path>: <parser text>`
+  (the `<parser text>` came straight from the parser and could echo the offending source line); they now read
+  `<path> is not valid <FORMAT>`, plus ` (line N, column M)` when a position is known; an undecodable file reads
+  `<path> is not valid UTF-8 (line N, byte offset M)`, or for a BOM-marked YAML file `<path> is not valid
+  UTF-16|UTF-32 (byte offset M)`. The `.env` malformed-line message (`Malformed line N in <path>`) is unchanged.
 
 Migration: write configured modes as quoted strings (`user_file = "0o640"`; in the environment
 `<PREFIX>___LIB_LAYERED_CONFIG__DEFAULT_PERMISSIONS__USER_FILE=0o640`, since a bare `640` there is a number,
@@ -92,6 +100,10 @@ while `0640` now stays the string "0640" and is read as 0o640). A broken file at
 blocks `deploy --force`; a broken file elsewhere does, and then give both mode options (`--no-permissions` also
 works but leaves the modes to the umask). Code that caught `ValueError` for an undecodable `.env` catches
 `ConfigError`. Code that relied on the environment turning `0640`-style text into a number converts it itself.
+A caller that passed an explicit `dir_mode`, `file_mode` or a mode to `set_custom_permissions` with group or
+world write, a special bit, or (for a file) an execute bit must pick a safe mode instead; there is no flag to
+keep the old permissive behaviour. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
+<parser text>`) must match the new one instead (see the exception-type-change bullet above).
 
 ## [5.7.0] 2026-09-27 21:56:37
 

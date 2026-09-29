@@ -1484,7 +1484,9 @@ Exported from the package root, used to configure or override `deploy_config`'s 
 - `DeployPermissions`: Directory and file modes per deployment layer, plus whether to set them at all;
   `.defaults()` returns the built-in layer modes, `.for_layer(layer)` returns one layer's `LayerModes`.
 - `deploy_permissions_from_config`: Reads `[lib_layered_config.default_permissions]` from a merged
-  configuration, with an `overrides=` mapping laid over the configured values for runtime overrides.
+  configuration, with an `overrides=` mapping laid over the configured values for building a
+  `DeployPermissions` yourself. For `deploy_config` itself, pass runtime overrides through its own
+  `permission_overrides=` parameter instead - see "Deploy configuration files" above.
 - `DeployModeError`: A permission mode was refused; the message names the reason or every offending bit.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
   per bad value, and `.hint` (optional) suggests a way to deploy anyway.
