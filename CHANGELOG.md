@@ -6,6 +6,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Deprecated
+
+- **`lib_layered_config.domain.permissions.set_permissions` and `set_custom_permissions`** emit a
+  `DeprecationWarning`: nothing in the library calls them since `deploy_config` decides modes from
+  `DeployPermissions`. Use `apply_mode(path, DeployMode(mode, kind))`; they are removed in the next major version.
+
+### Documentation
+
+- **A root `deploy --target app` with the invoking account's `HOME` or environment** reads that account's
+  `app_*`/`host_*` settings, which can widen the read access of the files it writes (never write or execute).
+  The File Permissions section of the CLI reference says so and names the two ways to avoid it.
+- **`DeployModeError`** lists the refusal of a `dir_mode`/`file_mode` given together with `set_permissions=False`.
+
 ## [6.0.0] 2026-09-29 11:13:07
 
 ### Added
