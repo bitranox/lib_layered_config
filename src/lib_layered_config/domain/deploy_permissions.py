@@ -61,7 +61,18 @@ class LayerModes:
     file: DeployMode
 
     def __post_init__(self) -> None:
-        """Refuse a pair whose kinds are swapped; a directory mode on a file is a different rule."""
+        """Refuse a field that is not a DeployMode, or a pair whose kinds are swapped.
+
+        A caller outside the type checker can build one directly (it is exported from the
+        package root), so the declared field types are checked here too, not only by the type
+        checker.
+        """
+        # type(x) is not DeployMode, not isinstance: the field is statically typed DeployMode
+        # already, so a caller outside the type checker is exactly the case being guarded.
+        if type(self.directory) is not DeployMode:
+            raise DeployModeError(f"directory must be a DeployMode, got {type(self.directory).__name__}")
+        if type(self.file) is not DeployMode:
+            raise DeployModeError(f"file must be a DeployMode, got {type(self.file).__name__}")
         if self.directory.kind is not ModeKind.DIRECTORY or self.file.kind is not ModeKind.FILE:
             raise DeployModeError("LayerModes needs a directory mode and a file mode, in that order")
 
@@ -126,6 +137,15 @@ class DeployPermissions:
     host: LayerModes
     user: LayerModes
     enabled: bool = True
+
+    def __post_init__(self) -> None:
+        """Refuse a field that does not match its declared type, for a caller-built instance too."""
+        for name in ("app", "host", "user"):
+            value = getattr(self, name)
+            if not isinstance(value, LayerModes):
+                raise DeployModeError(f"{name} must be a LayerModes, got {type(value).__name__}")
+        if type(self.enabled) is not bool:
+            raise DeployModeError(f"enabled must be a bool, got {type(self.enabled).__name__}")
 
     @classmethod
     def defaults(cls) -> DeployPermissions:

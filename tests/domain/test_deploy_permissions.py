@@ -147,6 +147,36 @@ def test_layer_modes_refuses_swapped_kinds() -> None:
         LayerModes(directory=file_mode, file=dir_mode)
 
 
+@os_agnostic
+def test_layer_modes_refuses_a_directory_field_that_is_not_a_deploy_mode() -> None:
+    file_mode = DeployMode.from_text("0o644", ModeKind.FILE)
+    with pytest.raises(DeployModeError, match="directory must be a DeployMode, got str"):
+        LayerModes(directory="0o755", file=file_mode)  # type: ignore[arg-type]
+
+
+@os_agnostic
+def test_layer_modes_refuses_a_file_field_that_is_not_a_deploy_mode() -> None:
+    dir_mode = DeployMode.from_text("0o755", ModeKind.DIRECTORY)
+    with pytest.raises(DeployModeError, match="file must be a DeployMode, got NoneType"):
+        LayerModes(directory=dir_mode, file=None)  # type: ignore[arg-type]
+
+
+@os_agnostic
+def test_deploy_permissions_refuses_a_layer_field_that_is_not_layer_modes() -> None:
+    defaults = DeployPermissions.defaults()
+    with pytest.raises(DeployModeError, match="app must be a LayerModes, got str"):
+        DeployPermissions(app="oops", host=defaults.host, user=defaults.user)  # type: ignore[arg-type]
+
+
+@os_agnostic
+def test_deploy_permissions_refuses_a_non_bool_enabled() -> None:
+    defaults = DeployPermissions.defaults()
+    with pytest.raises(DeployModeError, match="enabled must be a bool, got str"):
+        DeployPermissions(
+            app=defaults.app, host=defaults.host, user=defaults.user, enabled="false"  # type: ignore[arg-type]
+        )
+
+
 def _via_reduce(error: DeployPermissionsError) -> DeployPermissionsError:
     """Rebuild *error* the way pickle does, from its reduce tuple (pickle.loads itself trips ruff S301)."""
     reduced = error.__reduce_ex__(5)
