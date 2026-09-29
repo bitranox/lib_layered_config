@@ -158,7 +158,9 @@ def test_dotenv_loader_explicit_path_missing_returns_empty(tmp_path: Path) -> No
 def test_dotenv_loader_rejects_file_over_size_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(structured_module, "MAX_CONFIG_FILE_BYTES", 20)
     env_file = tmp_path / ".env"
-    env_file.write_text("A=1\n" + "#" * 30, encoding="utf-8")
+    # Bytes, not text: write_text turns "\n" into "\r\n" on Windows, which changes the size.
+    env_file.write_bytes(b"A=1\n" + b"#" * 17)
+    assert env_file.stat().st_size == 21
     loader = DefaultDotEnvLoader()
     with pytest.raises(InvalidFormatError):
         loader.load(str(tmp_path))
@@ -168,11 +170,11 @@ def test_dotenv_loader_rejects_file_over_size_cap(tmp_path: Path, monkeypatch: p
 def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cap = 20
     monkeypatch.setattr(structured_module, "MAX_CONFIG_FILE_BYTES", cap)
-    prefix = "A=1\n"
-    content = prefix + "#" * (cap - len(prefix))
-    assert len(content) == cap
+    prefix = b"A=1\n"
     env_file = tmp_path / ".env"
-    env_file.write_text(content, encoding="utf-8")
+    # Bytes, not text: write_text turns "\n" into "\r\n" on Windows, which changes the size.
+    env_file.write_bytes(prefix + b"#" * (cap - len(prefix)))
+    assert env_file.stat().st_size == cap
     loader = DefaultDotEnvLoader()
     data = loader.load(str(tmp_path))
     assert data["a"] == "1"
