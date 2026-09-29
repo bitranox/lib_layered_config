@@ -190,7 +190,8 @@ def test_dotenv_loader_explicit_path_directory_warns_and_returns_empty(
     assert data == {}
     assert loader.last_loaded_path is None
     assert any(
-        record.message == "config_directory_skipped" and str(directory) in repr(vars(record))
+        record.message == "config_directory_skipped"
+        and record.__dict__.get("context", {}).get("path") == str(directory)
         for record in caplog.records
     )
 

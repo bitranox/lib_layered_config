@@ -222,7 +222,8 @@ def test_expand_dot_d_warns_and_skips_when_base_path_is_a_directory(
 
     assert result == []
     assert any(
-        record.message == "config_directory_skipped" and str(base) in repr(vars(record)) for record in caplog.records
+        record.message == "config_directory_skipped" and record.__dict__.get("context", {}).get("path") == str(base)
+        for record in caplog.records
     )
 
 
