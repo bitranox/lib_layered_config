@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.0.0] 2026-09-29 11:13:07
+
 ### Added
 
 - **`deploy_config(permission_overrides=...)` for runtime overrides** (such as a `--set` option): keys are
