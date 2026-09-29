@@ -67,12 +67,15 @@ class LayerModes:
         package root), so the declared field types are checked here too, not only by the type
         checker.
         """
-        # type(x) is not DeployMode, not isinstance: the field is statically typed DeployMode
-        # already, so a caller outside the type checker is exactly the case being guarded.
-        if type(self.directory) is not DeployMode:
-            raise DeployModeError(f"directory must be a DeployMode, got {type(self.directory).__name__}")
-        if type(self.file) is not DeployMode:
-            raise DeployModeError(f"file must be a DeployMode, got {type(self.file).__name__}")
+        # A field access is statically typed DeployMode already, so a direct `isinstance` on it
+        # is flagged reportUnnecessaryIsInstance under pyright strict. Reading it back through
+        # `getattr` (as DeployPermissions.__post_init__ below already does for its own fields)
+        # defeats that static narrowing, so `isinstance` is meaningful again - and, unlike
+        # `type(x) is not DeployMode`, accepts a DeployMode subclass.
+        for name in ("directory", "file"):
+            value = getattr(self, name)
+            if not isinstance(value, DeployMode):
+                raise DeployModeError(f"{name} must be a DeployMode, got {type(value).__name__}")
         if self.directory.kind is not ModeKind.DIRECTORY or self.file.kind is not ModeKind.FILE:
             raise DeployModeError("LayerModes needs a directory mode and a file mode, in that order")
 

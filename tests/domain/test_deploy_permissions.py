@@ -162,6 +162,22 @@ def test_layer_modes_refuses_a_file_field_that_is_not_a_deploy_mode() -> None:
 
 
 @os_agnostic
+def test_layer_modes_accepts_a_deploy_mode_subclass() -> None:
+    """G8: the field check uses isinstance, not type(x) is not DeployMode, so a DeployMode
+    subclass (which still satisfies every safety rule DeployMode.__post_init__ enforces) is
+    accepted rather than refused."""
+
+    class DeployModeSubclass(DeployMode):
+        pass
+
+    dir_mode = DeployModeSubclass(0o755, ModeKind.DIRECTORY)
+    file_mode = DeployModeSubclass(0o644, ModeKind.FILE)
+    layer = LayerModes(directory=dir_mode, file=file_mode)
+    assert layer.directory is dir_mode
+    assert layer.file is file_mode
+
+
+@os_agnostic
 def test_deploy_permissions_refuses_a_layer_field_that_is_not_layer_modes() -> None:
     defaults = DeployPermissions.defaults()
     with pytest.raises(DeployModeError, match="app must be a LayerModes, got str"):
