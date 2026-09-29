@@ -450,7 +450,10 @@ def _parse_yaml_text(document: str, module: ModuleType, path: str) -> object:
         Parsed document; an empty dict when the YAML payload evaluates to ``None``.
 
     Raises:
-        InvalidFormatError: When PyYAML raises ``YAMLError`` while parsing the document.
+        InvalidFormatError: When PyYAML raises ``YAMLError`` while parsing the document, or when a
+            constructor it calls raises a bare ``ValueError`` (e.g. an out-of-range calendar date
+            such as ``2020-13-01``) or ``RecursionError`` (a deeply nested document); neither is a
+            ``YAMLError`` subclass, so both are caught separately, with no reported position.
 
     Examples:
         >>> from types import SimpleNamespace
@@ -465,6 +468,8 @@ def _parse_yaml_text(document: str, module: ModuleType, path: str) -> object:
         parsed = module.safe_load(document)
     except module.YAMLError as exc:  # type: ignore[attr-defined]
         failed, failed_at = True, _yaml_position(exc)
+    except (ValueError, RecursionError):
+        failed = True
     if failed:
         raise _invalid_format(path, "yaml", failed_at)
     return {} if parsed is None else parsed

@@ -117,6 +117,59 @@ def test_yaml_parser_wraps_yaml_errors_with_context(monkeypatch: pytest.MonkeyPa
     assert "memory.yaml" in str(exc.value)
 
 
+@os_agnostic
+def test_yaml_parser_wraps_a_bare_value_error_as_invalid_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A construction error (e.g. an out-of-range calendar date) raises plain ``ValueError``,
+    not the module's ``YAMLError``; it must still surface as ``InvalidFormatError`` naming the
+    file, never the parser's own message."""
+
+    class YAMLError(Exception):
+        pass
+
+    def explode(_: bytes) -> None:
+        raise ValueError("month must be in 1..12, not 13")
+
+    fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=YAMLError)
+    with pytest.raises(InvalidFormatError) as exc:
+        structured_module._parse_yaml_text("a: 2020-13-01", fake_yaml, "memory.yaml")
+    message = str(exc.value)
+    assert message == "memory.yaml is not valid YAML"
+    assert "13" not in message
+    assert "month" not in message
+    assert exc.value.__cause__ is None
+    assert exc.value.__context__ is None
+
+
+@os_agnostic
+def test_yaml_parser_wraps_a_recursion_error_as_invalid_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    class YAMLError(Exception):
+        pass
+
+    def explode(_: bytes) -> None:
+        raise RecursionError("maximum recursion depth exceeded")
+
+    fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=YAMLError)
+    with pytest.raises(InvalidFormatError) as exc:
+        structured_module._parse_yaml_text("[[[[[[", fake_yaml, "memory.yaml")
+    assert str(exc.value) == "memory.yaml is not valid YAML"
+
+
+@pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML not available")
+@os_agnostic
+def test_yaml_loader_refuses_an_out_of_range_calendar_date_without_leaking_the_construction_error(
+    tmp_path: Path,
+) -> None:
+    """PyYAML's own timestamp constructor raises a bare ``ValueError`` (never ``YAMLError``) for
+    ``2020-13-01``; the loader must still refuse it as ``InvalidFormatError`` naming the file."""
+    path = _write(tmp_path / "config.yaml", "a: 2020-13-01\n")
+    with pytest.raises(InvalidFormatError) as exc:
+        YAMLFileLoader().load(str(path))
+    message = str(exc.value)
+    assert str(path) in message
+    assert "month" not in message
+    assert "13" not in message
+
+
 def _write(path: Path, text: str, *, encoding: str = "utf-8") -> Path:
     """Write text to *path* and return the path so the call reads like a sentence."""
 
