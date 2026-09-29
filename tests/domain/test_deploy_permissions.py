@@ -173,7 +173,10 @@ def test_deploy_permissions_refuses_a_non_bool_enabled() -> None:
     defaults = DeployPermissions.defaults()
     with pytest.raises(DeployModeError, match="enabled must be a bool, got str"):
         DeployPermissions(
-            app=defaults.app, host=defaults.host, user=defaults.user, enabled="false"  # type: ignore[arg-type]
+            app=defaults.app,
+            host=defaults.host,
+            user=defaults.user,
+            enabled="false",  # type: ignore[arg-type]
         )
 
 
