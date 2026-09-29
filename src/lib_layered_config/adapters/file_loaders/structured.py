@@ -372,10 +372,9 @@ class BaseFileLoader:
         """
         if not isinstance(data, Mapping):
             raise InvalidFormatError(f"File {path} did not produce a mapping")
-        # A parsed TOML/JSON/YAML document uses only string keys by construction (each format's
-        # object/mapping syntax requires a quoted or bare string key); the isinstance check above
-        # proves the runtime type is Mapping, so this narrows the still-unparameterized generic
-        # rather than asserting anything the check did not.
+        # The isinstance check proves a Mapping and nothing about its keys. TOML and JSON keys are
+        # always strings; YAML can produce int or bool keys (`1:`, `true:`), which are not checked
+        # here and pass through as they are. The cast states the declared type, not a checked one.
         return cast("Mapping[str, object]", data)
 
 
