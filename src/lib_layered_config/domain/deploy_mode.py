@@ -65,7 +65,9 @@ class DeployModeError(ValidationError):
     ``DeployPermissions`` whose field does not match its declared type (a non-``DeployMode``
     directory/file, a non-``LayerModes`` layer, or a non-``bool`` ``enabled``), or whose
     ``LayerModes`` swaps a directory mode and a file mode (``LayerModes`` needs a directory mode
-    and a file mode, in that order).
+    and a file mode, in that order). ``deploy_config`` also raises it for a ``dir_mode`` or
+    ``file_mode`` given together with ``set_permissions=False``, since a mode cannot be applied
+    while permission setting is off.
     """
 
 
