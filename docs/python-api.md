@@ -1487,7 +1487,7 @@ Exported from the package root, used to configure or override `deploy_config`'s 
   configuration, with an `overrides=` mapping laid over the configured values for building a
   `DeployPermissions` yourself. For `deploy_config` itself, pass runtime overrides through its own
   `permission_overrides=` parameter instead - see the `deploy_config` section above.
-- `DeployModeError`: A permission mode was refused; the message names the reason or every offending bit.
+- `DeployModeError`: A permission setting was refused; the message names the reason or every offending bit.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
   per bad value, and `.hint` (optional) suggests a way to deploy anyway.
 - `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.

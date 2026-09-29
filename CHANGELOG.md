@@ -95,14 +95,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   UTF-16|UTF-32 (byte offset M)`. The `.env` malformed-line message (`Malformed line N in <path>`) is unchanged.
   A YAML value that PyYAML's own constructor refuses (for example `a: 2020-13-01`, an out-of-range calendar
   date) used to raise a bare `ValueError` straight out of `read_config`; it now raises `InvalidFormatError`,
-  surfacing as `LayerLoadError`, a `ConfigError` and NOT a `ValueError`.
+  surfacing as `LayerLoadError`, a `ConfigError` and NOT a `ValueError`. A deeply nested YAML document that made
+  PyYAML raise a bare `RecursionError` is handled the same way, now raising `InvalidFormatError` /
+  `LayerLoadError` instead of `RecursionError`.
 
 Migration: write configured modes as quoted strings (`user_file = "0o640"`; in the environment
 `<PREFIX>___LIB_LAYERED_CONFIG__DEFAULT_PERMISSIONS__USER_FILE=0o640`, since a bare `640` there is a number,
 while `0640` now stays the string "0640" and is read as 0o640). A broken file at the destination no longer
 blocks `deploy --force`; a broken file elsewhere does, and then give both mode options (`--no-permissions` also
 works but leaves the modes to the umask). Code that caught `ValueError` for an undecodable `.env` or for a
-YAML constructor error (an out-of-range date and the like) catches `ConfigError` instead. Code that relied on
+YAML constructor error (an out-of-range date and the like) or `RecursionError` for a deeply nested YAML document
+catches `ConfigError` instead. Code that relied on
 the environment turning `0640`-style text into a number converts it itself.
 A caller that passed an explicit `dir_mode`, `file_mode` or a mode to `set_custom_permissions` with group or
 world write, a special bit, or (for a file) an execute bit must pick a safe mode instead; there is no flag to

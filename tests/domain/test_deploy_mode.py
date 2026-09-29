@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
+import sys
+
 import pytest
 
+from lib_layered_config.domain import deploy_mode as module
 from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, ModeKind, parse_mode_text
 from lib_layered_config.domain.errors import ConfigError
 from lib_layered_config.domain.permissions import LAYER_PERMISSIONS
@@ -203,11 +208,6 @@ def test_a_4000_digit_config_integer_is_refused_with_a_bounded_message() -> None
 def test_deploy_mode_module_does_not_import_sys() -> None:
     """G1: the digit-limit decision must not depend on the interpreter's int-to-str conversion
     limit at all, so the module must not even import sys."""
-    import ast
-    import inspect
-
-    from lib_layered_config.domain import deploy_mode as module
-
     tree = ast.parse(inspect.getsource(module))
     imported_names = {
         alias.asname or alias.name
@@ -222,8 +222,6 @@ def test_deploy_mode_module_does_not_import_sys() -> None:
 def test_a_huge_int_is_still_bounded_with_get_int_max_str_digits_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prove the behaviour does not depend on sys.get_int_max_str_digits by removing it outright
     (a legitimate external-edge patch: the attribute itself, not this module's internals)."""
-    import sys
-
     monkeypatch.delattr(sys, "get_int_max_str_digits", raising=True)
     huge = 10**5000
     with pytest.raises(DeployModeError) as caught:
@@ -238,8 +236,6 @@ def test_messages_stay_bounded_with_the_digit_limit_disabled() -> None:
     """PYTHONINTMAXSTRDIGITS=0 semantics: with the conversion limit disabled, the old
     sys-based decision treated every int as "safe" and stringified it in full. The
     bit_length()-based decision must still bound the message."""
-    import sys
-
     original_limit = sys.get_int_max_str_digits()
     sys.set_int_max_str_digits(0)
     try:

@@ -63,7 +63,9 @@ class DeployModeError(ValidationError):
 
     Raised for an unsafe or malformed mode itself, and also for a caller-built ``LayerModes`` or
     ``DeployPermissions`` whose field does not match its declared type (a non-``DeployMode``
-    directory/file, a non-``LayerModes`` layer, or a non-``bool`` ``enabled``).
+    directory/file, a non-``LayerModes`` layer, or a non-``bool`` ``enabled``), or whose
+    ``LayerModes`` swaps a directory mode and a file mode (``LayerModes`` needs a directory mode
+    and a file mode, in that order).
     """
 
 
@@ -82,15 +84,18 @@ def _int_is_safe_to_stringify(value: int) -> bool:
 def brief_repr(value: object, limit: int = 40) -> str:
     """Return ``repr(value)``, shortened to *limit* characters so a hostile value cannot flood a message.
 
-    A huge ``int`` (thousands of digits) is never passed to ``repr()``: converting it to decimal is
-    what raises the bare ``ValueError`` this function exists to avoid, so its bit length is reported
-    instead.
+    An ``int`` wider than ``_MAX_SAFE_BITS`` (64 bits) is never passed to ``repr()``: its bit length
+    is reported instead. This is not only to dodge the interpreter's int-to-str digit limit - the
+    64-bit threshold is far below that limit and rejects plenty of ints ``repr()`` could format
+    without raising; it also keeps the message itself short and independent of interpreter settings.
 
     Examples:
         >>> brief_repr("abc")
         "'abc'"
         >>> len(brief_repr("x" * 500))
         40
+        >>> brief_repr(2**64)
+        '<int, 65 bits>'
         >>> brief_repr(10**5000)
         '<int, 16610 bits>'
     """
