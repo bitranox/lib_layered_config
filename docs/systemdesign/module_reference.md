@@ -50,15 +50,15 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 
 ### domain/ - pure business logic (no I/O)
 
-| Module                  | Responsibility                                                                                                                                                                            |
-|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `config.py`             | Immutable `Config` value object: dotted-path `get`/`__getitem__`, `origin` provenance lookup, `as_dict`/`to_json` (optional redaction); `SourceInfo`.                                     |
-| `errors.py`             | Exception taxonomy: `ConfigError` base, `InvalidFormatError`, `ValidationError` (subclasses `ConfigError` and `ValueError`), `NotFoundError`.                                             |
-| `identifiers.py`        | `Layer` enum and identifier/profile validation (path traversal, reserved names, control chars, non-ASCII, length); raises `ValidationError`.                                              |
-| `redaction.py`          | Secret masking: `is_sensitive` (password/token/apikey/`_key`/cookie/jwt/... patterns), `redact_mapping` (depth-guarded), `REDACTED_PLACEHOLDER`.                                          |
-| `permissions.py`        | Per-layer Unix permission policy: `LAYER_PERMISSIONS` (keyed by `Layer` values), `set_permissions` / `set_custom_permissions`, mode constants, `apply_mode` / `modes_apply`.              |
-| `deploy_mode.py`        | `DeployMode`/`ModeKind`/`DeployModeError`: the one rule for a safe deploy mode; `parse_mode_text`.                                                                                        |
-| `deploy_permissions.py` | `DeployPermissions`/`LayerModes`: per-layer modes and `enabled`, read from `[lib_layered_config.default_permissions]` in one pass with one-line problems, runtime overrides laid over it. |
+| Module                  | Responsibility                                                                                                                                                                              |
+|-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `config.py`             | Immutable `Config` value object: dotted-path `get`/`__getitem__`, `origin` provenance lookup, `as_dict`/`to_json` (optional redaction); `SourceInfo`.                                       |
+| `errors.py`             | Exception taxonomy: `ConfigError` base, `InvalidFormatError`, `ValidationError` (subclasses `ConfigError` and `ValueError`), `NotFoundError`.                                               |
+| `identifiers.py`        | `Layer` enum and identifier/profile validation (path traversal, reserved names, control chars, non-ASCII, length); raises `ValidationError`.                                                |
+| `redaction.py`          | Secret masking: `is_sensitive` (password/token/apikey/`_key`/cookie/jwt/... patterns), `redact_mapping` (depth-guarded), `REDACTED_PLACEHOLDER`.                                            |
+| `permissions.py`        | Per-layer Unix permission policy: `LAYER_PERMISSIONS` (keyed by `Layer` values), the deprecated `set_permissions` / `set_custom_permissions`, mode constants, `apply_mode` / `modes_apply`. |
+| `deploy_mode.py`        | `DeployMode`/`ModeKind`/`DeployModeError`: the one rule for a safe deploy mode; `parse_mode_text`.                                                                                          |
+| `deploy_permissions.py` | `DeployPermissions`/`LayerModes`: per-layer modes and `enabled`, read from `[lib_layered_config.default_permissions]` in one pass with one-line problems, runtime overrides laid over it.   |
 
 ### application/ - use cases and ports
 

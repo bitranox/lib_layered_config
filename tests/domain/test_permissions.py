@@ -23,6 +23,9 @@ from tests.support.os_markers import os_agnostic, posix_only
 if TYPE_CHECKING:
     from pathlib import Path
 
+# The two setters are deprecated; the tests below still pin what they do until they are removed.
+pytestmark = pytest.mark.filterwarnings("ignore:(set_permissions|set_custom_permissions) is deprecated:DeprecationWarning")
+
 # ---------------------------------------------------------------------------
 # Permission constant values
 # ---------------------------------------------------------------------------
@@ -280,3 +283,28 @@ class TestPublicApiExports:
         from lib_layered_config import DEFAULT_USER_FILE_MODE
 
         assert DEFAULT_USER_FILE_MODE == 0o600
+
+
+# ---------------------------------------------------------------------------
+# Deprecation of the two setters
+# ---------------------------------------------------------------------------
+
+
+@os_agnostic
+@pytest.mark.filterwarnings("default::DeprecationWarning")
+def test_set_permissions_warns_that_it_is_deprecated_and_names_the_replacement(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text("x")
+
+    with pytest.deprecated_call(match=r"set_permissions is deprecated.*apply_mode"):
+        set_permissions(target, "user", is_dir=False)
+
+
+@os_agnostic
+@pytest.mark.filterwarnings("default::DeprecationWarning")
+def test_set_custom_permissions_warns_that_it_is_deprecated_and_names_the_replacement(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text("x")
+
+    with pytest.deprecated_call(match=r"set_custom_permissions is deprecated.*apply_mode"):
+        set_custom_permissions(target, dir_mode=None, file_mode=0o600, is_dir=False)

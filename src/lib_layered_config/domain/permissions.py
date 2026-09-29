@@ -16,6 +16,7 @@ permission bits; a refused mode is refused on every platform.
 from __future__ import annotations
 
 import os
+import warnings
 from typing import TYPE_CHECKING
 
 from .deploy_mode import DeployMode, ModeKind
@@ -67,14 +68,24 @@ def apply_mode(path: Path, mode: DeployMode) -> None:
         path.chmod(mode.value)
 
 
+def _deprecation(name: str) -> str:
+    """Return the deprecation message for the setter *name*, naming its replacement."""
+    return f"{name} is deprecated and will be removed in a future major version; use apply_mode(path, DeployMode(mode, kind))"
+
+
 def set_permissions(path: Path, layer: str, *, is_dir: bool = False) -> None:
     """Set the built-in mode for *layer* (POSIX only).
+
+    Deprecated: nothing in the library calls it since ``deploy_config`` decides modes from
+    :class:`~lib_layered_config.domain.deploy_permissions.DeployPermissions`. Use
+    ``apply_mode(path, DeployMode(mode, kind))`` instead.
 
     Args:
         path: Path to set permissions on.
         layer: Target layer ("app", "host", or "user"); an unknown layer uses the app layer's.
         is_dir: True if path is a directory.
     """
+    warnings.warn(_deprecation("set_permissions"), DeprecationWarning, stacklevel=2)
     perms = LAYER_PERMISSIONS.get(layer, LAYER_PERMISSIONS[Layer.APP.value])
     kind = ModeKind.DIRECTORY if is_dir else ModeKind.FILE
     apply_mode(path, DeployMode(perms["dir"] if is_dir else perms["file"], kind))
@@ -89,6 +100,9 @@ def set_custom_permissions(
 ) -> None:
     """Set a caller-chosen mode (POSIX only); ``None`` skips.
 
+    Deprecated: nothing in the library calls it. Use ``apply_mode(path, DeployMode(mode, kind))``
+    instead, which refuses an unsafe mode the same way.
+
     Args:
         path: Path to set permissions on.
         dir_mode: Mode for directories (None = skip).
@@ -99,6 +113,7 @@ def set_custom_permissions(
         DeployModeError: The chosen mode is out of range or unsafe. Checked on every platform,
             before any ``chmod``.
     """
+    warnings.warn(_deprecation("set_custom_permissions"), DeprecationWarning, stacklevel=2)
     mode = dir_mode if is_dir else file_mode
     if mode is None:
         return
