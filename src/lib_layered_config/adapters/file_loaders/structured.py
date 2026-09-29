@@ -24,7 +24,7 @@ import re
 from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Final, cast
 
 import orjson
 import rtoml
@@ -35,6 +35,8 @@ from .._text_decoding import decode_utf8, decode_yaml_text
 from ._yaml_facade import as_yaml_module
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ._yaml_facade import YAMLModule
 
 #: Maximum size of a single configuration file. A config file is normally a few KB; this
@@ -95,8 +97,32 @@ def _log_file_invalid(path: str, format_name: str, message: str) -> None:
     log_error("config_file_invalid", layer=FILE_LAYER, path=path, format=format_name, error=message)
 
 
-def _invalid_format(path: str, format_name: str, position: tuple[int, int] | None) -> InvalidFormatError:
-    """Build (and log) the error for an unparsable file: path, format and, when known, line and column.
+def _build_invalid_format_message(path: str, format_name: str, position: tuple[int, int] | None) -> str:
+    """Build the caller-facing message: path, format and, when known, line and column.
+
+    Kept separate from logging and error construction so the text itself stays pinned by a
+    plain doctest.
+
+    Args:
+        path: File path being parsed.
+        format_name: Parser identifier (e.g. ``"toml"``).
+        position: 1-based (line, column), or ``None`` when the parser reported none.
+
+    Returns:
+        The message text.
+
+    Examples:
+        >>> print(_build_invalid_format_message("a.toml", "toml", (2, 5)))
+        a.toml is not valid TOML (line 2, column 5)
+        >>> print(_build_invalid_format_message("a.yaml", "yaml", None))
+        a.yaml is not valid YAML
+    """
+    where = f" (line {position[0]}, column {position[1]})" if position is not None else ""
+    return f"{path} is not valid {format_name.upper()}{where}"
+
+
+def _log_and_build_invalid_format(path: str, format_name: str, position: tuple[int, int] | None) -> InvalidFormatError:
+    """Log the parse failure, then build the error for it: path, format and, when known, line/column.
 
     The caller raises it OUTSIDE its ``except`` block, so the parser's exception, whose message or
     mark can hold file content, is not reachable through ``__context__``.
@@ -108,15 +134,8 @@ def _invalid_format(path: str, format_name: str, position: tuple[int, int] | Non
 
     Returns:
         The error to raise.
-
-    Examples:
-        >>> print(_invalid_format("a.toml", "toml", (2, 5)))
-        a.toml is not valid TOML (line 2, column 5)
-        >>> print(_invalid_format("a.yaml", "yaml", None))
-        a.yaml is not valid YAML
     """
-    where = f" (line {position[0]}, column {position[1]})" if position is not None else ""
-    message = f"{path} is not valid {format_name.upper()}{where}"
+    message = _build_invalid_format_message(path, format_name, position)
     _log_file_invalid(path, format_name, message)
     return InvalidFormatError(message)
 
@@ -166,6 +185,57 @@ def _yaml_position(exc: BaseException) -> tuple[int, int] | None:
     if isinstance(line, int) and isinstance(column, int):
         return line + 1, column + 1
     return None
+
+
+def _json_position(exc: BaseException) -> tuple[int, int] | None:
+    """Return the 1-based line and column an ``orjson.JSONDecodeError`` reports, or None.
+
+    Args:
+        exc: The exception caught while parsing; only ``orjson.JSONDecodeError`` carries a
+            position, so any other exception type yields ``None``.
+
+    Returns:
+        The (line, column) pair, or ``None``.
+    """
+    return (exc.lineno, exc.colno) if isinstance(exc, orjson.JSONDecodeError) else None
+
+
+#: Sentinel returned by :func:`_run_parser` in place of a value when the parse failed. A real
+#: parsed value (including ``None`` from an empty JSON/YAML document) is never mistaken for a
+#: failure because this identity, not ``None``, marks it.
+_PARSE_FAILED: Final[object] = object()
+
+
+def _run_parser(
+    parse: Callable[[], object],
+    exceptions: type[BaseException] | tuple[type[BaseException], ...],
+    position_of: Callable[[BaseException], tuple[int, int] | None],
+) -> tuple[object, tuple[int, int] | None]:
+    """Run *parse*, collapsing its try/except into one reusable call per format.
+
+    Args:
+        parse: Zero-argument callable performing the parse attempt.
+        exceptions: Exception type(s) that signal a parse failure rather than propagating.
+        position_of: Callable deriving a 1-based (line, column) from the caught exception,
+            or ``None`` when no position can be determined.
+
+    Returns:
+        ``(value, None)`` on success. ``(_PARSE_FAILED, position)`` when *parse* raised one of
+        *exceptions*; *position* is itself ``None`` when the exception carries no location.
+
+    Examples:
+        >>> _run_parser(lambda: 42, ValueError, lambda exc: None)
+        (42, None)
+        >>> def boom() -> int:
+        ...     raise ValueError("bad line 2 column 4")
+        >>> value, position = _run_parser(boom, ValueError, lambda exc: (2, 4))
+        >>> value is _PARSE_FAILED, position
+        (True, (2, 4))
+    """
+    try:
+        return parse(), None
+    except exceptions as exc:
+        return _PARSE_FAILED, position_of(exc)
 
 
 def _ensure_yaml_available() -> None:
@@ -342,15 +412,11 @@ class TOMLFileLoader(BaseFileLoader):
         except InvalidFormatError as exc:
             _log_file_invalid(path, "toml", str(exc))
             raise
-        failed_at: tuple[int, int] | None = None
-        failed = False
-        parsed: object = None
-        try:
-            parsed = rtoml.loads(decoded)
-        except rtoml.TomlParsingError as exc:
-            failed, failed_at = True, _toml_position(str(exc))
-        if failed:
-            raise _invalid_format(path, "toml", failed_at)
+        parsed, failed_at = _run_parser(
+            lambda: rtoml.loads(decoded), rtoml.TomlParsingError, lambda exc: _toml_position(str(exc))
+        )
+        if parsed is _PARSE_FAILED:
+            raise _log_and_build_invalid_format(path, "toml", failed_at)
         result = self._ensure_mapping(parsed, path=path)
         _log_file_loaded(path, "toml")
         return result
@@ -393,15 +459,9 @@ class JSONFileLoader(BaseFileLoader):
         except InvalidFormatError as exc:
             _log_file_invalid(path, "json", str(exc))
             raise
-        failed_at: tuple[int, int] | None = None
-        failed = False
-        payload: Any = None
-        try:
-            payload = orjson.loads(decoded)
-        except orjson.JSONDecodeError as exc:
-            failed, failed_at = True, (exc.lineno, exc.colno)
-        if failed:
-            raise _invalid_format(path, "json", failed_at)
+        payload, failed_at = _run_parser(lambda: orjson.loads(decoded), orjson.JSONDecodeError, _json_position)
+        if payload is _PARSE_FAILED:
+            raise _log_and_build_invalid_format(path, "json", failed_at)
         result = self._ensure_mapping(payload, path=path)
         _log_file_loaded(path, "json")
         return result
@@ -482,15 +542,13 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
         >>> _parse_yaml_text("value", fake, "memory.yaml")  # doctest: +ELLIPSIS
         {'key': 'value'}
     """
-    failed_at: tuple[int, int] | None = None
-    failed = False
-    parsed: object = None
-    try:
-        parsed = module.safe_load(document)
-    except module.YAMLError as exc:
-        failed, failed_at = True, _yaml_position(exc)
-    except (ValueError, RecursionError):
-        failed = True
-    if failed:
-        raise _invalid_format(path, "yaml", failed_at)
+
+    def _position_of(exc: BaseException) -> tuple[int, int] | None:
+        return _yaml_position(exc) if isinstance(exc, module.YAMLError) else None
+
+    parsed, failed_at = _run_parser(
+        lambda: module.safe_load(document), (module.YAMLError, ValueError, RecursionError), _position_of
+    )
+    if parsed is _PARSE_FAILED:
+        raise _log_and_build_invalid_format(path, "yaml", failed_at)
     return {} if parsed is None else parsed
