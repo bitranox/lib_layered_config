@@ -636,6 +636,13 @@ destination and does not read its `user_*` settings, while `--target user` alone
 file the package does not ship, such as `config.d/99-local.toml` in the layer directory, which `deploy` never
 writes, so it is read whenever the configured modes are.
 
+The user file and the environment can set `app_*` and `host_*` too. A root `deploy --target app` that runs with
+a `HOME`, `XDG_CONFIG_HOME` or environment the invoking account controls (`sudo -E`, or a sudoers rule that keeps
+`HOME`) therefore reads that account's settings, and a mode there can widen the READ access of the system files
+the deploy writes. It can never add write access or an execute bit, since the refusal rules above hold for every
+source. Run a system-wide deploy with root's own environment (`sudo -i`), or pass both `--dir-mode` and
+`--file-mode`, which no configured value overrides.
+
 ```bash
 lib_layered_config deploy --source ./config.toml \
   --vendor Acme --app MyApp --slug myapp --target user --dir-mode 750 --file-mode 640
