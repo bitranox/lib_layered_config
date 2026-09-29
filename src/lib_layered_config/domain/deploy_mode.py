@@ -14,6 +14,7 @@ System Role:
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from typing import Final
@@ -58,15 +59,38 @@ class DeployModeError(ValidationError):
     """A permission mode was refused; the message names the reason or every offending bit."""
 
 
+def _int_is_safe_to_stringify(value: int) -> bool:
+    """Return whether ``str()``/``repr()``/``oct()`` can convert *value* without raising.
+
+    CPython bounds int-to-str conversion (`sys.get_int_max_str_digits`, 4300 by default, 640 the
+    lowest a caller can configure) and raises a bare ``ValueError`` past it. ``bit_length()`` is
+    cheap and never performs that conversion, so it is safe to call on a hostile value first.
+    """
+    limit = sys.get_int_max_str_digits()
+    if limit == 0:  # the conversion limit is disabled
+        return True
+    approx_decimal_digits = value.bit_length() * 0.30103 + 1  # log10(2), rounded up by the +1
+    return approx_decimal_digits < limit
+
+
 def brief_repr(value: object, limit: int = 40) -> str:
     """Return ``repr(value)``, shortened to *limit* characters so a hostile value cannot flood a message.
+
+    A huge ``int`` (thousands of digits) is never passed to ``repr()``: converting it to decimal is
+    what raises the bare ``ValueError`` this function exists to avoid, so its bit length is reported
+    instead.
 
     Examples:
         >>> brief_repr("abc")
         "'abc'"
         >>> len(brief_repr("x" * 500))
         40
+        >>> brief_repr(10**5000)
+        '<int, 16610 bits>'
     """
+    if isinstance(value, int) and not isinstance(value, bool) and not _int_is_safe_to_stringify(value):
+        text = f"<int, {value.bit_length()} bits>"
+        return text if len(text) <= limit else f"{text[: limit - 3]}..."
     text = repr(value)
     return text if len(text) <= limit else f"{text[: limit - 3]}..."
 
@@ -142,7 +166,7 @@ class DeployMode:
         if type(self.value) is not int:
             raise DeployModeError(f"a mode must be an int, got {type(self.value).__name__}")
         if not 0 <= self.value <= MAX_MODE:
-            raise DeployModeError(f"mode {self.value} is outside 0..{oct(MAX_MODE)}")
+            raise DeployModeError(f"mode {brief_repr(self.value)} is outside 0..{oct(MAX_MODE)}")
         problems = _unsafe_bits(self.value, self.kind)
         if problems:
             raise DeployModeError(f"unsafe {self.kind.value} mode {oct(self.value)}: {'; '.join(problems)}")
@@ -170,8 +194,9 @@ class DeployMode:
         if isinstance(value, str):
             return cls.from_text(value, kind)
         if isinstance(value, int) and not isinstance(value, bool):
+            reading = f"{value} = {oct(value)}" if _int_is_safe_to_stringify(value) else brief_repr(value)
             raise DeployModeError(
-                f"a bare integer is read as decimal ({value} = {oct(value)}); "
+                f"a bare integer is read as decimal ({reading}); "
                 'write the mode as an octal string: "0o640" (quoted) in a file, 0o640 in the environment '
                 "or a runtime override (such as an application's --set)"
             )

@@ -151,3 +151,25 @@ def test_the_refusal_is_a_config_error_and_a_value_error() -> None:
 def test_every_built_in_layer_default_passes_the_rule(layer: str) -> None:
     assert DeployMode(LAYER_PERMISSIONS[layer]["dir"], D).kind is D
     assert DeployMode(LAYER_PERMISSIONS[layer]["file"], F).kind is F
+
+
+@os_agnostic
+def test_a_huge_out_of_range_int_is_refused_as_a_deploy_mode_error_not_a_bare_value_error() -> None:
+    """A 5000-digit int trips CPython's int-to-str conversion limit; the message must still be
+    a DeployModeError of bounded length, never a bare ValueError from the f-string itself."""
+    huge = 10**5000
+    with pytest.raises(DeployModeError) as caught:
+        DeployMode(huge, D)
+    message = str(caught.value)
+    assert len(message) < 200
+    assert "outside 0.." in message
+
+
+@os_agnostic
+def test_a_huge_config_integer_is_refused_as_a_deploy_mode_error_not_a_bare_value_error() -> None:
+    huge = 10**5000
+    with pytest.raises(DeployModeError) as caught:
+        DeployMode.from_config_value(huge, F)
+    message = str(caught.value)
+    assert len(message) < 200
+    assert "a bare integer is read as decimal" in message

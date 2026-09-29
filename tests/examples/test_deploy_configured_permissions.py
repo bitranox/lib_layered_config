@@ -399,6 +399,23 @@ def test_a_bad_permission_override_is_refused_before_anything_is_written(
 
 
 @os_agnostic
+def test_a_huge_permission_override_is_refused_with_a_bounded_message_not_a_bare_value_error(
+    sandbox: LayeredSandbox, source: Path
+) -> None:
+    """A 5000-digit override value trips CPython's int-to-str conversion limit inside
+    DeployMode.from_config_value's own f-string; it must still surface a bounded
+    DeployPermissionsError, never a bare ValueError."""
+    huge = 10**5000
+    with pytest.raises(DeployPermissionsError) as caught:
+        _deploy(source, permission_overrides={"user_file": huge})
+    (line,) = str(caught.value).splitlines()
+    assert len(line) < 400  # bounded (the fixed hint sentence dominates); never the ~5000-digit value itself
+    assert line.startswith(f"{SECTION_KEY}.user_file: a bare integer is read as decimal (<int, ")
+    assert line.endswith("(source: override)")
+    assert not _user_destination(sandbox).exists()
+
+
+@os_agnostic
 def test_permission_overrides_with_a_permissions_object_are_refused(sandbox: LayeredSandbox, source: Path) -> None:
     with pytest.raises(DeployPermissionsError, match=r"^permission_overrides: cannot be combined with permissions"):
         _deploy(source, permissions=DeployPermissions.defaults(), permission_overrides={"user_file": "0o640"})

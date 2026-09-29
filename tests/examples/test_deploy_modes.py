@@ -70,6 +70,24 @@ def test_a_refused_mode_stops_the_deploy_before_anything_is_written(
 
 
 @os_agnostic
+def test_a_huge_dir_mode_is_refused_with_a_bounded_message_not_a_bare_value_error(
+    sandbox: LayeredSandbox, source: Path
+) -> None:
+    """A 5000-digit dir_mode trips CPython's int-to-str conversion limit inside DeployMode's own
+    f-strings; deploy_config must still surface a DeployModeError of bounded length."""
+    huge = 10**5000
+    with pytest.raises(DeployModeError) as caught:
+        _deploy(source, targets=["user"], dir_mode=huge)
+    message = str(caught.value)
+    assert len(message) < 200
+    assert message.startswith("dir_mode: mode ")
+    assert "outside 0.." in message
+    destination = _destination(sandbox, "user")
+    assert not destination.exists()
+    assert not destination.parent.exists()
+
+
+@os_agnostic
 def test_two_refused_modes_are_reported_together(sandbox: LayeredSandbox, source: Path) -> None:
     with pytest.raises(DeployModeError) as caught:
         _deploy(source, targets=["user"], dir_mode=-1, file_mode=0o777)
