@@ -93,16 +93,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `<path> is not valid <FORMAT>`, plus ` (line N, column M)` when a position is known; an undecodable file reads
   `<path> is not valid UTF-8 (line N, byte offset M)`, or for a BOM-marked YAML file `<path> is not valid
   UTF-16|UTF-32 (byte offset M)`. The `.env` malformed-line message (`Malformed line N in <path>`) is unchanged.
+  A YAML value that PyYAML's own constructor refuses (for example `a: 2020-13-01`, an out-of-range calendar
+  date) used to raise a bare `ValueError` straight out of `read_config`; it now raises `InvalidFormatError`,
+  surfacing as `LayerLoadError`, a `ConfigError` and NOT a `ValueError`.
 
 Migration: write configured modes as quoted strings (`user_file = "0o640"`; in the environment
 `<PREFIX>___LIB_LAYERED_CONFIG__DEFAULT_PERMISSIONS__USER_FILE=0o640`, since a bare `640` there is a number,
 while `0640` now stays the string "0640" and is read as 0o640). A broken file at the destination no longer
 blocks `deploy --force`; a broken file elsewhere does, and then give both mode options (`--no-permissions` also
-works but leaves the modes to the umask). Code that caught `ValueError` for an undecodable `.env` catches
-`ConfigError`. Code that relied on the environment turning `0640`-style text into a number converts it itself.
+works but leaves the modes to the umask). Code that caught `ValueError` for an undecodable `.env` or for a
+YAML constructor error (an out-of-range date and the like) catches `ConfigError` instead. Code that relied on
+the environment turning `0640`-style text into a number converts it itself.
 A caller that passed an explicit `dir_mode`, `file_mode` or a mode to `set_custom_permissions` with group or
 world write, a special bit, or (for a file) an execute bit must pick a safe mode instead; there is no flag to
-keep the old permissive behaviour. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
+keep the old permissive behaviour. This includes a read-only mode that locks the owner out: a file mode such
+as `0o444`, `0o440` or `0o400` (no owner write) and a directory mode without owner `rwx` are refused the same
+way. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
 <parser text>`) must match the new one instead (see the exception-type-change bullet above).
 
 ## [5.7.0] 2026-09-27 21:56:37
