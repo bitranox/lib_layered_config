@@ -786,7 +786,7 @@ Copy a source configuration file into one or more layer directories with conflic
 - `set_permissions` (bool | None, optional): `True` sets modes, `False` leaves them to the umask, `None` follows the configured `[lib_layered_config.default_permissions].enabled` (true when unset). An explicit `dir_mode` or `file_mode` means modes are set; one given with `False` is refused. Skipped on Windows. Default: `None`.
 - `dir_mode` (int | None, optional): Directory mode for every target, overriding the configured and built-in ones. Default: `None`.
 - `file_mode` (int | None, optional): File mode for every target, overriding the configured and built-in ones. Default: `None`.
-- `permissions` (DeployPermissions | None, optional): A complete settings object to use instead of reading the configuration, for a caller that builds one on purpose. One built with `deploy_permissions_from_config(read_config(...))` includes `.env` and the deployed files, which the deploy's own read leaves out; use `permission_overrides` for runtime overrides. Default: `None`.
+- `permissions` (DeployPermissions | None, optional): A complete settings object to use instead of reading the configuration, for a caller that builds one on purpose. One built with `deploy_permissions_from_config(read_config(...))` includes `.env`, the deployed files and a user file's `app_*`/`host_*` modes, which the deploy's own read leaves out; use `permission_overrides` for runtime overrides. Default: `None`.
 - `permission_overrides` (Mapping[str, object] | None, optional): Runtime values for keys of `[lib_layered_config.default_permissions]`, by setting name (`{"user_file": "0o640"}`), laid over the deploy's own read and validated like configured values; a refusal names `(source: override)`. Validated on every call. `{"enabled": False}` with `set_permissions=None` and no mode turns permission setting off without reading the configuration. Cannot be combined with `permissions`. Default: `None`.
 
 **Returns:** `list[DeployResult]` - Each result contains:
@@ -802,7 +802,8 @@ Copy a source configuration file into one or more layer directories with conflic
 
 **Permissions:** Each side (directory, file) resolves as `dir_mode`/`file_mode`, else the configured
 `[lib_layered_config.default_permissions]` setting for that layer, else the built-in layer mode (app/host
-755/644, user 700/600); an unsafe mode is refused before anything is written. See
+755/644, user 700/600); an unsafe mode is refused before anything is written. A user-layer file decides only
+`user_*` and `enabled`: its `app_*`/`host_*` values are ignored (logged, never refused). See
 [cli-reference.md#-file-permissions](cli-reference.md#-file-permissions) for the full resolution order and the
 refusal rule.
 
@@ -1081,8 +1082,8 @@ for result in results:
 permissions. Use `dir_mode` and `file_mode` to override them for special requirements (e.g., group-readable
 configs); an unsafe mode is refused. Use `set_permissions=False` when permissions should be inherited from
 umask. Use `permission_overrides` for a runtime value (such as a `--set` option) laid over deploy's own read,
-rather than building a `permissions=` object from `read_config(...)`, which includes `.env` and the deployed
-files. On Windows, permission setting is automatically skipped.
+rather than building a `permissions=` object from `read_config(...)`, which includes `.env`, the deployed
+files and a user file's `app_*`/`host_*` modes. On Windows, permission setting is automatically skipped.
 
 ---
 
@@ -1485,8 +1486,10 @@ Exported from the package root, used to configure or override `deploy_config`'s 
   `.defaults()` returns the built-in layer modes, `.for_layer(layer)` returns one layer's `LayerModes`.
 - `deploy_permissions_from_config`: Reads `[lib_layered_config.default_permissions]` from a merged
   configuration, with an `overrides=` mapping laid over the configured values for building a
-  `DeployPermissions` yourself. For `deploy_config` itself, pass runtime overrides through its own
-  `permission_overrides=` parameter instead - see the `deploy_config` section above.
+  `DeployPermissions` yourself. It reads the `Config` as it is, so a user file's `app_*`/`host_*` in a
+  `read_config(...)` result decides there, unlike in `deploy_config`'s own read. For `deploy_config` itself,
+  pass runtime overrides through its own `permission_overrides=` parameter instead - see the `deploy_config`
+  section above.
 - `DeployModeError`: A permission setting was refused; the message names the reason or every offending bit.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
   per bad value, and `.hint` (optional) suggests a way to deploy anyway.

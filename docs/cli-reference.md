@@ -615,7 +615,8 @@ environment use the `0o` prefix (`MYAPP___LIB_LAYERED_CONFIG__DEFAULT_PERMISSION
 bare `640` there is a number (`0640` stays text and also works); the same goes for an application's `--set`
 option, where `...user_file=640` arrives as a number and `...user_file=0o640` as text. `deploy` reads these
 settings only when a configured value can change the result, from the deployed source (the defaults layer), the
-app, host and user files it does not itself write, and the environment. It never reads `.env` (whose search
+app, host and user files it does not itself write, and the environment, taking `app_*` and `host_*` from all of
+those except the user files (see below). It never reads `.env` (whose search
 starts at the working directory), and the file being replaced never decides its replacement's mode, so a broken
 destination does not block `deploy --force`. If those settings cannot be read, or the section is invalid,
 `deploy` stops with one line per problem, naming the key and its source (and the line, for a file that cannot
@@ -636,12 +637,20 @@ destination and does not read its `user_*` settings, while `--target user` alone
 file the package does not ship, such as `config.d/99-local.toml` in the layer directory, which `deploy` never
 writes, so it is read whenever the configured modes are.
 
-The user file and the environment can set `app_*` and `host_*` too. A root `deploy --target app` that runs with
-a `HOME`, `XDG_CONFIG_HOME` or environment the invoking account controls (`sudo -E`, or a sudoers rule that keeps
-`HOME`) therefore reads that account's settings, and a mode there can widen the READ access of the system files
-the deploy writes. It can never add write access or an execute bit, since the refusal rules above hold for every
-source. Run a system-wide deploy with root's own environment (`sudo -i`), or pass both `--dir-mode` and
-`--file-mode`, which no configured value overrides.
+`app_*` and `host_*` are taken only from the deployed source, the app and host files and the environment,
+never from a user-layer file (the user `config.toml` or a file in the user `config.d/`); a user-layer file
+decides only `user_*` and `enabled`. A root `deploy --target app` that runs with the invoking account's `HOME`
+or `XDG_CONFIG_HOME` (`sudo -E`, or a sudoers rule that keeps `HOME`) therefore cannot widen the modes of the
+system files it writes through that account's files. A user-layer `app_*` or `host_*` value is ignored, not
+refused: it neither decides a mode nor hides one set in a lower layer (an app file's `app_file = "0o640"` applies
+even when the user file says `"0o644"`), a malformed one does not stop the deploy, and each ignored key is logged
+as a `deploy_setting_ignored` warning naming the key and the file, never the value.
+
+The environment can still set `app_*` and `host_*`. A root deploy that keeps an environment the invoking
+account controls (`sudo -E`) therefore reads that account's variables, and a mode there can widen the READ
+access of the system files the deploy writes. It can never add write access or an execute bit, since the
+refusal rules above hold for every source. Run a system-wide deploy with root's own environment (`sudo -i`), or
+pass both `--dir-mode` and `--file-mode`, which no configured value overrides.
 
 ```bash
 lib_layered_config deploy --source ./config.toml \
@@ -678,7 +687,9 @@ deploy_config(
 (unless a mode or `set_permissions=True` is also given, which set modes whatever `enabled` says).
 `permissions=` takes a complete `DeployPermissions` instead and cannot be combined with it. Do not build that
 object from your application's `read_config(...)` to carry overrides: that read includes `.env` (searched upward
-from the working directory) and the deployed files, which the deploy's own read leaves out on purpose.
+from the working directory), the deployed files and a user file's `app_*`/`host_*` modes, which the deploy's own
+read leaves out on purpose. `deploy_permissions_from_config` reads the merged `Config` it is given as it is, so
+it does not apply the user-file rule above.
 
 #### Platform Behavior
 
