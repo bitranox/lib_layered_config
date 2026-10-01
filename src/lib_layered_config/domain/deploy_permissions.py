@@ -7,18 +7,24 @@ Contents:
     - ``parse_deploy_permissions`` / ``deploy_permissions_from_config``: read the
       ``[lib_layered_config.default_permissions]`` section in one pass, with a caller's runtime
       overrides laid over it.
+    - ``drop_app_and_host_modes``: remove the settings a user-layer file may not decide from
+      that file's payload, before deploy merges it.
 
 System Role:
     Applications document this section in their bundled defaults; ``deploy_config`` reads it
     through this module so a configured mode is either applied to every file the deploy writes
     or refused, never silently ignored. A file the deploy leaves unchanged keeps its mode.
+    The ``app_*`` and ``host_*`` modes are decided only by sources the account running a
+    system-wide deploy controls (the deployed defaults, the app and host files, the environment):
+    a user-layer file belongs to whoever owns the home directory, so deploy drops those settings
+    from it before merging.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from .deploy_mode import DeployMode, DeployModeError, ModeKind, brief_repr
 from .errors import ValidationError
@@ -31,19 +37,22 @@ if TYPE_CHECKING:
 __all__ = [
     "OVERRIDE_SOURCE",
     "SECTION_KEY",
+    "AppAndHostModesDropped",
     "DeployPermissions",
     "DeployPermissionsError",
     "LayerModes",
     "PermissionProblem",
     "deploy_permissions_from_config",
+    "drop_app_and_host_modes",
     "parse_deploy_permissions",
 ]
 
-SECTION_KEY: Final[str] = "lib_layered_config.default_permissions"
+_NAMESPACE_KEY: Final[str] = "lib_layered_config"
+_SECTION_NAME: Final[str] = "default_permissions"
+SECTION_KEY: Final[str] = f"{_NAMESPACE_KEY}.{_SECTION_NAME}"
 #: The source a refusal names for a value the caller passed as a runtime
 #: override (such as an application's ``--set``).
 OVERRIDE_SOURCE: Final[str] = "override"
-_NAMESPACE_KEY: Final[str] = "lib_layered_config"
 _ENABLED: Final[str] = "enabled"
 _MODE_FIELDS: Final[dict[str, ModeKind]] = {
     f"{layer.value}_{suffix}": kind
@@ -51,6 +60,10 @@ _MODE_FIELDS: Final[dict[str, ModeKind]] = {
     for suffix, kind in (("directory", ModeKind.DIRECTORY), ("file", ModeKind.FILE))
 }
 _KNOWN_KEYS: Final[str] = ", ".join(sorted({*_MODE_FIELDS, _ENABLED}))
+#: The settings a user-layer file may not decide: the modes of the system-wide layers.
+_APP_AND_HOST_MODE_FIELDS: Final[frozenset[str]] = frozenset(
+    name for name in _MODE_FIELDS if not name.startswith(f"{Layer.USER.value}_")
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,6 +282,13 @@ def deploy_permissions_from_config(
 ) -> DeployPermissions:
     """Read ``[lib_layered_config.default_permissions]`` from a merged configuration.
 
+    The section is read as *config* holds it: this helper does not know which layer a value came
+    from beyond its provenance, so it does NOT apply deploy's rule that a user-layer file cannot set
+    ``app_*``/``host_*``. A Config from :func:`read_config` includes the user layer, so a user-file
+    ``app_file`` decides there and also hides a lower app-layer value; ``deploy_config`` builds its
+    own read without those settings. Pass ``deploy_config(permission_overrides=...)`` for runtime
+    overrides rather than a ``permissions=`` object built here.
+
     Args:
         config: The merged configuration.
         overrides: Runtime values keyed by the section's own setting names (``{"user_file":
@@ -300,3 +320,64 @@ def deploy_permissions_from_config(
         return OVERRIDE_SOURCE if key in overridden else _source(config, key)
 
     return parse_deploy_permissions(_merge_overrides(section, overrides), source_of=source_of)
+
+
+class AppAndHostModesDropped(NamedTuple):
+    """A layer payload without its ``app_*``/``host_*`` modes, and the dotted keys that were dropped."""
+
+    payload: Mapping[str, object]
+    dropped: tuple[str, ...]
+
+
+def _replaced(
+    mapping: Mapping[str, object],
+    key: str,
+    replacement: Mapping[str, object] | Mapping[object, object],
+) -> dict[str, object]:
+    """Return a copy of *mapping* with *key* set to *replacement*, or left out when it is empty; order is kept."""
+    return {
+        name: (replacement if name == key else value) for name, value in mapping.items() if name != key or replacement
+    }
+
+
+def drop_app_and_host_modes(payload: Mapping[str, object]) -> AppAndHostModesDropped:
+    """Remove ``app_directory``, ``app_file``, ``host_directory`` and ``host_file`` from a layer payload.
+
+    Deploy applies this to every user-layer file before merging, so those four settings come only
+    from the deployed defaults, the app and host files and the environment, and a user-layer value
+    neither decides a mode nor hides a lower layer's value. The other settings of the section
+    (``user_*``, ``enabled``) and everything outside it are kept. A table emptied by the removal is
+    removed too, so the layer merges exactly as if it never held the settings. A namespace or
+    section that is not a table is returned as it is, for the parse to refuse.
+
+    Args:
+        payload: One layer file's payload, as loaded.
+
+    Returns:
+        The payload (the same object when nothing was dropped, else a copy) and the dotted keys
+        removed from it, sorted.
+
+    Examples:
+        >>> kept, dropped = drop_app_and_host_modes(
+        ...     {"lib_layered_config": {"default_permissions": {"app_file": "0o644", "user_file": "0o600"}}}
+        ... )
+        >>> kept
+        {'lib_layered_config': {'default_permissions': {'user_file': '0o600'}}}
+        >>> dropped
+        ('lib_layered_config.default_permissions.app_file',)
+    """
+    namespace = payload.get(_NAMESPACE_KEY)
+    if not isinstance(namespace, Mapping):
+        return AppAndHostModesDropped(payload, ())
+    namespace_table = cast("Mapping[str, object]", namespace)
+    section = namespace_table.get(_SECTION_NAME)
+    if not isinstance(section, Mapping):
+        return AppAndHostModesDropped(payload, ())
+    section_table = cast("Mapping[object, object]", section)
+    dropped = sorted(name for name in _APP_AND_HOST_MODE_FIELDS if name in section_table)
+    if not dropped:
+        return AppAndHostModesDropped(payload, ())
+    kept_section = {name: value for name, value in section_table.items() if name not in _APP_AND_HOST_MODE_FIELDS}
+    kept_namespace = _replaced(namespace_table, _SECTION_NAME, kept_section)
+    kept = _replaced(payload, _NAMESPACE_KEY, kept_namespace)
+    return AppAndHostModesDropped(kept, tuple(f"{SECTION_KEY}.{name}" for name in dropped))

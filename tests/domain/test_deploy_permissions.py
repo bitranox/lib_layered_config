@@ -18,6 +18,7 @@ from lib_layered_config.domain.deploy_permissions import (
     LayerModes,
     PermissionProblem,
     deploy_permissions_from_config,
+    drop_app_and_host_modes,
     parse_deploy_permissions,
 )
 from lib_layered_config.domain.errors import ConfigError
@@ -328,3 +329,59 @@ def test_overrides_do_not_hide_a_non_table_section() -> None:
 def test_empty_overrides_read_the_configuration_alone() -> None:
     config = _file_config({"user_file": "0o640"})
     assert deploy_permissions_from_config(config, overrides={}) == deploy_permissions_from_config(config)
+
+
+def _layer_payload(section: object, **beside: object) -> dict[str, object]:
+    """A layer file's payload holding *section* under the namespace, plus top-level *beside* keys."""
+    return {"service": {"flag": True}, "lib_layered_config": {"default_permissions": section, **beside}}
+
+
+@os_agnostic
+def test_dropping_removes_only_the_app_and_host_modes() -> None:
+    section = {
+        "app_file": "0o640",
+        "user_file": "0o640",
+        "host_directory": "0o750",
+        "enabled": False,
+        "app_directory": 1,
+        "host_file": [1],
+    }
+    kept, dropped = drop_app_and_host_modes(_layer_payload(section, other=1))
+    assert kept == _layer_payload({"user_file": "0o640", "enabled": False}, other=1)
+    assert dropped == tuple(
+        f"{SECTION_KEY}.{name}" for name in ("app_directory", "app_file", "host_directory", "host_file")
+    )
+
+
+@os_agnostic
+def test_dropping_leaves_the_input_unchanged() -> None:
+    payload = _layer_payload({"app_file": "0o640", "user_file": "0o640"})
+    before = copy.deepcopy(payload)
+    drop_app_and_host_modes(payload)
+    assert payload == before
+
+
+@os_agnostic
+def test_dropping_prunes_the_tables_it_empties() -> None:
+    kept, _dropped = drop_app_and_host_modes({"lib_layered_config": {"default_permissions": {"app_file": "0o640"}}})
+    assert kept == {}
+    kept, _dropped = drop_app_and_host_modes(_layer_payload({"host_file": "0o640"}, other=1))
+    assert kept == {"service": {"flag": True}, "lib_layered_config": {"other": 1}}
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"service": {"flag": True}},
+        {"lib_layered_config": 5},
+        {"lib_layered_config": {"default_permissions": 5}},
+        {"lib_layered_config": {"default_permissions": {}}},
+        _layer_payload({"user_file": "0o640", "enabled": True, "APP_FILE": "0o640"}),
+    ],
+    ids=["no-namespace", "scalar-namespace", "scalar-section", "empty-section", "nothing-to-drop"],
+)
+def test_a_payload_without_app_or_host_modes_is_returned_as_it_is(payload: dict[str, object]) -> None:
+    kept, dropped = drop_app_and_host_modes(payload)
+    assert kept is payload
+    assert dropped == ()

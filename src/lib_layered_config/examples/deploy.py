@@ -373,6 +373,8 @@ def _load_configured_permissions(
 ) -> DeployPermissions:
     """Read the section from the source, the files this call does not write, and the environment.
 
+    A user-layer file contributes only ``user_*`` and ``enabled`` (see ``collect_deploy_layers``).
+
     The caller's *overrides* are laid over the merged section and validated with it (D15).
 
     Raises:
@@ -659,8 +661,9 @@ def deploy_config(
         file_mode: File mode for every target, overriding the configured and built-in ones.
         permissions: A complete settings object to use instead of reading the configuration, for a
             caller that builds one on purpose. One built from an application's normal read_config
-            includes ``.env`` and every deployed destination, which deploy's own read leaves out,
-            so it is not the way to pass runtime overrides; use permission_overrides for those.
+            includes ``.env``, every deployed destination and a user file's ``app_*``/``host_*``
+            modes, which deploy's own read leaves out, so it is not the way to pass runtime
+            overrides; use permission_overrides for those.
         permission_overrides: Runtime values for keys of ``[lib_layered_config.default_permissions]``
             (``{"user_file": "0o640"}``; flat setting names only), laid over deploy's own read and
             validated like configured values, a refusal naming ``(source: override)``. Validated on
@@ -672,8 +675,10 @@ def deploy_config(
     layer, else the built-in layer mode (app/host 755/644, user 700/600). The configured setting is
     read only when it can change the outcome, from this source (the defaults layer), the app, host
     and user files this call does not write, and the environment, with permission_overrides laid
-    over it; never from ``.env``. Modes are applied to each file this call writes; a file whose
-    content is unchanged is skipped and keeps its mode.
+    over it; never from ``.env``. A user file decides only ``user_*`` and ``enabled``: its
+    ``app_*``/``host_*`` modes are ignored (logged as ``deploy_setting_ignored``, never refused), so
+    the highest of the defaults, app, host and environment values applies. Modes are applied to
+    each file this call writes; a file whose content is unchanged is skipped and keeps its mode.
 
     Returns:
         List of DeployResult objects describing what was done for each destination.

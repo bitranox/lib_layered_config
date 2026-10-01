@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import logging
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,9 +23,6 @@ from lib_layered_config.examples.deploy import DeployAction, DeployResult, deplo
 from lib_layered_config.observability import TRACE_ID, bind_trace_id
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only, windows_only
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 VENDOR = "Acme"
 APP = "Demo"
@@ -489,3 +488,90 @@ def test_windows_never_reads_the_configuration_for_modes(sandbox: LayeredSandbox
     _break_app_layer(sandbox)
     results = _deploy(source)
     assert results[0].action == DeployAction.CREATED
+
+
+def _system_destination(sandbox: LayeredSandbox, source: Path, target: str) -> Path:
+    """Deploy *source* to the app or host layer and return the file it wrote."""
+    (result,) = _deploy(source, targets=[target])
+    assert result.action == DeployAction.CREATED
+    return result.destination
+
+
+@posix_only
+@pytest.mark.parametrize("target", ["app", "host"])
+def test_a_user_file_does_not_decide_a_system_layer_mode(sandbox: LayeredSandbox, source: Path, target: str) -> None:
+    sandbox.write("user", "config.toml", content=f'{SECTION}{target}_file = "0o640"\n')
+    # Liveness: the application's own read sees the user file's value, so deploy ignoring it is the rule.
+    assert read_config(vendor=VENDOR, app=APP, slug=SLUG).get(f"{SECTION_KEY}.{target}_file") == "0o640"
+    assert _mode(_system_destination(sandbox, source, target)) == 0o644
+
+
+@posix_only
+def test_a_user_file_does_not_hide_the_app_layers_mode(sandbox: LayeredSandbox, source: Path) -> None:
+    sandbox.write("app", "config.d/99-local.toml", content=f'{SECTION}app_file = "0o640"\n')
+    sandbox.write("user", "config.toml", content=f'{SECTION}app_file = "0o644"\n')
+    assert _mode(_system_destination(sandbox, source, "app")) == 0o640
+
+
+@posix_only
+def test_the_environment_still_decides_a_system_layer_mode(
+    sandbox: LayeredSandbox, source: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sandbox.write("app", "config.d/99-local.toml", content=f'{SECTION}app_file = "0o600"\n')
+    monkeypatch.setenv(f"{ENV_KEY}APP_FILE", "0o640")
+    assert _mode(_system_destination(sandbox, source, "app")) == 0o640
+
+
+@posix_only
+def test_a_user_file_still_decides_the_user_layer_mode(sandbox: LayeredSandbox, source: Path) -> None:
+    sandbox.write("user", "config.d/99-local.toml", content=f'{SECTION}user_file = "0o640"\napp_file = "0o640"\n')
+    _deploy(source)
+    assert _mode(_user_destination(sandbox)) == 0o640
+
+
+@posix_only
+def test_a_user_file_still_decides_enabled(sandbox: LayeredSandbox, source: Path) -> None:
+    sandbox.write("user", "config.d/99-local.toml", content=f"{SECTION}enabled = false\n")
+    app_dir = sandbox.roots["app"]
+    app_dir.mkdir(parents=True, exist_ok=True)
+    app_dir.chmod(0o700)
+    _system_destination(sandbox, source, "app")
+    assert _mode(app_dir) == 0o700  # left as it was, not chmodded to the app layer's 0o755
+
+
+@os_agnostic
+@pytest.mark.parametrize("value", ['"770"', "444", '"0o4644"', "[1]"], ids=["unsafe", "bare-int", "setuid", "list"])
+def test_a_malformed_system_mode_in_a_user_file_does_not_block_a_deploy(
+    sandbox: LayeredSandbox, source: Path, value: str
+) -> None:
+    sandbox.write("user", "config.toml", content=f"{SECTION}app_file = {value}\nhost_directory = {value}\n")
+    destination = _system_destination(sandbox, source, "app")
+    if modes_apply():
+        assert _mode(destination) == 0o644
+
+
+@os_agnostic
+def test_a_malformed_user_mode_in_a_user_file_still_blocks_a_deploy(sandbox: LayeredSandbox, source: Path) -> None:
+    # Liveness for the test above: the user file is read, and its own user_* settings are still validated.
+    if not modes_apply():
+        pytest.skip("configuration is not read where modes are not applied")
+    sandbox.write("user", "config.d/99-local.toml", content=f'{SECTION}app_file = "770"\nuser_file = "770"\n')
+    with pytest.raises(DeployPermissionsError) as caught:
+        _deploy(source, targets=["app"])
+    assert [problem.key for problem in caught.value.problems] == [f"{SECTION_KEY}.user_file"]
+    assert not (sandbox.roots["app"] / "config.toml").exists()
+
+
+@posix_only
+def test_an_ignored_user_file_setting_is_logged_by_name_without_its_value(
+    sandbox: LayeredSandbox, source: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    user_file = sandbox.write("user", "config.toml", content=f'{SECTION}host_file = "0o604"\napp_file = "0o604"\n')
+    caplog.set_level(logging.WARNING, logger="lib_layered_config")
+    _system_destination(sandbox, source, "app")
+    (record,) = [record for record in caplog.records if record.message == "deploy_setting_ignored"]
+    context = record.__dict__["context"]
+    assert context["layer"] == "user"
+    assert Path(context["path"]).resolve() == user_file.resolve()
+    assert context["keys"] == [f"{SECTION_KEY}.app_file", f"{SECTION_KEY}.host_file"]
+    assert "0o604" not in repr(context)

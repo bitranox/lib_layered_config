@@ -7,7 +7,7 @@ loading, environment ingestion, and defaults injection before passing
 Contents:
 - ``collect_layers``: orchestrator returning a list of snapshots.
 - ``collect_deploy_layers``: the narrower set that decides deploy modes (no dotenv,
-  the files a deploy writes skipped).
+  the files a deploy writes skipped, no ``app_*``/``host_*`` mode from a user-layer file).
 - ``merge_or_empty``: convenience wrapper combining collect/merge behaviour.
 - Internal generators that yield defaults, filesystem, dotenv, and environment
   snapshots in documented precedence order.
@@ -26,9 +26,10 @@ from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.file_loaders._dot_d import expand_dot_d
 from .adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from .application.merge import LayerSnapshot, MergeResult, merge_layers
+from .domain.deploy_permissions import drop_app_and_host_modes
 from .domain.errors import InvalidFormatError, NotFoundError
 from .domain.identifiers import Layer
-from .observability import log_debug, log_info, make_event
+from .observability import log_debug, log_info, log_warn, make_event
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -89,14 +90,36 @@ def collect_deploy_layers(
     """Return the layers that decide deploy modes: defaults, the app/host/user files not in *skip*, env.
 
     There is no dotenv layer: its search starts at the working directory, which would give whoever
-    controls the directory a deploy runs from a say over the modes of system files. *skip* holds
-    the resolved paths the deploy is about to write, so a file never decides its own replacement.
+    controls the directory a deploy runs from a say over the modes of system files. For the same
+    reason a user-layer file (under a home directory a root deploy may have inherited from the
+    invoking account) keeps only its ``user_*`` and ``enabled`` settings: its ``app_*``/``host_*``
+    modes are dropped before the merge, so they neither decide a mode nor hide a lower layer's.
+    *skip* holds the resolved paths the deploy is about to write, so a file never decides its own
+    replacement.
     """
     return [
         *_default_snapshots(default_file),
-        *_filesystem_snapshots(resolver, None, skip=skip),
+        *_without_user_layer_system_modes(_filesystem_snapshots(resolver, None, skip=skip)),
         *_env_snapshots(env_loader, resolver.slug),
     ]
+
+
+def _without_user_layer_system_modes(snapshots: Iterable[LayerSnapshot]) -> Iterator[LayerSnapshot]:
+    """Yield *snapshots*, each user-layer one without its ``app_*``/``host_*`` modes.
+
+    A dropped setting is logged by its key and file, never by its value, so an operator can see why a
+    mode set there has no effect.
+    """
+    for snapshot in snapshots:
+        if snapshot.name != Layer.USER:
+            yield snapshot
+            continue
+        payload, dropped = drop_app_and_host_modes(snapshot.payload)
+        if not dropped:
+            yield snapshot
+            continue
+        log_warn("deploy_setting_ignored", **make_event(snapshot.name, snapshot.origin, {"keys": list(dropped)}))
+        yield LayerSnapshot(snapshot.name, payload, snapshot.origin)
 
 
 def _snapshots_in_merge_sequence(
