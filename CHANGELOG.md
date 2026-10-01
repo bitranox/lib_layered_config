@@ -10,6 +10,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 - **A `.env` file is capped at the same 10 MiB (`MAX_CONFIG_FILE_BYTES`) as the structured configuration
   files**, checked before the file is read, and refused with the same `InvalidFormatError` message.
+- **`deploy_config` and `lib_layered_config deploy` no longer take `app_*`/`host_*` modes from a user-layer
+  file.** This changes which layers decide the modes of system files: `app_directory`, `app_file`,
+  `host_directory` and `host_file` in `[lib_layered_config.default_permissions]` now come only from the
+  deployed source, the app and host files and the environment, so a root `deploy --target app` that runs with
+  the invoking account's `HOME` or `XDG_CONFIG_HOME` (`sudo -E`, or sudoers keeping `HOME`) can no longer have
+  that account's user file widen the read access of the files it writes. A user-layer value is ignored rather
+  than refused: it no longer hides a lower layer's value, a malformed one no longer stops the deploy, and each
+  ignored key is logged as a `deploy_setting_ignored` warning (key and file, never the value). `user_*` and
+  `enabled` keep every source. `deploy_permissions_from_config(read_config(...))` reads the merged `Config` as
+  it is and does not apply this rule; pass runtime values through `permission_overrides` instead.
 
 ### Fixed
 
@@ -28,8 +38,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Documentation
 
-- **A root `deploy --target app` with the invoking account's `HOME` or environment** reads that account's
-  `app_*`/`host_*` settings, which can widen the read access of the files it writes (never write or execute).
+- **A root `deploy --target app` that keeps the invoking account's environment** reads that account's
+  `app_*`/`host_*` variables, which can widen the read access of the files it writes (never write or execute).
   The File Permissions section of the CLI reference says so and names the two ways to avoid it.
 - **`DeployModeError`** lists the refusal of a `dir_mode`/`file_mode` given together with `set_permissions=False`.
 
