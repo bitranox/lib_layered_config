@@ -20,8 +20,9 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Final
 
-from ...observability import log_debug
-from .._nested_keys import assign_nested
+from ...domain.redaction import is_sensitive
+from ...observability import log_debug, log_warn
+from .._nested_keys import NESTED_KEY_DELIMITER, assign_nested
 from .._value_coercion import parse_json_container, parse_number
 
 if TYPE_CHECKING:
@@ -93,7 +94,9 @@ class DefaultEnvLoader:
             lowercase to align with file-based layers.
 
         Side Effects:
-            Emits ``env_variables_loaded`` debug events with summarised keys.
+            Emits ``env_variables_loaded`` debug events with summarised keys, and an
+            ``env_secret_became_none`` warning for each sensitive key whose value was an
+            unquoted ``null``/``none`` (see :func:`_warn_if_secret_became_none`).
 
         Examples:
             >>> env = {
@@ -110,7 +113,10 @@ class DefaultEnvLoader:
         normalized_prefix = _normalize_prefix(prefix)
         collected: dict[str, object] = {}
         for raw_key, value in _iter_namespace_entries(self._environ.items(), normalized_prefix):
-            assign_nested(collected, raw_key, _coerce(value), error_cls=ValueError)
+            coerced = _coerce(value)
+            if coerced is None:
+                _warn_if_secret_became_none(raw_key)
+            assign_nested(collected, raw_key, coerced, error_cls=ValueError)
         log_debug("env_variables_loaded", layer="env", path=None, keys=_collect_keys(collected))
         return collected
 
@@ -169,6 +175,27 @@ def _iter_namespace_entries(
         if not stripped:
             continue
         yield stripped, value
+
+
+def _warn_if_secret_became_none(raw_key: str) -> None:
+    """Warn when a sensitive key's value was read as None from a ``null``/``none`` literal.
+
+    A secret spelled exactly ``null`` or ``none`` becomes None here, which a consumer reads as
+    "no credential" and then proceeds without one - silently. The conversion stays for now
+    because a non-secret key may use ``null`` on purpose to unset a value; the warning makes the
+    secret case visible. It names the key (lowercased and dotted, as the merged configuration
+    names it) and never the value. Only the leaf segment is tested, because that is the name that
+    holds the value; a sensitive parent such as ``credentials__timeout`` holds no secret itself.
+
+    Args:
+        raw_key: Variable name with the prefix removed, segments separated by ``__``.
+
+    Examples:
+        >>> _warn_if_secret_became_none("EMAIL__SMTP_HOST")
+    """
+    segments = [segment.lower() for segment in raw_key.split(NESTED_KEY_DELIMITER)]
+    if is_sensitive(segments[-1]):
+        log_warn("env_secret_became_none", layer="env", path=None, key=".".join(segments))
 
 
 def _collect_keys(mapping: dict[str, object]) -> list[str]:

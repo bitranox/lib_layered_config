@@ -6,6 +6,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- The environment layer logs an `env_secret_became_none` warning when a sensitive key (a name `redact=True`
+  masks, such as `smtp_password` or `api_token`) is set to an unquoted `null` or `none` and therefore read as
+  None. A consumer reads that None as "no credential" and proceeds without one, which nothing reported until
+  now. The warning names the dotted key, never the value. The conversion itself is unchanged; the next major
+  release keeps such a value as text.
+
+### Fixed
+
+- A YAML key that is not a string (`1:` reads as an int, `true:` as a bool) is now reported: the YAML loader
+  logs one `config_key_not_string` warning per key, naming the file, the key's parent position and the key,
+  never the value. Such a key made its whole mapping one opaque value - none of its keys reachable by dotted
+  lookup, no per-key provenance, replaced whole by a higher layer - with no sign of why. The file still loads
+  as before; the next major release refuses such keys.
+
 ## [6.1.0] 2026-10-01 15:48:36
 
 ### Security

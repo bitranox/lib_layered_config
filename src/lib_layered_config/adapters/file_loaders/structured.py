@@ -30,7 +30,7 @@ import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
-from ...observability import log_debug, log_error
+from ...observability import log_debug, log_error, log_warn
 from .._text_decoding import decode_utf8, decode_yaml_text
 from ._yaml_facade import as_yaml_module
 
@@ -373,8 +373,9 @@ class BaseFileLoader:
         if not isinstance(data, Mapping):
             raise InvalidFormatError(f"File {path} did not produce a mapping")
         # The isinstance check proves a Mapping and nothing about its keys. TOML and JSON keys are
-        # always strings; YAML can produce int or bool keys (`1:`, `true:`), which are not checked
-        # here and pass through as they are. The cast states the declared type, not a checked one.
+        # always strings; YAML can produce int or bool keys (`1:`, `true:`), which pass through as
+        # they are - YAMLFileLoader warns about each one. The cast states the declared type, not a
+        # checked one.
         return cast("Mapping[str, object]", data)
 
 
@@ -511,6 +512,7 @@ class YAMLFileLoader(BaseFileLoader):
             raise
         parsed = _parse_yaml_text(decoded, yaml_module, path)
         mapping = self._ensure_mapping(parsed, path=path)
+        _warn_non_string_keys(mapping, path=path)
         _log_file_loaded(path, "yaml")
         return mapping
 
@@ -551,3 +553,76 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
     if parsed is _PARSE_FAILED:
         raise _log_and_build_invalid_format(path, "yaml", failed_at)
     return {} if parsed is None else parsed
+
+
+def _warn_non_string_keys(data: object, *, path: str) -> None:
+    """Log one ``config_key_not_string`` warning per mapping key in *data* that is not a string.
+
+    YAML reads ``1:`` as an int key and ``true:`` as a bool key, while everything downstream
+    treats keys as strings. The merge and :class:`Config` treat a mapping holding such a key as
+    ONE value: none of its keys is reachable by dotted lookup or has its own provenance, and a
+    higher layer replaces the whole mapping instead of merging into it. Refusing the file would
+    break callers whose files load today, so the key is reported and kept. The warning names the
+    file, the dotted position of the key's parent and the key itself; it never carries a value,
+    which may be a secret.
+
+    The walk uses an explicit stack rather than recursion: the parser accepted the document's
+    depth, and the walk must not fail on a depth the parser accepted.
+
+    Args:
+        data: Parsed document, already known to be a mapping at the top.
+        path: File the document came from, named in each warning.
+
+    Examples:
+        >>> _warn_non_string_keys({"service": {"timeout": 5}}, path="demo.yaml")
+    """
+    pending: list[tuple[object, str]] = [(data, "")]
+    while pending:
+        node, parent = pending.pop()
+        pending.extend(_children_reporting_keys(node, parent=parent, path=path))
+
+
+def _children_reporting_keys(node: object, *, parent: str, path: str) -> list[tuple[object, str]]:
+    """Return the children of *node* with their dotted positions, warning about non-string keys.
+
+    Args:
+        node: A value from the parsed document.
+        parent: Dotted position of *node* (empty at the top).
+        path: File the document came from.
+
+    Returns:
+        ``(child, position)`` pairs for a mapping's values or a list's items; empty for a scalar.
+
+    Examples:
+        >>> _children_reporting_keys(["a", "b"], parent="items", path="demo.yaml")
+        [('a', 'items.0'), ('b', 'items.1')]
+        >>> _children_reporting_keys(5, parent="port", path="demo.yaml")
+        []
+    """
+    if isinstance(node, Mapping):
+        mapping = cast("Mapping[object, object]", node)
+        for key in mapping:
+            if not isinstance(key, str):
+                log_warn(
+                    "config_key_not_string",
+                    layer=FILE_LAYER,
+                    path=path,
+                    parent=parent,
+                    key=repr(key),
+                    key_type=type(key).__name__,
+                )
+        return [(value, _join_position(parent, str(key))) for key, value in mapping.items()]
+    if isinstance(node, list):
+        items = cast("list[object]", node)
+        return [(item, _join_position(parent, str(index))) for index, item in enumerate(items)]
+    return []
+
+
+def _join_position(parent: str, segment: str) -> str:
+    """Append *segment* to the dotted *parent* position.
+
+    Examples:
+        >>> _join_position("", "db"), _join_position("db", "port")
+        ('db', 'db.port')
+    """
+    return f"{parent}.{segment}" if parent else segment

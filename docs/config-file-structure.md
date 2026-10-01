@@ -459,6 +459,11 @@ Scalars in `.env` stay strings. The environment layer additionally turns `true`/
 into booleans and null, and a value into an int or float only when the number reads back as the same text:
 `5`, `-7` and `3.5` convert; `007123`, `0640`, `1.50`, `+5`, `1_000` and `nan` stay strings.
 
+A secret spelled exactly `null` or `none` therefore arrives from the environment as None, meaning no
+credential. The environment layer logs an `env_secret_became_none` warning (key only) for a sensitive key
+(a name `redact=True` masks, such as `password`, `token`, `secret` or one ending in `_key`) read that way; set such a secret in `.env` or a file, where it
+stays text.
+
 ### Deploy permission settings
 
 `deploy` and `deploy_config` read `[lib_layered_config.default_permissions]` to decide the Unix mode of each
@@ -527,5 +532,10 @@ service:
 ```
 
 All three formats produce the same configuration structure and can be accessed identically through the library.
+
+YAML keys must be strings. YAML reads an unquoted `1:` as an integer key and `true:` as a boolean key; quote
+them (`'1':`, `'true':`). A mapping that holds such a key is merged as one value: none of its keys is reachable
+by dotted lookup or has its own provenance, and a higher layer replaces the whole mapping. The loader logs a
+`config_key_not_string` warning per key (file, parent position and key, never the value).
 
 ---
