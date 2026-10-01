@@ -388,7 +388,7 @@ All identifiers are validated to ensure they are safe for use as filesystem dire
 
 | Rule                             | Description                                         | Example Invalid Value             |
 |----------------------------------|-----------------------------------------------------|-----------------------------------|
-| **ASCII-only**                   | No Unicode/UTF-8 special characters                 | `café`, `日本語`, `app🚀`             |
+| **ASCII-only**                   | No Unicode/UTF-8 special characters                 | `café`, `日本語`, `app🚀`         |
 | **Must start with alphanumeric** | Cannot start with dot, hyphen, underscore, or space | `.hidden`, `-app`, `_private`     |
 | **No path separators**           | Prevents path traversal attacks                     | `../etc`, `foo/bar`, `C:\Windows` |
 | **No Windows-invalid chars**     | `<`, `>`, `:`, `"`, `\|`, `?`, `*` are forbidden    | `app<test>`, `file:name`          |

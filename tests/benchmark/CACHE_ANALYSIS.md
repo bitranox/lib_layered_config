@@ -22,11 +22,11 @@ The codebase currently uses **zero** instances of `functools.lru_cache` or any c
 
 Testing functions called 600+ times with repeated inputs:
 
-| Function | Without Cache | With Cache | Speedup |
-|----------|--------------|------------|---------|
-| `default_env_prefix()` | 0.0313s | 0.0127s | **2.47x** ✓ |
-| `normalise_resolver_platform()` | 0.0530s | 0.0160s | **3.31x** ✓ |
-| `_sanitize()` | 0.0266s | 0.0126s | **2.11x** ✓ |
+| Function                        | Without Cache | With Cache | Speedup     |
+|---------------------------------|---------------|------------|-------------|
+| `default_env_prefix()`          | 0.0313s       | 0.0127s    | **2.47x** ✓ |
+| `normalise_resolver_platform()` | 0.0530s       | 0.0160s    | **3.31x** ✓ |
+| `_sanitize()`                   | 0.0266s       | 0.0126s    | **2.11x** ✓ |
 
 **Conclusion:** Caching helps when functions are called repeatedly.
 
@@ -34,9 +34,9 @@ Testing functions called 600+ times with repeated inputs:
 
 Simulating actual library usage patterns:
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| 100 config loads | 0.0131s | 0.13ms per load |
+| Operation           | Time    | Notes              |
+|---------------------|---------|--------------------|
+| 100 config loads    | 0.0131s | 0.13ms per load    |
 | 1000 value accesses | 0.0016s | 0.002ms per access |
 
 **Conclusion:** Config loading is already extremely fast (0.13ms). String operations are not the bottleneck.
@@ -155,23 +155,23 @@ Optimizing <1% of the workload provides negligible benefit.
 
 ### ❌ NOT Worth Caching
 
-| Function | Reason |
-|----------|--------|
-| `default_env_prefix()` | Called once per config load |
-| `normalise_resolver_platform()` | Called once per CLI invocation |
-| `normalise_examples_platform()` | Called once per operation |
-| `_sanitize()` | Called within already-infrequent functions |
-| Platform detection properties | Already sub-microsecond |
-| `DefaultPathResolver.__init__()` | Object created once |
+| Function                         | Reason                                     |
+|----------------------------------|--------------------------------------------|
+| `default_env_prefix()`           | Called once per config load                |
+| `normalise_resolver_platform()`  | Called once per CLI invocation             |
+| `normalise_examples_platform()`  | Called once per operation                  |
+| `_sanitize()`                    | Called within already-infrequent functions |
+| Platform detection properties    | Already sub-microsecond                    |
+| `DefaultPathResolver.__init__()` | Object created once                        |
 
 ### ✓ Already Optimal
 
-| Component | Why |
-|-----------|-----|
-| `Config.get()` | Uses dict lookups (O(1)) |
-| `Config.origin()` | Uses dict lookups (O(1)) |
+| Component           | Why                       |
+|---------------------|---------------------------|
+| `Config.get()`      | Uses dict lookups (O(1))  |
+| `Config.origin()`   | Uses dict lookups (O(1))  |
 | Platform properties | Simple string comparisons |
-| Path resolution | Filesystem I/O dominates |
+| Path resolution     | Filesystem I/O dominates  |
 
 ---
 

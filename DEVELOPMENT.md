@@ -10,13 +10,13 @@
 | `test`            | Run lint (Ruff), import-linter, type-check (Pyright), pytest (with coverage ≥90%), Codecov |
 | `run`             | Print the default environment prefix (sanity check)                                        |
 | `version-current` | Print the current version from `pyproject.toml`                                            |
-| `bump`            | Bump version (updates `pyproject.toml` + `CHANGELOG.md`)                                    |
+| `bump`            | Bump version (updates `pyproject.toml` + `CHANGELOG.md`)                                   |
 | `bump-patch`      | Convenience alias for `make bump PART=patch`                                               |
 | `bump-minor`      | Convenience alias for `make bump PART=minor`                                               |
 | `bump-major`      | Convenience alias for `make bump PART=major`                                               |
 | `clean`           | Remove caches, build artefacts, and coverage files                                         |
 | `push`            | Run full test pipeline, prompt for commit message, and push to the selected remote         |
-| `build`           | Build wheel/sdist artifacts                                                               |
+| `build`           | Build wheel/sdist artifacts                                                                |
 | `menu`            | Textual-based TUI for running targets interactively                                        |
 
 ### Target Parameters (env vars)

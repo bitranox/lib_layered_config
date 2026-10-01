@@ -6,13 +6,13 @@
 
 ## Quick Facts
 
-| Metric | Value |
-|--------|-------|
-| **Current lru_cache usage** | 0 instances |
-| **Config load time** | ~0.13ms (extremely fast) |
-| **Value access time** | ~0.002ms per get() |
-| **String ops % of total time** | <1% |
-| **I/O % of total time** | ~90-95% |
+| Metric                         | Value                    |
+|--------------------------------|--------------------------|
+| **Current lru_cache usage**    | 0 instances              |
+| **Config load time**           | ~0.13ms (extremely fast) |
+| **Value access time**          | ~0.002ms per get()       |
+| **String ops % of total time** | <1%                      |
+| **I/O % of total time**        | ~90-95%                  |
 
 ---
 
@@ -35,20 +35,20 @@ String operations         ▏                           <1%  (replace, upper, st
 ## Benchmark Results
 
 ### 1. Synthetic Test (Unrealistic: 600 repeated calls)
-| Function | Speedup with lru_cache |
-|----------|----------------------|
-| `default_env_prefix()` | 2.47x ✓ |
-| `normalise_resolver_platform()` | 3.31x ✓ |
-| `_sanitize()` | 2.11x ✓ |
+| Function                        | Speedup with lru_cache |
+|---------------------------------|------------------------|
+| `default_env_prefix()`          | 2.47x ✓                |
+| `normalise_resolver_platform()` | 3.31x ✓                |
+| `_sanitize()`                   | 2.11x ✓                |
 
 **Looks good, but misleading!** These functions are NOT called 600 times in real usage.
 
 ### 2. Real Usage Test (100 config loads)
-| Operation | Result |
-|-----------|--------|
-| Total time | 0.0131s |
-| Per load | 0.13ms (already excellent) |
-| Bottleneck | File I/O, not string ops |
+| Operation  | Result                     |
+|------------|----------------------------|
+| Total time | 0.0131s                    |
+| Per load   | 0.13ms (already excellent) |
+| Bottleneck | File I/O, not string ops   |
 
 **Reality:** Each function called **once** per load. Cache overhead ≈ function cost.
 
@@ -128,14 +128,14 @@ From profiling:
 
 ## Tested Functions & Verdicts
 
-| Function | Called | Time | Cache Worth It? |
-|----------|--------|------|-----------------|
-| `default_env_prefix()` | Once/load | ~150ns | ❌ NO |
-| `normalise_resolver_platform()` | Once/CLI | ~200ns | ❌ NO |
-| `normalise_examples_platform()` | Once/op | ~200ns | ❌ NO |
-| `_sanitize()` | Once | ~100ns | ❌ NO |
-| `_is_linux/mac/windows` | Many | ~10ns | Already optimal ✓ |
-| `Config.get()` | 1000s | ~2000ns | Already optimal ✓ |
+| Function                        | Called    | Time    | Cache Worth It?   |
+|---------------------------------|-----------|---------|-------------------|
+| `default_env_prefix()`          | Once/load | ~150ns  | ❌ NO             |
+| `normalise_resolver_platform()` | Once/CLI  | ~200ns  | ❌ NO             |
+| `normalise_examples_platform()` | Once/op   | ~200ns  | ❌ NO             |
+| `_sanitize()`                   | Once      | ~100ns  | ❌ NO             |
+| `_is_linux/mac/windows`         | Many      | ~10ns   | Already optimal ✓ |
+| `Config.get()`                  | 1000s     | ~2000ns | Already optimal ✓ |
 
 ---
 
