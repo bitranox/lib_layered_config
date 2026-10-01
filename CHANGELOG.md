@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.1.0] 2026-10-01 15:48:36
+
 ### Security
 
 - **A `.env` file is capped at the same 10 MiB (`MAX_CONFIG_FILE_BYTES`) as the structured configuration
