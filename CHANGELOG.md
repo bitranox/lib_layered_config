@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [6.1.1] 2026-10-01 16:50:57
+
 ### Security
 
 - The environment layer logs an `env_secret_became_none` warning when a sensitive key (a name `redact=True`
