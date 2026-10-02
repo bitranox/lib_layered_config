@@ -30,7 +30,7 @@ import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
-from ...observability import log_debug, log_error, log_warn
+from ...observability import log_debug, log_error
 from .._text_decoding import decode_utf8, decode_yaml_text
 from ._yaml_facade import as_yaml_module
 
@@ -95,6 +95,27 @@ def _log_file_invalid(path: str, format_name: str, message: str) -> None:
         message: The content-free message the caller will also see.
     """
     log_error("config_file_invalid", layer=FILE_LAYER, path=path, format=format_name, error=message)
+
+
+def directory_not_config_file(path: Path) -> InvalidFormatError:
+    """Log and build the refusal for a configured file path that is a directory on disk.
+
+    Without it the layer's file would be dropped without a trace and the configuration would
+    fall back to lower layers. Shared by the file layers and an explicit ``dotenv_path``.
+
+    Args:
+        path: The configured path that resolved to a directory.
+
+    Returns:
+        The error to raise.
+
+    Examples:
+        >>> str(directory_not_config_file(Path("config.toml")))
+        'config.toml is a directory, not a configuration file'
+    """
+    message = f"{path} is a directory, not a configuration file"
+    log_error("config_path_is_directory", layer=FILE_LAYER, path=str(path), error=message)
+    return InvalidFormatError(message)
 
 
 def _build_invalid_format_message(path: str, format_name: str, position: tuple[int, int] | None) -> str:
@@ -573,10 +594,10 @@ def _refuse_non_string_keys(data: object, *, path: str) -> None:
 
     Examples:
         >>> _refuse_non_string_keys({"service": {"timeout": 5}}, path="demo.yaml")
-        >>> _refuse_non_string_keys({"db": {5: "x"}}, path="demo.yaml")
+        >>> _refuse_non_string_keys({"db": {5: "x"}}, path="demo.yaml")  # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
-        lib_layered_config.domain.errors.InvalidFormatError: demo.yaml has keys that are not strings (quote them): db: 5 (int)
+        lib_layered_config.domain.errors.InvalidFormatError: demo.yaml has keys ... db: 5 (int)
     """
     found = _non_string_keys(data)
     if not found:

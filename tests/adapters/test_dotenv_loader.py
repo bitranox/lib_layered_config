@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -181,21 +180,30 @@ def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path, monkeypatch: pyt
 
 
 @os_agnostic
-def test_dotenv_loader_explicit_path_directory_warns_and_returns_empty(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_dotenv_loader_explicit_path_that_is_a_directory_is_refused(tmp_path: Path) -> None:
     directory = tmp_path / "config.env"
     directory.mkdir()
-    caplog.set_level(logging.WARNING, logger="lib_layered_config")
     loader = DefaultDotEnvLoader()
-    data = loader.load(dotenv_path=str(directory))
-    assert data == {}
+
+    with pytest.raises(InvalidFormatError, match="is a directory, not a configuration file") as caught:
+        loader.load(dotenv_path=str(directory))
+
+    assert str(directory) in str(caught.value)
     assert loader.last_loaded_path is None
-    assert any(
-        record.message == "config_directory_skipped"
-        and record.__dict__.get("context", {}).get("path") == str(directory)
-        for record in caplog.records
-    )
+
+
+@os_agnostic
+def test_dotenv_upward_search_skips_a_directory_named_dot_env(tmp_path: Path) -> None:
+    """A virtualenv named ``.env`` on the search path is not a dotenv file and is passed over."""
+    (tmp_path / ".env").mkdir()
+    start = tmp_path / "project"
+    start.mkdir()
+    (start / ".env").mkdir()
+
+    loader = DefaultDotEnvLoader()
+    loader.load(start_dir=str(start))
+
+    assert loader.last_loaded_path not in {str(start / ".env"), str(tmp_path / ".env")}
 
 
 @os_agnostic

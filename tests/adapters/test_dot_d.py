@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from lib_layered_config.adapters.file_loaders._dot_d import (
     _collect_dot_d_files,
     expand_dot_d,
 )
+from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import os_agnostic
-
-if TYPE_CHECKING:
-    import pytest
 
 
 @os_agnostic
@@ -210,28 +209,22 @@ def test_expand_dot_d_with_json_base_file(tmp_path: Path) -> None:
 
 
 @os_agnostic
-def test_expand_dot_d_warns_and_skips_when_base_path_is_a_directory(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A configured file path that is actually a directory is skipped, not raised, but warned about."""
+def test_expand_dot_d_refuses_a_base_path_that_is_a_directory(tmp_path: Path) -> None:
+    """A configured file path that is actually a directory refuses the load, naming the path."""
     base = tmp_path / "config.toml"
     base.mkdir()
-    caplog.set_level(logging.WARNING, logger="lib_layered_config")
 
-    result = list(expand_dot_d(str(base)))
+    with pytest.raises(InvalidFormatError, match="is a directory, not a configuration file") as caught:
+        list(expand_dot_d(str(base)))
 
-    assert result == []
-    assert any(
-        record.message == "config_directory_skipped" and record.__dict__.get("context", {}).get("path") == str(base)
-        for record in caplog.records
-    )
+    assert str(base) in str(caught.value)
 
 
 @os_agnostic
-def test_expand_dot_d_does_not_warn_for_the_legitimate_dot_d_companion_directory(
+def test_expand_dot_d_reads_the_legitimate_dot_d_companion_directory_silently(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The expected `<name>.d/` companion directory must never trigger the directory warning."""
+    """The expected `<name>.d/` companion directory is read, never refused or warned about."""
     base = tmp_path / "config.toml"
     dot_d = tmp_path / "config.d"
     dot_d.mkdir()
@@ -241,7 +234,7 @@ def test_expand_dot_d_does_not_warn_for_the_legitimate_dot_d_companion_directory
     result = list(expand_dot_d(str(base)))
 
     assert result == [str(dot_d / "10-extra.toml")]
-    assert not any(record.message == "config_directory_skipped" for record in caplog.records)
+    assert caplog.records == []
 
 
 @os_agnostic
@@ -258,3 +251,14 @@ def test_expand_dot_d_shared_directory_for_all_formats(tmp_path: Path) -> None:
         result = list(expand_dot_d(str(base)))
         assert len(result) == 1
         assert Path(result[0]).name == "10-shared.toml"
+
+
+@os_agnostic
+def test_read_config_refuses_a_default_file_that_is_a_directory(tmp_path: Path) -> None:
+    from lib_layered_config import LayerLoadError, read_config
+
+    defaults = tmp_path / "defaults.toml"
+    defaults.mkdir()
+
+    with pytest.raises(LayerLoadError, match="is a directory, not a configuration file"):
+        read_config(vendor="Acme", app="ConfigKit", slug="config-kit-dir-test", default_file=str(defaults))
