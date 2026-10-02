@@ -512,7 +512,7 @@ class YAMLFileLoader(BaseFileLoader):
             raise
         parsed = _parse_yaml_text(decoded, yaml_module, path)
         mapping = self._ensure_mapping(parsed, path=path)
-        _warn_non_string_keys(mapping, path=path)
+        _refuse_non_string_keys(mapping, path=path)
         _log_file_loaded(path, "yaml")
         return mapping
 
@@ -555,67 +555,61 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
     return {} if parsed is None else parsed
 
 
-def _warn_non_string_keys(data: object, *, path: str) -> None:
-    """Log one ``config_key_not_string`` warning per mapping key in *data* that is not a string.
+def _refuse_non_string_keys(data: object, *, path: str) -> None:
+    """Refuse a document holding a mapping key that is not a string.
 
     YAML reads ``1:`` as an int key and ``true:`` as a bool key, while everything downstream
-    treats keys as strings. The merge and :class:`Config` treat a mapping holding such a key as
-    ONE value: none of its keys is reachable by dotted lookup or has its own provenance, and a
-    higher layer replaces the whole mapping instead of merging into it. Refusing the file would
-    break callers whose files load today, so the key is reported and kept. The warning names the
-    file, the dotted position of the key's parent and the key itself; it never carries a value,
-    which may be a secret.
+    treats keys as strings: the merge and :class:`Config` would treat a mapping holding such a key
+    as ONE value, none of its keys reachable by dotted lookup or carrying its own provenance. The
+    error names the file, the dotted position of each key's parent and the key itself; it never
+    carries a value, which may be a secret.
+
+    Args:
+        data: Parsed document, already known to be a mapping at the top.
+        path: File the document came from, named in the error.
+
+    Raises:
+        InvalidFormatError: When any mapping in *data* has a key that is not a string.
+
+    Examples:
+        >>> _refuse_non_string_keys({"service": {"timeout": 5}}, path="demo.yaml")
+        >>> _refuse_non_string_keys({"db": {5: "x"}}, path="demo.yaml")
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: demo.yaml has keys that are not strings (quote them): db: 5 (int)
+    """
+    found = _non_string_keys(data)
+    if not found:
+        return
+    message = f"{path} has keys that are not strings (quote them): {'; '.join(found)}"
+    _log_file_invalid(path, "yaml", message)
+    raise InvalidFormatError(message)
+
+
+def _non_string_keys(data: object) -> list[str]:
+    """Describe every mapping key in *data* that is not a string, as ``"<parent>: <key> (<type>)"``.
 
     The walk uses an explicit stack rather than recursion: the parser accepted the document's
     depth, and the walk must not fail on a depth the parser accepted.
 
-    Args:
-        data: Parsed document, already known to be a mapping at the top.
-        path: File the document came from, named in each warning.
-
     Examples:
-        >>> _warn_non_string_keys({"service": {"timeout": 5}}, path="demo.yaml")
+        >>> _non_string_keys({"items": [{"name": "a"}, {7: "y"}], True: 1})
+        ['<top>: True (bool)', 'items.1: 7 (int)']
     """
+    found: list[str] = []
     pending: list[tuple[object, str]] = [(data, "")]
     while pending:
         node, parent = pending.pop()
-        pending.extend(_children_reporting_keys(node, parent=parent, path=path))
-
-
-def _children_reporting_keys(node: object, *, parent: str, path: str) -> list[tuple[object, str]]:
-    """Return the children of *node* with their dotted positions, warning about non-string keys.
-
-    Args:
-        node: A value from the parsed document.
-        parent: Dotted position of *node* (empty at the top).
-        path: File the document came from.
-
-    Returns:
-        ``(child, position)`` pairs for a mapping's values or a list's items; empty for a scalar.
-
-    Examples:
-        >>> _children_reporting_keys(["a", "b"], parent="items", path="demo.yaml")
-        [('a', 'items.0'), ('b', 'items.1')]
-        >>> _children_reporting_keys(5, parent="port", path="demo.yaml")
-        []
-    """
-    if isinstance(node, Mapping):
-        mapping = cast("Mapping[object, object]", node)
-        for key in mapping:
-            if not isinstance(key, str):
-                log_warn(
-                    "config_key_not_string",
-                    layer=FILE_LAYER,
-                    path=path,
-                    parent=parent,
-                    key=repr(key),
-                    key_type=type(key).__name__,
-                )
-        return [(value, _join_position(parent, str(key))) for key, value in mapping.items()]
-    if isinstance(node, list):
-        items = cast("list[object]", node)
-        return [(item, _join_position(parent, str(index))) for index, item in enumerate(items)]
-    return []
+        if isinstance(node, Mapping):
+            mapping = cast("Mapping[object, object]", node)
+            found.extend(
+                f"{parent or '<top>'}: {key!r} ({type(key).__name__})" for key in mapping if not isinstance(key, str)
+            )
+            pending.extend((value, _join_position(parent, str(key))) for key, value in mapping.items())
+        elif isinstance(node, list):
+            items = cast("list[object]", node)
+            pending.extend((item, _join_position(parent, str(index))) for index, item in enumerate(items))
+    return sorted(found)
 
 
 def _join_position(parent: str, segment: str) -> str:

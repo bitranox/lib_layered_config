@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import pytest
 
@@ -15,18 +14,11 @@ from lib_layered_config.domain.permissions import (
     DEFAULT_USER_FILE_MODE,
     LAYER_PERMISSIONS,
     apply_mode,
-    set_custom_permissions,
-    set_permissions,
 )
 from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-# The two setters are deprecated; the tests below still pin what they do until they are removed.
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:(set_permissions|set_custom_permissions) is deprecated:DeprecationWarning"
-)
 
 # ---------------------------------------------------------------------------
 # Permission constant values
@@ -66,186 +58,25 @@ class TestPermissionConstants:
 
 
 # ---------------------------------------------------------------------------
-# set_permissions: POSIX behavior
-# ---------------------------------------------------------------------------
-
-
-@posix_only
-class TestSetPermissionsPosix:
-    """Test set_permissions function on POSIX systems."""
-
-    def test_sets_app_layer_file_permissions(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-
-        set_permissions(test_file, "app", is_dir=False)
-
-        assert (test_file.stat().st_mode & 0o777) == 0o644
-
-    def test_sets_app_layer_dir_permissions(self, tmp_path: Path) -> None:
-        test_dir = tmp_path / "config"
-        test_dir.mkdir()
-
-        set_permissions(test_dir, "app", is_dir=True)
-
-        assert (test_dir.stat().st_mode & 0o777) == 0o755
-
-    def test_sets_host_layer_file_permissions(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "host.toml"
-        test_file.write_text("test")
-
-        set_permissions(test_file, "host", is_dir=False)
-
-        assert (test_file.stat().st_mode & 0o777) == 0o644
-
-    def test_sets_host_layer_dir_permissions(self, tmp_path: Path) -> None:
-        test_dir = tmp_path / "hosts"
-        test_dir.mkdir()
-
-        set_permissions(test_dir, "host", is_dir=True)
-
-        assert (test_dir.stat().st_mode & 0o777) == 0o755
-
-    def test_sets_user_layer_file_permissions(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-
-        set_permissions(test_file, "user", is_dir=False)
-
-        assert (test_file.stat().st_mode & 0o777) == 0o600
-
-    def test_sets_user_layer_dir_permissions(self, tmp_path: Path) -> None:
-        test_dir = tmp_path / "config"
-        test_dir.mkdir()
-
-        set_permissions(test_dir, "user", is_dir=True)
-
-        assert (test_dir.stat().st_mode & 0o777) == 0o700
-
-    def test_unknown_layer_uses_app_defaults(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-
-        set_permissions(test_file, "unknown", is_dir=False)
-
-        assert (test_file.stat().st_mode & 0o777) == 0o644
-
-
-# ---------------------------------------------------------------------------
-# set_permissions: Windows behavior (mocked)
-# ---------------------------------------------------------------------------
-
-
-@os_agnostic
-class TestSetPermissionsWindows:
-    """Test set_permissions is a no-op on Windows."""
-
-    def test_skips_on_windows(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-        original_mode = test_file.stat().st_mode
-
-        with patch("lib_layered_config.domain.permissions.os.name", "nt"):
-            set_permissions(test_file, "app", is_dir=False)
-
-        # Mode unchanged on Windows
-        assert test_file.stat().st_mode == original_mode
-
-
-# ---------------------------------------------------------------------------
-# set_custom_permissions: POSIX behavior
-# ---------------------------------------------------------------------------
-
-
-@posix_only
-class TestSetCustomPermissionsPosix:
-    """Test set_custom_permissions function on POSIX systems."""
-
-    def test_sets_custom_file_mode(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-
-        set_custom_permissions(test_file, dir_mode=0o700, file_mode=0o600, is_dir=False)
-
-        assert (test_file.stat().st_mode & 0o777) == 0o600
-
-    def test_sets_custom_dir_mode(self, tmp_path: Path) -> None:
-        test_dir = tmp_path / "config"
-        test_dir.mkdir()
-
-        set_custom_permissions(test_dir, dir_mode=0o700, file_mode=0o600, is_dir=True)
-
-        assert (test_dir.stat().st_mode & 0o777) == 0o700
-
-    def test_skips_when_file_mode_is_none(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-        original_mode = test_file.stat().st_mode
-
-        set_custom_permissions(test_file, dir_mode=0o700, file_mode=None, is_dir=False)
-
-        assert test_file.stat().st_mode == original_mode
-
-    def test_skips_when_dir_mode_is_none(self, tmp_path: Path) -> None:
-        test_dir = tmp_path / "config"
-        test_dir.mkdir()
-        original_mode = test_dir.stat().st_mode
-
-        set_custom_permissions(test_dir, dir_mode=None, file_mode=0o600, is_dir=True)
-
-        assert test_dir.stat().st_mode == original_mode
-
-    def test_skips_when_both_modes_are_none(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-        original_mode = test_file.stat().st_mode
-
-        set_custom_permissions(test_file, dir_mode=None, file_mode=None, is_dir=False)
-
-        assert test_file.stat().st_mode == original_mode
-
-
-# ---------------------------------------------------------------------------
-# set_custom_permissions: Windows behavior (mocked)
-# ---------------------------------------------------------------------------
-
-
-@os_agnostic
-class TestSetCustomPermissionsWindows:
-    """Test set_custom_permissions is a no-op on Windows."""
-
-    def test_skips_on_windows(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "config.toml"
-        test_file.write_text("test")
-        original_mode = test_file.stat().st_mode
-
-        with patch("lib_layered_config.domain.permissions.os.name", "nt"):
-            set_custom_permissions(test_file, dir_mode=0o700, file_mode=0o600, is_dir=False)
-
-        # Mode unchanged on Windows
-        assert test_file.stat().st_mode == original_mode
-
-
-# ---------------------------------------------------------------------------
 # apply_mode: Guarded chmod sink
 # ---------------------------------------------------------------------------
 
 
 @os_agnostic
-def test_set_custom_permissions_refuses_a_negative_mode_on_every_platform(tmp_path: Path) -> None:
+def test_apply_mode_refuses_a_negative_mode_on_every_platform(tmp_path: Path) -> None:
     target = tmp_path / "config.toml"
     target.write_text("x", encoding="utf-8")
     with pytest.raises(DeployModeError, match=r"mode -1 is outside 0\.\.0o7777"):
-        set_custom_permissions(target, dir_mode=None, file_mode=-1, is_dir=False)
+        apply_mode(target, DeployMode(-1, ModeKind.FILE))
 
 
 @posix_only
-def test_set_custom_permissions_leaves_the_mode_alone_when_it_refuses(tmp_path: Path) -> None:
+def test_apply_mode_leaves_the_mode_alone_when_it_refuses(tmp_path: Path) -> None:
     target = tmp_path / "conf"
     target.mkdir()
     target.chmod(0o700)
     with pytest.raises(DeployModeError, match=r"world write \(0o002\)"):
-        set_custom_permissions(target, dir_mode=0o777, file_mode=None, is_dir=True)
+        apply_mode(target, DeployMode(0o777, ModeKind.DIRECTORY))
     assert (target.stat().st_mode & 0o7777) == 0o700
 
 
@@ -288,25 +119,14 @@ class TestPublicApiExports:
 
 
 # ---------------------------------------------------------------------------
-# Deprecation of the two setters
+# The removed setters
 # ---------------------------------------------------------------------------
 
 
 @os_agnostic
-@pytest.mark.filterwarnings("default::DeprecationWarning")
-def test_set_permissions_warns_that_it_is_deprecated_and_names_the_replacement(tmp_path: Path) -> None:
-    target = tmp_path / "config.toml"
-    target.write_text("x")
+@pytest.mark.parametrize("name", ["set_permissions", "set_custom_permissions"])
+def test_the_removed_setters_are_gone_from_the_permissions_module(name: str) -> None:
+    from lib_layered_config.domain import permissions
 
-    with pytest.deprecated_call(match=r"set_permissions is deprecated.*apply_mode"):
-        set_permissions(target, "user", is_dir=False)
-
-
-@os_agnostic
-@pytest.mark.filterwarnings("default::DeprecationWarning")
-def test_set_custom_permissions_warns_that_it_is_deprecated_and_names_the_replacement(tmp_path: Path) -> None:
-    target = tmp_path / "config.toml"
-    target.write_text("x")
-
-    with pytest.deprecated_call(match=r"set_custom_permissions is deprecated.*apply_mode"):
-        set_custom_permissions(target, dir_mode=None, file_mode=0o600, is_dir=False)
+    assert not hasattr(permissions, name)
+    assert name not in permissions.__all__
