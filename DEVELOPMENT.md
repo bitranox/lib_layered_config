@@ -66,13 +66,13 @@ The `.github/workflows/ci.yml` pipeline mirrors local expectations:
 - `pipx-uv` job builds the wheel and checks CLI installation via `pipx` and `uv`.
 - `notebooks` job runs the Quickstart notebook to ensure documentation stays runnable.
 
-Legacy packaging jobs (Conda, Nix, and “packaging files in sync”) were removed; `pyproject.toml` remains the single source of truth for packaging metadata.
+`pyproject.toml` is the single source of truth for packaging metadata.
 
 ### Platform specifics
 
-- **Windows** – ensure `pipx` is installed and on your `PATH` so the wheel verification step succeeds; the CI workflow mirrors this by installing pipx before running the job.
-- **Linux** – journald prerequisites are installed automatically in CI; local environments only need this if you plan to exercise the journald adapters manually.
-- **macOS** – no additional tooling beyond the standard dev dependencies is required.
+- **Windows** - ensure `pipx` is installed and on your `PATH` so the wheel verification step succeeds; the CI workflow mirrors this by installing pipx before running the job.
+- **Linux** - journald prerequisites are installed automatically in CI; local environments only need this if you plan to exercise the journald adapters manually.
+- **macOS** - no additional tooling beyond the standard dev dependencies is required.
 
 ## Architecture Rules
 

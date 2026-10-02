@@ -114,13 +114,14 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 `lib_layered_config env-prefix my-app` (the slug is POSITIONAL; prints `MY_APP___`) or
 `default_env_prefix("my-app")` in Python.
 
-- Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string.
+- Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string. A sensitive key
+  (one `redact=True` masks: `password`, `token`, `secret`, `*_key`) keeps `null`/`none` as text.
 - A value starting with `[` or `{` is parsed as JSON, in the environment AND unquoted in `.env`
   (`REPLICAS='["a","b"]'` in a shell, `REPLICAS=["a","b"]` in `.env`); a quoted `.env` value is always literal
   text; a comma list is never split.
 - A number converts only when it reads back as the same text: `5` and `3.5` do, `007123`, `0640` and `1.50`
   stay strings.
-- In `.env`, scalars stay strings (only the environment converts `true`/`5`/`none`).
+- An unquoted `.env` value converts exactly like an environment value; a quoted one stays literal text.
 - A numeric segment overrides one element of a file-defined array:
   `MY_APP___DATASET__0__DSN=...` overrides element 0's `dsn`, leaving the rest of the array.
 

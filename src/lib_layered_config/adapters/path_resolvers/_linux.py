@@ -35,35 +35,31 @@ class LinuxStrategy(PlatformStrategy):
         """Yield Linux application-default configuration paths.
 
         Provide deterministic discovery following XDG Base Directory specification.
-        Checks ``/etc/xdg/<slug>`` first (XDG system-wide default), then falls back
-        to ``/etc/<slug>`` for backwards compatibility.
+        Yields ``/etc/xdg/<slug>`` (XDG system-wide default) first, then ``/etc/<slug>``;
+        both are loaded, so a key set in both takes the ``/etc/<slug>`` value.
 
         Returns:
             Paths under ``/etc/xdg`` and ``/etc`` (or overridden root).
         """
         etc_root = Path(self.ctx.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
         profile_seg = self._profile_segment()
-        # Check XDG-compliant location first
         yield from collect_layer(etc_root / "xdg" / self.ctx.slug / profile_seg)
-        # Fall back to traditional /etc location for backwards compatibility
         yield from collect_layer(etc_root / self.ctx.slug / profile_seg)
 
     def host_paths(self) -> Iterable[str]:
         """Yield Linux host-specific configuration paths.
 
         Allow installations to override defaults per hostname following XDG specification.
-        Checks ``/etc/xdg/<slug>/hosts`` first, then falls back to ``/etc/<slug>/hosts``.
+        Yields ``/etc/xdg/<slug>/hosts`` first, then ``/etc/<slug>/hosts``; both are loaded.
 
         Returns:
             Host-level configuration paths (empty when missing).
         """
         etc_root = Path(self.ctx.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
         profile_seg = self._profile_segment()
-        # Check XDG-compliant location first
         xdg_candidate = etc_root / "xdg" / self.ctx.slug / profile_seg / "hosts" / f"{self.ctx.hostname}.toml"
         if xdg_candidate.is_file():
             yield str(xdg_candidate)
-        # Fall back to traditional /etc location for backwards compatibility
         candidate = etc_root / self.ctx.slug / profile_seg / "hosts" / f"{self.ctx.hostname}.toml"
         if candidate.is_file():
             yield str(candidate)

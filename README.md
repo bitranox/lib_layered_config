@@ -205,11 +205,11 @@ Use the optional defaults layer when you want one explicitly-provided file to se
 Important directories (overridable via environment variables):
 
 ### Linux
-- `/etc/xdg/<slug>/config.toml` (XDG system-wide, checked first)
+- `/etc/xdg/<slug>/config.toml` (XDG system-wide, read first)
 - `/etc/xdg/<slug>/config.d/*.{toml,json,yaml,yml}`
-- `/etc/<slug>/config.toml` (legacy fallback)
+- `/etc/<slug>/config.toml` (also read, after the XDG files; its values win)
 - `/etc/<slug>/config.d/*.{toml,json,yaml,yml}`
-- `/etc/xdg/<slug>/hosts/<hostname>.toml` or `/etc/<slug>/hosts/<hostname>.toml`
+- `/etc/xdg/<slug>/hosts/<hostname>.toml` and `/etc/<slug>/hosts/<hostname>.toml` (both read, in that order)
 - `/etc/xdg/<slug>/hosts/<hostname>.d/*.{toml,json,yaml,yml}` (host-specific split config)
 - `$XDG_CONFIG_HOME/<slug>/config.toml` (user; falls back to `~/.config/<slug>/config.toml`)
 - `$XDG_CONFIG_HOME/<slug>/config.d/*.{toml,json,yaml,yml}`

@@ -67,7 +67,8 @@ config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit")
 ~/.config/myapp/.env                          # Environment variables
 ```
 
-Note: For backwards compatibility, the library also checks `/etc/myapp/` if `/etc/xdg/myapp/` is not found.
+Note: the library also reads `/etc/myapp/` (same layout), after `/etc/xdg/myapp/`; where both set a key, the
+`/etc/myapp/` value wins.
 
 #### 2. **Environment Variable Prefix**
 The slug is converted to uppercase with underscores, followed by a triple underscore (`___`) separator to clearly distinguish the prefix from section/key separators (which use double underscores `__`):

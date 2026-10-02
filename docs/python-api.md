@@ -390,7 +390,10 @@ Load and merge all configuration layers into an immutable `Config` object with p
 **Raises:** `LayerLoadError` (a `ConfigError`) when a layer file cannot be decoded or parsed: `"<path> is not
 valid <FORMAT>"`, plus `" (line N, column M)"` when the parser reports a position; `"<path> is not valid UTF-8
 (line N, byte offset M)"` for an undecodable file, or `"<path> is not valid UTF-16|UTF-32 (byte offset M)"` for
-a BOM-marked YAML file that does not decode; never quoting the file's content.
+a BOM-marked YAML file that does not decode; `"<path> has keys that are not strings (quote them): <parent>:
+<key> (<type>)"` for a YAML mapping key such as an unquoted `1:` or `true:`; `"<path> is a directory, not a
+configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory. None of
+these quotes the file's content.
 
 **Examples:**
 

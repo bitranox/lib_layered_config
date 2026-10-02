@@ -342,8 +342,8 @@ def validate_profile(
     path traversal attacks and ensured cross-platform filesystem compatibility.
 
     Note:
-        For the public API with better documentation, see :func:`validate_profile_name`.
-        This function is kept for backward compatibility.
+        The path resolver's variant, which accepts None for "no profile". The public
+        API is :func:`validate_profile_name`.
 
     Args:
         value: The profile name to validate, or None for no profile.
