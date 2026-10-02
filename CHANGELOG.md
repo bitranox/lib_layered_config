@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.0.0] 2026-10-02 18:29:51
+
 Breaking release. Each change below turns a case that loaded silently, or with only a warning, into
 either the documented value or a refusal at load time.
 
