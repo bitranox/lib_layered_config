@@ -1,4 +1,4 @@
-"""A JSON array or object reaches the configuration with the same type from the environment and from .env."""
+"""An unquoted value reaches the configuration with the same type from the environment and from .env."""
 
 from __future__ import annotations
 
@@ -83,8 +83,16 @@ def test_per_index_keys_fill_a_list_from_dotenv(tmp_path: Path) -> None:
 
 
 @os_agnostic
-@pytest.mark.parametrize("value", ["true", "5", "none", "12345678", "007123"])
-def test_a_dotenv_scalar_stays_a_string(tmp_path: Path, value: str) -> None:
+@pytest.mark.parametrize(
+    ("value", "expected"), [("true", True), ("5", 5), ("none", None), ("12345678", 12345678), ("007123", "007123")]
+)
+def test_an_unquoted_scalar_has_the_same_type_in_both_layers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str, expected: object
+) -> None:
     dotenv = tmp_path / ".env"
-    dotenv.write_text(f"EMAIL__SMTP_HOSTS={value}\n", encoding="utf-8")
-    assert _read(tmp_path, dotenv) == value
+    dotenv.write_text(f"EMAIL__EXTRA={value}\n", encoding="utf-8")
+    from_dotenv = _read(tmp_path, dotenv, key="email.extra")
+    monkeypatch.setenv(FREE_ENV_NAME, value)
+    from_env = _read(tmp_path, key="email.extra")
+    assert from_dotenv == from_env == expected
+    assert type(from_dotenv) is type(from_env)

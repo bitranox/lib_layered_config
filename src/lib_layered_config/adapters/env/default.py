@@ -7,32 +7,23 @@ and forms the final precedence layer in ``lib_layered_config``.
 Contents:
     - ``default_env_prefix``: canonical prefix builder for a slug.
     - ``DefaultEnvLoader``: orchestrates filtering, coercion, and nesting.
-    - ``_coerce`` plus tiny predicate helpers that translate strings into
-      Python primitives, delegating JSON-container and number parsing to
-      ``.._value_coercion``.
     - ``_normalize_prefix`` / ``_iter_namespace_entries`` / ``_collect_keys``:
       small verbs that keep the loader body declarative.
-    - Constants for boolean and null literal detection.
+
+Each value is converted by ``.._value_coercion.coerce_value``, the rule the dotenv layer shares.
 """
 
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
-from ...domain.redaction import is_sensitive
-from ...observability import log_debug, log_warn
-from .._nested_keys import NESTED_KEY_DELIMITER, assign_nested
-from .._value_coercion import parse_json_container, parse_number
+from ...observability import log_debug
+from .._nested_keys import assign_nested
+from .._value_coercion import coerce_value
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-
-# Constants for environment variable value coercion
-_BOOL_TRUE: Final[str] = "true"
-_BOOL_FALSE: Final[str] = "false"
-_BOOL_LITERALS: Final[frozenset[str]] = frozenset({_BOOL_TRUE, _BOOL_FALSE})
-_NULL_LITERALS: Final[frozenset[str]] = frozenset({"null", "none"})
 
 
 def default_env_prefix(slug: str) -> str:
@@ -94,9 +85,7 @@ class DefaultEnvLoader:
             lowercase to align with file-based layers.
 
         Side Effects:
-            Emits ``env_variables_loaded`` debug events with summarised keys, and an
-            ``env_secret_became_none`` warning for each sensitive key whose value was an
-            unquoted ``null``/``none`` (see :func:`_warn_if_secret_became_none`).
+            Emits ``env_variables_loaded`` debug events with summarised keys.
 
         Examples:
             >>> env = {
@@ -113,10 +102,7 @@ class DefaultEnvLoader:
         normalized_prefix = _normalize_prefix(prefix)
         collected: dict[str, object] = {}
         for raw_key, value in _iter_namespace_entries(self._environ.items(), normalized_prefix):
-            coerced = _coerce(value)
-            if coerced is None:
-                _warn_if_secret_became_none(raw_key)
-            assign_nested(collected, raw_key, coerced, error_cls=ValueError)
+            assign_nested(collected, raw_key, coerce_value(raw_key, value), error_cls=ValueError)
         log_debug("env_variables_loaded", layer="env", path=None, keys=_collect_keys(collected))
         return collected
 
@@ -177,27 +163,6 @@ def _iter_namespace_entries(
         yield stripped, value
 
 
-def _warn_if_secret_became_none(raw_key: str) -> None:
-    """Warn when a sensitive key's value was read as None from a ``null``/``none`` literal.
-
-    A secret spelled exactly ``null`` or ``none`` becomes None here, which a consumer reads as
-    "no credential" and then proceeds without one - silently. The conversion stays for now
-    because a non-secret key may use ``null`` on purpose to unset a value; the warning makes the
-    secret case visible. It names the key (lowercased and dotted, as the merged configuration
-    names it) and never the value. Only the leaf segment is tested, because that is the name that
-    holds the value; a sensitive parent such as ``credentials__timeout`` holds no secret itself.
-
-    Args:
-        raw_key: Variable name with the prefix removed, segments separated by ``__``.
-
-    Examples:
-        >>> _warn_if_secret_became_none("EMAIL__SMTP_HOST")
-    """
-    segments = [segment.lower() for segment in raw_key.split(NESTED_KEY_DELIMITER)]
-    if is_sensitive(segments[-1]):
-        log_warn("env_secret_became_none", layer="env", path=None, key=".".join(segments))
-
-
 def _collect_keys(mapping: dict[str, object]) -> list[str]:
     """Return sorted top-level keys for logging.
 
@@ -214,75 +179,3 @@ def _collect_keys(mapping: dict[str, object]) -> list[str]:
         ['logging', 'service']
     """
     return sorted(mapping.keys())
-
-
-def _coerce(value: str) -> object:
-    """Coerce textual environment values to Python primitives where possible.
-
-    Convert human-friendly strings (``true``, ``5``, ``3.14``) into their Python
-    equivalents before merging.
-
-    Applies JSON-container, boolean, and null heuristics, then converts a value to a
-    number only when it reads back as the same text, returning the original string
-    when nothing matches.
-
-    Returns:
-        Parsed primitive, list/dict for JSON containers, or the original string when
-        coercion is not possible.
-
-    Examples:
-        >>> _coerce('true'), _coerce('10'), _coerce('3.5'), _coerce('hello'), _coerce('null')
-        (True, 10, 3.5, 'hello', None)
-        >>> _coerce('["a", "b"]')
-        ['a', 'b']
-        >>> _coerce('[not json')
-        '[not json'
-        >>> _coerce('007')
-        '007'
-    """
-    container = parse_json_container(value)
-    if container is not None:
-        return container
-    lowered = value.lower()
-    if _looks_like_bool(lowered):
-        return lowered == _BOOL_TRUE
-    if _looks_like_null(lowered):
-        return None
-    number = parse_number(value)
-    return value if number is None else number
-
-
-def _looks_like_bool(value: str) -> bool:
-    """Return ``True`` when *value* spells a boolean literal.
-
-    Support `_coerce` in recognising booleans without repeated literal sets.
-
-    Args:
-        value: Lower-cased string to inspect.
-
-    Returns:
-        ``True`` when the value is ``"true"`` or ``"false"``.
-
-    Examples:
-        >>> _looks_like_bool('true'), _looks_like_bool('false'), _looks_like_bool('maybe')
-        (True, True, False)
-    """
-    return value in _BOOL_LITERALS
-
-
-def _looks_like_null(value: str) -> bool:
-    """Return ``True`` when *value* represents a null literal.
-
-    Allow `_coerce` to map textual null representations to ``None``.
-
-    Args:
-        value: Lower-cased string to inspect.
-
-    Returns:
-        ``True`` when the value is ``"null"`` or ``"none"``.
-
-    Examples:
-        >>> _looks_like_null('null'), _looks_like_null('none'), _looks_like_null('nil')
-        (True, True, False)
-    """
-    return value in _NULL_LITERALS

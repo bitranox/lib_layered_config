@@ -7,6 +7,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from lib_layered_config.adapters._nested_keys import assign_nested as assign
+from lib_layered_config.adapters._value_coercion import coerce_value
 from lib_layered_config.adapters.dotenv.default import (
     DefaultDotEnvLoader,
 )
@@ -44,9 +45,9 @@ def test_dotenv_loader_preserves_password_literal(tmp_path: Path) -> None:
 
 
 @os_agnostic
-def test_dotenv_loader_keeps_uncoerced_feature_value(tmp_path: Path) -> None:
+def test_dotenv_loader_converts_an_unquoted_boolean(tmp_path: Path) -> None:
     _loader, data, _ = _write_sample_dotenv(tmp_path)
-    assert data["feature"] == "true"
+    assert data["feature"] is True
 
 
 @os_agnostic
@@ -99,7 +100,7 @@ def test_dotenv_loader_handles_random_namespace(entries, tmp_path: Path) -> None
             cursor = cursor[fragment]  # type: ignore[index]
         return cursor
 
-    expectation = all(lookup(data, raw_key) == value for raw_key, value in entries.items())
+    expectation = all(lookup(data, raw_key) == coerce_value(raw_key, value) for raw_key, value in entries.items())
     assert expectation is True
 
 
@@ -176,7 +177,7 @@ def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path, monkeypatch: pyt
     assert env_file.stat().st_size == cap
     loader = DefaultDotEnvLoader()
     data = loader.load(str(tmp_path))
-    assert data["a"] == "1"
+    assert data["a"] == 1
 
 
 @os_agnostic

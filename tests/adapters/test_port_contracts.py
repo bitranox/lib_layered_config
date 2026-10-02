@@ -121,7 +121,7 @@ def test_default_dotenv_loader_implements_protocol(sandbox) -> None:
 def test_default_dotenv_loader_reads_first_file(sandbox) -> None:
     sandbox.write("user", ".env", content="SERVICE__TIMEOUT=15\n")
     payload = DefaultDotEnvLoader().load(str(sandbox.roots["user"]))
-    assert payload["service"]["timeout"] == "15"
+    assert payload["service"]["timeout"] == 15
 
 
 STRUCTURED_LOADERS = [TOMLFileLoader, JSONFileLoader]

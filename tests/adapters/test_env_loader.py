@@ -11,10 +11,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from lib_layered_config.adapters._nested_keys import assign_nested
-from lib_layered_config.adapters._value_coercion import parse_number
+from lib_layered_config.adapters._value_coercion import coerce_value, parse_number
 from lib_layered_config.adapters.env.default import (
     DefaultEnvLoader,
-    _coerce,
     _iter_namespace_entries,
     _normalize_prefix,
     default_env_prefix,
@@ -118,36 +117,36 @@ def test_iter_namespace_entries_ignores_empty_suffix() -> None:
 
 @os_agnostic
 def test_coerce_parses_negative_integers() -> None:
-    assert _coerce("-7") == -7
+    assert coerce_value("SERVICE__VALUE", "-7") == -7
 
 
 @os_agnostic
 def test_coerce_parses_json_array() -> None:
-    assert _coerce('["replica1", "replica2"]') == ["replica1", "replica2"]
+    assert coerce_value("SERVICE__VALUE", '["replica1", "replica2"]') == ["replica1", "replica2"]
 
 
 @os_agnostic
 def test_coerce_parses_json_array_of_numbers() -> None:
-    assert _coerce("[1, 2, 3]") == [1, 2, 3]
+    assert coerce_value("SERVICE__VALUE", "[1, 2, 3]") == [1, 2, 3]
 
 
 @os_agnostic
 def test_coerce_parses_json_object() -> None:
-    assert _coerce('{"host": "db", "port": 5432}') == {"host": "db", "port": 5432}
+    assert coerce_value("SERVICE__VALUE", '{"host": "db", "port": 5432}') == {"host": "db", "port": 5432}
 
 
 @os_agnostic
 def test_coerce_keeps_invalid_json_container_as_string() -> None:
     # Bareword list is not valid JSON; the raw string must survive untouched.
-    assert _coerce("[a, b]") == "[a, b]"
-    assert _coerce("[unclosed") == "[unclosed"
+    assert coerce_value("SERVICE__VALUE", "[a, b]") == "[a, b]"
+    assert coerce_value("SERVICE__VALUE", "[unclosed") == "[unclosed"
 
 
 @os_agnostic
 def test_coerce_leaves_plain_scalars_untouched() -> None:
-    assert _coerce("hello") == "hello"
-    assert _coerce("10") == 10
-    assert _coerce("true") is True
+    assert coerce_value("SERVICE__VALUE", "hello") == "hello"
+    assert coerce_value("SERVICE__VALUE", "10") == 10
+    assert coerce_value("SERVICE__VALUE", "true") is True
 
 
 @os_agnostic
@@ -159,9 +158,9 @@ def test_env_loader_parses_json_array_value() -> None:
 
 @os_agnostic
 def test_coerce_parses_nested_json_containers() -> None:
-    assert _coerce('[{"a": 1}, {"b": 2}]') == [{"a": 1}, {"b": 2}]
-    assert _coerce('{"tags": ["x", "y"]}') == {"tags": ["x", "y"]}
-    assert _coerce("[[1, 2], [3, 4]]") == [[1, 2], [3, 4]]
+    assert coerce_value("SERVICE__VALUE", '[{"a": 1}, {"b": 2}]') == [{"a": 1}, {"b": 2}]
+    assert coerce_value("SERVICE__VALUE", '{"tags": ["x", "y"]}') == {"tags": ["x", "y"]}
+    assert coerce_value("SERVICE__VALUE", "[[1, 2], [3, 4]]") == [[1, 2], [3, 4]]
 
 
 @os_agnostic
