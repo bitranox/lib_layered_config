@@ -121,6 +121,8 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
   text; a comma list is never split.
 - A number converts only when it reads back as the same text: `5` and `3.5` do, `007123`, `0640` and `1.50`
   stay strings.
+- A `.env` key is the key path WITHOUT the prefix: `DATABASE__HOST=db1`. A `MY_APP___DATABASE__HOST` line in
+  `.env` does not override `database.host`; it creates a separate `my_app` section.
 - An unquoted `.env` value converts exactly like an environment value; a quoted one stays literal text.
 - A numeric segment overrides one element of a file-defined array:
   `MY_APP___DATASET__0__DSN=...` overrides element 0's `dsn`, leaving the rest of the array.
@@ -138,7 +140,8 @@ and `.yaml`/`.json` also accepted). `<Vendor>`/`<App>` are verbatim; `<slug>` is
 | dotenv | `~/.config/<slug>/.env`                 | `~/Library/Application Support/<Vendor>/<App>/.env`        | user `%APPDATA%\<Vendor>\<App>\.env`       |
 | env    | process environment, prefix `<SLUG>___` | same                                                       | same                                       |
 
-Notes: Linux `app`/`host` also fall back to `/etc/<slug>/...`; Linux honours
+Notes: Linux `app`/`host` also read `/etc/<slug>/...`, after `/etc/xdg/<slug>/...`, so a key set in both
+takes the `/etc/<slug>` value; Linux honours
 `$XDG_CONFIG_HOME` for the user layer; Windows also checks `%LOCALAPPDATA%` for the user
 layer. Roots are overridable for tests (`LIB_LAYERED_CONFIG_ETC`,
 `LIB_LAYERED_CONFIG_MAC_APP_ROOT`, etc.).
@@ -193,6 +196,8 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   when printing or logging.
 - **Split large config with `.d/`.** `config.toml` may have a companion `config.d/` whose
   files (`10-db.toml`, `20-cache.yaml`, ...) load in lexicographic order and can mix formats.
+- **Quote YAML keys that look like numbers or booleans** (`'1':`, `'true':`): an unquoted one is not a
+  string key, and the loader refuses the whole file.
 - **Use profiles for environments**, not copy-pasted files.
 - **Scaffold** a starting tree with `generate-examples` rather than hand-building paths.
 

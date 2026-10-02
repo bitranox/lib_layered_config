@@ -6,6 +6,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.0.1] 2026-10-02 18:46:32
+
+### Fixed
+
+- **The human display shows a source path as written.** A path containing square brackets
+  (`XDG_CONFIG_HOME=/tmp/cfg[red]x[/red]`) was read as Rich markup: the brackets vanished from
+  the path shown, and an unmatched closing tag (`[/bad]`) raised `MarkupError` out of
+  `display_config`. The provenance comment is now printed as plain text.
+- The `python-layered-config` skill describes 7.0.0: an unquoted `.env` value converts like the
+  environment, a sensitive key keeps `null`/`none` as text, and an unquoted YAML key that is not a
+  string refuses the file. It also states that a `.env` key carries no `<SLUG>___` prefix, and that
+  Linux reads both `/etc/xdg/<slug>/` and `/etc/<slug>/` for the app and host layers, the latter
+  winning, rather than using `/etc/<slug>/` as a fallback.
+
 ## [7.0.0] 2026-10-02 18:29:51
 
 Breaking release. Each change below turns a case that loaded silently, or with only a warning, into

@@ -59,8 +59,12 @@ def _build_console() -> Console:
     return Console(highlight=False)
 
 
-def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | None = None) -> str:
-    """Build a source comment string with layer and profile info.
+def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | None = None) -> Text:
+    """Build the yellow source comment with layer and profile info.
+
+    Returned as ``Text`` rather than ``str`` because Rich parses a printed ``str`` as markup:
+    a path is data, and one containing square brackets (a directory named ``cfg[red]x[/red]``)
+    would lose them, or raise ``MarkupError`` on an unmatched closing tag.
 
     Args:
         info: Origin metadata dict with ``layer`` and ``path`` keys.
@@ -68,16 +72,21 @@ def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | No
         profile: Optional profile name. Displays as ``none`` when not provided.
 
     Returns:
-        A comment string like ``# layer:defaults profile:none (path/to/file.toml)``
-        or ``# layer:env profile:none`` when no path is available.
+        A comment like ``# layer:defaults profile:none (path/to/file.toml)``, or
+        ``# layer:env profile:none`` when no path is available.
+
+    Examples:
+        >>> _format_source_line({"layer": "user", "path": "/c[red]x[/red]/a.toml", "key": "k"}).plain
+        '# layer:user profile:none (/c[red]x[/red]/a.toml)'
     """
     layer = info["layer"]
     path = info["path"]
     profile_str = profile if profile else "none"
 
+    line = f"{indent}# layer:{layer} profile:{profile_str}"
     if path is not None:
-        return f"{indent}# layer:{layer} profile:{profile_str} ({path})"
-    return f"{indent}# layer:{layer} profile:{profile_str}"
+        line = f"{line} ({path})"
+    return Text(line, style="yellow")
 
 
 def _render_toml_with_styling(
@@ -141,7 +150,7 @@ def _render_key_value(
 
     info = config.origin(dotted_key)
     if info is not None:
-        console.print(_format_source_line(info, indent, profile=profile), style="yellow")
+        console.print(_format_source_line(info, indent, profile=profile))
 
     text = Text(indent)
     text.append(key, style="orange3")
@@ -234,7 +243,7 @@ def _display_human(
             # Scalar value - display directly
             info = config.origin(section)
             if info is not None:
-                con.print(_format_source_line(info, "", profile=profile), style="yellow")
+                con.print(_format_source_line(info, "", profile=profile))
 
             text = Text("")
             text.append(section, style="orange3")
