@@ -6,6 +6,46 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Breaking release. Each change below turns a case that loaded silently, or with only a warning, into
+either the documented value or a refusal at load time.
+
+### Changed
+
+- **An unquoted `.env` value is converted exactly like the same value in the environment.** A JSON
+  array or object is parsed, `true`/`false` become a bool, `null`/`none` become None, and a number
+  becomes an int or float only when it reads back as the same text (`5432` and `3.5` convert, `007`
+  stays text); anything else stays the text it is. A quoted value is the literal text, so
+  `PORT="5432"` keeps a string. Until now only a JSON array or object was converted and every other
+  `.env` value arrived as a string, so the same setting changed type when it moved between `.env`
+  and the environment. A consumer model that declares a `str` field fed an unquoted all-digit value
+  (an ID, a PIN, an all-digit user name) now receives an int: quote the value in `.env`, or accept a
+  number in the model.
+- **A sensitive key keeps an unquoted `null` or `none` as text**, in the environment and in `.env`.
+  A sensitive key is one `redact=True` masks (`smtp_password`, `api_token`, any `_key` suffix), judged
+  by its last segment. Such a secret was read as None, which a consumer treats as "no credential"
+  and proceeds without one; it is now the text, so the login fails visibly. The
+  `env_secret_became_none` warning is removed. Every other key still reads `null`/`none` as None.
+
+### Removed
+
+- **`lib_layered_config.domain.permissions.set_permissions` and `set_custom_permissions`.** Use
+  `apply_mode(path, DeployMode(mode, kind))`. The `set_permissions=` parameter of `deploy_config` is
+  unchanged.
+
+### Fixed
+
+- **A YAML key that is not a string refuses the file.** `1:` reads as an int key and `true:` as a
+  bool key, which made the whole mapping one opaque value: none of its keys reachable by dotted
+  lookup, no per-key provenance, replaced whole by a higher layer. The loader raises
+  `InvalidFormatError` (wrapped in `LayerLoadError` by `read_config`) naming the file, where each key
+  sits and the key, never a value; quote such a key (`'1':`). The `config_key_not_string` warning is
+  removed.
+- **A configured file path that is a directory refuses the load** with "`<path>` is a directory, not
+  a configuration file", for a defaults, app, host or user file path and for an explicit
+  `dotenv_path`. It was skipped, so the configuration silently fell back to lower layers. The
+  `<name>.d/` companion directory is unaffected, and the upward `.env` search still passes over a
+  directory named `.env`, such as a virtualenv. The `config_directory_skipped` warning is removed.
+
 ## [6.1.1] 2026-10-01 16:50:57
 
 ### Security
