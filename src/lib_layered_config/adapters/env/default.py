@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
+from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
 from .._nested_keys import assign_nested
 from .._value_coercion import coerce_value
@@ -58,15 +59,20 @@ class DefaultEnvLoader:
     performs primitive coercion, and emits observability events.
     """
 
-    def __init__(self, *, environ: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, *, environ: dict[str, str] | None = None, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE
+    ) -> None:
         """Initialise the loader with a specific ``environ`` mapping for testability.
 
         Allow tests and callers to supply deterministic environments.
 
         Args:
             environ: Mapping to read from. Defaults to :data:`os.environ`.
+            not_sensitive: Paths the application declared not sensitive; their ``null``/``none``
+                reads as None.
         """
         self._environ = os.environ if environ is None else environ
+        self._not_sensitive = not_sensitive
 
     def load(self, prefix: str) -> dict[str, object]:
         """Return a nested mapping containing variables with the supplied *prefix*.
@@ -102,7 +108,12 @@ class DefaultEnvLoader:
         normalized_prefix = _normalize_prefix(prefix)
         collected: dict[str, object] = {}
         for raw_key, value in _iter_namespace_entries(self._environ.items(), normalized_prefix):
-            assign_nested(collected, raw_key, coerce_value(raw_key, value), error_cls=ValueError)
+            assign_nested(
+                collected,
+                raw_key,
+                coerce_value(raw_key, value, not_sensitive=self._not_sensitive),
+                error_cls=ValueError,
+            )
         log_debug("env_variables_loaded", layer="env", path=None, keys=_collect_keys(collected))
         return collected
 

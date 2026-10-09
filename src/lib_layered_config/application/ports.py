@@ -89,8 +89,8 @@ class FileLoader(Protocol):
 class DotEnvLoader(Protocol):
     """Convert `.env` files into nested mappings respecting prefix semantics."""
 
-    def load(self, start_dir: str | None = None) -> ConfigData:
-        """Discover and parse a `.env` file starting from *start_dir*."""
+    def load(self, start_dir: str | None = None, *, dotenv_path: str | None = None) -> ConfigData:
+        """Load *dotenv_path* when given, else discover and parse a `.env` file upward from *start_dir*."""
         ...  # pragma: no cover - protocol
 
     @property

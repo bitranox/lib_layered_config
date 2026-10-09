@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from ...domain.errors import InvalidFormatError
+from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
 from .._text_decoding import decode_utf8
@@ -66,9 +67,12 @@ class DefaultDotEnvLoader:
     the loaded path for provenance.
     """
 
-    def __init__(self, *, extras: Iterable[str] | None = None) -> None:
-        """Initialise with optional extra search paths from the path resolver."""
+    def __init__(
+        self, *, extras: Iterable[str] | None = None, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE
+    ) -> None:
+        """Initialise with optional extra search paths and the application's not-sensitive paths."""
         self._extras = [Path(p) for p in extras or []]
+        self._not_sensitive = not_sensitive
         self.last_loaded_path: str | None = None
 
     def load(self, start_dir: str | None = None, *, dotenv_path: str | None = None) -> Mapping[str, object]:
@@ -88,7 +92,7 @@ class DefaultDotEnvLoader:
             if not candidate.is_file():
                 continue
             self.last_loaded_path = str(candidate)
-            data = _parse_dotenv(candidate)
+            data = _parse_dotenv(candidate, not_sensitive=self._not_sensitive)
             _log_dotenv_loaded(candidate, data)
             return data
         _log_dotenv_missing()
@@ -103,7 +107,7 @@ class DefaultDotEnvLoader:
             _log_dotenv_missing()
             return {}
         self.last_loaded_path = str(path)
-        data = _parse_dotenv(path)
+        data = _parse_dotenv(path, not_sensitive=self._not_sensitive)
         _log_dotenv_loaded(path, data)
         return data
 
@@ -120,8 +124,12 @@ def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
         yield directory / ".env"
 
 
-def _parse_dotenv(path: Path) -> Mapping[str, object]:
+def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> Mapping[str, object]:
     """Parse dotenv file into nested dict.
+
+    Args:
+        path: The file to read.
+        not_sensitive: Paths the application declared not sensitive.
 
     Raises:
         InvalidFormatError: On malformed lines or bytes, or when the file is larger than
@@ -134,7 +142,12 @@ def _parse_dotenv(path: Path) -> Mapping[str, object]:
     text = decode_utf8(path.read_bytes(), path=path)
     # StringIO with newline=None keeps the universal-newline line splitting the text-mode open() had.
     for line_number, raw_line in enumerate(io.StringIO(text, newline=None), start=1):
-        _process_line(result, raw_line, line_number, path)
+        entry = _split_line(raw_line, line_number, path)
+        if entry is None:
+            continue
+        key, raw_value = entry
+        value = _dotenv_value(key, raw_value, not_sensitive=not_sensitive)
+        assign_nested(result, key, value, error_cls=InvalidFormatError)
     return result
 
 
@@ -143,25 +156,23 @@ def _is_ignorable(line: str) -> bool:
     return not line or line.startswith(_COMMENT_CHAR)
 
 
-def _process_line(
-    result: dict[str, object],
-    raw_line: str,
-    line_number: int,
-    path: Path,
-) -> None:
-    """Process a single dotenv line, updating result in place."""
+def _split_line(raw_line: str, line_number: int, path: Path) -> tuple[str, str] | None:
+    """Return a dotenv line's key and raw value, or None for a blank or comment line.
+
+    Raises:
+        InvalidFormatError: The line has no ``=``.
+    """
     line = raw_line.strip()
     if _is_ignorable(line):
-        return
+        return None
     if _KEY_VALUE_DELIMITER not in line:
         _log_dotenv_error(path, line_number)
         raise InvalidFormatError(f"Malformed line {line_number} in {path}")
     key, value = line.split(_KEY_VALUE_DELIMITER, 1)
-    key = key.strip()
-    assign_nested(result, key, _dotenv_value(key, value.strip()), error_cls=InvalidFormatError)
+    return key.strip(), value.strip()
 
 
-def _dotenv_value(key: str, raw: str) -> object:
+def _dotenv_value(key: str, raw: str, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> object:
     """Return a dotenv value: quoted stays the literal text; unquoted is converted like the environment.
 
     Quoting is the only way to keep a literal string such as ``"5432"`` or ``"true"`` in .env, so a
@@ -175,7 +186,8 @@ def _dotenv_value(key: str, raw: str) -> object:
     """
     if _is_quoted(raw):
         return raw[1:-1]
-    return coerce_value(key, _strip_quotes(raw))  # the unquoted branch: comment handling, then conversion
+    # The unquoted branch: comment handling, then conversion.
+    return coerce_value(key, _strip_quotes(raw), not_sensitive=not_sensitive)
 
 
 def _is_quoted(value: str) -> bool:

@@ -2,7 +2,8 @@
 
 Contents:
     - ``coerce_value``: the conversion both layers apply to an unquoted value - a JSON container,
-      ``true``/``false``, ``null``/``none`` (kept as text for a sensitive key), a lossless number,
+      ``true``/``false``, ``null``/``none`` (kept as text for a sensitive key unless the
+      application declared it not sensitive), a lossless number,
       otherwise the text unchanged.
     - ``parse_json_container``: a value that opens like a JSON array or object is parsed as one.
     - ``parse_number``: a value becomes an int or float only when the number reads back as the
@@ -17,7 +18,7 @@ from typing import Final
 
 import orjson
 
-from ..domain.redaction import is_sensitive
+from ..domain.redaction import NotSensitiveKeys, is_sensitive_at
 from ._nested_keys import NESTED_KEY_DELIMITER
 
 __all__ = ["coerce_value", "parse_json_container", "parse_number"]
@@ -33,19 +34,20 @@ _INT_TEXT: Final[re.Pattern[str]] = re.compile(r"0|-?[1-9][0-9]{0,18}")
 _MAX_FLOAT_TEXT: Final[int] = 32
 
 
-def coerce_value(raw_key: str, value: str) -> object:
+def coerce_value(raw_key: str, value: str, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> object:
     """Convert an unquoted *value* the way the environment and dotenv layers read it.
 
     A JSON array or object is parsed, ``true``/``false`` become a bool, ``null``/``none`` become
     None, and a number becomes an int or float only when it reads back as the same text; anything
     else stays the text it is. A sensitive key (one ``redact=True`` masks) keeps ``null``/``none``
     as text: None would mean "no credential", and a consumer would then proceed without one
-    instead of failing to log in. Only the key's leaf segment is tested, because that is the name
-    that holds the value.
+    instead of failing to log in. A key the application declared not sensitive reads them as None
+    like any other key.
 
     Args:
         raw_key: Variable name with the prefix removed, segments separated by ``__``.
         value: The value as written, without surrounding quotes.
+        not_sensitive: Paths the application declared not sensitive.
 
     Returns:
         The converted value.
@@ -57,6 +59,9 @@ def coerce_value(raw_key: str, value: str) -> object:
         (True, '007')
         >>> coerce_value("EMAIL__SMTP_PASSWORD", "none")
         'none'
+        >>> declared = NotSensitiveKeys.of(["performance.max_token_bytes"])
+        >>> coerce_value("PERFORMANCE__MAX_TOKEN_BYTES", "null", not_sensitive=declared) is None
+        True
     """
     container = parse_json_container(value)
     if container is not None:
@@ -65,19 +70,21 @@ def coerce_value(raw_key: str, value: str) -> object:
     if lowered in _BOOL_LITERALS:
         return lowered == _BOOL_TRUE
     if lowered in _NULL_LITERALS:
-        return value if _leaf_is_sensitive(raw_key) else None
+        return value if _key_is_sensitive(raw_key, not_sensitive) else None
     number = parse_number(value)
     return value if number is None else number
 
 
-def _leaf_is_sensitive(raw_key: str) -> bool:
-    """Return whether the last ``__`` segment of *raw_key* names a secret.
+def _key_is_sensitive(raw_key: str, not_sensitive: NotSensitiveKeys) -> bool:
+    """Return whether the key *raw_key* names is masked: its leaf looks secret and nothing declared it.
 
     Examples:
-        >>> _leaf_is_sensitive("EMAIL__SMTP_PASSWORD"), _leaf_is_sensitive("CREDENTIALS__TIMEOUT")
-        (True, False)
+        >>> _key_is_sensitive("EMAIL__SMTP_PASSWORD", NotSensitiveKeys.NONE)
+        True
+        >>> _key_is_sensitive("CREDENTIALS__TIMEOUT", NotSensitiveKeys.NONE)
+        False
     """
-    return is_sensitive(raw_key.rsplit(NESTED_KEY_DELIMITER, maxsplit=1)[-1].lower())
+    return is_sensitive_at(raw_key.lower().split(NESTED_KEY_DELIMITER), not_sensitive=not_sensitive)
 
 
 def parse_json_container(value: str) -> list[object] | dict[str, object] | None:
