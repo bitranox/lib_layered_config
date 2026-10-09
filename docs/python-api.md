@@ -192,11 +192,12 @@ for key in sensitive_keys:
 ```
 **Explanation:** You can use provenance to enforce security policies, ensuring sensitive values only come from appropriate sources (environment variables or .env files, not checked-in config files).
 
-##### `Config.as_dict()`
+##### `Config.as_dict(redact=False)`
 
 Return a deep, mutable copy of the configuration tree.
 
-**Parameters:** None
+**Parameters:**
+- `redact` (bool, optional): Replace the values of sensitive keys with `***REDACTED***`; keys declared through `read_config(not_sensitive=...)` stay visible. Default: `False`.
 
 **Returns:** Dictionary containing a deep copy of all configuration data.
 
@@ -233,12 +234,33 @@ print(f"Test DB: {test_config['database']['host']}")  # test-db.example.com
 ```
 **Explanation:** This is useful in tests where you want to create variations of your configuration without modifying the immutable Config object.
 
-##### `Config.to_json(indent=None)`
+##### `Config.get_redacted(key, default=None)`
+
+Return the value at a dotted key as `as_dict(redact=True)` shows it, for a display that shows one key or section. A key below a masked section is masked too, so a single key never shows what the whole view hides; keys declared not sensitive stay visible.
+
+**Parameters:**
+- `key` (str, required): Dotted path identifying nested entries.
+- `default` (Any, optional): Value returned when `key` does not exist. Default: `None`.
+
+**Returns:** The redacted value, or `default`.
+
+**Example:**
+```python
+from lib_layered_config.domain.config import Config
+
+config = Config({"credentials": {"user": "alice"}, "db": {"host": "h"}}, {})
+print(config.get_redacted("credentials.user"))  # ***REDACTED***
+print(config.get_redacted("db.host"))  # h
+print(config.get_redacted("db.port", 0))  # 0
+```
+
+##### `Config.to_json(indent=None, redact=False)`
 
 Serialize the configuration as JSON.
 
 **Parameters:**
 - `indent` (int | None, optional): Indentation level for pretty-printing. `None` produces compact output. Default: `None`.
+- `redact` (bool, optional): Replace the values of sensitive keys with `***REDACTED***`; keys declared through `read_config(not_sensitive=...)` stay visible. Default: `False`.
 
 **Returns:** JSON string containing the configuration data.
 
@@ -384,6 +406,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search. Default: `None` (uses current working directory).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
 - `dotenv_path` (str | Path | None, optional): Explicit path to a `.env` file. When set, this file is loaded directly instead of searching upward from `start_dir`. Default: `None` (use directory search).
+- `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). Redaction leaves them visible, and an unquoted `null`/`none` in the environment or `.env` reads as `None` for them. The returned `Config` carries the declaration. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
 
 **Returns:** Immutable `Config` object with merged configuration and provenance tracking.
 
@@ -515,6 +538,8 @@ Load configuration and return it as JSON with provenance metadata.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
 - `indent` (int | None, optional): JSON indentation level. `None` for compact output. Default: `None`.
+- `redact` (bool, optional): Replace the values of sensitive keys (`password`, `token`, `secret`, `*_key`, ...) with `***REDACTED***` in the config data. Default: `False`.
+- `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). Redaction leaves them visible, and an unquoted `null`/`none` in the environment or `.env` reads as `None` for them. Declared keys stay visible when `redact` is set. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
 
 **Returns:** JSON string containing `{"config": {...}, "provenance": {...}}`.
 
@@ -603,6 +628,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
+- `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). Redaction leaves them visible, and an unquoted `null`/`none` in the environment or `.env` reads as `None` for them. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
 
 **Returns:** Tuple of `(data_dict, provenance_dict)` where both are mutable dictionaries.
 
@@ -689,6 +715,50 @@ print(f"Final configuration: {data}")
 **Explanation:** Raw dictionaries can be mutated, making them useful when you need to apply runtime overrides from command-line arguments or other sources.
 
 ---
+
+### Redaction helpers
+
+`is_sensitive(name)` decides by key name alone, so a size such as `max_token_bytes` is masked like a token.
+`NotSensitiveKeys` lets an application declare such keys; the helpers below are importable from `lib_layered_config`.
+
+##### `NotSensitiveKeys.of(declared)`
+
+Build the declaration from dotted paths (matched case-insensitively; an item in a list is addressed by the
+list's own path, with no index). Pass `None` for none (returns `NotSensitiveKeys.NONE`) or an existing instance
+(returned as is). It covers its own path only: keys below it are still checked, and a masked section stays masked
+unless the section itself is declared. `covers(path)` returns whether a sequence of segments was declared;
+iterating an instance yields the declared dotted paths, sorted.
+
+**Raises:** `TypeError` for a single `str` or a non-`str` entry, and `ValueError` for an empty segment. `covers`
+refuses a `str` path with `TypeError`, as does `NotSensitiveKeys(paths)` built directly from anything `of` would not produce
+(`ValueError` for an empty or non-lowercase segment).
+
+##### `is_sensitive_at(path, *, not_sensitive=NotSensitiveKeys.NONE)`
+
+Return whether the key at `path` is masked: its own name looks secret and nothing declared it.
+
+**Parameters:**
+- `path` (Sequence[str], required): The key's segments from the root, its own name last. A dotted `str` raises
+  `TypeError`; write `tuple("db.password".split("."))`.
+- `not_sensitive` (NotSensitiveKeys, optional): Declared paths. Default: `NotSensitiveKeys.NONE`.
+
+**Returns:** `bool`.
+
+##### `redact_mapping(data, *, not_sensitive=None)`
+
+Return a deep copy of `data` with sensitive values replaced by `REDACTED_PLACEHOLDER` (`"***REDACTED***"`).
+
+**Parameters:**
+- `data` (dict[str, Any], required): Configuration mapping to redact.
+- `not_sensitive` (Iterable[str] | None, optional): Dotted paths declared not sensitive; same validation as `NotSensitiveKeys.of`. Default: `None`.
+
+**Example:**
+```python
+from lib_layered_config import redact_mapping
+
+print(redact_mapping({"max_token_bytes": 4096, "password": "x"}, not_sensitive=["max_token_bytes"]))
+# {'max_token_bytes': 4096, 'password': '***REDACTED***'}
+```
 
 ### `default_env_prefix`
 

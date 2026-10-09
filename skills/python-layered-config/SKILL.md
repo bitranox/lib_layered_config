@@ -115,8 +115,8 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 `default_env_prefix("my-app")` in Python.
 
 - Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string. A sensitive key
-  (one `redact=True` masks: `password`, `token`, `secret`, `*_key`, unless declared with
-  `read_config(not_sensitive=[...])`) keeps `null`/`none` as text.
+  (one `redact=True` masks: `password`, `token`, `secret`, `*_key`) keeps `null`/`none` as text
+  unless declared with `read_config(not_sensitive=[...])`.
 - A value starting with `[` or `{` is parsed as JSON, in the environment AND unquoted in `.env`
   (`REPLICAS='["a","b"]'` in a shell, `REPLICAS=["a","b"]` in `.env`); a quoted `.env` value is always literal
   text; a comma list is never split.

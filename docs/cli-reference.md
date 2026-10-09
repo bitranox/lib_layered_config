@@ -807,7 +807,7 @@ For system-wide configuration in `%ProgramData%`, use Windows built-in permissio
 
    # A key whose NAME looks secret but whose value is not: declare it once
    config = read_config(vendor="Acme", app="MyApp", slug="myapp", not_sensitive=["performance.max_token_bytes"])
-   config.to_json(redact=True)  # max_token_bytes shown, passwords still masked
+   print(config.to_json(redact=True))  # max_token_bytes shown, passwords still masked
    ```
 
    A declaration covers its own path only: keys below it are still checked,
