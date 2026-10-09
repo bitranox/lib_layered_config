@@ -174,6 +174,7 @@ Same engine as the library. Run any command with `-h` for full flags.
 | `generate-examples` | Scaffold an example config tree to bootstrap a project.                                                                                                                         |
 | `env-prefix`        | Print the `<SLUG>___` env-var prefix for a slug.                                                                                                                                |
 | `info`              | Print resolved package metadata.                                                                                                                                                |
+| `fail`              | Raise a deliberate `RuntimeError`, to test how a harness reports a failing command.                                                                                             |
 
 Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
 
@@ -184,7 +185,7 @@ Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
 | `--env-file <path>` (load an explicit `.env`) | yes  | yes       | no     | no                | no         | no   |
 | `--redact` (mask secrets in output)           | yes  | yes       | no     | no                | no         | no   |
 
-`env-prefix` and `info` accept no options at all beyond `--help` (`env-prefix` takes a
+`env-prefix`, `info` and `fail` accept no options at all beyond `--help` (`env-prefix` takes a
 positional SLUG). Passing one of the others raises `NoSuchOption`.
 
 ## Designing config files
@@ -203,6 +204,53 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   string key, and the loader refuses the whole file.
 - **Use profiles for environments**, not copy-pasted files.
 - **Scaffold** a starting tree with `generate-examples` rather than hand-building paths.
+
+## Python API beyond read_config
+
+Everything below is importable from `lib_layered_config`.
+
+**Errors.** Catch `ConfigError`, the base of every library error. Its subclasses:
+
+- `LayerLoadError` - `read_config*` could not decode or parse a layer file (broken TOML, invalid
+  UTF-8, a malformed `.env` line).
+- `InvalidFormatError` - a source cannot be parsed. `read_config*` re-raises it as `LayerLoadError`,
+  so you meet it directly only from lower-level calls (nesting deeper than the limit in
+  `redact_mapping`, for example).
+- `NotFoundError` - an optional source is unavailable, e.g. a `.yaml` file without the `yaml` extra.
+- `ValidationError` (also a `ValueError`) - an identifier or profile name is refused. Its subclasses
+  `DeployModeError` (an unsafe or malformed mode, or `dir_mode`/`file_mode` given together with
+  `set_permissions=False`) and `DeployPermissionsError` (unusable permission settings, one line per
+  problem) come from deploy.
+
+**Redaction helpers.** `is_sensitive("smtp_password")` -> `True` checks one key NAME against the
+built-in patterns (a field named just `key` is not sensitive). `is_sensitive_at(("performance",
+"max_token_bytes"), not_sensitive=NotSensitiveKeys.of([...]))` checks a key PATH and honours a
+declaration; pass a tuple of segments, never a dotted `str` (refused with `TypeError`).
+`redact_mapping(data, not_sensitive=["performance.max_token_bytes"])` returns a masked deep copy
+of a plain dict; `not_sensitive` takes dotted paths or a `NotSensitiveKeys`. Use it on
+`read_config_raw(...).data`, which does not carry the declaration.
+
+**Profiles.** `validate_profile_name("production")` returns the name or raises `ValidationError`;
+`is_valid_profile_name(name)` answers `True`/`False` instead. Both take `max_length=` (default 64).
+
+**Deploying and scaffolding.** `deploy_config("app.toml", vendor=..., app=..., slug=..., targets=["user"])`
+is the `deploy` command in Python (`source` is the path of the file to copy). It returns a list
+with one `DeployResult` per destination: `.destination`, `.backup_path`, `.ucf_path`, and `.action`,
+an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"skipped"`), since
+`.action == "created"` is always `False`. Permission keywords: `set_permissions`, `dir_mode`,
+`file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
+`DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
+`ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
+`generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
+the list of written paths.
+
+**Display and logging.** `display_config(config, output_format=OutputFormat.HUMAN)` prints a config
+the way the `read` command does (`OutputFormat.JSON` for JSON). `get_logger()` returns the stdlib
+`logging.Logger` named `lib_layered_config`; attach handlers to it. Each record carries a
+`context` dict: always `record.context["trace_id"]`, plus the event's own fields (often `layer`
+and `path`). `bind_trace_id("abc123")` sets that trace id for the current context (a `ContextVar`),
+but `read_config*` resets it to `None` when it starts, so its own events carry `None`. `i_should_fail()` raises a `RuntimeError` on
+purpose, for testing failure paths.
 
 ## Common mistakes
 

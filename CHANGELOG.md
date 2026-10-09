@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.0] 2026-10-09 15:29:06
+
 ### Added
 
 - **An application can declare keys that are not secrets.** `read_config`, `read_config_json` and
@@ -17,6 +19,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   Paths match case-insensitively, a list item is addressed by the list's path with no index, and
   declaring a key below a masked section does not unmask the section. A bare string is refused.
   New exports: `NotSensitiveKeys`, `is_sensitive_at`; new method `Config.get_redacted(key)`.
+
+### Changed
+
+- Dependency floors raised: `lib_cli_exit_tools>=2.4.0`, `orjson>=3.13.0`; dev `hypothesis>=6.168.5`.
+- The pip-audit exclusion for CVE-2026-7246 is gone: click resolves to 8.5.0, past the fix, so
+  the audit passes without it.
+- The `python-layered-config` skill now names every public export and CLI command: the error
+  classes, redaction and profile helpers, `deploy_config` and its `DeployResult.action` enum,
+  `generate_examples`, `display_config`, the logging hooks, and the `fail` command.
 
 ### Fixed
 

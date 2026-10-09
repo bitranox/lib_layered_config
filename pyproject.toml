@@ -1,6 +1,6 @@
 [project]
 name = "lib_layered_config"
-version = "7.0.1"
+version = "7.1.0"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -242,6 +242,4 @@ forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.applicat
 
 [tool.pip-audit]
 # Known vulnerabilities to ignore (unfixable or accepted risk)
-#   but the dev/CI toolchain pins click<8.3.0 via codecov-cli, so there is no upgrade path
-#   here; not a runtime dependency and the library never calls click.edit().
-ignore-vulns = ["CVE-2026-7246"]
+ignore-vulns = []
