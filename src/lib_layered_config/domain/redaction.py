@@ -95,6 +95,9 @@ class NotSensitiveKeys:
     list's own path, with no index. A declaration covers its own path only: keys below it are
     still checked one by one, and a masked ancestor stays masked as a whole.
 
+    Build one with :meth:`of`, the documented constructor that validates and lowercases;
+    constructing it directly is checked too and refuses anything :meth:`of` would not produce.
+
     Attributes:
         paths: The declared paths, lowercased, one tuple of segments each.
 
@@ -109,6 +112,24 @@ class NotSensitiveKeys:
     paths: frozenset[tuple[str, ...]]
 
     NONE: ClassVar[NotSensitiveKeys]
+
+    def __post_init__(self) -> None:
+        """Refuse paths that :meth:`of` would never build, so a direct construction cannot mis-mask.
+
+        Raises:
+            TypeError: ``paths`` is not a frozenset of tuples of ``str``.
+            ValueError: A segment is empty or not lowercase.
+
+        Examples:
+            >>> NotSensitiveKeys(frozenset({("A", "b")}))
+            Traceback (most recent call last):
+            ...
+            ValueError: not-sensitive path ('A', 'b') needs lowercase, non-empty segments: use NotSensitiveKeys.of
+        """
+        if not isinstance(cast("object", self.paths), frozenset):
+            raise TypeError(f"paths must be a frozenset of tuples of str, got {type(self.paths).__name__}")
+        for path in self.paths:
+            _check_built_path(path)
 
     @classmethod
     def of(cls, declared: Iterable[str] | None) -> NotSensitiveKeys:
@@ -144,10 +165,18 @@ class NotSensitiveKeys:
     def covers(self, path: Sequence[str]) -> bool:
         """Return whether *path* (segments, any case) was declared.
 
+        Raises:
+            TypeError: *path* is a ``str``, which would be read as a sequence of characters.
+
         Examples:
             >>> NotSensitiveKeys.of(["a.b"]).covers(["A", "b"]), NotSensitiveKeys.NONE.covers(["a", "b"])
             (True, False)
+            >>> NotSensitiveKeys.of(["a.b"]).covers("a.b")
+            Traceback (most recent call last):
+            ...
+            TypeError: path is a sequence of segments, not a dotted str: write tuple('a.b'.split('.'))
         """
+        _refuse_str_path(path)
         return tuple(segment.lower() for segment in path) in self.paths
 
     def __iter__(self) -> Iterator[str]:
@@ -156,6 +185,35 @@ class NotSensitiveKeys:
 
 
 NotSensitiveKeys.NONE = NotSensitiveKeys(frozenset())
+
+
+def _check_built_path(path: object) -> None:
+    """Refuse *path* unless it is a tuple of lowercase, non-empty ``str`` segments.
+
+    Examples:
+        >>> _check_built_path(("a", "b"))
+    """
+    if not isinstance(path, tuple) or not all(isinstance(segment, str) for segment in cast("tuple[object, ...]", path)):
+        raise TypeError(f"each not-sensitive path must be a tuple of str, got {path!r}")
+    segments = cast("tuple[str, ...]", path)
+    if not all(segments) or any(segment != segment.lower() for segment in segments):
+        raise ValueError(
+            f"not-sensitive path {segments!r} needs lowercase, non-empty segments: use NotSensitiveKeys.of"
+        )
+
+
+def _refuse_str_path(path: object) -> None:
+    """Raise ``TypeError`` for a ``str`` path: its characters would be read as the segments.
+
+    Examples:
+        >>> _refuse_str_path(("a", "b"))
+        >>> _refuse_str_path("a.b")
+        Traceback (most recent call last):
+        ...
+        TypeError: path is a sequence of segments, not a dotted str: write tuple('a.b'.split('.'))
+    """
+    if isinstance(path, str):
+        raise TypeError(f"path is a sequence of segments, not a dotted str: write tuple({path!r}.split('.'))")
 
 
 def _declared_path(entry: object) -> tuple[str, ...]:
@@ -183,13 +241,21 @@ def is_sensitive_at(path: Sequence[str], *, not_sensitive: NotSensitiveKeys = No
     Returns:
         Whether the value at *path* must be treated as a secret.
 
+    Raises:
+        TypeError: *path* is a ``str``; a dotted name is not a path, split it first.
+
     Examples:
         >>> declared = NotSensitiveKeys.of(["performance.max_token_bytes"])
         >>> is_sensitive_at(("performance", "max_token_bytes"), not_sensitive=declared)
         False
         >>> is_sensitive_at(("db", "password"), not_sensitive=declared)
         True
+        >>> is_sensitive_at("db.password")
+        Traceback (most recent call last):
+        ...
+        TypeError: path is a sequence of segments, not a dotted str: write tuple('db.password'.split('.'))
     """
+    _refuse_str_path(path)
     return bool(path) and is_sensitive(path[-1]) and not not_sensitive.covers(path)
 
 

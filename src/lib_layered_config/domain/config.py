@@ -89,10 +89,19 @@ class Config(MappingABC[str, Any]):
 
     _data: Mapping[str, Any]
     _meta: Mapping[str, SourceInfo]
-    _not_sensitive: NotSensitiveKeys = field(default=NotSensitiveKeys.NONE, compare=False)
+    _not_sensitive: NotSensitiveKeys = field(default=NotSensitiveKeys.NONE, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Freeze internal mappings immediately after construction."""
+        """Freeze internal mappings immediately after construction.
+
+        Raises:
+            TypeError: ``_not_sensitive`` is not a :class:`NotSensitiveKeys`.
+        """
+        if not isinstance(cast("object", self._not_sensitive), NotSensitiveKeys):
+            raise TypeError(
+                f"Config's third argument must be a NotSensitiveKeys, got {type(self._not_sensitive).__name__}: "
+                "use NotSensitiveKeys.of([...])"
+            )
         object.__setattr__(self, "_data", _lock_map(self._data))
         object.__setattr__(self, "_meta", _lock_map(self._meta))
 

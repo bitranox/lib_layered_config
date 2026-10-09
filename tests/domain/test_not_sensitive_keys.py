@@ -124,3 +124,38 @@ def test_is_sensitive_at_needs_a_sensitive_leaf_and_no_covering_declaration() ->
     assert is_sensitive_at(("performance", "max_token_bytes"))
     assert not is_sensitive_at(("db", "host"))
     assert not is_sensitive_at(())
+
+
+@os_agnostic
+def test_is_sensitive_at_refuses_a_dotted_str_instead_of_reading_its_characters() -> None:
+    with pytest.raises(TypeError, match=re.escape("tuple('db.password'.split('.'))")):
+        is_sensitive_at(cast("tuple[str, ...]", "db.password"))
+
+
+@os_agnostic
+def test_covers_refuses_a_dotted_str_instead_of_reading_its_characters() -> None:
+    with pytest.raises(TypeError, match="not a dotted str"):
+        NotSensitiveKeys.of(["a.b"]).covers(cast("tuple[str, ...]", "a.b"))
+
+
+@os_agnostic
+def test_a_directly_built_declaration_refuses_a_paths_value_that_is_not_a_frozenset_of_tuples() -> None:
+    with pytest.raises(TypeError, match="frozenset"):
+        NotSensitiveKeys(cast("frozenset[tuple[str, ...]]", {("a", "b")}))
+    with pytest.raises(TypeError, match="tuple of str"):
+        NotSensitiveKeys(cast("frozenset[tuple[str, ...]]", frozenset({"a.b"})))
+    with pytest.raises(TypeError, match="tuple of str"):
+        NotSensitiveKeys(cast("frozenset[tuple[str, ...]]", frozenset({("a", 1)})))
+
+
+@os_agnostic
+def test_a_directly_built_declaration_refuses_an_empty_or_uppercase_segment() -> None:
+    with pytest.raises(ValueError, match="empty segment"):
+        NotSensitiveKeys(frozenset({("a", "")}))
+    with pytest.raises(ValueError, match="lowercase"):
+        NotSensitiveKeys(frozenset({("A", "b")}))
+
+
+@os_agnostic
+def test_a_directly_built_valid_declaration_works() -> None:
+    assert NotSensitiveKeys(frozenset({("a", "b")})).covers(("A", "B"))
