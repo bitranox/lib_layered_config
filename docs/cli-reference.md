@@ -804,7 +804,16 @@ For system-wide configuration in `%ProgramData%`, use Windows built-in permissio
    # Redacted output for logs (masks passwords, tokens, etc.)
    safe_json = config.to_json(redact=True)
    print(safe_json)  # {"database": {"password": "***REDACTED***", "host": "localhost"}}
+
+   # A key whose NAME looks secret but whose value is not: declare it once
+   config = read_config(vendor="Acme", app="MyApp", slug="myapp",
+                        not_sensitive=["performance.max_token_bytes"])
+   config.to_json(redact=True)  # max_token_bytes shown, passwords still masked
    ```
+
+   A declaration covers its own path only: keys below it are still checked,
+   and a masked section stays masked unless the section itself is declared. Only the Python API can
+   declare; a config file or environment variable cannot unmask anything.
 
 #### Environment Variable Security
 

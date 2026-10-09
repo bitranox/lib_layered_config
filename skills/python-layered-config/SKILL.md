@@ -115,7 +115,8 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 `default_env_prefix("my-app")` in Python.
 
 - Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string. A sensitive key
-  (one `redact=True` masks: `password`, `token`, `secret`, `*_key`) keeps `null`/`none` as text.
+  (one `redact=True` masks: `password`, `token`, `secret`, `*_key`, unless declared with
+  `read_config(not_sensitive=[...])`) keeps `null`/`none` as text.
 - A value starting with `[` or `{` is parsed as JSON, in the environment AND unquoted in `.env`
   (`REPLICAS='["a","b"]'` in a shell, `REPLICAS=["a","b"]` in `.env`); a quoted `.env` value is always literal
   text; a comma list is never split.
@@ -193,7 +194,9 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   `[database.pool]` subtable's `size` is `database.pool.size` / `MY_APP___DATABASE__POOL__SIZE`.
 - **Keep secrets OUT of committed files.** Put passwords/tokens in the `env` layer or a
   `.env` file (both outrank the committed config); use `--redact` / `Config.to_json(redact=True)`
-  when printing or logging.
+  when printing or logging. A key whose name only LOOKS secret (`max_token_bytes`) is declared with
+  `read_config(..., not_sensitive=["performance.max_token_bytes"])`; the returned Config shows it
+  under `redact=True` and in `display_config`.
 - **Split large config with `.d/`.** `config.toml` may have a companion `config.d/` whose
   files (`10-db.toml`, `20-cache.yaml`, ...) load in lexicographic order and can mix formats.
 - **Quote YAML keys that look like numbers or booleans** (`'1':`, `'true':`): an unquoted one is not a

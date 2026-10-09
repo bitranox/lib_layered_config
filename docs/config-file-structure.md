@@ -463,7 +463,8 @@ text: `5`, `-7` and `3.5` convert; `007123`, `0640`, `1.50`, `+5`, `1_000` and `
 A sensitive key keeps an unquoted `null` or `none` as text, in the environment and in `.env` alike, so a
 secret spelled that way is never read as "no credential". A key is sensitive when the last segment of its
 path is one `redact=True` masks, such as `password`, `token`, `secret` or a name ending in `_key`. Every other
-key reads `null`/`none` as None.
+key reads `null`/`none` as None. A key the application declared with
+`read_config(not_sensitive=[...])` is not sensitive, so it reads them as None too.
 
 ### Deploy permission settings
 

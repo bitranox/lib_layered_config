@@ -6,6 +6,26 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **An application can declare keys that are not secrets.** `read_config`, `read_config_json` and
+  `read_config_raw` take `not_sensitive=["performance.max_token_bytes"]`: dotted paths whose name
+  looks sensitive (here `token`) but whose value is not a secret. `redact=True` and `display_config`
+  show them, and an unquoted `null`/`none` in the environment or `.env` reads as None for them like
+  for any other key. The returned `Config` carries the declaration, also through `with_overrides`,
+  so output calls need no extra argument; `redact_mapping(data, not_sensitive=...)` takes it directly.
+  Paths match case-insensitively, a list item is addressed by the list's path with no index, and
+  declaring a key below a masked section does not unmask the section. A bare string is refused.
+  New exports: `NotSensitiveKeys`, `is_sensitive_at`; new method `Config.get_redacted(key)`.
+
+### Fixed
+
+- **The section view no longer shows what the full view masks.** `display_config(section=...)`
+  (CLI `--section`) printed the value of a key below a section whose own name is sensitive -
+  `credentials.user` showed `alice` - while the full view showed the whole section as
+  `***REDACTED***`. A key below a masked section is now masked too.
+- The `DotEnvLoader` port declares the `dotenv_path` parameter its adapter already took.
+
 ## [7.0.1] 2026-10-02 18:46:32
 
 ### Fixed
