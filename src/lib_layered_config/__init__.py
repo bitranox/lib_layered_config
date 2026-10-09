@@ -56,7 +56,7 @@ from .domain.permissions import (
     DEFAULT_USER_DIR_MODE,
     DEFAULT_USER_FILE_MODE,
 )
-from .domain.redaction import REDACTED_PLACEHOLDER, is_sensitive, redact_mapping
+from .domain.redaction import REDACTED_PLACEHOLDER, NotSensitiveKeys, is_sensitive, is_sensitive_at, redact_mapping
 from .examples import deploy_config, generate_examples
 from .observability import bind_trace_id, get_logger
 from .testing import i_should_fail
@@ -81,6 +81,7 @@ __all__ = [
     "LayerModes",
     "ModeKind",
     "NotFoundError",
+    "NotSensitiveKeys",
     "OutputFormat",
     "PermissionProblem",
     "ValidationError",
@@ -93,6 +94,7 @@ __all__ = [
     "get_logger",
     "i_should_fail",
     "is_sensitive",
+    "is_sensitive_at",
     "is_valid_profile_name",
     "read_config",
     "read_config_json",
