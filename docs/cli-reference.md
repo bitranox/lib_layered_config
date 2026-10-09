@@ -806,8 +806,7 @@ For system-wide configuration in `%ProgramData%`, use Windows built-in permissio
    print(safe_json)  # {"database": {"password": "***REDACTED***", "host": "localhost"}}
 
    # A key whose NAME looks secret but whose value is not: declare it once
-   config = read_config(vendor="Acme", app="MyApp", slug="myapp",
-                        not_sensitive=["performance.max_token_bytes"])
+   config = read_config(vendor="Acme", app="MyApp", slug="myapp", not_sensitive=["performance.max_token_bytes"])
    config.to_json(redact=True)  # max_token_bytes shown, passwords still masked
    ```
 
