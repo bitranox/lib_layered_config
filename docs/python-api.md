@@ -192,7 +192,7 @@ for key in sensitive_keys:
 ```
 **Explanation:** You can use provenance to enforce security policies, ensuring sensitive values only come from appropriate sources (environment variables or .env files, not checked-in config files).
 
-##### `Config.as_dict(redact=False)`
+##### `Config.as_dict(*, redact=False)`
 
 Return a deep, mutable copy of the configuration tree.
 
@@ -254,7 +254,7 @@ print(config.get_redacted("db.host"))  # h
 print(config.get_redacted("db.port", 0))  # 0
 ```
 
-##### `Config.to_json(indent=None, redact=False)`
+##### `Config.to_json(*, indent=None, redact=False)`
 
 Serialize the configuration as JSON.
 
@@ -628,7 +628,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
-- `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). Redaction leaves them visible, and an unquoted `null`/`none` in the environment or `.env` reads as `None` for them. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
+- `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). An unquoted `null`/`none` in the environment or `.env` reads as `None` for them. The returned plain dicts do not carry the declaration: pass it again as `redact_mapping(data, not_sensitive=...)` when you redact them. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
 
 **Returns:** Tuple of `(data_dict, provenance_dict)` where both are mutable dictionaries.
 

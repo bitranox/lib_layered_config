@@ -21,9 +21,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **The section view no longer shows what the full view masks.** `display_config(section=...)`
-  (the basis of an application's `--section` view) printed the value of a key below a section whose own name is sensitive -
-  `credentials.user` showed `alice` - while the full view showed the whole section as
-  `***REDACTED***`. A key below a masked section is now masked too.
+  (the basis of an application's `--section` view) printed the value of a key below a section
+  whose own name is sensitive - `credentials.user` showed `alice` - while the full view showed
+  the whole section as `***REDACTED***`. A key below a masked section is now masked too.
 - The `DotEnvLoader` port declares the `dotenv_path` parameter its adapter already took.
 
 ## [7.0.1] 2026-10-02 18:46:32

@@ -196,7 +196,7 @@ def _check_built_path(path: object) -> None:
     if not isinstance(path, tuple) or not all(isinstance(segment, str) for segment in cast("tuple[object, ...]", path)):
         raise TypeError(f"each not-sensitive path must be a tuple of str, got {path!r}")
     segments = cast("tuple[str, ...]", path)
-    if not all(segments) or any(segment != segment.lower() for segment in segments):
+    if not segments or not all(segments) or any(segment != segment.lower() for segment in segments):
         raise ValueError(
             f"not-sensitive path {segments!r} needs lowercase, non-empty segments: use NotSensitiveKeys.of"
         )

@@ -152,6 +152,8 @@ def test_a_directly_built_declaration_refuses_a_paths_value_that_is_not_a_frozen
 def test_a_directly_built_declaration_refuses_an_empty_or_uppercase_segment() -> None:
     with pytest.raises(ValueError, match="empty segment"):
         NotSensitiveKeys(frozenset({("a", "")}))
+    with pytest.raises(ValueError, match="empty segment"):
+        NotSensitiveKeys(frozenset({()}))
     with pytest.raises(ValueError, match="lowercase"):
         NotSensitiveKeys(frozenset({("A", "b")}))
 
