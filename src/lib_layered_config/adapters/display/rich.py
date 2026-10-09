@@ -26,12 +26,12 @@ from rich.console import Console
 from rich.text import Text
 
 from ...application.ports import OutputFormat
-from ...domain.redaction import redact_mapping
+from ...domain.redaction import REDACTED_PLACEHOLDER
 
 if TYPE_CHECKING:
     from ...domain.config import Config, SourceInfo
 
-_REDACTED = "***REDACTED***"
+_REDACTED = REDACTED_PLACEHOLDER
 _OUTPUT_HEADER = (
     r"# Note: Nested dictionaries are displayed as \[section.subsection] headers"
     r" and might not match the actual TOML \[section]"
@@ -207,10 +207,9 @@ def display_config(
 def _display_json(config: Config, section: str | None) -> None:
     """Render configuration as JSON to stdout."""
     if section:
-        section_data = config.get(section, default=None)
-        if section_data is None:
+        if config.get(section, default=None) is None:
             raise ValueError(f"Section '{section}' not found")
-        redacted = redact_mapping({section: section_data})
+        redacted = {section: config.get_redacted(section)}
         click.echo(orjson.dumps(redacted, option=orjson.OPT_INDENT_2).decode())
     else:
         click.echo(config.to_json(indent=2, redact=True))
@@ -229,11 +228,9 @@ def _display_human(
     con.print()
 
     if section:
-        section_data = config.get(section, default=None)
-        if section_data is None:
+        if config.get(section, default=None) is None:
             raise ValueError(f"Section '{section}' not found")
-        redacted_section = redact_mapping({section: section_data})
-        redacted_value = redacted_section[section]
+        redacted_value = config.get_redacted(section)
 
         if isinstance(redacted_value, dict):
             # For dict sections, serialize and render with section as prefix

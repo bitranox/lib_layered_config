@@ -28,13 +28,16 @@ from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping as MappingType
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, TypedDict, TypeGuard, TypeVar, cast
+from typing import Any, Final, TypedDict, TypeGuard, TypeVar, cast
 
 import orjson
 
-from .redaction import NotSensitiveKeys, redact_mapping
+from .redaction import REDACTED_PLACEHOLDER, NotSensitiveKeys, redact_mapping
 
 __all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo"]
+
+#: Marks "not found" where None is a legitimate stored value.
+_MISSING: Final[object] = object()
 
 OVERRIDE_LAYER = "override"
 """The ``layer`` that :meth:`Config.with_overrides` records for every key it supplies.
@@ -204,6 +207,28 @@ class Config(MappingABC[str, Any]):
         """
         return _follow_path(self._data, key, default)
 
+    def get_redacted(self, key: str, default: Any = None) -> Any:
+        """Return the value at dotted *key* as ``as_dict(redact=True)`` shows it.
+
+        A key below a masked section is masked too, so a single key never shows what the
+        whole view hides; declared not-sensitive paths stay visible as they do there.
+
+        Args:
+            key: Dotted path identifying nested entries.
+            default: Value to return when *key* does not exist.
+
+        Returns:
+            The redacted value, or *default*.
+
+        Examples:
+            >>> cfg = Config({"credentials": {"user": "alice"}, "db": {"host": "h"}}, {})
+            >>> cfg.get_redacted("credentials.user"), cfg.get_redacted("db.host"), cfg.get_redacted("db.port", 0)
+            ('***REDACTED***', 'h', 0)
+        """
+        if _follow_path(self._data, key, _MISSING) is _MISSING:
+            return default
+        return _follow_redacted(self.as_dict(redact=True), key)
+
     def origin(self, key: str) -> SourceInfo | None:
         """Return provenance metadata for *key* when available.
 
@@ -370,6 +395,25 @@ def _deep_merge(
             if replaced is not None:
                 replaced.append((f"{prefix}{key}", override_value))
     return merged
+
+
+def _follow_redacted(tree: Mapping[str, Any], dotted: str) -> Any:
+    """Walk *dotted* through a redacted *tree*; a masked ancestor masks everything below it.
+
+    *dotted* exists in the unredacted data, so every step is a mapping or a mask.
+
+    Examples:
+        >>> _follow_redacted({"a": "***REDACTED***"}, "a.b")
+        '***REDACTED***'
+        >>> _follow_redacted({"a": {"b": 1}}, "a.b")
+        1
+    """
+    current: Any = tree
+    for fragment in dotted.split("."):
+        if current == REDACTED_PLACEHOLDER:
+            return REDACTED_PLACEHOLDER
+        current = current[fragment]
+    return current
 
 
 def _follow_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:
