@@ -26,13 +26,13 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping as MappingType
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, TypedDict, TypeGuard, TypeVar, cast
 
 import orjson
 
-from .redaction import redact_mapping
+from .redaction import NotSensitiveKeys, redact_mapping
 
 __all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo"]
 
@@ -80,10 +80,13 @@ class Config(MappingABC[str, Any]):
             ``MappingProxyType`` to prevent mutation.
         _meta: Mapping of dotted keys to :class:`SourceInfo`, allowing provenance
             queries via :meth:`origin`.
+        _not_sensitive: Paths the application declared not sensitive (``read_config(not_sensitive=...)``);
+            redaction leaves them visible. Not compared: two configs with equal data and provenance are equal.
     """
 
     _data: Mapping[str, Any]
     _meta: Mapping[str, SourceInfo]
+    _not_sensitive: NotSensitiveKeys = field(default=NotSensitiveKeys.NONE, compare=False)
 
     def __post_init__(self) -> None:
         """Freeze internal mappings immediately after construction."""
@@ -140,10 +143,13 @@ class Config(MappingABC[str, Any]):
             >>> clone["debug"] = False
             >>> cfg["debug"]
             True
+            >>> declared = Config({"max_token_bytes": 1}, {}, NotSensitiveKeys.of(["max_token_bytes"]))
+            >>> declared.as_dict(redact=True)
+            {'max_token_bytes': 1}
         """
         result = _clone_map(self._data)
         if redact:
-            return redact_mapping(result)
+            return redact_mapping(result, not_sensitive=self._not_sensitive)
         return result
 
     def to_json(self, *, indent: int | None = None, redact: bool = False) -> str:
@@ -247,7 +253,7 @@ class Config(MappingABC[str, Any]):
         """
         replaced: list[tuple[str, Any]] = []
         merged = _deep_merge(self._data, overrides, replaced=replaced)
-        return Config(merged, _override_provenance(self._meta, replaced))
+        return Config(merged, _override_provenance(self._meta, replaced), self._not_sensitive)
 
 
 def _override_keys(value: Any, dotted: str) -> Iterator[str]:

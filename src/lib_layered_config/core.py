@@ -40,11 +40,11 @@ from .domain.errors import (
     ValidationError,
 )
 from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
-from .domain.redaction import redact_mapping
+from .domain.redaction import NotSensitiveKeys, redact_mapping
 from .observability import bind_trace_id
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from .application.merge import MergeResult
     from .application.ports import SourceInfoPayload
@@ -69,6 +69,7 @@ def read_config(
     default_file: str | Path | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     dotenv_path: str | Path | None = None,
+    not_sensitive: Iterable[str] | None = None,
 ) -> Config:
     """Return an immutable :class:`Config` built from all reachable layers.
 
@@ -89,12 +90,18 @@ def read_config(
         dotenv_path: Optional explicit path to a ``.env`` file.  When set,
             this file is loaded directly instead of searching upward from
             *start_dir*.
+        not_sensitive: Dotted key paths the application declares as not secret although their
+            name looks like one (``["performance.max_token_bytes"]``). Redaction leaves them
+            visible, and an unquoted ``null``/``none`` in the environment or ``.env`` reads as None
+            for them. The returned :class:`Config` carries the declaration.
 
     Returns:
         Immutable configuration with provenance metadata.
 
     Raises:
         ValueError: When profile name is invalid (too long, path traversal, etc.).
+        TypeError: *not_sensitive* is a single str or holds a non-str entry.
+        ValueError: A *not_sensitive* entry has an empty segment.
 
     Examples:
         >>> import os
@@ -124,6 +131,7 @@ def read_config(
         >>> isinstance(config, Config)
         True
     """
+    declared = NotSensitiveKeys.of(not_sensitive)
     result = read_config_raw(
         vendor=vendor,
         app=app,
@@ -134,8 +142,9 @@ def read_config(
         default_file=_stringify_path(default_file),
         max_profile_length=max_profile_length,
         dotenv_path=_stringify_path(dotenv_path),
+        not_sensitive=declared,
     )
-    return _compose_config(result.data, result.provenance)
+    return _compose_config(result.data, result.provenance, not_sensitive=declared)
 
 
 def read_config_json(
@@ -151,6 +160,7 @@ def read_config_json(
     redact: bool = False,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     dotenv_path: str | Path | None = None,
+    not_sensitive: Iterable[str] | None = None,
 ) -> str:
     """Return configuration and provenance as JSON suitable for tooling.
 
@@ -165,13 +175,18 @@ def read_config_json(
             API keys) are replaced with ``***REDACTED***`` in the config data.
         max_profile_length: Maximum allowed profile name length (default: 64).
             Set to 0 or negative to disable length checking.
+        not_sensitive: Same meaning as in :func:`read_config`; declared keys stay visible when
+            *redact* is set.
 
     Returns:
         JSON document containing ``{"config": ..., "provenance": ...}``.
 
     Raises:
         ValueError: When profile name is invalid (too long, path traversal, etc.).
+        TypeError: *not_sensitive* is a single str or holds a non-str entry.
+        ValueError: A *not_sensitive* entry has an empty segment.
     """
+    declared = NotSensitiveKeys.of(not_sensitive)
     result = read_config_raw(
         vendor=vendor,
         app=app,
@@ -182,10 +197,11 @@ def read_config_json(
         default_file=_stringify_path(default_file),
         max_profile_length=max_profile_length,
         dotenv_path=_stringify_path(dotenv_path),
+        not_sensitive=declared,
     )
     data = result.data
     if redact:
-        data = redact_mapping(data)
+        data = redact_mapping(data, not_sensitive=declared)
     return _dump_json({"config": data, "provenance": result.provenance}, indent)
 
 
@@ -200,6 +216,7 @@ def read_config_raw(
     default_file: str | Path | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     dotenv_path: str | Path | None = None,
+    not_sensitive: Iterable[str] | None = None,
 ) -> MergeResult:
     """Return raw merged data and provenance for advanced tooling.
 
@@ -211,10 +228,16 @@ def read_config_raw(
         vendor / app / slug / profile / prefer / start_dir / default_file / dotenv_path: Same as :func:`read_config`.
         max_profile_length: Maximum allowed profile name length (default: 64).
             Set to 0 or negative to disable length checking.
+        not_sensitive: Dotted key paths the application declares as not secret although their
+            name looks like one (``["performance.max_token_bytes"]``). An unquoted ``null``/``none``
+            in the environment or ``.env`` reads as None for them.
 
     Raises:
         ValueError: When profile name is invalid (too long, path traversal, etc.).
+        TypeError: *not_sensitive* is a single str or holds a non-str entry.
+        ValueError: A *not_sensitive* entry has an empty segment.
     """
+    declared = NotSensitiveKeys.of(not_sensitive)
     resolver = _build_resolver(
         vendor=vendor,
         app=app,
@@ -223,7 +246,7 @@ def read_config_raw(
         start_dir=start_dir,
         max_profile_length=max_profile_length,
     )
-    dotenv_loader, env_loader = _build_loaders(resolver)
+    dotenv_loader, env_loader = _build_loaders(resolver, not_sensitive=declared)
 
     bind_trace_id(None)
 
@@ -273,6 +296,8 @@ def read_config_for_deploy(
 def _compose_config(
     data: dict[str, object],
     raw_meta: dict[str, SourceInfoPayload],
+    *,
+    not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE,
 ) -> Config:
     """Wrap merged data and provenance into an immutable :class:`Config`.
 
@@ -282,10 +307,11 @@ def _compose_config(
     Args:
         data: Mutable mapping returned by :func:`merge_layers`.
         raw_meta: Provenance mapping keyed by dotted path as produced by the merge policy.
+        not_sensitive: Paths the application declared not sensitive; carried on the result.
 
     Returns:
-        Immutable configuration aggregate. Returns :data:`EMPTY_CONFIG` when
-        *data* is empty.
+        Immutable configuration aggregate. Returns :data:`EMPTY_CONFIG` only when *data* is
+        empty and nothing was declared, so a later ``with_overrides`` keeps the declaration.
 
     Side Effects:
         None beyond constructing the dataclass instance.
@@ -295,9 +321,9 @@ def _compose_config(
         >>> cfg['debug'], cfg.origin('debug')['layer']
         (True, 'env')
     """
-    if not data:
+    if not data and not_sensitive == NotSensitiveKeys.NONE:
         return EMPTY_CONFIG
-    return Config(data, raw_meta)
+    return Config(data, raw_meta, not_sensitive)
 
 
 def _build_resolver(
@@ -340,19 +366,25 @@ def _build_resolver(
     )
 
 
-def _build_loaders(resolver: DefaultPathResolver) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
-    """Instantiate dotenv and environment loaders sharing resolver context.
+def _build_loaders(
+    resolver: DefaultPathResolver, *, not_sensitive: NotSensitiveKeys
+) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
+    """Instantiate dotenv and environment loaders sharing resolver context and the declaration.
 
     Keeps loader construction aligned with the resolver extras (e.g., additional
     dotenv directories) and centralises wiring for tests.
 
     Args:
         resolver: Resolver supplying platform-specific extras for dotenv discovery.
+        not_sensitive: Paths the application declared not sensitive.
 
     Returns:
         Pair of loader instances ready for layer collection.
     """
-    return DefaultDotEnvLoader(extras=resolver.dotenv()), DefaultEnvLoader()
+    return (
+        DefaultDotEnvLoader(extras=resolver.dotenv(), not_sensitive=not_sensitive),
+        DefaultEnvLoader(not_sensitive=not_sensitive),
+    )
 
 
 def _stringify_path(value: str | Path | None) -> str | None:
