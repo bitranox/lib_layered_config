@@ -23,6 +23,7 @@ System Role:
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Final, cast
 
@@ -262,9 +263,9 @@ def is_sensitive_at(path: Sequence[str], *, not_sensitive: NotSensitiveKeys = No
 def redact_mapping(data: dict[str, Any], *, not_sensitive: Iterable[str] | None = None) -> dict[str, Any]:
     """Return a deep copy of *data* with sensitive values replaced.
 
-    Creates a new dictionary without mutating the input.  Recurses into nested
-    dictionaries and lists of dictionaries to redact sensitive keys at any
-    depth.
+    Creates a new dictionary without mutating the input.  Recurses into every
+    nested mapping, list and tuple, however they nest, to redact sensitive keys at
+    any depth.
 
     Args:
         data: Configuration mapping to redact.
@@ -299,7 +300,7 @@ class _Redactor:
 
     not_sensitive: NotSensitiveKeys
 
-    def mapping(self, mapping: dict[str, Any], *, path: tuple[str, ...], depth: int) -> dict[str, Any]:
+    def mapping(self, mapping: Mapping[str, Any], *, path: tuple[str, ...], depth: int) -> dict[str, Any]:
         """Return *mapping* (found at *path*) with each sensitive key's value replaced.
 
         Raises:
@@ -311,28 +312,40 @@ class _Redactor:
             key_path = (*path, key)
             if is_sensitive_at(key_path, not_sensitive=self.not_sensitive):
                 result[key] = REDACTED_PLACEHOLDER
-            elif isinstance(value, dict):
-                result[key] = self.mapping(cast("dict[str, Any]", value), path=key_path, depth=depth + 1)
-            elif isinstance(value, list):
-                result[key] = self.items(cast("list[Any]", value), path=key_path, depth=depth + 1)
             else:
-                result[key] = value
+                result[key] = self.node(value, path=key_path, depth=depth + 1)
         return result
 
-    def items(self, items: list[Any], *, path: tuple[str, ...], depth: int) -> list[Any]:
-        """Return *items* (the list at *path*) with its dictionaries redacted; other items pass through.
+    def node(self, value: object, *, path: tuple[str, ...], depth: int) -> Any:
+        """Return *value* (found at *path*) redacted, whatever container holds the secret.
 
-        A dictionary inside the list keeps the list's *path*: a declaration addresses list items
-        without an index.
+        A mapping of any type is walked by its keys, and a list or tuple item by item keeping its
+        type, so a secret inside a list inside a list, or inside a tuple, is reached too. Anything
+        else passes through.
+
+        Raises:
+            InvalidFormatError: When nesting exceeds :data:`_MAX_REDACT_DEPTH`.
+        """
+        if isinstance(value, Mapping):
+            return self.mapping(cast("Mapping[str, Any]", value), path=path, depth=depth)
+        if isinstance(value, (list, tuple)):
+            return self.items(cast("list[Any] | tuple[Any, ...]", value), path=path, depth=depth)
+        return value
+
+    def items(
+        self, items: list[Any] | tuple[Any, ...], *, path: tuple[str, ...], depth: int
+    ) -> list[Any] | tuple[Any, ...]:
+        """Return *items* (the list or tuple at *path*) with every nested secret redacted.
+
+        An item keeps the container's *path*: a declaration addresses list items without an
+        index, at any list depth.
 
         Raises:
             InvalidFormatError: When nesting exceeds :data:`_MAX_REDACT_DEPTH`.
         """
         _ensure_depth(depth)
-        return [
-            self.mapping(cast("dict[str, Any]", item), path=path, depth=depth + 1) if isinstance(item, dict) else item
-            for item in items
-        ]
+        redacted = [self.node(item, path=path, depth=depth + 1) for item in items]
+        return tuple(redacted) if isinstance(items, tuple) else redacted
 
 
 def _ensure_depth(depth: int) -> None:
