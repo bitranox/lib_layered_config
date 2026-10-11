@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping, Set
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -42,6 +42,11 @@ _OUTPUT_HEADER = (
 
 # A key TOML can write without quotes; any other key is shown as a quoted string.
 _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
+# C1 controls are legal in a TOML string but a terminal acts on them (U+009B is CSI).
+_C1_CONTROL = re.compile("[\u0080-\u009f]")
+_UTC_SUFFIX = "+00:00"
+# What config.get returns for a missing key, distinct from a key whose value is None.
+_ABSENT = object()
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,10 @@ def _is_array(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
     return isinstance(value, (list, tuple))
 
 
+def _is_set(value: object) -> TypeGuard[Set[object]]:
+    return isinstance(value, (set, frozenset))
+
+
 def _toml_string(text: str) -> str:
     r"""Return *text* as a TOML basic string, escaping quotes and every control character.
 
@@ -116,7 +125,8 @@ def _toml_string(text: str) -> str:
         '"say \\"hi\\"\\u001b"'
     """
     # A JSON string is a TOML basic string, except that TOML also forbids a raw DEL.
-    return orjson.dumps(text).decode().replace("\x7f", "\\u007f")
+    escaped = orjson.dumps(text).decode().replace("\x7f", "\\u007f")
+    return _C1_CONTROL.sub(lambda match: f"\\u{ord(match.group()):04x}", escaped)
 
 
 def _toml_key(key: str) -> str:
@@ -140,6 +150,9 @@ def _toml_value(value: object) -> str:
         return "{" + ", ".join(f"{_toml_key(k)} = {_toml_value(v)}" for k, v in value.items()) + "}"
     if _is_array(value):
         return "[" + ", ".join(_toml_value(item) for item in value) + "]"
+    if _is_set(value):
+        # A set has no order; sorting keeps the same configuration printing the same way.
+        return "[" + ", ".join(sorted(_toml_value(item) for item in value)) + "]"
     return _toml_scalar(value)
 
 
@@ -154,8 +167,15 @@ def _toml_scalar(value: object) -> str:
     if isinstance(value, float) and not math.isfinite(value):
         return "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
     if isinstance(value, (datetime.date, datetime.time)):
-        return value.isoformat()
+        return _toml_datetime(value)
     return str(value)
+
+
+def _toml_datetime(value: datetime.date | datetime.time) -> str:
+    """Return *value* in ISO form, writing a UTC offset as ``Z`` the way TOML writers do."""
+    text = value.isoformat()
+    utc = isinstance(value, (datetime.datetime, datetime.time)) and value.utcoffset() == datetime.timedelta(0)
+    return text[: -len(_UTC_SUFFIX)] + "Z" if utc and text.endswith(_UTC_SUFFIX) else text
 
 
 def _render_table(table: Mapping[str, object], path: tuple[str, ...], view: _View) -> None:
@@ -168,14 +188,57 @@ def _render_table(table: Mapping[str, object], path: tuple[str, ...], view: _Vie
     tables = [(key, value) for key, value in table.items() if _is_table(value)]
     # Like TOML, a table that holds only sub-tables needs no header of its own.
     if path and (leaves or not tables):
-        header = Text("\n[" + ".".join(_toml_key(part) for part in path) + "]")
-        header.stylize("bold cyan")
-        view.console.print(header)
+        _render_header(path, view, empty=not table)
     for key, value in leaves:
         _render_key_value(key, value, path, view)
     for key, value in tables:
         if _is_table(value):
             _render_table(value, (*path, key), view)
+
+
+def _render_header(path: tuple[str, ...], view: _View, *, empty: bool) -> None:
+    """Print a table's ``[header]`` (bold cyan); an empty table carries its own source."""
+    view.console.print()
+    info = view.config.origin(".".join(path)) if empty else None
+    if info is not None:
+        view.console.print(_format_source_line(info, profile=view.profile))
+    header = Text("[" + _toml_path(path) + "]")
+    header.stylize("bold cyan")
+    view.console.print(header)
+
+
+def _toml_path(path: tuple[str, ...]) -> str:
+    """Return a key path the way TOML writes a dotted key."""
+    return ".".join(_toml_key(part) for part in path)
+
+
+def _element_paths(value: object, path: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
+    """Yield the path of every element and member below a list value, depth first."""
+    if _is_array(value):
+        children: list[tuple[str, object]] = [(str(index), item) for index, item in enumerate(value)]
+    elif _is_table(value):
+        children = list(value.items())
+    else:
+        return
+    for name, child in children:
+        yield (*path, name)
+        yield from _element_paths(child, (*path, name))
+
+
+def _print_overriding_sources(view: _View, *, dotted_key: str, value: object, prefix: str) -> None:
+    """Print the source of every list element a different layer set (an indexed override).
+
+    The merge records a list under its own key, and an element a higher layer replaced by index
+    (``APP___HOSTS__0__NAME``) under that element's path, so the list's own source alone would
+    name the wrong layer for it.
+    """
+    own = view.config.origin(dotted_key)
+    for element in _element_paths(value, tuple(dotted_key.split("."))):
+        info = view.config.origin(".".join(element))
+        if info is not None and info != own:
+            line = _format_source_line(info, prefix, profile=view.profile)
+            line.append(f" for {_toml_path(element)}")
+            view.console.print(line)
 
 
 def _render_key_value(key: str, value: object, path: tuple[str, ...], view: _View) -> None:
@@ -189,6 +252,8 @@ def _print_entry(view: _View, *, label: str, dotted_key: str, value: object, ind
     info = view.config.origin(dotted_key)
     if info is not None:
         view.console.print(_format_source_line(info, prefix, profile=view.profile))
+    if _is_array(value):
+        _print_overriding_sources(view, dotted_key=dotted_key, value=value, prefix=prefix)
 
     value_str = _toml_value(value)
     text = Text(prefix)
@@ -246,7 +311,7 @@ def display_config(
 def _display_json(config: Config, section: str | None) -> None:
     """Render configuration as JSON to stdout."""
     if section:
-        if config.get(section, default=None) is None:
+        if config.get(section, default=_ABSENT) is _ABSENT:
             raise ValueError(f"Section '{section}' not found")
         redacted = {section: config.get_redacted(section)}
         click.echo(orjson.dumps(redacted, option=orjson.OPT_INDENT_2).decode())
@@ -270,13 +335,14 @@ def _display_human(
     if not section:
         _render_table(config.as_dict(redact=True), (), view)
         return
-    if config.get(section, default=None) is None:
+    if config.get(section, default=_ABSENT) is _ABSENT:
         raise ValueError(f"Section '{section}' not found")
     redacted_value = config.get_redacted(section)
     if _is_table(redacted_value):
         _render_table(redacted_value, tuple(section.split(".")), view)
     else:
-        _print_entry(view, label=section, dotted_key=section, value=redacted_value, indent=False)
+        label = _toml_path(tuple(section.split(".")))
+        _print_entry(view, label=label, dotted_key=section, value=redacted_value, indent=False)
 
 
 __all__ = [

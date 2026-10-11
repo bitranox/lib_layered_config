@@ -8,6 +8,7 @@ quoted section name. Each case below is a shape a configuration file can legitim
 
 from __future__ import annotations
 
+import datetime
 import io
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,7 @@ import pytest
 from rich.console import Console
 
 from lib_layered_config import Config, OutputFormat, display_config
+from lib_layered_config.application.merge import LayerSnapshot, merge_layers
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -57,6 +59,7 @@ def _assert_shown_with_source(lines: list[str], *, line: str, dotted_key: str) -
         pytest.param("ü", '"ü"', id="non-ascii"),
         pytest.param("", '""', id="empty"),
         pytest.param('say "hi"', '"say \\"hi\\""', id="quote"),
+        pytest.param("1st", "1st", id="leading-digit"),
     ],
 )
 def test_a_key_toml_must_quote_is_shown_quoted_with_its_source(key: str, shown: str) -> None:
@@ -119,3 +122,80 @@ def test_a_dotted_section_view_shows_the_source_of_its_keys() -> None:
     lines = _render(_config({"deep": {"x": {"y z": {"w": 1}}}}, "deep.x.y z.w"), section="deep.x")
 
     _assert_shown_with_source(lines, line="w = 1", dotted_key="deep.x.y z.w")
+
+
+# --- shapes the real merge produces -----------------------------------------------------------
+
+
+def _merged(*layers: tuple[str, dict[str, Any], str | None]) -> Config:
+    result = merge_layers([LayerSnapshot(name, payload, origin) for name, payload, origin in layers])
+    return Config(result.data, result.provenance)
+
+
+@os_agnostic
+def test_a_list_element_a_higher_layer_overrode_names_that_layer_too() -> None:
+    # An indexed override (APP___HOSTS__0__NAME=x) records hosts.0.name, not hosts.
+    config = _merged(
+        ("defaults", {"hosts": [{"name": "a"}, {"name": "b"}]}, "/etc/app/defaults.toml"),
+        ("env", {"hosts": {"0": {"name": "x"}}}, None),
+    )
+
+    lines = _render(config)
+
+    shown = lines.index('hosts = [{name = "x"}, {name = "b"}]')
+    assert lines[shown - 2] == "# layer:defaults profile:none (/etc/app/defaults.toml)"
+    assert lines[shown - 1] == "# layer:env profile:none for hosts.0.name"
+
+
+@os_agnostic
+def test_an_empty_table_shows_its_source_above_its_header() -> None:
+    config = _merged(("defaults", {"styles": {}}, "/etc/app/defaults.toml"))
+
+    lines = _render(config)
+
+    assert lines[lines.index("[styles]") - 1] == "# layer:defaults profile:none (/etc/app/defaults.toml)"
+
+
+@os_agnostic
+def test_a_table_shows_its_own_keys_before_its_sub_tables() -> None:
+    lines = _render(_config({"t": {"sub": {"x": 1}, "leaf": 2}}))
+
+    assert lines.index("leaf = 2") < lines.index("[t.sub]")
+
+
+@os_agnostic
+def test_a_none_value_can_be_shown_on_its_own() -> None:
+    lines = _render(_config({"a": None}, "a"), section="a")
+
+    _assert_shown_with_source(lines, line="a = null", dotted_key="a")
+
+
+@os_agnostic
+def test_a_c1_control_character_never_reaches_the_terminal() -> None:
+    # U+009B is CSI, which a terminal reads as the start of an escape sequence.
+    lines = _render(_config({"k": "a\u009bb", "\u009b": 1}))
+
+    assert r'k = "a\u009bb"' in lines
+    assert r'"\u009b" = 1' in lines
+    assert not any("\u009b" in line for line in lines)
+
+
+@os_agnostic
+def test_a_scalar_section_label_is_quoted_like_any_key() -> None:
+    lines = _render(_config({"a b": 1}, "a b"), section="a b")
+
+    _assert_shown_with_source(lines, line='"a b" = 1', dotted_key="a b")
+
+
+@os_agnostic
+def test_a_set_is_shown_as_a_sorted_array() -> None:
+    lines = _render(_config({"s": {"b", "a"}}))
+
+    assert 's = ["a", "b"]' in lines
+
+
+@os_agnostic
+def test_a_utc_datetime_ends_in_z_as_toml_writes_it() -> None:
+    lines = _render(_config({"t": datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)}))
+
+    assert "t = 2026-01-01T00:00:00Z" in lines

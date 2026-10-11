@@ -10,12 +10,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 - **`display_config` shows every key.** Its human format serialised the configuration to TOML and
   re-parsed that text line by line. A key TOML must quote (a space, a dot, a non-ASCII letter, the empty
-  name) silently vanished from the output - the `config` command of an application built on it - an
-  array of tables lost its header and showed its keys as top-level keys, and a key under a quoted
-  section name lost its provenance comment. It now walks the configuration itself: such keys are shown
-  quoted with their source, a list is one value (`tables = [{n = 1}, {n = 2}]`, as the merge records
-  it), and `None` shows as `null` instead of the string `"null"`. A list shown through `section=` now
-  has a space after each comma, as in the full view.
+  name, a leading digit) silently vanished from the output - the `config` command of an application built
+  on it - an array of tables lost its header and showed its keys as top-level keys, and a key under a
+  quoted section name lost its provenance comment. It now walks the configuration itself: such keys are
+  shown quoted with their source, and a list is one value (`tables = [{n = 1}, {n = 2}]`).
+- **`display_config` names every layer that set part of a list.** An element a higher layer replaced by
+  index (`APP___HOSTS__0__NAME=x`) gets its own comment, `# layer:env profile:none for hosts.0.name`,
+  below the list's own source, which no longer takes the credit for it.
+- `display_config` shows the source of an empty table above its header, and a key whose value is `None`
+  can be shown on its own with `section=` (it was refused as not found); `None` prints as `null`, no
+  longer as the string `"null"`.
+- `display_config` escapes C1 control characters (U+0080-U+009F; U+009B starts a terminal escape
+  sequence) in keys and values, and quotes a `section=` name like any other key.
+- The `section=` view now writes a value exactly as the full view does: a string is escaped (`"C:\\Users"`,
+  `"a\"b"`), a datetime is ISO with a `T`, and a list has a space after each comma. A set prints as a
+  sorted array in both views.
 
 ## [7.1.1] 2026-10-11 22:58:02
 
