@@ -56,7 +56,8 @@ dev = [
   "click>=8.5.0",                # CVE-2026-7246
   "coverage[toml]>=7.16.2",
   "httpx2>=2.13.1",
-  "hypothesis>=6.168.5",
+  "hypothesis>=6.168.5,<6.169; python_version<'3.11'",  # 6.169 requires Python 3.11
+  "hypothesis>=6.169.0; python_version>='3.11'",
   "import-linter>=2.15",
   "bandit>=1.9.4",
   "pip-audit>=2.10.1",
@@ -65,7 +66,7 @@ dev = [
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-cov>=7.1.0",
-  "ruff>=0.16.10",
+  "ruff>=0.17.0",
   "textual>=8.2.8",
   "twine>=7.0.0"
 ]
