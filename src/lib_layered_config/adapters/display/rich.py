@@ -16,12 +16,15 @@ System Role:
 
 from __future__ import annotations
 
+import datetime
+import math
 import re
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, TypeGuard
 
 import orjson
 import rich_click as click
-import rtoml
 from rich.console import Console
 from rich.text import Text
 
@@ -37,9 +40,17 @@ _OUTPUT_HEADER = (
     r" and might not match the actual TOML \[section]"
 )
 
-# Regex patterns for parsing TOML output
-_SECTION_PATTERN = re.compile(r"^\[([^\]]+)\]$")
-_KEY_VALUE_PATTERN = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(.*)$")
+# A key TOML can write without quotes; any other key is shown as a quoted string.
+_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
+
+
+@dataclass(frozen=True)
+class _View:
+    """What every rendered line needs: the config for provenance, the console, the profile."""
+
+    config: Config
+    console: Console
+    profile: str | None
 
 
 def _build_console() -> Console:
@@ -89,75 +100,103 @@ def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | No
     return Text(line, style="yellow")
 
 
-def _render_toml_with_styling(
-    toml_text: str,
-    config: Config,
-    console: Console,
-    profile: str | None,
-    *,
-    section_prefix: str = "",
-) -> None:
-    """Render TOML text with Rich styling and provenance comments.
+def _is_table(value: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(value, Mapping)
 
-    Parses TOML output line by line and applies styling:
-    - Section headers [section]: bold cyan
-    - Key = value: orange3 key, white =, green value (dim red for redacted)
 
-    Args:
-        toml_text: TOML-formatted string from rtoml.dumps().
-        config: Config object for provenance lookup.
-        console: Rich Console for output.
-        profile: Optional profile name for provenance comments.
-        section_prefix: Prefix to prepend to section paths for provenance lookup
-            (used when displaying a filtered section).
+def _is_array(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
+    return isinstance(value, (list, tuple))
+
+
+def _toml_string(text: str) -> str:
+    r"""Return *text* as a TOML basic string, escaping quotes and every control character.
+
+    Examples:
+        >>> _toml_string('say "hi"\x1b')
+        '"say \\"hi\\"\\u001b"'
     """
-    current_section = section_prefix
-    for line in toml_text.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        section_match = _SECTION_PATTERN.match(stripped)
-        if section_match:
-            current_section = _render_section_header(section_match, section_prefix, console)
-            continue
-        kv_match = _KEY_VALUE_PATTERN.match(stripped)
-        if kv_match:
-            _render_key_value(kv_match, current_section, config, console, profile)
+    # A JSON string is a TOML basic string, except that TOML also forbids a raw DEL.
+    return orjson.dumps(text).decode().replace("\x7f", "\\u007f")
 
 
-def _render_section_header(match: re.Match[str], section_prefix: str, console: Console) -> str:
-    """Print a ``[section]`` header (bold cyan) and return the new current section path."""
-    section_path = match.group(1)
-    current_section = f"{section_prefix}.{section_path}" if section_prefix else section_path
-    header = Text(f"\n[{section_path}]")
-    header.stylize("bold cyan")
-    console.print(header)
-    return current_section
+def _toml_key(key: str) -> str:
+    """Return *key* as TOML writes it: bare when it can be, quoted otherwise.
+
+    Examples:
+        >>> _toml_key("db_host"), _toml_key("a b"), _toml_key("")
+        ('db_host', '"a b"', '""')
+    """
+    return key if _BARE_KEY.fullmatch(key) else _toml_string(key)
 
 
-def _render_key_value(
-    match: re.Match[str],
-    current_section: str,
-    config: Config,
-    console: Console,
-    profile: str | None,
-) -> None:
-    """Print one ``key = value`` line with its provenance comment and value styling."""
-    key = match.group(1)
-    value_str = match.group(2)
-    dotted_key = f"{current_section}.{key}" if current_section else key
-    indent = "    " if current_section else ""
+def _toml_value(value: object) -> str:
+    """Return *value* in TOML inline syntax; ``None``, which TOML cannot hold, shows as ``null``.
 
-    info = config.origin(dotted_key)
+    Examples:
+        >>> _toml_value([{"n": 1}, None, "x"])
+        '[{n = 1}, null, "x"]'
+    """
+    if _is_table(value):
+        return "{" + ", ".join(f"{_toml_key(k)} = {_toml_value(v)}" for k, v in value.items()) + "}"
+    if _is_array(value):
+        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
+    return _toml_scalar(value)
+
+
+def _toml_scalar(value: object) -> str:
+    """Return a scalar in TOML syntax (``null`` for ``None``)."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return _toml_string(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        return "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
+    return str(value)
+
+
+def _render_table(table: Mapping[str, object], path: tuple[str, ...], view: _View) -> None:
+    """Print *table*'s own keys under its ``[header]``, then each sub-table the same way.
+
+    The walk reads the mapping itself, so a key is shown whatever its name, and its provenance is
+    looked up under the raw names joined by dots - the way the merge records it.
+    """
+    leaves = [(key, value) for key, value in table.items() if not _is_table(value)]
+    tables = [(key, value) for key, value in table.items() if _is_table(value)]
+    # Like TOML, a table that holds only sub-tables needs no header of its own.
+    if path and (leaves or not tables):
+        header = Text("\n[" + ".".join(_toml_key(part) for part in path) + "]")
+        header.stylize("bold cyan")
+        view.console.print(header)
+    for key, value in leaves:
+        _render_key_value(key, value, path, view)
+    for key, value in tables:
+        if _is_table(value):
+            _render_table(value, (*path, key), view)
+
+
+def _render_key_value(key: str, value: object, path: tuple[str, ...], view: _View) -> None:
+    """Print the ``key = value`` line of *key* in the table at *path*."""
+    _print_entry(view, label=_toml_key(key), dotted_key=".".join((*path, key)), value=value, indent=bool(path))
+
+
+def _print_entry(view: _View, *, label: str, dotted_key: str, value: object, indent: bool) -> None:
+    """Print one ``label = value`` line with its provenance comment and value styling."""
+    prefix = "    " if indent else ""
+    info = view.config.origin(dotted_key)
     if info is not None:
-        console.print(_format_source_line(info, indent, profile=profile))
+        view.console.print(_format_source_line(info, prefix, profile=view.profile))
 
-    text = Text(indent)
-    text.append(key, style="orange3")
+    value_str = _toml_value(value)
+    text = Text(prefix)
+    text.append(label, style="orange3")
     text.append(" = ", style="white")
     text.append(value_str, style="dim red" if _REDACTED in value_str else "green")
-    console.print(text)
-    console.print()
+    view.console.print(text)
+    view.console.print()
 
 
 def display_config(
@@ -220,60 +259,24 @@ def _display_human(
 ) -> None:
     """Render configuration as human-readable TOML output to stdout.
 
-    Uses rtoml.dumps() to serialize configuration data to proper TOML format,
-    then applies Rich styling for display.
+    Walks the redacted mapping itself rather than re-parsing serialised TOML, so every key is shown
+    whatever its name and keeps its provenance.
     """
     con = console or _build_console()
     con.print(_OUTPUT_HEADER, style="bright_red")
     con.print()
+    view = _View(config, con, profile)
 
-    if section:
-        if config.get(section, default=None) is None:
-            raise ValueError(f"Section '{section}' not found")
-        redacted_value = config.get_redacted(section)
-
-        if isinstance(redacted_value, dict):
-            # For dict sections, serialize and render with section as prefix
-            toml_text = rtoml.dumps({section: redacted_value})
-            _render_toml_with_styling(toml_text, config, con, profile)
-        else:
-            # Scalar value - display directly
-            info = config.origin(section)
-            if info is not None:
-                con.print(_format_source_line(info, "", profile=profile))
-
-            text = Text("")
-            text.append(section, style="orange3")
-            text.append(" = ", style="white")
-            value_str = _format_scalar(redacted_value)
-            if redacted_value == _REDACTED:
-                text.append(value_str, style="dim red")
-            else:
-                text.append(value_str, style="green")
-            con.print(text)
-            con.print()
+    if not section:
+        _render_table(config.as_dict(redact=True), (), view)
+        return
+    if config.get(section, default=None) is None:
+        raise ValueError(f"Section '{section}' not found")
+    redacted_value = config.get_redacted(section)
+    if _is_table(redacted_value):
+        _render_table(redacted_value, tuple(section.split(".")), view)
     else:
-        data: dict[str, object] = config.as_dict(redact=True)
-        toml_text = rtoml.dumps(data)
-        _render_toml_with_styling(toml_text, config, con, profile)
-
-
-def _format_scalar(value: object) -> str:
-    """Format a scalar value as TOML representation.
-
-    Args:
-        value: The scalar value to format.
-
-    Returns:
-        TOML-formatted string representation.
-    """
-    if isinstance(value, str):
-        return f'"{value}"'
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, list):
-        return orjson.dumps(value).decode()
-    return str(value)
+        _print_entry(view, label=section, dotted_key=section, value=redacted_value, indent=False)
 
 
 __all__ = [

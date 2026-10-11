@@ -251,7 +251,7 @@ def test_display_human_renders_list_values(capsys: pytest.CaptureFixture[str]) -
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
-    # rtoml uses spaces after commas in arrays (standard TOML formatting)
+    # TOML inline arrays, a space after each comma
     assert '["a", "b", "c"]' in output
 
 
@@ -401,13 +401,13 @@ def test_display_human_scalar_section_boolean(capsys: pytest.CaptureFixture[str]
 
 
 def test_display_human_scalar_section_list(capsys: pytest.CaptureFixture[str]) -> None:
-    """List scalar section should display correctly."""
+    """List scalar section should display the way the full view shows the same list."""
     config = Config({"hosts": ["a", "b"], "section": {"key": "value"}}, {})
 
     display_config(config, output_format=OutputFormat.HUMAN, section="hosts")
 
     output = capsys.readouterr().out
-    assert 'hosts = ["a","b"]' in output
+    assert 'hosts = ["a", "b"]' in output
 
 
 def test_display_human_scalar_section_redacted(capsys: pytest.CaptureFixture[str]) -> None:

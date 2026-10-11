@@ -6,6 +6,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`display_config` shows every key.** Its human format serialised the configuration to TOML and
+  re-parsed that text line by line. A key TOML must quote (a space, a dot, a non-ASCII letter, the empty
+  name) silently vanished from the output - the `config` command of an application built on it - an
+  array of tables lost its header and showed its keys as top-level keys, and a key under a quoted
+  section name lost its provenance comment. It now walks the configuration itself: such keys are shown
+  quoted with their source, a list is one value (`tables = [{n = 1}, {n = 2}]`, as the merge records
+  it), and `None` shows as `null` instead of the string `"null"`. A list shown through `section=` now
+  has a space after each comma, as in the full view.
+
 ## [7.1.1] 2026-10-11 22:58:02
 
 ### Fixed
