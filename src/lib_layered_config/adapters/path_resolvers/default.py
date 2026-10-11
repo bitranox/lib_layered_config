@@ -17,7 +17,6 @@ from __future__ import annotations
 import os
 import socket
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...domain.identifiers import (
@@ -29,6 +28,7 @@ from ...domain.identifiers import (
     validate_vendor_app,
 )
 from ...observability import log_debug
+from .._path_probe import current_directory
 from ._base import PlatformContext, PlatformStrategy
 from ._dotenv import DotenvPathFinder
 from ._linux import LinuxStrategy
@@ -37,6 +37,7 @@ from ._windows import WindowsStrategy
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from pathlib import Path
 
 
 class DefaultPathResolver:
@@ -87,7 +88,7 @@ class DefaultPathResolver:
         self.application = validate_vendor_app(app, "app")
         self.slug = validate_identifier(slug, "slug")
         self.profile = validate_profile(profile, max_length=max_profile_length)
-        self.cwd = cwd or Path.cwd()
+        self.cwd = cwd if cwd is not None else current_directory()
         self.env = {**os.environ, **(env or {})}
         self.platform = platform or sys.platform
         self.hostname = validate_hostname(hostname or socket.gethostname())

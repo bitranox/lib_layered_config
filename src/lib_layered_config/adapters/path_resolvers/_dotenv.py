@@ -27,11 +27,12 @@ class DotenvPathFinder:
     directories. This class provides unified discovery respecting precedence rules.
     """
 
-    def __init__(self, cwd: Path, strategy: PlatformStrategy | None) -> None:
+    def __init__(self, cwd: Path | None, strategy: PlatformStrategy | None) -> None:
         """Store context for dotenv discovery.
 
         Args:
-            cwd: Starting directory for upward traversal.
+            cwd: Starting directory for upward traversal; ``None`` (the OS cannot name the
+                working directory) searches nothing.
             strategy: Platform strategy providing the fallback ``.env`` location.
         """
         self.cwd = cwd
@@ -57,6 +58,8 @@ class DotenvPathFinder:
         Returns:
             ``.env`` paths discovered while traversing parent directories.
         """
+        if self.cwd is None:
+            return
         seen: set[Path] = set()
         for directory in [self.cwd, *self.cwd.parents]:
             candidate = directory / ".env"

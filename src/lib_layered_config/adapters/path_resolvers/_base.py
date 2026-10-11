@@ -49,7 +49,8 @@ class PlatformContext:
         vendor: Vendor name used in platform-specific directory structures.
         app: Application name used in platform-specific directory structures.
         slug: Short identifier used in Linux/XDG paths.
-        cwd: Current working directory for project-relative searches.
+        cwd: Current working directory for project-relative searches; ``None`` when the OS
+            cannot name it.
         env: Environment variable mapping (for overrides and XDG lookups).
         hostname: Hostname for host-specific configuration lookups.
         profile: Optional profile name for environment-specific configurations.
@@ -58,7 +59,7 @@ class PlatformContext:
     vendor: str
     app: str
     slug: str
-    cwd: Path
+    cwd: Path | None
     env: dict[str, str]
     hostname: str
     profile: str | None = None

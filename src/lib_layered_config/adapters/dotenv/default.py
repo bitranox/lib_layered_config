@@ -27,7 +27,7 @@ from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
-from .._path_probe import PathKind, checked_kind, config_path_unreadable, probe_path
+from .._path_probe import PathKind, checked_kind, config_path_unreadable, current_directory, probe_path
 from .._text_decoding import decode_utf8
 from .._value_coercion import coerce_value
 from ..file_loaders.structured import directory_not_config_file, ensure_within_size_cap
@@ -122,8 +122,10 @@ def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Pa
 
 
 def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
-    """Yield `.env` paths from start_dir upward to filesystem root."""
-    base = Path(start_dir) if start_dir else Path.cwd()
+    """Yield `.env` paths from start_dir upward to filesystem root; none when there is no start."""
+    base = Path(start_dir) if start_dir else current_directory()
+    if base is None:
+        return
     for directory in [base, *base.parents]:
         yield directory / ".env"
 

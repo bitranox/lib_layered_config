@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from lib_layered_config import LayerLoadError
-from lib_layered_config.adapters._path_probe import PathKind, checked_kind, probe_path
+from lib_layered_config.adapters._path_probe import PathKind, checked_kind, current_directory, probe_path
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import IS_WINDOWS, os_agnostic, posix_only
 
@@ -117,6 +117,52 @@ def test_the_read_path_never_asks_pathlib_whether_a_path_exists() -> None:
 
     assert len(scanned) > 20, f"scanned only {len(scanned)} modules under {_SRC}"
     assert offenders == []
+
+
+def _is_cwd_lookup(node: ast.AST) -> bool:
+    """Return whether *node* names os.getcwd / os.getcwdb / Path.cwd, called or not."""
+    if isinstance(node, ast.Attribute):
+        return node.attr in {"getcwd", "getcwdb"} or (
+            node.attr == "cwd" and isinstance(node.value, ast.Name) and node.value.id == "Path"
+        )
+    return isinstance(node, ast.alias) and node.name in {"getcwd", "getcwdb"}
+
+
+@os_agnostic
+def test_the_read_path_asks_for_the_working_directory_only_through_the_probe() -> None:
+    # getcwd raises when the OS cannot name the directory (macOS: one the user cannot enter; any
+    # POSIX: one that was removed), so a bare lookup crashes read_config instead of skipping the search.
+    scanned: list[str] = []
+    offenders: list[str] = []
+    for source in sorted(_SRC.rglob("*.py")):
+        relative = source.relative_to(_SRC).as_posix()
+        if relative.startswith(_EXEMPT):
+            continue
+        scanned.append(relative)
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        offenders.extend(
+            f"{relative}:{getattr(node, 'lineno', '?')}" for node in ast.walk(tree) if _is_cwd_lookup(node)
+        )
+
+    assert len(scanned) > 20, f"scanned only {len(scanned)} modules under {_SRC}"
+    assert offenders == []
+
+
+@os_agnostic
+def test_current_directory_names_the_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert current_directory() == tmp_path.resolve()
+
+
+@posix_only
+def test_current_directory_is_none_when_the_os_cannot_name_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    monkeypatch.chdir(gone)
+    gone.rmdir()
+
+    assert current_directory() is None
 
 
 @os_agnostic

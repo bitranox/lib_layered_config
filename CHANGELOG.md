@@ -19,6 +19,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   read: <reason>"`. An unreadable config file, or a path with a NUL byte, also raises `LayerLoadError`
   instead of a bare `PermissionError` or `ValueError`. With `dotenv_path` set, the `.env` search and its
   platform location are no longer probed at all.
+- **`read_config` no longer crashes when the operating system cannot name the working directory.** On
+  macOS, `os.getcwd()` fails in a directory the user cannot enter, and on any POSIX system in one that was
+  removed; `read_config` without `start_dir` raised that bare `OSError`. The `.env` search now has no
+  starting point there and finds no project `.env`, the same answer as for a directory it cannot enter.
 
 ### Changed
 

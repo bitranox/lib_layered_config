@@ -82,6 +82,20 @@ def test_read_config_run_from_an_unenterable_cwd_finds_no_env_and_loads(
 
 
 @posix_only
+def test_read_config_run_from_a_deleted_cwd_finds_no_env_and_loads(
+    sandbox: LayeredSandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The OS cannot name a removed working directory (getcwd fails with ENOENT), the same way macOS
+    # cannot name one the user cannot enter: the search then has nowhere to start.
+    cwd = tmp_path / "deleted-cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    cwd.rmdir()
+
+    assert _read() == {"service": {"name": "app"}}
+
+
+@posix_only
 @needs_wall
 def test_read_config_with_an_unenterable_start_dir_finds_no_env_and_loads(
     sandbox: LayeredSandbox, tmp_path: Path

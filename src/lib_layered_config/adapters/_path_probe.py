@@ -12,6 +12,7 @@ Contents:
     - ``probe_path``: never raises; a search uses it and skips what it cannot check.
     - ``checked_kind``: refuses a path it cannot check; a layer location or a named file uses it.
     - ``config_path_unreadable``: the refusal, shared with the file readers.
+    - ``current_directory``: the working directory, or ``None`` when the OS cannot name it.
 """
 
 from __future__ import annotations
@@ -20,15 +21,13 @@ import errno
 import stat
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Final
+from pathlib import Path
+from typing import Final
 
 from ..domain.errors import InvalidFormatError
-from ..observability import log_error
+from ..observability import log_debug, log_error
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-__all__ = ["PathKind", "PathProbe", "checked_kind", "config_path_unreadable", "probe_path"]
+__all__ = ["PathKind", "PathProbe", "checked_kind", "config_path_unreadable", "current_directory", "probe_path"]
 
 # What pathlib before 3.14 already read as "not there": a missing entry, a file where a directory
 # was expected, a closed descriptor, a symlink loop, and Windows' invalid-name / drive-not-ready /
@@ -142,6 +141,27 @@ def config_path_unreadable(path: Path, error: OSError | ValueError) -> InvalidFo
     message = f"{path} cannot be read: {reason}"
     log_error("config_path_unreadable", path=str(path), error=message)
     return InvalidFormatError(message)
+
+
+def current_directory() -> Path | None:
+    """Return the working directory, or ``None`` when the operating system cannot name it.
+
+    ``Path.cwd()`` (``os.getcwd()``) fails on macOS in a directory the user cannot enter, and on any POSIX system in
+    one that was removed. The ``.env`` search starts there, so it has nowhere to start and finds
+    nothing - the same answer as for a directory it cannot enter.
+
+    Returns:
+        The working directory, or ``None``.
+
+    Examples:
+        >>> current_directory() == Path.cwd()
+        True
+    """
+    try:
+        return Path.cwd()
+    except OSError as error:
+        log_debug("working_directory_unknown", error=str(error))
+        return None
 
 
 def _means_absent(error: OSError) -> bool:
