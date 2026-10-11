@@ -225,35 +225,40 @@ def _element_paths(value: object, path: tuple[str, ...]) -> Iterator[tuple[str, 
         yield from _element_paths(child, (*path, name))
 
 
-def _print_overriding_sources(view: _View, *, dotted_key: str, value: object, prefix: str) -> None:
+def _print_overriding_sources(view: _View, *, key_path: tuple[str, ...], value: object, prefix: str) -> None:
     """Print the source of every list element a different layer set (an indexed override).
 
     The merge records a list under its own key, and an element a higher layer replaced by index
     (``APP___HOSTS__0__NAME``) under that element's path, so the list's own source alone would
     name the wrong layer for it.
     """
-    own = view.config.origin(dotted_key)
-    for element in _element_paths(value, tuple(dotted_key.split("."))):
+    own = view.config.origin(".".join(key_path))
+    for element in _element_paths(value, key_path):
         info = view.config.origin(".".join(element))
-        if info is not None and info != own:
+        if info is not None and not _same_source(info, own):
             line = _format_source_line(info, prefix, profile=view.profile)
             line.append(f" for {_toml_path(element)}")
             view.console.print(line)
 
 
+def _same_source(info: SourceInfo, other: SourceInfo | None) -> bool:
+    """Return whether two provenance entries name the same layer and file (their keys differ)."""
+    return other is not None and (info["layer"], info["path"]) == (other["layer"], other["path"])
+
+
 def _render_key_value(key: str, value: object, path: tuple[str, ...], view: _View) -> None:
     """Print the ``key = value`` line of *key* in the table at *path*."""
-    _print_entry(view, label=_toml_key(key), dotted_key=".".join((*path, key)), value=value, indent=bool(path))
+    _print_entry(view, label=_toml_key(key), key_path=(*path, key), value=value, indent=bool(path))
 
 
-def _print_entry(view: _View, *, label: str, dotted_key: str, value: object, indent: bool) -> None:
+def _print_entry(view: _View, *, label: str, key_path: tuple[str, ...], value: object, indent: bool) -> None:
     """Print one ``label = value`` line with its provenance comment and value styling."""
     prefix = "    " if indent else ""
-    info = view.config.origin(dotted_key)
+    info = view.config.origin(".".join(key_path))
     if info is not None:
         view.console.print(_format_source_line(info, prefix, profile=view.profile))
     if _is_array(value):
-        _print_overriding_sources(view, dotted_key=dotted_key, value=value, prefix=prefix)
+        _print_overriding_sources(view, key_path=key_path, value=value, prefix=prefix)
 
     value_str = _toml_value(value)
     text = Text(prefix)
@@ -341,8 +346,8 @@ def _display_human(
     if _is_table(redacted_value):
         _render_table(redacted_value, tuple(section.split(".")), view)
     else:
-        label = _toml_path(tuple(section.split(".")))
-        _print_entry(view, label=label, dotted_key=section, value=redacted_value, indent=False)
+        key_path = tuple(section.split("."))
+        _print_entry(view, label=_toml_path(key_path), key_path=key_path, value=redacted_value, indent=False)
 
 
 __all__ = [

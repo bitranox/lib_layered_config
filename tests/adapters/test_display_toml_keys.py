@@ -199,3 +199,27 @@ def test_a_utc_datetime_ends_in_z_as_toml_writes_it() -> None:
     lines = _render(_config({"t": datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)}))
 
     assert "t = 2026-01-01T00:00:00Z" in lines
+
+
+@os_agnostic
+def test_an_override_from_the_list_s_own_source_adds_no_line() -> None:
+    config = _merged(
+        ("env", {"h": [{"n": "a"}, {"n": "b"}]}, None),
+        ("env", {"h": {"0": {"n": "x"}}}, None),
+    )
+
+    lines = _render(config)
+
+    assert [line for line in lines if line.startswith("# layer:")] == ["# layer:env profile:none"]
+
+
+@os_agnostic
+def test_an_override_under_a_dotted_key_names_its_path_quoted() -> None:
+    config = _merged(
+        ("defaults", {"a.b": [{"n": "a"}]}, "/etc/app/defaults.toml"),
+        ("env", {"a.b": {"0": {"n": "x"}}}, None),
+    )
+
+    lines = _render(config)
+
+    assert '# layer:env profile:none for "a.b".0.n' in lines
