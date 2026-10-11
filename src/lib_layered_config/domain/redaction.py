@@ -34,9 +34,12 @@ if TYPE_CHECKING:
 
 __all__ = ["REDACTED_PLACEHOLDER", "NotSensitiveKeys", "is_sensitive", "is_sensitive_at", "redact_mapping"]
 
-#: Maximum nesting depth for redaction. Guards against an opaque ``RecursionError`` on a
-#: pathologically deep mapping passed to the public ``redact_mapping``.
-_MAX_REDACT_DEPTH: Final[int] = 100
+#: Maximum nesting depth for redaction, counting every mapping, list and tuple level. Guards
+#: against an opaque ``RecursionError`` on a pathological document. It sits well above the 100
+#: MAPPING levels the merge accepts plus any list nesting a real configuration has, so a redacted
+#: view never refuses what reading accepted, and well below the interpreter's recursion limit
+#: (each level costs two frames).
+_MAX_REDACT_DEPTH: Final[int] = 300
 
 REDACTED_PLACEHOLDER: Final[str] = "***REDACTED***"
 """Constant replacing sensitive values in redacted output."""

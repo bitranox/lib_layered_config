@@ -17,7 +17,7 @@ from tests.support.os_markers import os_agnostic
 def test_redact_mapping_raises_on_pathologically_deep_nesting() -> None:
     root: dict[str, object] = {}
     node = root
-    for _ in range(150):
+    for _ in range(400):
         child: dict[str, object] = {}
         node["k"] = child
         node = child

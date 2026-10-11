@@ -13,8 +13,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   dict inside a tuple, or a mapping that is not a `dict` (a `MappingProxyType` handed to
   `redact_mapping`) came back in clear from `as_dict(redact=True)`, `to_json(redact=True)`,
   `read_config_json(redact=True)` and both `display_config` formats. A tuple stays a tuple, a declared
-  not-sensitive path still addresses list items at any list depth, and deep list nesting refuses with
-  `InvalidFormatError` like deep mapping nesting.
+  not-sensitive path still addresses list items at any list depth. The redaction depth limit now
+  counts every mapping, list and tuple level and is 300 (was 100 mapping levels), so a redacted view
+  never refuses a configuration that reading accepted.
 
 ## [7.1.2] 2026-10-11 23:32:02
 

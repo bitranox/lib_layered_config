@@ -64,10 +64,28 @@ def test_a_declared_exemption_reaches_through_nested_lists() -> None:
 
 
 @os_agnostic
+def test_list_nesting_the_loader_accepts_still_shows_in_every_redacted_view(tmp_path: Path) -> None:
+    # The merge bounds MAPPING nesting at 100 and list nesting not at all, so 120 levels of
+    # array load fine; a redacted view must not refuse what reading accepted.
+    defaults = tmp_path / "defaults.toml"
+    defaults.write_text("x = " + "[" * 120 + "1" + "]" * 120 + "\n", encoding="utf-8")
+    config = read_config(
+        vendor="Acme",
+        app="NestedRedaction",
+        slug="nested-redaction-probe",
+        default_file=str(defaults),
+        start_dir=str(tmp_path),
+        dotenv_path=str(tmp_path / "absent.env"),
+    )
+
+    assert config.as_dict(redact=True) == config.as_dict()
+
+
+@os_agnostic
 def test_pathologically_deep_list_nesting_refuses_with_a_readable_error() -> None:
     root: list[object] = []
     node = root
-    for _ in range(150):
+    for _ in range(400):
         child: list[object] = []
         node.append(child)
         node = child
