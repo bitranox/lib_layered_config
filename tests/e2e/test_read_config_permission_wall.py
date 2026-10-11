@@ -197,7 +197,11 @@ def test_an_explicit_dotenv_path_never_probes_the_platform_env(sandbox: LayeredS
 
 @os_agnostic
 def test_a_start_dir_with_a_nul_byte_is_skipped_by_the_search(sandbox: LayeredSandbox) -> None:
-    assert _read(start_dir="unusable\x00dir") == {"service": {"name": "app"}}
+    # Anchored in the sandbox: a relative start_dir walks up through the test runner's cwd, whose
+    # own .env would then be read into the result.
+    start_dir = str(sandbox.start_dir / "unusable\x00dir")
+
+    assert _read(start_dir=start_dir) == {"service": {"name": "app"}}
 
 
 @os_agnostic
