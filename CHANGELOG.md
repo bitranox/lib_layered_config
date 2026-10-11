@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.1] 2026-10-11 22:58:02
+
 ### Fixed
 
 - **A configuration path behind a permission wall behaves the same on every Python.** Before 3.14,
