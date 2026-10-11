@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.2] 2026-10-11 23:32:02
+
 ### Fixed
 
 - **`display_config` shows every key.** Its human format serialised the configuration to TOML and
