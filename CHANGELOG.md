@@ -6,6 +6,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A configuration path behind a permission wall behaves the same on every Python.** Before 3.14,
+  pathlib raised `PermissionError` when a directory on a path could not be entered, and 3.14 returns
+  `False`. So running from a directory the user cannot enter crashed `read_config` on 3.10-3.13, while
+  an unreadable `/etc/xdg/<slug>/`, `default_file` or `dotenv_path` was silently dropped on 3.14. Now the
+  upward `.env` search skips a directory it cannot enter, and a layer's config location or a named file
+  it cannot check or read raises `LayerLoadError`: `"<path> cannot be read: <reason>"`. An unreadable
+  config file also raises `LayerLoadError` instead of a bare `PermissionError`.
+
+### Changed
+
+- The dev dependency on hypothesis is split by Python version: 6.169 requires 3.11, so 3.10 stays below it.
+
 ## [7.1.0] 2026-10-09 15:29:06
 
 ### Added

@@ -403,7 +403,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `slug` (str, required): Configuration slug used for file paths and environment variable prefix (e.g., `"config-kit"`).
 - `profile` (str | None, optional): Configuration profile name (e.g., `"test"`, `"production"`). When specified, adds a `profile/<name>/` segment to all configuration paths. Default: `None` (no profile).
 - `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes (e.g., `["toml", "json", "yaml"]`). Files matching earlier suffixes take precedence. Default: `None` (accepts all supported formats with default ordering).
-- `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search. Default: `None` (uses current working directory).
+- `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search; a directory the search cannot enter is skipped. Default: `None` (uses current working directory).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
 - `dotenv_path` (str | Path | None, optional): Explicit path to a `.env` file. When set, this file is loaded directly instead of searching upward from `start_dir`. Default: `None` (use directory search).
 - `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). Redaction leaves them visible, and an unquoted `null`/`none` in the environment or `.env` reads as `None` for them. The returned `Config` carries the declaration. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
@@ -415,7 +415,10 @@ valid <FORMAT>"`, plus `" (line N, column M)"` when the parser reports a positio
 (line N, byte offset M)"` for an undecodable file, or `"<path> is not valid UTF-16|UTF-32 (byte offset M)"` for
 a BOM-marked YAML file that does not decode; `"<path> has keys that are not strings (quote them): <parent>:
 <key> (<type>)"` for a YAML mapping key such as an unquoted `1:` or `true:`; `"<path> is a directory, not a
-configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory. None of
+configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory;
+`"<path> cannot be read: <reason>"` when a layer's config location, `default_file` or `dotenv_path` sits behind a
+permission wall (a directory on its path the user cannot enter, or a file the user cannot read). The upward
+`.env` search is the exception: a directory it cannot enter holds no `.env` for it and is skipped. None of
 these quotes the file's content.
 
 **Examples:**

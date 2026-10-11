@@ -2,7 +2,7 @@
 
 Before Python 3.14, ``Path.is_file()``/``is_dir()``/``exists()`` raise ``PermissionError`` when a
 directory on the path cannot be entered; from 3.14 they return ``False``. ``probe_path`` reads the
-``os.stat`` error itself, and the read path uses only it.
+``stat`` error itself, and the read path uses only it.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from __future__ import annotations
 import ast
 import os
 import stat
-from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,6 +19,9 @@ from lib_layered_config import LayerLoadError
 from lib_layered_config.adapters._path_probe import PathKind, checked_kind, probe_path
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import os_agnostic, posix_only
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # Root bypasses directory permissions, so no wall can be built while running as root.
 _RUNS_AS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
@@ -106,9 +109,7 @@ def test_the_read_path_never_asks_pathlib_whether_a_path_exists() -> None:
         offenders.extend(
             f"{relative}:{node.lineno} .{node.func.attr}()"
             for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in _PATHLIB_PROBES
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _PATHLIB_PROBES
         )
 
     assert len(scanned) > 20, f"scanned only {len(scanned)} modules under {_SRC}"

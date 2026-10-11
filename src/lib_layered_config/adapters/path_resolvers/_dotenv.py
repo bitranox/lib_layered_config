@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .._path_probe import PathKind, checked_kind, probe_path
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
@@ -46,7 +48,7 @@ class DotenvPathFinder:
         """
         yield from self._project_paths()
         extra = self._platform_path()
-        if extra and extra.is_file():
+        if extra and checked_kind(extra) is PathKind.FILE:
             yield str(extra)
 
     def _project_paths(self) -> Iterable[str]:
@@ -61,7 +63,9 @@ class DotenvPathFinder:
             if candidate in seen:
                 continue
             seen.add(candidate)
-            if candidate.is_file():
+            # The search cannot read a .env in a directory it cannot enter, so it holds none for it -
+            # the same answer on every Python.
+            if probe_path(candidate).kind is PathKind.FILE:
                 yield str(candidate)
 
     def _platform_path(self) -> Path | None:

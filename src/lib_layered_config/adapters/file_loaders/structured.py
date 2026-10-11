@@ -31,6 +31,7 @@ import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...observability import log_debug, log_error
+from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
 from ._yaml_facade import as_yaml_module
 
@@ -349,6 +350,10 @@ class BaseFileLoader:
         Returns:
             Raw file contents.
 
+        Raises:
+            NotFoundError: *path* is not a file.
+            InvalidFormatError: *path* cannot be checked or read, or exceeds the size cap.
+
         Side Effects:
             Emits ``config_file_read`` debug events.
 
@@ -362,10 +367,13 @@ class BaseFileLoader:
             >>> Path(tmp.name).unlink()
         """
         file_path = Path(path)
-        if not file_path.is_file():
+        if checked_kind(file_path) is not PathKind.FILE:
             raise NotFoundError(f"Configuration file not found: {path}")
-        ensure_within_size_cap(path, file_path.stat().st_size)
-        payload = file_path.read_bytes()
+        try:
+            ensure_within_size_cap(path, file_path.stat().st_size)
+            payload = file_path.read_bytes()
+        except OSError as error:
+            raise config_path_unreadable(file_path, error) from error
         _log_file_read(path, len(payload))
         return payload
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .._path_probe import PathKind, checked_kind
 from ._base import PlatformStrategy, collect_layer
 
 if TYPE_CHECKING:
@@ -58,10 +59,10 @@ class LinuxStrategy(PlatformStrategy):
         etc_root = Path(self.ctx.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
         profile_seg = self._profile_segment()
         xdg_candidate = etc_root / "xdg" / self.ctx.slug / profile_seg / "hosts" / f"{self.ctx.hostname}.toml"
-        if xdg_candidate.is_file():
+        if checked_kind(xdg_candidate) is PathKind.FILE:
             yield str(xdg_candidate)
         candidate = etc_root / self.ctx.slug / profile_seg / "hosts" / f"{self.ctx.hostname}.toml"
-        if candidate.is_file():
+        if checked_kind(candidate) is PathKind.FILE:
             yield str(candidate)
 
     def user_paths(self) -> Iterable[str]:

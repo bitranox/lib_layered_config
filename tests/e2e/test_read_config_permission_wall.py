@@ -11,16 +11,18 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from lib_layered_config import LayerLoadError, read_config
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import posix_only
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 # Root bypasses directory permissions, so no wall can be built while running as root.
 _RUNS_AS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0

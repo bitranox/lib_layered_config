@@ -21,6 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .structured import directory_not_config_file
 
 if TYPE_CHECKING:
@@ -64,9 +65,10 @@ def expand_dot_d(path: str) -> Iterable[str]:
     base_path = Path(path)
     dot_d_dir = base_path.with_suffix(".d")
 
-    if base_path.is_file():
+    base_kind = checked_kind(base_path)
+    if base_kind is PathKind.FILE:
         yield str(base_path)
-    elif base_path.is_dir():
+    elif base_kind is PathKind.DIRECTORY:
         # A configured file path that is a directory on disk (never the `<name>.d/` companion,
         # which is dot_d_dir, a distinct path) would otherwise drop the layer's file without a
         # trace, so the configuration silently falls back to lower layers.
@@ -100,9 +102,14 @@ def _collect_dot_d_files(dot_d_dir: Path) -> Iterable[str]:
         ['10-db.toml', '20-cache.yaml']
         >>> tmp.cleanup()
     """
-    if not dot_d_dir.is_dir():
+    if checked_kind(dot_d_dir) is not PathKind.DIRECTORY:
         return
 
-    for file_path in sorted(dot_d_dir.iterdir()):
-        if file_path.is_file() and file_path.suffix.lower() in _ALLOWED_EXTENSIONS:
+    try:
+        entries = sorted(dot_d_dir.iterdir())
+    except OSError as error:
+        raise config_path_unreadable(dot_d_dir, error) from error
+    # The extension is tested first so a README the directory also holds is never probed.
+    for file_path in entries:
+        if file_path.suffix.lower() in _ALLOWED_EXTENSIONS and checked_kind(file_path) is PathKind.FILE:
             yield str(file_path)

@@ -3,7 +3,7 @@
 Before Python 3.14, ``Path.is_file()``, ``is_dir()`` and ``exists()`` raise ``PermissionError``
 when a directory on the path cannot be entered; from 3.14 they return ``False``. Left to them, one
 configuration crashed on one interpreter and was silently dropped on another. This module calls
-``os.stat`` and reads the error itself, so the answer does not depend on the interpreter.
+``Path.stat()`` (unchanged in 3.14) and reads the error itself, so the answer does not depend on the interpreter.
 
 Contents:
     - ``PathKind``: what a probe found.
@@ -16,7 +16,6 @@ Contents:
 from __future__ import annotations
 
 import errno
-import os
 import stat
 from dataclasses import dataclass
 from enum import Enum
@@ -53,7 +52,7 @@ class PathProbe:
 
     Attributes:
         kind: What the probe found.
-        error: The ``os.stat`` error when *kind* is ``CANNOT_CHECK``; otherwise ``None``.
+        error: The ``stat`` error when *kind* is ``CANNOT_CHECK``; otherwise ``None``.
     """
 
     kind: PathKind
@@ -80,7 +79,7 @@ def probe_path(path: Path) -> PathProbe:
         (<PathKind.DIRECTORY: 'directory'>, <PathKind.MISSING: 'missing'>)
     """
     try:
-        mode = os.stat(path).st_mode
+        mode = path.stat().st_mode
     except OSError as error:
         if _means_absent(error):
             return PathProbe(PathKind.MISSING)

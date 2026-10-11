@@ -27,6 +27,7 @@ from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug, log_error
 from .._nested_keys import assign_nested
+from .._path_probe import PathKind, checked_kind, config_path_unreadable, probe_path
 from .._text_decoding import decode_utf8
 from .._value_coercion import coerce_value
 from ..file_loaders.structured import directory_not_config_file, ensure_within_size_cap
@@ -89,7 +90,9 @@ class DefaultDotEnvLoader:
         candidates = _build_search_list(start_dir, self._extras)
         self.last_loaded_path = None
         for candidate in candidates:
-            if not candidate.is_file():
+            # The search cannot read a .env in a directory it cannot enter, so it holds none for it -
+            # the same answer on every Python.
+            if probe_path(candidate).kind is not PathKind.FILE:
                 continue
             self.last_loaded_path = str(candidate)
             data = _parse_dotenv(candidate, not_sensitive=self._not_sensitive)
@@ -101,9 +104,10 @@ class DefaultDotEnvLoader:
     def _load_explicit(self, path: Path) -> Mapping[str, object]:
         """Load a specific dotenv file without directory search."""
         self.last_loaded_path = None
-        if path.is_dir():
+        kind = checked_kind(path)
+        if kind is PathKind.DIRECTORY:
             raise directory_not_config_file(path)
-        if not path.is_file():
+        if kind is not PathKind.FILE:
             _log_dotenv_missing()
             return {}
         self.last_loaded_path = str(path)
@@ -135,11 +139,15 @@ def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveK
         InvalidFormatError: On malformed lines or bytes, or when the file is larger than
             :data:`~lib_layered_config.adapters.file_loaders.structured.MAX_CONFIG_FILE_BYTES`
             (checked before the file is read, the same cap and refusal shape structured
-            configuration files use).
+            configuration files use), or when it cannot be read.
     """
     result: dict[str, object] = {}
-    ensure_within_size_cap(str(path), path.stat().st_size)
-    text = decode_utf8(path.read_bytes(), path=path)
+    try:
+        ensure_within_size_cap(str(path), path.stat().st_size)
+        raw = path.read_bytes()
+    except OSError as error:
+        raise config_path_unreadable(path, error) from error
+    text = decode_utf8(raw, path=path)
     # StringIO with newline=None keeps the universal-newline line splitting the text-mode open() had.
     for line_number, raw_line in enumerate(io.StringIO(text, newline=None), start=1):
         entry = _split_line(raw_line, line_number, path)
