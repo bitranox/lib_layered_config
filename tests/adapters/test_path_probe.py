@@ -18,7 +18,7 @@ import pytest
 from lib_layered_config import LayerLoadError
 from lib_layered_config.adapters._path_probe import PathKind, checked_kind, probe_path
 from lib_layered_config.domain.errors import InvalidFormatError
-from tests.support.os_markers import os_agnostic, posix_only
+from tests.support.os_markers import IS_WINDOWS, os_agnostic, posix_only
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -91,8 +91,10 @@ def test_checked_kind_passes_every_answer_it_can_give_through(tmp_path: Path) ->
 
 # --- nothing in the read path asks pathlib again -----------------------------------------------
 
-_PATHLIB_PROBES = frozenset({"is_file", "is_dir", "exists"})
-# examples/ only WRITES (deploy, generate): a wall there fails at the write on every Python.
+# Every stdlib existence test: pathlib's (which split by Python version) and os.path's / os.access
+# (which answer False on any error, so a walled layer would vanish on every Python).
+_EXISTENCE_PROBES = frozenset({"is_file", "is_dir", "exists", "is_symlink", "isfile", "isdir", "lexists", "access"})
+# examples/ is deploy and generate: their reads of a deploy SOURCE are filed separately in the backlog.
 _EXEMPT = ("adapters/_path_probe.py", "examples/")
 
 
@@ -106,11 +108,30 @@ def test_the_read_path_never_asks_pathlib_whether_a_path_exists() -> None:
             continue
         scanned.append(relative)
         tree = ast.parse(source.read_text(encoding="utf-8"))
+        # Any attribute with such a name counts, called or not: filter(Path.is_file, ...) is a probe too.
         offenders.extend(
-            f"{relative}:{node.lineno} .{node.func.attr}()"
+            f"{relative}:{node.lineno} .{node.attr}"
             for node in ast.walk(tree)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _PATHLIB_PROBES
+            if isinstance(node, ast.Attribute) and node.attr in _EXISTENCE_PROBES
         )
 
     assert len(scanned) > 20, f"scanned only {len(scanned)} modules under {_SRC}"
     assert offenders == []
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("nul\x00byte.toml", id="nul"),
+        # Windows names are UTF-16 and may hold an unpaired surrogate, so only POSIX refuses to encode it.
+        pytest.param(
+            "lone\ud800surrogate.toml", id="surrogate", marks=pytest.mark.skipif(IS_WINDOWS, reason="POSIX encoding")
+        ),
+    ],
+)
+def test_probe_reports_a_name_the_os_cannot_take_as_cannot_check(tmp_path: Path, name: str) -> None:
+    probe = probe_path(tmp_path / name)
+
+    assert probe.kind is PathKind.CANNOT_CHECK
+    assert isinstance(probe.error, ValueError)

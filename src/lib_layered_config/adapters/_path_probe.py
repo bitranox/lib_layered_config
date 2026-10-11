@@ -7,7 +7,8 @@ configuration crashed on one interpreter and was silently dropped on another. Th
 
 Contents:
     - ``PathKind``: what a probe found.
-    - ``PathProbe``: the kind plus the error when the path could not be checked.
+    - ``PathProbe``: the kind plus the error when the path could not be checked (an ``OSError``, or
+      the ``ValueError`` a NUL byte or an unencodable name raises).
     - ``probe_path``: never raises; a search uses it and skips what it cannot check.
     - ``checked_kind``: refuses a path it cannot check; a layer location or a named file uses it.
     - ``config_path_unreadable``: the refusal, shared with the file readers.
@@ -56,7 +57,7 @@ class PathProbe:
     """
 
     kind: PathKind
-    error: OSError | None = None
+    error: OSError | ValueError | None = None
 
 
 def probe_path(path: Path) -> PathProbe:
@@ -83,6 +84,10 @@ def probe_path(path: Path) -> PathProbe:
     except OSError as error:
         if _means_absent(error):
             return PathProbe(PathKind.MISSING)
+        return PathProbe(PathKind.CANNOT_CHECK, error)
+    except ValueError as error:
+        # A NUL byte or an unencodable name: no file can have it, and pathlib answered False for it
+        # on every Python, so it is a path that cannot be checked rather than a crash.
         return PathProbe(PathKind.CANNOT_CHECK, error)
     if stat.S_ISREG(mode):
         return PathProbe(PathKind.FILE)
@@ -115,7 +120,7 @@ def checked_kind(path: Path) -> PathKind:
     return probe.kind
 
 
-def config_path_unreadable(path: Path, error: OSError) -> InvalidFormatError:
+def config_path_unreadable(path: Path, error: OSError | ValueError) -> InvalidFormatError:
     """Log and build the refusal for a configuration path that cannot be checked or read.
 
     Without it the layer would crash with a bare ``OSError`` on one Python and fall back to lower
@@ -123,7 +128,7 @@ def config_path_unreadable(path: Path, error: OSError) -> InvalidFormatError:
 
     Args:
         path: The configuration path.
-        error: The operating-system error behind it.
+        error: The error behind it.
 
     Returns:
         The error to raise.
@@ -133,7 +138,8 @@ def config_path_unreadable(path: Path, error: OSError) -> InvalidFormatError:
         >>> str(config_path_unreadable(Path("config.toml"), PermissionError(13, "Permission denied")))
         'config.toml cannot be read: Permission denied'
     """
-    message = f"{path} cannot be read: {error.strerror or error}"
+    reason = error.strerror if isinstance(error, OSError) and error.strerror else str(error)
+    message = f"{path} cannot be read: {reason}"
     log_error("config_path_unreadable", path=str(path), error=message)
     return InvalidFormatError(message)
 

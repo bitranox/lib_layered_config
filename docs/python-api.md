@@ -416,8 +416,10 @@ valid <FORMAT>"`, plus `" (line N, column M)"` when the parser reports a positio
 a BOM-marked YAML file that does not decode; `"<path> has keys that are not strings (quote them): <parent>:
 <key> (<type>)"` for a YAML mapping key such as an unquoted `1:` or `true:`; `"<path> is a directory, not a
 configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory;
-`"<path> cannot be read: <reason>"` when a layer's config location, `default_file` or `dotenv_path` sits behind a
-permission wall (a directory on its path the user cannot enter, or a file the user cannot read). The upward
+`"<path> cannot be read: <reason>"` when a layer's config location, the platform `.env` location, `default_file` or
+`dotenv_path` sits behind a permission wall (a directory on its path the user cannot enter, or a file the user
+cannot read) or is a name the operating system cannot take (a NUL byte). With `dotenv_path` set, the search
+and its platform `.env` location are never probed. The upward
 `.env` search is the exception: a directory it cannot enter holds no `.env` for it and is skipped. None of
 these quotes the file's content.
 

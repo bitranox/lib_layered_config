@@ -246,11 +246,14 @@ def read_config_raw(
         start_dir=start_dir,
         max_profile_length=max_profile_length,
     )
-    dotenv_loader, env_loader = _build_loaders(resolver, not_sensitive=declared)
-
     bind_trace_id(None)
 
     try:
+        # Inside the try: building the loaders probes the platform .env location, and a path it
+        # cannot read must surface as LayerLoadError like every other layer.
+        dotenv_loader, env_loader = _build_loaders(
+            resolver, not_sensitive=declared, searches_dotenv=dotenv_path is None
+        )
         layers = collect_layers(
             resolver=resolver,
             prefer=prefer,
@@ -367,7 +370,7 @@ def _build_resolver(
 
 
 def _build_loaders(
-    resolver: DefaultPathResolver, *, not_sensitive: NotSensitiveKeys
+    resolver: DefaultPathResolver, *, not_sensitive: NotSensitiveKeys, searches_dotenv: bool
 ) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
     """Instantiate dotenv and environment loaders sharing resolver context and the declaration.
 
@@ -377,12 +380,15 @@ def _build_loaders(
     Args:
         resolver: Resolver supplying platform-specific extras for dotenv discovery.
         not_sensitive: Paths the application declared not sensitive.
+        searches_dotenv: False when an explicit ``dotenv_path`` replaces the search, so the search's
+            locations are never probed (one the user cannot read must not refuse a read that skips it).
 
     Returns:
         Pair of loader instances ready for layer collection.
     """
+    extras: list[str] = list(resolver.dotenv()) if searches_dotenv else []
     return (
-        DefaultDotEnvLoader(extras=resolver.dotenv(), not_sensitive=not_sensitive),
+        DefaultDotEnvLoader(extras=extras, not_sensitive=not_sensitive),
         DefaultEnvLoader(not_sensitive=not_sensitive),
     )
 

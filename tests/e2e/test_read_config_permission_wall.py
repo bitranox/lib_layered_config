@@ -18,7 +18,7 @@ import pytest
 
 from lib_layered_config import LayerLoadError, read_config
 from tests.support import LayeredSandbox, create_layered_sandbox
-from tests.support.os_markers import posix_only
+from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -157,3 +157,50 @@ def test_a_dot_d_directory_it_cannot_read_refuses_naming_the_path(sandbox: Layer
         _read(start_dir=str(sandbox.start_dir))
 
     assert str(dot_d) in str(caught.value)
+
+
+# --- the platform .env location is a layer location, probed only when the search runs ----------
+
+
+@posix_only
+@needs_wall
+def test_an_unenterable_user_layer_directory_refuses_as_layer_load_error(
+    sandbox: LayeredSandbox, tmp_path: Path
+) -> None:
+    user_root = sandbox.roots["user"]
+    user_root.mkdir(parents=True, exist_ok=True)
+
+    with walled(user_root), pytest.raises(LayerLoadError, match="cannot be read") as caught:
+        _read(start_dir=str(tmp_path))
+
+    assert str(user_root) in str(caught.value)
+
+
+@posix_only
+@needs_wall
+def test_an_explicit_dotenv_path_never_probes_the_platform_env(sandbox: LayeredSandbox, tmp_path: Path) -> None:
+    wall = tmp_path / "platform-env-wall"
+    wall.mkdir()
+    sandbox.roots["user"].mkdir(parents=True, exist_ok=True)
+    (sandbox.roots["user"] / ".env").symlink_to(wall / ".env")
+    explicit = tmp_path / "explicit.env"
+    explicit.write_text("SERVICE__NAME=explicit\n", encoding="utf-8")
+
+    with walled(wall):
+        data = _read(start_dir=str(tmp_path), dotenv_path=str(explicit))
+
+    assert data == {"service": {"name": "explicit"}}
+
+
+# --- a path the operating system cannot even take ----------------------------------------------
+
+
+@os_agnostic
+def test_a_start_dir_with_a_nul_byte_is_skipped_by_the_search(sandbox: LayeredSandbox) -> None:
+    assert _read(start_dir="unusable\x00dir") == {"service": {"name": "app"}}
+
+
+@os_agnostic
+def test_a_default_file_with_a_nul_byte_refuses(sandbox: LayeredSandbox) -> None:
+    with pytest.raises(LayerLoadError, match="cannot be read"):
+        _read(start_dir=str(sandbox.start_dir), default_file="defaults\x00.toml")
