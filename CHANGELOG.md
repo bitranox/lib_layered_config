@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.3] 2026-10-12 01:45:26
+
 ### Fixed
 
 - **Redaction reaches a secret in any nesting of mappings, lists and tuples.** It recursed only into a
