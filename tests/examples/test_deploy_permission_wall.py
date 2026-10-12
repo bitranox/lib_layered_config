@@ -6,6 +6,9 @@ and the source's ``.d`` files, so a walled source was "not found" on 3.14 and a 
 and a ``.d`` directory that can be listed but not entered lost its files on 3.14 without a word.
 Deploy now asks the path probe, which raises the ``stat`` error itself, so both cases raise
 ``PermissionError`` on every Python and nothing is written.
+
+On Windows the user layer goes to ``%APPDATA%`` and falls back to ``%LOCALAPPDATA%`` only when
+``%APPDATA%`` is missing. One that cannot be checked raises too, rather than being read as missing.
 """
 
 from __future__ import annotations
@@ -17,7 +20,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from lib_layered_config.examples.deploy import deploy_config
-from tests.support.os_markers import posix_only
+from tests.support.os_markers import posix_only, windows_only
+from tests.support.windows_acl import stat_wall
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -92,3 +96,31 @@ def test_a_missing_source_still_raises_file_not_found(
 ) -> None:
     with pytest.raises(FileNotFoundError, match="Configuration source not found"):
         _deploy(sandbox, monkeypatch, tmp_path / "absent.toml")
+
+
+@windows_only
+def test_a_windows_appdata_that_cannot_be_checked_raises_instead_of_falling_back_to_localappdata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    roaming = tmp_path / "AppData" / "Roaming"
+    local = tmp_path / "AppData" / "Local"
+    roaming.mkdir(parents=True)
+    local.mkdir()
+    source = tmp_path / "config.toml"
+    source.write_text("[service]\nport = 1\n", encoding="utf-8")
+    # The override skips the check entirely, so only the plain APPDATA reaches the probe.
+    monkeypatch.delenv("LIB_LAYERED_CONFIG_APPDATA", raising=False)
+    monkeypatch.setenv("APPDATA", str(roaming))
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_LOCALAPPDATA", str(local))
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+
+    with stat_wall(roaming):
+        # The wall must hold, or a pass would only mean the fallback was never offered.
+        with pytest.raises(PermissionError):
+            roaming.stat()
+        with pytest.raises(PermissionError):
+            # set_permissions=False skips deploy's own read of the configuration, which would
+            # refuse the walled user layer first as a LayerLoadError.
+            deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], set_permissions=False)
+
+    assert list(local.iterdir()) == []

@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Internal
+
+- Added a Windows test that a `%APPDATA%` which cannot be checked makes deploy raise
+  `PermissionError` rather than fall back to `%LOCALAPPDATA%`. Windows `os.stat` reads a denied
+  directory's entry from its parent, so the wall (`tests/support/windows_acl.py`) denies both the
+  directory's attributes and the parent's listing, and switches off the backup privileges an
+  elevated session would use to see through it.
+
 ## [7.1.6] 2026-10-12 13:21:20
 
 ### Fixed
