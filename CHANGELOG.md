@@ -6,6 +6,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`read_config`, `read_config_json` and `read_config_raw` keep the caller's trace id.** Each call
+  reset the binding to `None` on entry, so `bind_trace_id("abc123")` before a read tagged none of its
+  log events and also cleared the id for the caller's own events afterwards. The reads now leave the
+  binding alone, as `deploy_config` already did: their events carry the bound id, and with nothing
+  bound they carry `None` as before.
+
+### Documentation
+
+- The shipped skill names the two provenance formats (`display_config` prints
+  `# layer:<layer> profile:<profile> (<path>)`, the `read` command `# source: layer=..., path=...`)
+  instead of calling them the same, and says a plain YAML mapping keeps the file's key order.
+
 ## [7.1.4] 2026-10-12 09:40:16
 
 ### Fixed

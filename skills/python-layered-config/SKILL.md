@@ -202,7 +202,8 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   files (`10-db.toml`, `20-cache.yaml`, ...) load in lexicographic order and can mix formats.
 - **Quote YAML keys that look like numbers or booleans** (`'1':`, `'true':`): an unquoted one is not a
   string key, and the loader refuses the whole file.
-- **Write ordered YAML as a plain mapping, never `!!omap` or `!!pairs`**: those load as `(key, value)`
+- **Write ordered YAML as a plain mapping, never `!!omap` or `!!pairs`**: a plain mapping keeps the
+  file's key order through `read_config` and `as_dict()`, while those two tags load as `(key, value)`
   tuples whose keys redaction cannot see, so the loader refuses the whole file.
 - **Use profiles for environments**, not copy-pasted files.
 - **Scaffold** a starting tree with `generate-examples` rather than hand-building paths.
@@ -247,11 +248,14 @@ an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"
 the list of written paths.
 
 **Display and logging.** `display_config(config, output_format=OutputFormat.HUMAN)` prints a config
-the way the `read` command does (`OutputFormat.JSON` for JSON). `get_logger()` returns the stdlib
-`logging.Logger` named `lib_layered_config`; attach handlers to it. Each record carries a
-`context` dict: always `record.context["trace_id"]`, plus the event's own fields (often `layer`
-and `path`). `bind_trace_id("abc123")` sets that trace id for the current context (a `ContextVar`),
-but `read_config*` resets it to `None` when it starts, so its own events carry `None`. `i_should_fail()` raises a `RuntimeError` on
+section by section, each key under a `# layer:<layer> profile:<profile> (<path>)` comment and
+TOML-quoted where it needs it (`OutputFormat.JSON` for plain JSON). The `read` command has its own
+renderer, `# source: layer=<layer>, path=<path>` above each key, so one parser does not fit both.
+`get_logger()` returns the stdlib `logging.Logger` named `lib_layered_config`; attach handlers to
+it. Each record carries a `context` dict: always `record.context["trace_id"]`, plus the event's
+own fields (often `layer` and `path`). `bind_trace_id("abc123")` sets that trace id for the current
+context (a `ContextVar`); `read_config*` and `deploy_config` tag their events with it and leave it
+bound, and with nothing bound the id is `None`. `i_should_fail()` raises a `RuntimeError` on
 purpose, for testing failure paths.
 
 ## Common mistakes

@@ -41,7 +41,6 @@ from .domain.errors import (
 )
 from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
 from .domain.redaction import NotSensitiveKeys, redact_mapping
-from .observability import bind_trace_id
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -246,7 +245,6 @@ def read_config_raw(
         start_dir=start_dir,
         max_profile_length=max_profile_length,
     )
-    bind_trace_id(None)
 
     try:
         # Inside the try: building the loaders probes the platform .env location, and a path it
@@ -279,8 +277,7 @@ def read_config_for_deploy(
     """Merge what decides deploy modes; see :func:`lib_layered_config._layers.collect_deploy_layers`.
 
     Unlike :func:`read_config` it takes the deploy's own resolver (so a ``platform`` override reads
-    that platform's paths), never reads ``.env``, skips the files the deploy writes, and leaves the
-    caller's bound trace id alone.
+    that platform's paths), never reads ``.env``, and skips the files the deploy writes.
 
     Raises:
         LayerLoadError: A layer file cannot be decoded or parsed (a content-free message).

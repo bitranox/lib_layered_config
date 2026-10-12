@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 import runpy
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
 from lib_layered_config import core
+from lib_layered_config.observability import TRACE_ID, bind_trace_id
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from tests.support import LayeredSandbox
 
 
 @os_agnostic
@@ -71,3 +79,43 @@ def test_module_entry_exits_with_cli_status(monkeypatch: pytest.MonkeyPatch) -> 
         11,
         {"arguments": [], "restore_traceback": True},
     )
+
+
+def _read_sandbox_config(
+    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> list[logging.LogRecord]:
+    """Read a one-file sandbox config and return the library's own log records."""
+    sandbox.apply_env(monkeypatch)
+    sandbox.write("app", "config.toml", content="[service]\nport = 1\n")
+    caplog.set_level(logging.DEBUG, logger="lib_layered_config")
+    # start_dir under tmp_path keeps the .env search away from the repository's own .env.
+    core.read_config(vendor="Acme", app="Demo", slug="demo", start_dir=str(tmp_path))
+    records = [record for record in caplog.records if record.name == "lib_layered_config"]
+    assert records, "liveness: read_config logged nothing, so no trace id could be checked"
+    return records
+
+
+@os_agnostic
+def test_read_config_tags_its_events_with_the_callers_trace_id(
+    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    bind_trace_id("caller-trace")
+    records = _read_sandbox_config(sandbox, monkeypatch, tmp_path, caplog)
+    assert {record.__dict__["context"]["trace_id"] for record in records} == {"caller-trace"}
+
+
+@os_agnostic
+def test_the_callers_trace_id_survives_read_config(
+    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    bind_trace_id("caller-trace")
+    _read_sandbox_config(sandbox, monkeypatch, tmp_path, caplog)
+    assert TRACE_ID.get() == "caller-trace"
+
+
+@os_agnostic
+def test_read_config_binds_no_trace_id_of_its_own(
+    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    records = _read_sandbox_config(sandbox, monkeypatch, tmp_path, caplog)
+    assert {record.__dict__["context"]["trace_id"] for record in records} == {None}

@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from click.testing import CliRunner
 
+from lib_layered_config.observability import TRACE_ID
 from tests.support import LayeredSandbox, create_layered_sandbox
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 SRC_PATH = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_PATH) not in sys.path:
@@ -28,6 +33,18 @@ if str(SRC_PATH) not in sys.path:
 # =============================================================================
 # Environment Fixtures
 # =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _unbound_trace_id() -> Iterator[None]:
+    """Start every test with no trace id bound, and drop whatever the test bound.
+
+    ``TRACE_ID`` is a ``ContextVar`` and pytest runs every test in one context, so an id bound in
+    one test would otherwise tag the log records of every test after it.
+    """
+    token = TRACE_ID.set(None)
+    yield
+    TRACE_ID.reset(token)
 
 
 @pytest.fixture(autouse=True)

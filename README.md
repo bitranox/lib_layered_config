@@ -482,7 +482,8 @@ pool_size = 50
 
 - Every merged key stores metadata (`layer`, `path`, `key`).
 - Structured logging lives in `lib_layered_config.observability` (trace-aware `log_debug`, `log_info`, `log_warn`, `log_error`).
-- Use `bind_trace_id("abc123")` to correlate CLI/log events with your own tracing.
+- Use `bind_trace_id("abc123")` to correlate CLI/log events with your own tracing: `read_config*` and
+  `deploy_config` tag every event with the bound id and leave the binding in place for your later events.
 
 ### Type Conflict Warnings
 
