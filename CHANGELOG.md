@@ -6,6 +6,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A YAML `!!set` or `!!binary` value refuses the file.** PyYAML's safe loader builds them as a
+  Python `set` and `bytes`, neither of which has a JSON form, so such a config loaded and then
+  crashed every JSON view (`Config.to_json`, with or without `redact`, `read_config_json`,
+  `display_config` in JSON) with an uncaught `TypeError`. The loader now
+  raises `InvalidFormatError` (`LayerLoadError` from `read_config`) naming the file and each such
+  value's dotted position and type, never the value. Write a list or a base64 string instead.
+  Timestamps and dates still load and serialise.
+
 ## [7.1.5] 2026-10-12 11:22:15
 
 ### Fixed

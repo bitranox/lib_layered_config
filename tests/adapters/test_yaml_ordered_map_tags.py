@@ -71,19 +71,15 @@ def test_tags_nested_in_a_list_and_in_a_mapping_name_every_position(tmp_path: Pa
 
 
 @os_agnostic
-def test_plain_lists_of_mappings_sets_dates_and_binary_still_load(tmp_path: Path) -> None:
+def test_plain_lists_of_mappings_and_dates_still_load(tmp_path: Path) -> None:
+    # !!set and !!binary are refused for a reason of their own: tests/adapters/test_yaml_unserialisable_tags.py.
     path = tmp_path / "config.yaml"
-    path.write_text(
-        "hosts:\n  - name: a\n    password: p\ntags: !!set {x: null}\nday: 2026-10-12\nblob: !!binary aGk=\n",
-        encoding="utf-8",
-    )
+    path.write_text("hosts:\n  - name: a\n    password: p\nday: 2026-10-12\n", encoding="utf-8")
 
     loaded = YAMLFileLoader().load(str(path))
 
     assert loaded["hosts"] == [{"name": "a", "password": "p"}]
-    assert loaded["tags"] == {"x"}
     assert str(loaded["day"]) == "2026-10-12"
-    assert loaded["blob"] == b"hi"
 
 
 @os_agnostic

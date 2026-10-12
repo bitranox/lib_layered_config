@@ -595,6 +595,7 @@ class YAMLFileLoader(BaseFileLoader):
         mapping = self._ensure_mapping(parsed, path=path)
         _refuse_non_string_keys(mapping, path=path)
         _refuse_ordered_map_tags(mapping, path=path)
+        _refuse_values_json_cannot_carry(mapping, path=path)
         _log_file_loaded(path, "yaml")
         return mapping
 
@@ -752,6 +753,68 @@ def _ordered_map_positions(data: object) -> list[str]:
             if any(isinstance(item, tuple) for item in items):
                 found.append(position)
                 continue
+            pending.extend((item, _join_position(position, str(index))) for index, item in enumerate(items))
+    return sorted(found)
+
+
+#: The tag a YAML author wrote for each Python type PyYAML's safe loader builds with no JSON form.
+_TAG_OF_UNSERIALISABLE: dict[type, str] = {set: "!!set", bytes: "!!binary"}
+
+
+def _refuse_values_json_cannot_carry(data: object, *, path: str) -> None:
+    """Refuse a document holding a ``!!set`` or ``!!binary`` value.
+
+    PyYAML's safe loader builds them as ``set`` and ``bytes``, and neither has a JSON form: such a
+    config loaded, then crashed every JSON view (``Config.to_json``, ``read_config_json``,
+    ``display_config`` in JSON) with an uncaught ``TypeError``. Refusing at load names the problem
+    where the file is known. The error names the file, the tags, and each value's dotted position
+    with its Python type, never the value.
+
+    Args:
+        data: Parsed document, already known to be a mapping at the top.
+        path: File the document came from, named in the error.
+
+    Raises:
+        InvalidFormatError: When any value in *data* came from ``!!set`` or ``!!binary``.
+
+    Examples:
+        >>> _refuse_values_json_cannot_carry({"tags": ["x"]}, path="demo.yaml")
+        >>> _refuse_values_json_cannot_carry({"tags": {"x"}}, path="demo.yaml")  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: demo.yaml uses !!set or !!binary, ...: tags (set)
+    """
+    found = _unserialisable_positions(data)
+    if not found:
+        return
+    message = (
+        f"{path} uses !!set or !!binary, which have no JSON form; "
+        f"write a list or a base64 string instead: {'; '.join(found)}"
+    )
+    _log_file_invalid(path, "yaml", message)
+    raise InvalidFormatError(message)
+
+
+def _unserialisable_positions(data: object) -> list[str]:
+    """Describe every ``set`` or ``bytes`` value in *data* as ``"<position> (<type>)"``.
+
+    Walks with an explicit stack for the reason :func:`_non_string_keys` gives.
+
+    Examples:
+        >>> _unserialisable_positions({"a": [{"b": {1}}], "c": b"x", "d": [1]})
+        ['a.0.b (set)', 'c (bytes)']
+    """
+    found: list[str] = []
+    pending: list[tuple[object, str]] = [(data, "")]
+    while pending:
+        node, position = pending.pop()
+        if type(node) in _TAG_OF_UNSERIALISABLE:
+            found.append(f"{position or '<top>'} ({type(node).__name__})")
+        elif isinstance(node, Mapping):
+            mapping = cast("Mapping[object, object]", node)
+            pending.extend((value, _join_position(position, str(key))) for key, value in mapping.items())
+        elif isinstance(node, list):
+            items = cast("list[object]", node)
             pending.extend((item, _join_position(position, str(index))) for index, item in enumerate(items))
     return sorted(found)
 
