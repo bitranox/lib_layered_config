@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.7] 2026-10-12 20:25:56
+
 ### Fixed
 
 - **Provenance names only keys the merged config still holds.** A table declared empty in one
