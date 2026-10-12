@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from lib_layered_config import ConfigError, read_config, read_config_json, read_config_raw
+from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.core import LayerLoadError
 from tests.adapters.test_loader_errors import _chain
 from tests.support import LayeredSandbox, create_layered_sandbox
@@ -256,6 +257,28 @@ def test_read_config_dotenv_path_provenance_records_explicit_file(
     assert result.data["service"]["region"] == "us-east"  # type: ignore[index]
     assert result.provenance["service.region"]["layer"] == "dotenv"
     assert result.provenance["service.region"]["path"] == str(explicit_env)
+
+
+@os_agnostic
+@pytest.mark.parametrize(("layer", "relative"), [("app", "config.toml"), ("host", None), ("user", "config.toml")])
+def test_read_config_refuses_a_discovered_config_path_that_is_a_directory(
+    monkeypatch: pytest.MonkeyPatch, sandbox: LayeredSandbox, layer: str, relative: str | None
+) -> None:
+    """A directory where a layer's config file belongs refuses the load, as one at `default_file`
+    does. The resolver used to pass a discovered path on only when it was a file, so the directory
+    was skipped in silence and the configuration fell back to the layers below it."""
+    sandbox.apply_env(monkeypatch)
+    # The host file is named after the machine the resolver runs on, not a fixed test name.
+    if relative is None:
+        relative = f"{DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG).hostname}.toml"
+    placed = sandbox.write(layer, relative, content="")
+    placed.unlink()
+    placed.mkdir()
+
+    with pytest.raises(LayerLoadError, match="is a directory, not a configuration file") as caught:
+        read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(sandbox.start_dir))
+
+    assert str(placed) in str(caught.value)
 
 
 @os_agnostic

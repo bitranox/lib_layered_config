@@ -11,8 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .._path_probe import PathKind, checked_kind
-from ._base import PlatformStrategy, collect_layer
+from ._base import PlatformStrategy, collect_layer, config_path_present
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -73,7 +72,7 @@ class MacOSStrategy(PlatformStrategy):
         candidate = (
             self._app_root() / self.ctx.vendor / self.ctx.app / profile_seg / "hosts" / f"{self.ctx.hostname}.toml"
         )
-        if checked_kind(candidate) is PathKind.FILE:
+        if config_path_present(candidate):
             yield str(candidate)
 
     def user_paths(self) -> Iterable[str]:

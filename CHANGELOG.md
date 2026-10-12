@@ -6,6 +6,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A directory where a layer's config file belongs now refuses the load, as 7.0.0 said.** 7.0.0
+  refused a directory at `default_file` and an explicit `dotenv_path`, but the path resolver handed
+  a discovered app, host or user path (`config.toml`, `hosts/<hostname>.toml`) to the loader only
+  when it was a file, so a directory there was skipped without a word and the configuration fell
+  back to the layers below. It now refuses with "`<path>` is a directory, not a configuration
+  file" on every platform. The upward `.env` search still passes over a directory named `.env`.
+
 ## [7.1.7] 2026-10-12 20:25:56
 
 ### Fixed

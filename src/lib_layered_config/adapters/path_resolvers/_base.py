@@ -131,14 +131,45 @@ class PlatformStrategy(abc.ABC):
         """
 
 
+def config_path_present(path: Path) -> bool:
+    """Return whether a discovered config file path goes to the loader.
+
+    A file loads. A directory goes too, so the loader refuses it naming the path: filtered out
+    here, a directory where a layer's config file belongs was skipped in silence and the
+    configuration fell back to the layers below, although a directory at ``default_file`` already
+    refused. Anything else (missing, a FIFO or socket the loader must not open) is not a config
+    file and is passed over.
+
+    Args:
+        path: A layer's config file path, as the platform resolver discovered it.
+
+    Returns:
+        ``True`` for a file or a directory.
+
+    Raises:
+        InvalidFormatError: *path* cannot be checked (``read_config`` raises it as
+            ``LayerLoadError``).
+
+    Examples:
+        >>> from tempfile import TemporaryDirectory
+        >>> tmp = TemporaryDirectory()
+        >>> root = Path(tmp.name)
+        >>> (root / 'config.toml').mkdir()
+        >>> config_path_present(root / 'config.toml'), config_path_present(root / 'absent.toml')
+        (True, False)
+        >>> tmp.cleanup()
+    """
+    return checked_kind(path) in (PathKind.FILE, PathKind.DIRECTORY)
+
+
 def collect_layer(base: Path) -> Iterable[str]:
     """Yield canonical config file path under *base* for file-level expansion.
 
     Normalise discovery across operating systems while respecting preferred
     configuration formats.
 
-    Yields ``config.toml`` when present or when its companion ``config.d``
-    directory exists. The actual .d directory expansion is handled by
+    Yields ``config.toml`` when present (`config_path_present`) or when its
+    companion ``config.d`` directory exists. The actual .d directory expansion is handled by
     ``_layers._load_entry_with_dot_d``.
 
     Args:
@@ -165,5 +196,5 @@ def collect_layer(base: Path) -> Iterable[str]:
     config_file = base / "config.toml"
     config_d_dir = base / "config.d"
 
-    if checked_kind(config_file) is PathKind.FILE or checked_kind(config_d_dir) is PathKind.DIRECTORY:
+    if config_path_present(config_file) or checked_kind(config_d_dir) is PathKind.DIRECTORY:
         yield str(config_file)

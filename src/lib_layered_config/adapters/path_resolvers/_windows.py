@@ -14,8 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .._path_probe import PathKind, checked_kind
-from ._base import PlatformStrategy, collect_layer
+from ._base import PlatformStrategy, collect_layer, config_path_present
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -107,7 +106,7 @@ class WindowsStrategy(PlatformStrategy):
         profile_seg = self._profile_segment()
         base = self._program_data_root() / self.ctx.vendor / self.ctx.app / profile_seg
         candidate = base / "hosts" / f"{self.ctx.hostname}.toml"
-        if checked_kind(candidate) is PathKind.FILE:
+        if config_path_present(candidate):
             yield str(candidate)
 
     def user_paths(self) -> Iterable[str]:
