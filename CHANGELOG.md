@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.5] 2026-10-12 11:22:15
+
 ### Fixed
 
 - **`read_config`, `read_config_json` and `read_config_raw` keep the caller's trace id.** Each call
