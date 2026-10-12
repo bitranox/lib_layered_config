@@ -202,6 +202,8 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   files (`10-db.toml`, `20-cache.yaml`, ...) load in lexicographic order and can mix formats.
 - **Quote YAML keys that look like numbers or booleans** (`'1':`, `'true':`): an unquoted one is not a
   string key, and the loader refuses the whole file.
+- **Write ordered YAML as a plain mapping, never `!!omap` or `!!pairs`**: those load as `(key, value)`
+  tuples whose keys redaction cannot see, so the loader refuses the whole file.
 - **Use profiles for environments**, not copy-pasted files.
 - **Scaffold** a starting tree with `generate-examples` rather than hand-building paths.
 

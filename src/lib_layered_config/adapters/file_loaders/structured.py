@@ -542,6 +542,7 @@ class YAMLFileLoader(BaseFileLoader):
         parsed = _parse_yaml_text(decoded, yaml_module, path)
         mapping = self._ensure_mapping(parsed, path=path)
         _refuse_non_string_keys(mapping, path=path)
+        _refuse_ordered_map_tags(mapping, path=path)
         _log_file_loaded(path, "yaml")
         return mapping
 
@@ -638,6 +639,65 @@ def _non_string_keys(data: object) -> list[str]:
         elif isinstance(node, list):
             items = cast("list[object]", node)
             pending.extend((item, _join_position(parent, str(index))) for index, item in enumerate(items))
+    return sorted(found)
+
+
+def _refuse_ordered_map_tags(data: object, *, path: str) -> None:
+    """Refuse a document holding a ``!!omap`` or ``!!pairs`` value.
+
+    PyYAML's safe loader builds both tags as a list of ``(key, value)`` tuples, and it builds a
+    tuple from no other tag, so a tuple in the document marks one exactly. Inside such a list a key
+    is a tuple element rather than a mapping key: redaction never sees ``password`` there, and every
+    redacted view would print its value. A plain mapping keeps its order, so the error points the
+    user at one. It names the file and each dotted position, never a key or a value.
+
+    Args:
+        data: Parsed document, already known to be a mapping at the top.
+        path: File the document came from, named in the error.
+
+    Raises:
+        InvalidFormatError: When any value in *data* came from ``!!omap`` or ``!!pairs``.
+
+    Examples:
+        >>> _refuse_ordered_map_tags({"items": [{"a": 1}]}, path="demo.yaml")
+        >>> _refuse_ordered_map_tags({"creds": [("password", "x")]}, path="demo.yaml")  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: demo.yaml uses !!omap or !!pairs ...: creds
+    """
+    found = _ordered_map_positions(data)
+    if not found:
+        return
+    message = (
+        f"{path} uses !!omap or !!pairs, whose keys redaction cannot see; "
+        f"write a plain mapping instead: {'; '.join(found)}"
+    )
+    _log_file_invalid(path, "yaml", message)
+    raise InvalidFormatError(message)
+
+
+def _ordered_map_positions(data: object) -> list[str]:
+    """Return the dotted position of every list in *data* that holds a ``(key, value)`` tuple.
+
+    Walks with an explicit stack for the reason :func:`_non_string_keys` gives.
+
+    Examples:
+        >>> _ordered_map_positions({"a": [{"b": [("k", 1)]}], "c": [("k", 2)], "d": [1]})
+        ['a.0.b', 'c']
+    """
+    found: list[str] = []
+    pending: list[tuple[object, str]] = [(data, "")]
+    while pending:
+        node, position = pending.pop()
+        if isinstance(node, Mapping):
+            mapping = cast("Mapping[object, object]", node)
+            pending.extend((value, _join_position(position, str(key))) for key, value in mapping.items())
+        elif isinstance(node, list):
+            items = cast("list[object]", node)
+            if any(isinstance(item, tuple) for item in items):
+                found.append(position)
+                continue
+            pending.extend((item, _join_position(position, str(index))) for index, item in enumerate(items))
     return sorted(found)
 
 

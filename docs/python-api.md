@@ -414,7 +414,9 @@ Load and merge all configuration layers into an immutable `Config` object with p
 valid <FORMAT>"`, plus `" (line N, column M)"` when the parser reports a position; `"<path> is not valid UTF-8
 (line N, byte offset M)"` for an undecodable file, or `"<path> is not valid UTF-16|UTF-32 (byte offset M)"` for
 a BOM-marked YAML file that does not decode; `"<path> has keys that are not strings (quote them): <parent>:
-<key> (<type>)"` for a YAML mapping key such as an unquoted `1:` or `true:`; `"<path> is a directory, not a
+<key> (<type>)"` for a YAML mapping key such as an unquoted `1:` or `true:`; `"<path> uses !!omap or
+!!pairs, whose keys redaction cannot see; write a plain mapping instead: <position>"` for a YAML value
+tagged `!!omap` or `!!pairs`; `"<path> is a directory, not a
 configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory;
 `"<path> cannot be read: <reason>"` when a layer's config location, the platform `.env` location, `default_file` or
 `dotenv_path` sits behind a permission wall (a directory on its path the user cannot enter, or a file the user

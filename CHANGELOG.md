@@ -6,6 +6,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A YAML `!!omap` or `!!pairs` value refuses the file.** PyYAML's safe loader builds both tags as a
+  list of `(key, value)` tuples, so a key such as `password` inside one was never seen as a key: every
+  redacted view (`as_dict(redact=True)`, `to_json(redact=True)`, `get_redacted`,
+  `read_config_json(redact=True)`, both `display_config` formats, `read --redact`) printed its value,
+  and dotted lookup could not reach it. The loader now raises `InvalidFormatError` (`LayerLoadError`
+  from `read_config`) naming the file and each dotted position, never a key or a value. Write a plain
+  mapping instead; it keeps its order.
+
+### Changed
+
+- **Requires `rtoml>=0.14.0`.** rtoml 0.14.0 refuses a TOML array or inline table nested deeper than 80
+  levels, reported as `<path> is not valid TOML (line N, column M)`; 0.13.0 accepted 400.
+
 ## [7.1.3] 2026-10-12 01:45:26
 
 ### Fixed
