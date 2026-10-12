@@ -3,8 +3,8 @@
 PyYAML's safe loader turns both tags into a list of ``(key, value)`` tuples, so a key such as
 ``password`` arrives as a tuple element, never as a mapping key: redaction cannot see it, dotted
 lookup cannot reach it, and every redacted view prints its value. The loader refuses the file
-instead, naming the file and where each such value sits, and never a value. A plain YAML mapping
-already keeps its order, so nothing is lost by writing one.
+instead, naming the file and where each such value sits, never anything from inside it. A plain
+YAML mapping already keeps its order, so nothing is lost by writing one.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def test_the_refusal_never_carries_a_value(tmp_path: Path, tag: str) -> None:
 
 
 @os_agnostic
-def test_tags_nested_in_a_list_and_at_the_top_name_every_position(tmp_path: Path) -> None:
+def test_tags_nested_in_a_list_and_in_a_mapping_name_every_position(tmp_path: Path) -> None:
     _, message = _refusal(
         tmp_path,
         "items:\n  - name: a\n  - creds: !!pairs\n      - token: t\nouter:\n  inner: !!omap\n    - key: k\n",

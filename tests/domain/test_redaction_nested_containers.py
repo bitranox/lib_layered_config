@@ -80,6 +80,7 @@ def test_list_nesting_the_loader_accepts_still_shows_in_every_redacted_view(tmp_
     )
 
     assert config.as_dict(redact=True) == config.as_dict()
+    assert config.to_json(redact=True) == config.to_json()
 
 
 @os_agnostic

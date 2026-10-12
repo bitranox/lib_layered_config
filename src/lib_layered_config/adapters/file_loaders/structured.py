@@ -649,7 +649,8 @@ def _refuse_ordered_map_tags(data: object, *, path: str) -> None:
     tuple from no other tag, so a tuple in the document marks one exactly. Inside such a list a key
     is a tuple element rather than a mapping key: redaction never sees ``password`` there, and every
     redacted view would print its value. A plain mapping keeps its order, so the error points the
-    user at one. It names the file and each dotted position, never a key or a value.
+    user at one. It names the file and each such value's dotted position (the mapping keys above it),
+    never a key or value from inside it.
 
     Args:
         data: Parsed document, already known to be a mapping at the top.
