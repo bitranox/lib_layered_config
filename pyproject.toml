@@ -244,3 +244,7 @@ forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.applicat
 [tool.pip-audit]
 # Known vulnerabilities to ignore (unfixable or accepted risk)
 ignore-vulns = []
+
+[tool.uv]
+exclude-newer = "1 day"
+exclude-newer-package = {lib-cli-exit-tools = false, rtoml = "2026-10-12T00:17:16Z"}

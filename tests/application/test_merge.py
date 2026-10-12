@@ -308,3 +308,92 @@ def test_when_mapping_overwrites_scalar_a_warning_is_emitted(caplog) -> None:
         snapshot("host", {"service": {"timeout": 30}}, "host.toml"),
     )
     assert any(record.message == "type_conflict" and record.levelno == logging.WARNING for record in caplog.records)
+
+
+# --- provenance names exactly what the merged data holds ----------------------------------------
+#
+# An entry exists for every value and every table that stayed empty, and for nothing else: a
+# table with content carries no entry of its own (its values do). An empty table declared in one
+# layer and filled by a later one kept the empty declaration's entry, and so did a value a later
+# layer replaced by a table; a table replaced by a value kept the entries of the values it held.
+
+
+@os_agnostic
+def test_a_table_declared_empty_and_filled_later_has_no_entry_of_its_own() -> None:
+    result = merge_story(
+        snapshot("defaults", {"styles": {}}, "defaults.toml"),
+        snapshot("dotenv", {"styles": {"DEBUG": "dim"}}, ".env"),
+    )
+    assert set(result.provenance) == {"styles.DEBUG"}
+    assert result.provenance["styles.DEBUG"]["layer"] == "dotenv"
+
+
+@os_agnostic
+def test_a_value_replaced_by_a_table_leaves_no_entry_for_the_table() -> None:
+    result = merge_story(
+        snapshot("app", {"service": "enabled"}, "app.toml"),
+        snapshot("host", {"service": {"timeout": 30}}, "host.toml"),
+    )
+    assert set(result.provenance) == {"service.timeout"}
+
+
+@os_agnostic
+def test_a_table_replaced_by_a_value_forgets_the_values_it_held() -> None:
+    result = merge_story(
+        snapshot("app", {"service": {"timeout": 30, "retries": {"max": 3}}}, "app.toml"),
+        snapshot("host", {"service": "disabled"}, "host.toml"),
+    )
+    assert set(result.provenance) == {"service"}
+    assert result.provenance["service"]["layer"] == "host"
+
+
+@os_agnostic
+def test_a_table_that_stays_empty_keeps_the_entry_of_the_last_layer_declaring_it() -> None:
+    result = merge_story(
+        snapshot("defaults", {"styles": {}}, "defaults.toml"),
+        snapshot("user", {"styles": {}}, "user.toml"),
+    )
+    assert result.provenance["styles"]["layer"] == "user"
+
+
+_DOTLESS_KEY = st.text(alphabet="abc", min_size=1, max_size=2)
+_TRANSITION_VALUE = st.recursive(
+    st.integers(min_value=0, max_value=3),
+    lambda children: st.dictionaries(_DOTLESS_KEY, children, max_size=3),
+    max_leaves=8,
+)
+_TRANSITION_LAYER = st.dictionaries(_DOTLESS_KEY, _TRANSITION_VALUE, max_size=3)
+
+
+def _values_and_empty_tables(data: dict[str, object], prefix: str = "") -> set[str]:
+    found: set[str] = set()
+    for key, value in data.items():
+        dotted = prefix + key
+        if isinstance(value, dict) and value:
+            found |= _values_and_empty_tables(value, dotted + ".")
+        else:
+            found.add(dotted)
+    return found
+
+
+@os_agnostic
+@given(st.lists(_TRANSITION_LAYER, min_size=1, max_size=4))
+def test_provenance_names_exactly_the_values_and_empty_tables_of_the_merged_data(layers) -> None:
+    """Keys from a three-letter alphabet make layers collide, so tables, values and empty tables
+    replace each other in every order; keys hold no dot, so a dotted path names one place."""
+    result = merge_story(*(snapshot(f"layer{index}", layer) for index, layer in enumerate(layers)))
+    assert set(result.provenance) == _values_and_empty_tables(result.data)
+
+
+@os_agnostic
+@pytest.mark.parametrize("replacement", [{"name": "x"}, "none"], ids=["table", "value"])
+def test_a_list_replaced_wholesale_forgets_the_entries_of_its_overridden_elements(replacement) -> None:
+    """An env override by index records an entry per element value (`ports.0.n`); once a later
+    layer replaces the whole list, that element is gone and so must be its entry."""
+    result = merge_story(
+        snapshot("app", {"ports": [{"n": 1}]}, "app.toml"),
+        snapshot("env", {"ports": {"0": {"n": 2}}}),
+        snapshot("host", {"ports": replacement}, "host.toml"),
+    )
+    assert "ports.0.n" not in result.provenance
+    assert set(result.provenance) == _values_and_empty_tables(result.data)

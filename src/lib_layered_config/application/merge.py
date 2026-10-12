@@ -223,11 +223,13 @@ def _store_branch(
         segments.pop()
         return
 
+    if isinstance(existing, list):
+        _forget_below(provenance, dotted)  # the list's element entries go with the list
     branch = _ensure_branch(target, key, dotted, snapshot)
     segments.append(key)
     _descend(branch, provenance, value, snapshot, segments)
     segments.pop()
-    _store_provenance_for_empty_branch(branch, dotted, provenance, snapshot)
+    _store_branch_provenance(branch, dotted, provenance, snapshot)
 
 
 def _all_numeric_keys(value: Mapping[str, object]) -> bool:
@@ -415,6 +417,8 @@ def _store_scalar(
     current = target.get(key)
     if _looks_like_mapping(current):
         _warn_type_conflict(dotted, snapshot, ValueKind.MAPPING, ValueKind.SCALAR)
+    if _looks_like_mapping(current) or isinstance(current, list):
+        _forget_below(provenance, dotted)  # the keys the container held are gone with it
 
     target[key] = _clone_leaf(value)
     provenance[dotted] = _provenance_entry(dotted, snapshot)
@@ -495,36 +499,60 @@ def _ensure_branch(
     return new_branch
 
 
-def _store_provenance_for_empty_branch(
+def _store_branch_provenance(
     branch: MutableMapping[str, object],
     dotted: str,
     provenance: MutableMapping[str, SourceInfoPayload],
     snapshot: LayerSnapshot,
 ) -> None:
-    """Store provenance for empty dict values so they show source in display output.
+    """Give a branch an entry of its own only while it is empty.
 
-    When a layer defines an empty dict (e.g., ``console_styles: {}``), we still want
-    to track where that empty value came from for display purposes.
+    An empty dict (e.g., ``console_styles: {}``) has no values to carry an origin, so
+    the branch records where it was declared, for display output. A branch with
+    content has no entry of its own - its values carry theirs - so an entry left by
+    an earlier empty declaration, or by a value this branch replaced, is removed:
+    otherwise a table filled entirely by a later layer reports the earlier one.
 
     Args:
         branch: Mutable mapping representing the nested branch just processed.
         dotted: Dotted key corresponding to the branch.
-        provenance: Provenance mapping to update for empty branches.
+        provenance: Provenance mapping to update.
         snapshot: Layer metadata used for provenance entries.
 
     Side Effects:
-        Mutates *provenance* by adding entry when the branch is empty.
+        Mutates *provenance*: sets the branch's entry when it is empty, else removes it.
 
     Examples:
         >>> prov = {}
         >>> snap = LayerSnapshot('app', {'styles': {}}, '/etc/app.toml')
-        >>> _store_provenance_for_empty_branch({}, 'styles', prov, snap)
+        >>> _store_branch_provenance({}, 'styles', prov, snap)
         >>> prov['styles']['layer']
         'app'
+        >>> _store_branch_provenance({'DEBUG': 'dim'}, 'styles', prov, snap)
+        >>> 'styles' in prov
+        False
     """
     if branch:
+        provenance.pop(dotted, None)
         return
     provenance[dotted] = _provenance_entry(dotted, snapshot)
+
+
+def _forget_below(provenance: MutableMapping[str, SourceInfoPayload], dotted: str) -> None:
+    """Remove the entries of every key nested under *dotted*.
+
+    Called when a container is replaced wholesale, so the keys it held no longer
+    exist and must not keep reporting an origin.
+
+    Examples:
+        >>> prov = {'a': {}, 'a.b': {}, 'a.b.c': {}, 'ab': {}}
+        >>> _forget_below(prov, 'a')
+        >>> sorted(prov)
+        ['a', 'ab']
+    """
+    prefix = dotted + "."
+    for stale in [key for key in provenance if key.startswith(prefix)]:
+        del provenance[stale]
 
 
 def _join_segments(segments: Sequence[str], key: str) -> str:

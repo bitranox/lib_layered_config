@@ -6,6 +6,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Provenance names only keys the merged config still holds.** A table declared empty in one
+  layer and filled by a later one (defaults `console_styles = {}`, a `.env` setting
+  `..._CONSOLE_STYLES={"DEBUG": "dim"}`) kept the empty declaration's origin, so
+  `origin("...console_styles")` reported the defaults file for a table whose every value came
+  from the `.env`. A value later replaced by a table kept its entry the same way, and a table
+  later replaced by a value kept the entries of the values it held, so `origin()` answered for
+  keys that no longer exist. A table that holds values now has no entry of its own, as one that
+  was never empty already had; an empty table still reports where it was last declared.
+
 ### Internal
 
 - Added a Windows test that a `%APPDATA%` which cannot be checked makes deploy raise

@@ -125,7 +125,7 @@ Return provenance metadata for a dotted key when available.
 **Parameters:**
 - `key` (str, required): Dotted key in the metadata map (e.g., `"service.timeout"`).
 
-**Returns:** Dictionary with keys `layer` (str), `path` (str | None), and `key` (str), or `None` if the key was never observed.
+**Returns:** Dictionary with keys `layer` (str), `path` (str | None), and `key` (str), or `None` if the key was never observed. A table that holds values has no entry of its own (its values carry theirs), so `origin()` returns `None` for it; an empty table reports where it was last declared.
 
 **Examples:**
 

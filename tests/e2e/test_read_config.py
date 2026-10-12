@@ -259,6 +259,36 @@ def test_read_config_dotenv_path_provenance_records_explicit_file(
 
 
 @os_agnostic
+def test_a_table_declared_empty_and_filled_by_dotenv_reports_no_origin_of_its_own(
+    monkeypatch: pytest.MonkeyPatch,
+    sandbox: LayeredSandbox,
+    tmp_path: Path,
+) -> None:
+    """The defaults file declares the table empty and the .env fills it, so every value in it came
+    from the .env. The table key used to keep the empty declaration's origin (defaults), while a
+    table that was never empty has no origin of its own: the values carry it."""
+    sandbox.apply_env(monkeypatch)
+    default_file = tmp_path / "defaults.toml"
+    default_file.write_text("[logging]\nconsole_styles = {}\n", encoding="utf-8")
+    explicit_env = tmp_path / "custom.env"
+    explicit_env.write_text('LOGGING__CONSOLE_STYLES={"DEBUG":"dim","ERROR":"bold red"}\n', encoding="utf-8")
+
+    config = read_config(
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        start_dir=str(sandbox.start_dir),
+        default_file=default_file,
+        dotenv_path=explicit_env,
+    )
+
+    assert config.get("logging.console_styles") == {"DEBUG": "dim", "ERROR": "bold red"}
+    assert config.origin("logging.console_styles") is None
+    debug = config.origin("logging.console_styles.DEBUG")
+    assert debug is not None and debug["layer"] == "dotenv"
+
+
+@os_agnostic
 def test_env_var_overrides_one_array_element_end_to_end(
     monkeypatch: pytest.MonkeyPatch, sandbox: LayeredSandbox
 ) -> None:
