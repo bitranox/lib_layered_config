@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.4] 2026-10-12 09:40:16
+
 ### Fixed
 
 - **A YAML `!!omap` or `!!pairs` value with entries refuses the file.** PyYAML's safe loader builds both tags as a
