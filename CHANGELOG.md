@@ -17,6 +17,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   from inside it. Write a plain mapping instead; it keeps its order. An empty `!!omap []` holds nothing
   and still loads, and a merge key (`<<: !!omap [...]`) already arrives as a plain mapping.
 
+- **A configuration path that cannot be checked keeps its `OSError` in the error chain.** An
+  unenterable layer directory, a `default_file` or `dotenv_path` behind a permission wall, a file in a
+  `.d` directory that can be listed but not entered, or a path with a NUL byte raised `LayerLoadError`
+  with no `PermissionError` (or `ValueError`) under `__cause__`, so a caller could not tell
+  "permission denied" from "malformed file". Every "cannot be read" refusal now carries the error
+  behind it.
+
 ### Changed
 
 - **Requires `rtoml>=0.14.0`.** rtoml 0.14.0 refuses TOML nested deeper than 80 levels, which 0.13.0

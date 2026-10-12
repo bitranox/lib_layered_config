@@ -63,6 +63,24 @@ def _read(
     return config.as_dict()
 
 
+def _carries(exc: BaseException, kind: type[BaseException]) -> bool:
+    """Whether the operating system's own error is reachable from *exc* through its chain.
+
+    A caller tells "permission denied" from "malformed file" by finding the ``OSError`` there
+    (lsdsk maps a ``PermissionError`` in the chain to exit 13), so a refusal that drops it reads as
+    a broken file. Both links are followed: ``raise ... from`` sets ``__cause__``.
+    """
+    seen: list[BaseException] = []
+    pending: list[BaseException] = [exc]
+    while pending:
+        current = pending.pop()
+        if any(current is known for known in seen):
+            continue
+        seen.append(current)
+        pending.extend(link for link in (current.__cause__, current.__context__) if link is not None)
+    return any(isinstance(item, kind) for item in seen)
+
+
 # --- the .env search skips what it cannot enter ------------------------------------------------
 
 
@@ -121,6 +139,7 @@ def test_an_unenterable_app_layer_directory_refuses_naming_the_path(sandbox: Lay
         _read(start_dir=str(sandbox.start_dir))
 
     assert str(app_root) in str(caught.value)
+    assert _carries(caught.value, PermissionError)
 
 
 @posix_only
@@ -134,6 +153,7 @@ def test_a_default_file_behind_a_wall_refuses_naming_the_path(sandbox: LayeredSa
         _read(start_dir=str(sandbox.start_dir), default_file=str(wall / "defaults.toml"))
 
     assert str(wall / "defaults.toml") in str(caught.value)
+    assert _carries(caught.value, PermissionError)
 
 
 @posix_only
@@ -147,6 +167,7 @@ def test_a_dotenv_path_behind_a_wall_refuses_naming_the_path(sandbox: LayeredSan
         _read(start_dir=str(sandbox.start_dir), dotenv_path=str(wall / ".env"))
 
     assert str(wall / ".env") in str(caught.value)
+    assert _carries(caught.value, PermissionError)
 
 
 @posix_only
@@ -158,6 +179,7 @@ def test_an_unreadable_config_file_refuses_naming_the_path(sandbox: LayeredSandb
         _read(start_dir=str(sandbox.start_dir))
 
     assert str(config) in str(caught.value)
+    assert _carries(caught.value, PermissionError)
 
 
 @posix_only
@@ -171,6 +193,7 @@ def test_a_dot_d_directory_it_cannot_read_refuses_naming_the_path(sandbox: Layer
         _read(start_dir=str(sandbox.start_dir))
 
     assert str(dot_d) in str(caught.value)
+    assert _carries(caught.value, PermissionError)
 
 
 # --- the platform .env location is a layer location, probed only when the search runs ----------
@@ -188,6 +211,7 @@ def test_an_unenterable_user_layer_directory_refuses_as_layer_load_error(
         _read(start_dir=str(tmp_path))
 
     assert str(user_root) in str(caught.value)
+    assert _carries(caught.value, PermissionError)
 
 
 @posix_only
@@ -220,5 +244,7 @@ def test_a_start_dir_with_a_nul_byte_is_skipped_by_the_search(sandbox: LayeredSa
 
 @os_agnostic
 def test_a_default_file_with_a_nul_byte_refuses(sandbox: LayeredSandbox) -> None:
-    with pytest.raises(LayerLoadError, match="cannot be read"):
+    with pytest.raises(LayerLoadError, match="cannot be read") as caught:
         _read(start_dir=str(sandbox.start_dir), default_file="defaults\x00.toml")
+
+    assert _carries(caught.value, ValueError)

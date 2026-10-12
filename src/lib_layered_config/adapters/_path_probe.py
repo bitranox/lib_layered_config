@@ -123,24 +123,30 @@ def config_path_unreadable(path: Path, error: OSError | ValueError) -> InvalidFo
     """Log and build the refusal for a configuration path that cannot be checked or read.
 
     Without it the layer would crash with a bare ``OSError`` on one Python and fall back to lower
-    layers without a trace on another.
+    layers without a trace on another. The refusal carries *error* as its cause already, the way
+    ``raise ... from error`` would: a caller tells "permission denied" from "malformed file" by
+    finding the ``OSError`` in the chain, and a raise site that forgot ``from`` dropped it.
 
     Args:
         path: The configuration path.
         error: The error behind it.
 
     Returns:
-        The error to raise.
+        The error to raise, with *error* as its ``__cause__``.
 
     Examples:
         >>> from pathlib import Path
-        >>> str(config_path_unreadable(Path("config.toml"), PermissionError(13, "Permission denied")))
-        'config.toml cannot be read: Permission denied'
+        >>> refusal = config_path_unreadable(Path("config.toml"), PermissionError(13, "Permission denied"))
+        >>> str(refusal), type(refusal.__cause__).__name__
+        ('config.toml cannot be read: Permission denied', 'PermissionError')
     """
     reason = error.strerror if isinstance(error, OSError) and error.strerror else str(error)
     message = f"{path} cannot be read: {reason}"
     log_error("config_path_unreadable", path=str(path), error=message)
-    return InvalidFormatError(message)
+    refusal = InvalidFormatError(message)
+    refusal.__cause__ = error
+    refusal.__suppress_context__ = True
+    return refusal
 
 
 def current_directory() -> Path | None:
