@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
 import rtoml
 from click.testing import CliRunner
 
@@ -19,6 +18,8 @@ from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
     from tests.support import LayeredSandbox
 

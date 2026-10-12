@@ -55,7 +55,9 @@ def source_with_unenterable_dot_d(tmp_path: Path) -> Iterator[Path]:
     dot_d.chmod(stat.S_IRWXU)
 
 
-def _deploy(sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, source: Path, *, set_permissions: bool | None = None) -> None:
+def _deploy(
+    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, source: Path, *, set_permissions: bool | None = None
+) -> None:
     sandbox.apply_env(monkeypatch)
     deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], set_permissions=set_permissions)
 
