@@ -16,6 +16,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   value's dotted position and type, never the value. Write a list or a base64 string instead.
   Timestamps and dates still load and serialise.
 
+- **A deploy source behind a permission wall raises `PermissionError` on every Python.** Deploy
+  asked pathlib whether its source and the source's `.d` files existed, and pathlib raises before
+  Python 3.14 but answers `False` from 3.14: a walled source was "Configuration source not found"
+  on 3.14, and a `.d` directory that can be listed but not entered lost its files there without a
+  word (with `set_permissions=False`, which skips deploy's own read of the configuration). Deploy,
+  backup naming and `generate_examples` now ask the path probe, which raises the `stat` error
+  itself, and nothing is written. A missing source still raises `FileNotFoundError`.
+
 ## [7.1.5] 2026-10-12 11:22:15
 
 ### Fixed

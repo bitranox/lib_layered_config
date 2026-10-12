@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+from ..adapters._path_probe import PathKind, kind_or_raise
 from ..adapters.path_resolvers.default import DefaultPathResolver
 from ..core import read_config_for_deploy
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
@@ -151,9 +152,9 @@ def _collect_dot_d_sources(dot_d_dir: Path) -> list[Path]:
     Returns:
         List of paths to all files sorted by name.
     """
-    if not dot_d_dir.is_dir():
+    if kind_or_raise(dot_d_dir) is not PathKind.DIRECTORY:
         return []
-    return sorted(f for f in dot_d_dir.iterdir() if f.is_file())
+    return sorted(f for f in dot_d_dir.iterdir() if kind_or_raise(f) is PathKind.FILE)
 
 
 def _next_available_path(base: Path, suffix: str) -> Path:
@@ -168,12 +169,12 @@ def _next_available_path(base: Path, suffix: str) -> Path:
         'config.toml.bak'
     """
     candidate = base.parent / (base.name + suffix)
-    if not candidate.exists():
+    if kind_or_raise(candidate) is PathKind.MISSING:
         return candidate
     n = 1
     while True:
         candidate = base.parent / f"{base.name}{suffix}.{n}"
-        if not candidate.exists():
+        if kind_or_raise(candidate) is PathKind.MISSING:
             return candidate
         n += 1
 
@@ -227,7 +228,7 @@ def _content_matches(destination: Path, payload: bytes) -> bool:
     Returns:
         True if the file exists and has identical content, False otherwise.
     """
-    if not destination.exists():
+    if kind_or_raise(destination) is PathKind.MISSING:
         return False
     try:
         return destination.read_bytes() == payload
@@ -552,7 +553,7 @@ class WindowsDeployment(DeploymentStrategy):
         profile_seg = self._profile_segment()
         appdata_root = self._appdata_root()
         chosen_root = appdata_root
-        if "LIB_LAYERED_CONFIG_APPDATA" not in self.resolver.env and not appdata_root.exists():
+        if "LIB_LAYERED_CONFIG_APPDATA" not in self.resolver.env and kind_or_raise(appdata_root) is PathKind.MISSING:
             chosen_root = self._localappdata_root()
         return chosen_root / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
 
@@ -686,6 +687,8 @@ def deploy_config(
 
     Raises:
         FileNotFoundError: If the source file does not exist.
+        PermissionError: The source, a file in its ``.d`` directory, or a destination sits behind
+            a permission wall (an ``OSError`` in general); the same on every Python.
         ValueError: When profile name is invalid (too long, path traversal, etc.).
         ValidationError: An unknown target, refused before anything is written.
         DeployModeError: dir_mode or file_mode is out of range or unsafe, or a mode was given
@@ -702,7 +705,7 @@ def deploy_config(
         permission_overrides=permission_overrides,
     )
     source_path = Path(source)
-    if not source_path.is_file():
+    if kind_or_raise(source_path) is not PathKind.FILE:
         raise FileNotFoundError(f"Configuration source not found: {source_path}")
 
     source_dot_d = _get_dot_d_dir(source_path)
@@ -846,7 +849,7 @@ def _deploy_single(
     modes: LayerModes | None,
 ) -> DeployResult:
     """Deploy to a single destination with conflict handling."""
-    if not destination.exists():
+    if kind_or_raise(destination) is PathKind.MISSING:
         _copy_payload(destination, payload, modes=modes)
         return DeployResult(destination=destination, action=DeployAction.CREATED)
 

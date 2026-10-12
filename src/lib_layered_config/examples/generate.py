@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .._platform import normalise_examples_platform
+from ..adapters._path_probe import PathKind, kind_or_raise
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -195,7 +196,7 @@ def _should_write(path: Path, *, force: bool) -> bool:
         True
         >>> tmp.close()
     """
-    return force or not path.exists()
+    return force or kind_or_raise(path) is PathKind.MISSING
 
 
 def _ensure_parent(path: Path) -> None:

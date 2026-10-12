@@ -27,7 +27,15 @@ from typing import Final
 from ..domain.errors import InvalidFormatError
 from ..observability import log_debug, log_error
 
-__all__ = ["PathKind", "PathProbe", "checked_kind", "config_path_unreadable", "current_directory", "probe_path"]
+__all__ = [
+    "PathKind",
+    "PathProbe",
+    "checked_kind",
+    "config_path_unreadable",
+    "current_directory",
+    "kind_or_raise",
+    "probe_path",
+]
 
 # What pathlib before 3.14 already read as "not there": a missing entry, a file where a directory
 # was expected, a closed descriptor, a symlink loop, and Windows' invalid-name / drive-not-ready /
@@ -116,6 +124,35 @@ def checked_kind(path: Path) -> PathKind:
     probe = probe_path(path)
     if probe.error is not None:
         raise config_path_unreadable(path, probe.error)
+    return probe.kind
+
+
+def kind_or_raise(path: Path) -> PathKind:
+    """Return what is at *path*, raising the error that stopped the check.
+
+    For a path that is not configuration being read - a deploy source, a file about to be
+    written - where the caller wants the operating system's own ``PermissionError`` rather than
+    a configuration refusal. pathlib raised it before Python 3.14 and answered ``False`` from 3.14;
+    this raises it on every version.
+
+    Args:
+        path: The path to classify.
+
+    Returns:
+        The kind; never ``CANNOT_CHECK``.
+
+    Raises:
+        OSError: The ``stat`` error, when it does not mean "absent" (a permission wall).
+        ValueError: *path* holds a NUL byte or a name the OS cannot take.
+
+    Examples:
+        >>> from pathlib import Path
+        >>> kind_or_raise(Path("/nonexistent-lib-layered-config-probe/source.toml"))
+        <PathKind.MISSING: 'missing'>
+    """
+    probe = probe_path(path)
+    if probe.error is not None:
+        raise probe.error
     return probe.kind
 
 

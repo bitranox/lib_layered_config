@@ -891,7 +891,8 @@ Copy a source configuration file into one or more layer directories with conflic
 [cli-reference.md#-file-permissions](cli-reference.md#-file-permissions) for the full resolution order and the
 refusal rule.
 
-**Raises:** `FileNotFoundError` (source file does not exist), `ValueError` (an invalid `profile` name),
+**Raises:** `FileNotFoundError` (source file does not exist), `PermissionError` (the source, a file in its `.d`
+directory, or a destination sits behind a permission wall; the same on every Python), `ValueError` (an invalid `profile` name),
 `ValidationError` (an unknown target, before anything is written), `DeployModeError` (a refused `dir_mode` /
 `file_mode`, or one given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
 not readable, the section is invalid, a refused `permission_overrides` value, or `permission_overrides`

@@ -16,7 +16,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from lib_layered_config import LayerLoadError
-from lib_layered_config.adapters._path_probe import PathKind, checked_kind, current_directory, probe_path
+from lib_layered_config.adapters._path_probe import (
+    PathKind,
+    checked_kind,
+    current_directory,
+    kind_or_raise,
+    probe_path,
+)
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import IS_WINDOWS, os_agnostic, posix_only
 
@@ -83,6 +89,13 @@ def test_checked_kind_refuses_a_path_it_cannot_check_naming_it(walled_file: Path
     assert not isinstance(caught.value, LayerLoadError)  # read_config wraps it; the adapter does not
 
 
+@posix_only
+@needs_wall
+def test_kind_or_raise_raises_the_os_error_for_a_path_it_cannot_check(walled_file: Path) -> None:
+    with pytest.raises(PermissionError):
+        kind_or_raise(walled_file)
+
+
 @os_agnostic
 def test_checked_kind_passes_every_answer_it_can_give_through(tmp_path: Path) -> None:
     assert checked_kind(tmp_path / "absent.toml") is PathKind.MISSING
@@ -94,8 +107,7 @@ def test_checked_kind_passes_every_answer_it_can_give_through(tmp_path: Path) ->
 # Every stdlib existence test: pathlib's (which split by Python version) and os.path's / os.access
 # (which answer False on any error, so a walled layer would vanish on every Python).
 _EXISTENCE_PROBES = frozenset({"is_file", "is_dir", "exists", "is_symlink", "isfile", "isdir", "lexists", "access"})
-# examples/ is deploy and generate: their reads of a deploy SOURCE are filed separately in the backlog.
-_EXEMPT = ("adapters/_path_probe.py", "examples/")
+_EXEMPT = ("adapters/_path_probe.py",)
 
 
 @os_agnostic
