@@ -84,6 +84,7 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 | `dotenv/default.py`                                  | `DefaultDotEnvLoader`: parse a `.env` file via upward search or an explicit path; unquoted values converted by `_value_coercion.coerce_value`.                                                                                                                                  |
 | `env/default.py`                                     | `DefaultEnvLoader`: prefix-filter environment variables and nest values converted by `_value_coercion.coerce_value`.                                                                                                                                                            |
 | `display/rich.py`                                    | Rich-styled human rendering of the merged configuration, walked as a mapping (never re-parsed TOML), with per-key provenance comments.                                                                                                                                          |
+| `display/toml_text.py`                               | TOML text for a key, a dotted key path and a value, shared by `display_config` and the `read` command so both quote keys, headers and strings the same way and their output reads back as the TOML it shows.                                                                    |
 
 ### cli/ - command-line interface (package)
 

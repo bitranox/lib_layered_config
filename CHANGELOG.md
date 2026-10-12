@@ -24,6 +24,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   backup naming and `generate_examples` now ask the path probe, which raises the `stat` error
   itself, and nothing is written. A missing source still raises `FileNotFoundError`.
 
+- **The `read` command prints TOML that reads back as what it shows.** Its renderer wrote every
+  key bare and every string between plain double quotes, so `"a.b" = 3` under `[probe]` printed as
+  `a.b = 3` (the nested key `probe.a.b`), a table named `sec tion` printed as `[sec tion]` (not
+  TOML), and a string holding a quote broke the line. It now quotes keys, headers and strings the
+  way `display_config` does, through one shared module; plain keys and values print as before, and
+  a list prints with a space after each comma (`["a", "b"]`).
+
 ## [7.1.5] 2026-10-12 11:22:15
 
 ### Fixed

@@ -236,10 +236,10 @@ def test_render_human_mixed_leaf_and_nested_in_same_section() -> None:
 
 
 @os_agnostic
-def test_render_human_lists_formatted_as_json_arrays() -> None:
+def test_render_human_lists_formatted_as_toml_arrays() -> None:
     data = {"tags": ["a", "b"]}
     message = common_module.render_human(data, {})
-    assert '  tags = ["a","b"]' in message
+    assert '  tags = ["a", "b"]' in message
 
 
 @os_agnostic
@@ -250,41 +250,6 @@ def test_render_human_multiple_top_level_sections() -> None:
     assert "[cache]" in message
     assert '  host = "localhost"' in message
     assert "  ttl = 60" in message
-
-
-# ---------------------------------------------------------------------------
-# _format_toml_value tests
-# ---------------------------------------------------------------------------
-
-
-@os_agnostic
-def test_format_toml_value_translates_true_to_lowercase() -> None:
-    assert common_module._format_toml_value(True) == "true"
-
-
-@os_agnostic
-def test_format_toml_value_translates_false_to_lowercase() -> None:
-    assert common_module._format_toml_value(False) == "false"
-
-
-@os_agnostic
-def test_format_toml_value_translates_none_to_null() -> None:
-    assert common_module._format_toml_value(None) == "null"
-
-
-@os_agnostic
-def test_format_toml_value_quotes_strings() -> None:
-    assert common_module._format_toml_value("hello") == '"hello"'
-
-
-@os_agnostic
-def test_format_toml_value_converts_numbers_to_string() -> None:
-    assert common_module._format_toml_value(42) == "42"
-
-
-@os_agnostic
-def test_format_toml_value_formats_lists_as_json() -> None:
-    assert common_module._format_toml_value(["a", "b"]) == '["a","b"]'
 
 
 @os_agnostic

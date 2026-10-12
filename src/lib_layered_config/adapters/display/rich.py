@@ -16,12 +16,8 @@ System Role:
 
 from __future__ import annotations
 
-import datetime
-import math
-import re
-from collections.abc import Iterator, Mapping, Set
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING
 
 import orjson
 import rich_click as click
@@ -30,8 +26,11 @@ from rich.text import Text
 
 from ...application.ports import OutputFormat
 from ...domain.redaction import REDACTED_PLACEHOLDER
+from .toml_text import is_array, is_table, toml_key, toml_path, toml_value
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator, Mapping
+
     from ...domain.config import Config, SourceInfo
 
 _REDACTED = REDACTED_PLACEHOLDER
@@ -40,11 +39,6 @@ _OUTPUT_HEADER = (
     r" and might not match the actual TOML \[section]"
 )
 
-# A key TOML can write without quotes; any other key is shown as a quoted string.
-_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
-# C1 controls are legal in a TOML string but a terminal acts on them (U+009B is CSI).
-_C1_CONTROL = re.compile("[\u0080-\u009f]")
-_UTC_SUFFIX = "+00:00"
 # What config.get returns for a missing key, distinct from a key whose value is None.
 _ABSENT = object()
 
@@ -105,94 +99,21 @@ def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | No
     return Text(line, style="yellow")
 
 
-def _is_table(value: object) -> TypeGuard[Mapping[str, object]]:
-    return isinstance(value, Mapping)
-
-
-def _is_array(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
-    return isinstance(value, (list, tuple))
-
-
-def _is_set(value: object) -> TypeGuard[Set[object]]:
-    return isinstance(value, (set, frozenset))
-
-
-def _toml_string(text: str) -> str:
-    r"""Return *text* as a TOML basic string, escaping quotes and every control character.
-
-    Examples:
-        >>> _toml_string('say "hi"\x1b')
-        '"say \\"hi\\"\\u001b"'
-    """
-    # A JSON string is a TOML basic string, except that TOML also forbids a raw DEL.
-    escaped = orjson.dumps(text).decode().replace("\x7f", "\\u007f")
-    return _C1_CONTROL.sub(lambda match: f"\\u{ord(match.group()):04x}", escaped)
-
-
-def _toml_key(key: str) -> str:
-    """Return *key* as TOML writes it: bare when it can be, quoted otherwise.
-
-    Examples:
-        >>> _toml_key("db_host"), _toml_key("a b"), _toml_key("")
-        ('db_host', '"a b"', '""')
-    """
-    return key if _BARE_KEY.fullmatch(key) else _toml_string(key)
-
-
-def _toml_value(value: object) -> str:
-    """Return *value* in TOML inline syntax; ``None``, which TOML cannot hold, shows as ``null``.
-
-    Examples:
-        >>> _toml_value([{"n": 1}, None, "x"])
-        '[{n = 1}, null, "x"]'
-    """
-    if _is_table(value):
-        return "{" + ", ".join(f"{_toml_key(k)} = {_toml_value(v)}" for k, v in value.items()) + "}"
-    if _is_array(value):
-        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
-    if _is_set(value):
-        # A set has no order; sorting keeps the same configuration printing the same way.
-        return "[" + ", ".join(sorted(_toml_value(item) for item in value)) + "]"
-    return _toml_scalar(value)
-
-
-def _toml_scalar(value: object) -> str:
-    """Return a scalar in TOML syntax (``null`` for ``None``)."""
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, str):
-        return _toml_string(value)
-    if isinstance(value, float) and not math.isfinite(value):
-        return "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
-    if isinstance(value, (datetime.date, datetime.time)):
-        return _toml_datetime(value)
-    return str(value)
-
-
-def _toml_datetime(value: datetime.date | datetime.time) -> str:
-    """Return *value* in ISO form, writing a UTC offset as ``Z`` the way TOML writers do."""
-    text = value.isoformat()
-    utc = isinstance(value, (datetime.datetime, datetime.time)) and value.utcoffset() == datetime.timedelta(0)
-    return text[: -len(_UTC_SUFFIX)] + "Z" if utc and text.endswith(_UTC_SUFFIX) else text
-
-
 def _render_table(table: Mapping[str, object], path: tuple[str, ...], view: _View) -> None:
     """Print *table*'s own keys under its ``[header]``, then each sub-table the same way.
 
     The walk reads the mapping itself, so a key is shown whatever its name, and its provenance is
     looked up under the raw names joined by dots - the way the merge records it.
     """
-    leaves = [(key, value) for key, value in table.items() if not _is_table(value)]
-    tables = [(key, value) for key, value in table.items() if _is_table(value)]
+    leaves = [(key, value) for key, value in table.items() if not is_table(value)]
+    tables = [(key, value) for key, value in table.items() if is_table(value)]
     # Like TOML, a table that holds only sub-tables needs no header of its own.
     if path and (leaves or not tables):
         _render_header(path, view, empty=not table)
     for key, value in leaves:
         _render_key_value(key, value, path, view)
     for key, value in tables:
-        if _is_table(value):
+        if is_table(value):
             _render_table(value, (*path, key), view)
 
 
@@ -202,21 +123,16 @@ def _render_header(path: tuple[str, ...], view: _View, *, empty: bool) -> None:
     info = view.config.origin(".".join(path)) if empty else None
     if info is not None:
         view.console.print(_format_source_line(info, profile=view.profile))
-    header = Text("[" + _toml_path(path) + "]")
+    header = Text("[" + toml_path(path) + "]")
     header.stylize("bold cyan")
     view.console.print(header)
 
 
-def _toml_path(path: tuple[str, ...]) -> str:
-    """Return a key path the way TOML writes a dotted key."""
-    return ".".join(_toml_key(part) for part in path)
-
-
 def _element_paths(value: object, path: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
     """Yield the path of every element and member below a list value, depth first."""
-    if _is_array(value):
+    if is_array(value):
         children: list[tuple[str, object]] = [(str(index), item) for index, item in enumerate(value)]
-    elif _is_table(value):
+    elif is_table(value):
         children = list(value.items())
     else:
         return
@@ -237,7 +153,7 @@ def _print_overriding_sources(view: _View, *, key_path: tuple[str, ...], value: 
         info = view.config.origin(".".join(element))
         if info is not None and not _same_source(info, own):
             line = _format_source_line(info, prefix, profile=view.profile)
-            line.append(f" for {_toml_path(element)}")
+            line.append(f" for {toml_path(element)}")
             view.console.print(line)
 
 
@@ -248,7 +164,7 @@ def _same_source(info: SourceInfo, other: SourceInfo | None) -> bool:
 
 def _render_key_value(key: str, value: object, path: tuple[str, ...], view: _View) -> None:
     """Print the ``key = value`` line of *key* in the table at *path*."""
-    _print_entry(view, label=_toml_key(key), key_path=(*path, key), value=value, indent=bool(path))
+    _print_entry(view, label=toml_key(key), key_path=(*path, key), value=value, indent=bool(path))
 
 
 def _print_entry(view: _View, *, label: str, key_path: tuple[str, ...], value: object, indent: bool) -> None:
@@ -257,10 +173,10 @@ def _print_entry(view: _View, *, label: str, key_path: tuple[str, ...], value: o
     info = view.config.origin(".".join(key_path))
     if info is not None:
         view.console.print(_format_source_line(info, prefix, profile=view.profile))
-    if _is_array(value):
+    if is_array(value):
         _print_overriding_sources(view, key_path=key_path, value=value, prefix=prefix)
 
-    value_str = _toml_value(value)
+    value_str = toml_value(value)
     text = Text(prefix)
     text.append(label, style="orange3")
     text.append(" = ", style="white")
@@ -343,11 +259,11 @@ def _display_human(
     if config.get(section, default=_ABSENT) is _ABSENT:
         raise ValueError(f"Section '{section}' not found")
     redacted_value = config.get_redacted(section)
-    if _is_table(redacted_value):
+    if is_table(redacted_value):
         _render_table(redacted_value, tuple(section.split(".")), view)
     else:
         key_path = tuple(section.split("."))
-        _print_entry(view, label=_toml_path(key_path), key_path=key_path, value=redacted_value, indent=False)
+        _print_entry(view, label=toml_path(key_path), key_path=key_path, value=redacted_value, indent=False)
 
 
 __all__ = [

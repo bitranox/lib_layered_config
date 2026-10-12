@@ -10,7 +10,7 @@ Contents:
     * Metadata helpers (:func:`version_string`, :func:`describe_distribution`).
     * Query shaping (:func:`build_read_query`, :func:`normalise_prefer`, :func:`stringify`).
     * Output shaping (:func:`json_payload`, :func:`human_payload`, :func:`render_human`).
-    * Human-friendly utilities (:func:`_format_toml_value`, :func:`json_paths`).
+    * Human-friendly utilities (:func:`render_human`, :func:`json_paths`).
 
 System Role:
     Commands import these helpers to stay declarative. They rely on the application
@@ -21,7 +21,6 @@ System Role:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -31,12 +30,14 @@ import rich_click as click
 from .. import __init__conf__
 from .._platform import normalise_examples_platform as _normalise_examples_platform
 from .._platform import normalise_resolver_platform as _normalise_resolver_platform
+from ..adapters.display.toml_text import is_table, toml_key, toml_path, toml_value
 from ..application.ports import OutputFormat, SourceInfoPayload
 from ..core import read_config, read_config_json, read_config_raw
 from ..domain.redaction import redact_mapping
 from .constants import DEFAULT_JSON_INDENT
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
     from pathlib import Path
 
 __all__ = [
@@ -350,48 +351,21 @@ def _render_section(
         section_path: Dotted path segments leading to this section.
     """
     if section_path:
-        lines.append(f"\n[{'.'.join(section_path)}]")
+        lines.append(f"\n[{toml_path(section_path)}]")
 
     for key, value in data.items():
-        if isinstance(value, Mapping):
+        if is_table(value):
             continue
         dotted = ".".join((*section_path, key))
         info = provenance.get(dotted)
         if info:
             path = info["path"] or "(memory)"
             lines.append(f"  # source: layer={info['layer']}, path={path}")
-        lines.append(f"  {key} = {_format_toml_value(value)}")
+        lines.append(f"  {toml_key(key)} = {toml_value(value)}")
 
     for key, value in data.items():
-        if isinstance(value, Mapping):
-            nested = cast("Mapping[str, object]", value)
-            _render_section(nested, provenance, lines, (*section_path, key))
-
-
-def _format_toml_value(value: object) -> str:
-    """Format a value in TOML style.
-
-    Strings are double-quoted, booleans are lowercase, ``None`` renders as
-    ``null``, and lists use JSON array syntax.
-
-    Examples:
-        >>> _format_toml_value("hello")
-        '"hello"'
-        >>> _format_toml_value(True)
-        'true'
-        >>> _format_toml_value(42)
-        '42'
-    """
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if value is None:
-        return "null"
-    if isinstance(value, str):
-        return f'"{value}"'
-    if isinstance(value, list):
-        items = cast("list[object]", value)
-        return orjson.dumps(items).decode()
-    return str(value)
+        if is_table(value):
+            _render_section(value, provenance, lines, (*section_path, key))
 
 
 def json_paths(paths: Iterable[Path]) -> str:
