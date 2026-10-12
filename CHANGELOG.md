@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.8] 2026-10-12 20:54:35
+
 ### Fixed
 
 - **A directory where a layer's config file belongs now refuses the load, as 7.0.0 said.** 7.0.0
