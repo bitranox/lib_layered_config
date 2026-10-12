@@ -411,7 +411,9 @@ Load and merge all configuration layers into an immutable `Config` object with p
 **Returns:** Immutable `Config` object with merged configuration and provenance tracking.
 
 **Raises:** `LayerLoadError` (a `ConfigError`) when a layer file cannot be decoded or parsed: `"<path> is not
-valid <FORMAT>"`, plus `" (line N, column M)"` when the parser reports a position; `"<path> is not valid UTF-8
+valid <FORMAT>"`, or `"<path> nests deeper than the <FORMAT> parser allows"` when the parser stopped at its
+nesting limit (TOML 80 levels, JSON 1024, YAML Python's recursion limit), plus `" (line N, column M)"` when the
+parser reports a position; `"<path> is not valid UTF-8
 (line N, byte offset M)"` for an undecodable file, or `"<path> is not valid UTF-16|UTF-32 (byte offset M)"` for
 a BOM-marked YAML file that does not decode; `"<path> has keys that are not strings (quote them): <parent>:
 <key> (<type>)"` for a YAML mapping key such as an unquoted `1:` or `true:`; `"<path> uses !!omap or

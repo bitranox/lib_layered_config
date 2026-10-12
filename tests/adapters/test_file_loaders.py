@@ -143,7 +143,7 @@ def test_yaml_parser_wraps_a_bare_value_error_as_invalid_format() -> None:
 
 
 @os_agnostic
-def test_yaml_parser_wraps_a_recursion_error_as_invalid_format() -> None:
+def test_yaml_parser_reports_a_recursion_error_as_too_deep() -> None:
     class YAMLError(Exception):
         pass
 
@@ -153,7 +153,7 @@ def test_yaml_parser_wraps_a_recursion_error_as_invalid_format() -> None:
     fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=YAMLError)
     with pytest.raises(InvalidFormatError) as exc:
         structured_module._parse_yaml_text("[[[[[[", fake_yaml, "memory.yaml")
-    assert str(exc.value) == "memory.yaml is not valid YAML"
+    assert str(exc.value) == "memory.yaml nests deeper than the YAML parser allows"
 
 
 @pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML not available")

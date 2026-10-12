@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
@@ -86,6 +87,27 @@ def _log_file_loaded(path: str, format_name: str) -> None:
 #: "line 1, column 4" (newer renderers, which also print a source snippet) both match.
 _TOML_POSITION: Final[re.Pattern[str]] = re.compile(r"line (\d+),? column (\d+)")
 
+#: rtoml's two depth refusals: "cannot recurse further; max recursion depth met at ..." for an
+#: array or inline table, "recursion limit" for a table header or dotted key. Fixed wording that
+#: carries no file content.
+_TOML_TOO_DEEP: Final[re.Pattern[str]] = re.compile(r"recursion")
+
+#: orjson's depth refusal: "depth limit exceeded: line 1 column 1026 (char 1025)".
+_JSON_TOO_DEEP: Final[str] = "depth limit exceeded"
+
+
+@dataclass(frozen=True)
+class _ParseFailure:
+    """What a parser's refusal says about the document, read without keeping its text.
+
+    Attributes:
+        position: 1-based (line, column), or ``None`` when the parser reported none.
+        too_deep: The parser stopped at its nesting limit; the document may be well formed.
+    """
+
+    position: tuple[int, int] | None
+    too_deep: bool = False
+
 
 def _log_file_invalid(path: str, format_name: str, message: str) -> None:
     """Log a parse failure with the content-free message the caller will see.
@@ -119,31 +141,37 @@ def directory_not_config_file(path: Path) -> InvalidFormatError:
     return InvalidFormatError(message)
 
 
-def _build_invalid_format_message(path: str, format_name: str, position: tuple[int, int] | None) -> str:
-    """Build the caller-facing message: path, format and, when known, line and column.
+def _build_invalid_format_message(path: str, format_name: str, failure: _ParseFailure | None) -> str:
+    """Build the caller-facing message: path, format, why and, when known, line and column.
 
-    Kept separate from logging and error construction so the text itself stays pinned by a
-    plain doctest.
+    A refusal at the parser's nesting limit says so rather than calling a well-formed file
+    invalid. Kept separate from logging and error construction so the text itself stays pinned
+    by a plain doctest.
 
     Args:
         path: File path being parsed.
         format_name: Parser identifier (e.g. ``"toml"``).
-        position: 1-based (line, column), or ``None`` when the parser reported none.
+        failure: What the parser's refusal said, or ``None`` when nothing is known.
 
     Returns:
         The message text.
 
     Examples:
-        >>> print(_build_invalid_format_message("a.toml", "toml", (2, 5)))
+        >>> print(_build_invalid_format_message("a.toml", "toml", _ParseFailure((2, 5))))
         a.toml is not valid TOML (line 2, column 5)
         >>> print(_build_invalid_format_message("a.yaml", "yaml", None))
         a.yaml is not valid YAML
+        >>> print(_build_invalid_format_message("a.toml", "toml", _ParseFailure((1, 85), too_deep=True)))
+        a.toml nests deeper than the TOML parser allows (line 1, column 85)
     """
+    position = failure.position if failure is not None else None
     where = f" (line {position[0]}, column {position[1]})" if position is not None else ""
+    if failure is not None and failure.too_deep:
+        return f"{path} nests deeper than the {format_name.upper()} parser allows{where}"
     return f"{path} is not valid {format_name.upper()}{where}"
 
 
-def _log_and_build_invalid_format(path: str, format_name: str, position: tuple[int, int] | None) -> InvalidFormatError:
+def _log_and_build_invalid_format(path: str, format_name: str, failure: _ParseFailure | None) -> InvalidFormatError:
     """Log the parse failure, then build the error for it: path, format and, when known, line/column.
 
     The caller raises it OUTSIDE its ``except`` block, so the parser's exception, whose message or
@@ -152,12 +180,12 @@ def _log_and_build_invalid_format(path: str, format_name: str, position: tuple[i
     Args:
         path: File path being parsed.
         format_name: Parser identifier (e.g. ``"toml"``).
-        position: 1-based (line, column), or ``None`` when the parser reported none.
+        failure: What the parser's refusal said, or ``None`` when nothing is known.
 
     Returns:
         The error to raise.
     """
-    message = _build_invalid_format_message(path, format_name, position)
+    message = _build_invalid_format_message(path, format_name, failure)
     _log_file_invalid(path, format_name, message)
     return InvalidFormatError(message)
 
@@ -222,6 +250,33 @@ def _json_position(exc: BaseException) -> tuple[int, int] | None:
     return (exc.lineno, exc.colno) if isinstance(exc, orjson.JSONDecodeError) else None
 
 
+def _toml_failure(exc: BaseException) -> _ParseFailure:
+    """Read an ``rtoml.TomlParsingError`` into its position and whether it is rtoml's depth limit.
+
+    Examples:
+        >>> _toml_failure(ValueError("cannot recurse further; max recursion depth met at line 1 column 85"))
+        _ParseFailure(position=(1, 85), too_deep=True)
+        >>> _toml_failure(ValueError("extra `=`, expected nothing at line 1 column 5"))
+        _ParseFailure(position=(1, 5), too_deep=False)
+    """
+    message = str(exc)
+    return _ParseFailure(_toml_position(message), too_deep=_TOML_TOO_DEEP.search(message) is not None)
+
+
+def _json_failure(exc: BaseException) -> _ParseFailure:
+    """Read an ``orjson.JSONDecodeError`` into its position and whether it is orjson's depth limit.
+
+    Examples:
+        >>> import orjson
+        >>> try:
+        ...     orjson.loads("[" * 1100 + "]" * 1100)
+        ... except orjson.JSONDecodeError as error:
+        ...     _json_failure(error).too_deep
+        True
+    """
+    return _ParseFailure(_json_position(exc), too_deep=str(exc).startswith(_JSON_TOO_DEEP))
+
+
 #: Sentinel returned by :func:`_run_parser` in place of a value when the parse failed. A real
 #: parsed value (including ``None`` from an empty JSON/YAML document) is never mistaken for a
 #: failure because this identity, not ``None``, marks it.
@@ -231,33 +286,32 @@ _PARSE_FAILED: Final[object] = object()
 def _run_parser(
     parse: Callable[[], object],
     exceptions: type[BaseException] | tuple[type[BaseException], ...],
-    position_of: Callable[[BaseException], tuple[int, int] | None],
-) -> tuple[object, tuple[int, int] | None]:
+    describe: Callable[[BaseException], _ParseFailure],
+) -> tuple[object, _ParseFailure | None]:
     """Run *parse*, collapsing its try/except into one reusable call per format.
 
     Args:
         parse: Zero-argument callable performing the parse attempt.
         exceptions: Exception type(s) that signal a parse failure rather than propagating.
-        position_of: Callable deriving a 1-based (line, column) from the caught exception,
-            or ``None`` when no position can be determined.
+        describe: Callable reading the caught exception into a :class:`_ParseFailure`.
 
     Returns:
-        ``(value, None)`` on success. ``(_PARSE_FAILED, position)`` when *parse* raised one of
-        *exceptions*; *position* is itself ``None`` when the exception carries no location.
+        ``(value, None)`` on success. ``(_PARSE_FAILED, failure)`` when *parse* raised one of
+        *exceptions*; *failure* says where and whether the parser stopped at its nesting limit.
 
     Examples:
-        >>> _run_parser(lambda: 42, ValueError, lambda exc: None)
+        >>> _run_parser(lambda: 42, ValueError, lambda exc: _ParseFailure(None))
         (42, None)
         >>> def boom() -> int:
         ...     raise ValueError("bad line 2 column 4")
-        >>> value, position = _run_parser(boom, ValueError, lambda exc: (2, 4))
-        >>> value is _PARSE_FAILED, position
+        >>> value, failure = _run_parser(boom, ValueError, lambda exc: _ParseFailure((2, 4)))
+        >>> value is _PARSE_FAILED, failure.position
         (True, (2, 4))
     """
     try:
         return parse(), None
     except exceptions as exc:
-        return _PARSE_FAILED, position_of(exc)
+        return _PARSE_FAILED, describe(exc)
 
 
 def _ensure_yaml_available() -> None:
@@ -441,11 +495,9 @@ class TOMLFileLoader(BaseFileLoader):
         except InvalidFormatError as exc:
             _log_file_invalid(path, "toml", str(exc))
             raise
-        parsed, failed_at = _run_parser(
-            lambda: rtoml.loads(decoded), rtoml.TomlParsingError, lambda exc: _toml_position(str(exc))
-        )
+        parsed, failure = _run_parser(lambda: rtoml.loads(decoded), rtoml.TomlParsingError, _toml_failure)
         if parsed is _PARSE_FAILED:
-            raise _log_and_build_invalid_format(path, "toml", failed_at)
+            raise _log_and_build_invalid_format(path, "toml", failure)
         result = self._ensure_mapping(parsed, path=path)
         _log_file_loaded(path, "toml")
         return result
@@ -488,9 +540,9 @@ class JSONFileLoader(BaseFileLoader):
         except InvalidFormatError as exc:
             _log_file_invalid(path, "json", str(exc))
             raise
-        payload, failed_at = _run_parser(lambda: orjson.loads(decoded), orjson.JSONDecodeError, _json_position)
+        payload, failure = _run_parser(lambda: orjson.loads(decoded), orjson.JSONDecodeError, _json_failure)
         if payload is _PARSE_FAILED:
-            raise _log_and_build_invalid_format(path, "json", failed_at)
+            raise _log_and_build_invalid_format(path, "json", failure)
         result = self._ensure_mapping(payload, path=path)
         _log_file_loaded(path, "json")
         return result
@@ -564,8 +616,9 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
     Raises:
         InvalidFormatError: When PyYAML raises ``YAMLError`` while parsing the document, or when a
             constructor it calls raises a bare ``ValueError`` (e.g. an out-of-range calendar date
-            such as ``2020-13-01``) or ``RecursionError`` (a deeply nested document); neither is a
-            ``YAMLError`` subclass, so both are caught separately, with no reported position.
+            such as ``2020-13-01``) or ``RecursionError`` (a deeply nested document, reported as
+            nesting deeper than the YAML parser allows); neither is a ``YAMLError`` subclass, so both
+            are caught separately, with no reported position.
 
     Examples:
         >>> from types import SimpleNamespace
@@ -574,14 +627,15 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
         {'key': 'value'}
     """
 
-    def _position_of(exc: BaseException) -> tuple[int, int] | None:
-        return _yaml_position(exc) if isinstance(exc, module.YAMLError) else None
+    def _describe(exc: BaseException) -> _ParseFailure:
+        position = _yaml_position(exc) if isinstance(exc, module.YAMLError) else None
+        return _ParseFailure(position, too_deep=isinstance(exc, RecursionError))
 
-    parsed, failed_at = _run_parser(
-        lambda: module.safe_load(document), (module.YAMLError, ValueError, RecursionError), _position_of
+    parsed, failure = _run_parser(
+        lambda: module.safe_load(document), (module.YAMLError, ValueError, RecursionError), _describe
     )
     if parsed is _PARSE_FAILED:
-        raise _log_and_build_invalid_format(path, "yaml", failed_at)
+        raise _log_and_build_invalid_format(path, "yaml", failure)
     return {} if parsed is None else parsed
 
 

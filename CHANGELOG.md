@@ -26,10 +26,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Requires `rtoml>=0.14.0`.** rtoml 0.14.0 refuses TOML nested deeper than 80 levels, which 0.13.0
-  accepted: an array or inline table is reported as `<path> is not valid TOML (line N, column M)`, a
-  table header (`[a.a. ...]`) or dotted key (`a.a. ... = 1`) as `<path> is not valid TOML` with no
-  position. A table 81 to 100 levels deep, which the merge's 100-level limit allowed, no longer loads.
+- **Requires `rtoml>=0.14.0`.** rtoml 0.14.0 refuses TOML nested deeper than 80 levels (arrays, inline
+  tables, table headers and dotted keys alike), which 0.13.0 accepted. A table 81 to 100 levels deep,
+  which the merge's 100-level limit allowed, no longer loads.
+- **A file nested deeper than its parser allows says so.** It was reported as `<path> is not valid
+  TOML` (or JSON, YAML), calling a well-formed file broken. It now reads `<path> nests deeper than the
+  TOML parser allows`, with `(line N, column M)` when the parser gives a position: TOML stops at 80
+  levels, JSON at 1024, YAML at Python's recursion limit. A malformed file keeps `is not valid`.
 
 ## [7.1.3] 2026-10-12 01:45:26
 
