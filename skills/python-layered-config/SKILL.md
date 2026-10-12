@@ -205,6 +205,8 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
 - **Write ordered YAML as a plain mapping, never `!!omap` or `!!pairs`**: a plain mapping keeps the
   file's key order through `read_config` and `as_dict()`, while those two tags load as `(key, value)`
   tuples whose keys redaction cannot see, so the loader refuses the whole file.
+- **Write a set as a list and binary data as a base64 string, never `!!set` or `!!binary`**: those
+  load as a Python `set` and `bytes`, which no JSON view can carry, so the loader refuses the whole file.
 - **Use profiles for environments**, not copy-pasted files.
 - **Scaffold** a starting tree with `generate-examples` rather than hand-building paths.
 
@@ -244,13 +246,16 @@ an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"
 `file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
 `ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
+A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
+permission wall raises `PermissionError` on every Python, before anything is written.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
 the list of written paths.
 
 **Display and logging.** `display_config(config, output_format=OutputFormat.HUMAN)` prints a config
 section by section, each key under a `# layer:<layer> profile:<profile> (<path>)` comment and
 TOML-quoted where it needs it (`OutputFormat.JSON` for plain JSON). The `read` command has its own
-renderer, `# source: layer=<layer>, path=<path>` above each key, so one parser does not fit both.
+renderer, `# source: layer=<layer>, path=<path>` above each key, so one parser does not fit both;
+both quote keys, headers and strings the same way, so a key named `"a.b"` reads back as one key.
 `get_logger()` returns the stdlib `logging.Logger` named `lib_layered_config`; attach handlers to
 it. Each record carries a `context` dict: always `record.context["trace_id"]`, plus the event's
 own fields (often `layer` and `path`). `bind_trace_id("abc123")` sets that trace id for the current
