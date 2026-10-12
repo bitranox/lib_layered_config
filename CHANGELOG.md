@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.1.6] 2026-10-12 13:21:20
+
 ### Fixed
 
 - **A YAML `!!set` or `!!binary` value refuses the file.** PyYAML's safe loader builds them as a
