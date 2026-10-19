@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.3.0] 2026-10-19 22:57:34
+
 ### Changed
 - **A TOML or YAML integer outside JSON's range refuses the file.** orjson writes an integer only
   from -2**63 to 2**64-1, while rtoml reads up to 128 bits and a YAML hex literal any width, so
