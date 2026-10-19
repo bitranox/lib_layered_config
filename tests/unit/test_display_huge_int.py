@@ -4,7 +4,8 @@ Python refuses to turn an int of more than 4300 decimal digits into text (``sys.
 default ``str_digits_check_threshold``), and a YAML file can carry one, since PyYAML reads a hex
 literal without that limit. Both human renderers - ``display_config`` and the ``read`` command -
 spelt every scalar with ``str()``, so displaying such a configuration raised ``ValueError:
-Exceeds the limit (4300 digits)``. TOML and JSON cap an integer at 64 bits, so only YAML reaches it.
+Exceeds the limit (4300 digits)``. Only YAML reaches it: rtoml refuses an integer wider than 128
+bits (about 39 digits), orjson reads a wide integer as a float, and an environment variable stays text.
 """
 
 from __future__ import annotations
