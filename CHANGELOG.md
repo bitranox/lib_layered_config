@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- `display_config` and the `read` command no longer raise `ValueError: Exceeds the limit (4300
+  digits)` on a configured int too long for Python to write as decimal text, which a YAML hex
+  literal can carry. Such an int is shown as `<int, N bits>`; every other int prints as before.
+- `.gitignore` no longer carries an inline comment on four patterns (`*$py.class`, `*.egg-info/`,
+  `*.manifest`, `*.spec`): gitignore read the comment as part of the pattern, so each ignored nothing.
+
 ## [7.2.0] 2026-10-19 18:47:03
 
 ### Added
