@@ -6,6 +6,8 @@ Purpose
 
 Contents
     - :func:`deploy_config`: copy template files into etc/xdg directories.
+    - :func:`deploy_config_paths`: the files a deploy writes.
+    - :func:`read_deploy_config`: the configuration a deploy reads for its modes.
     - :class:`DeployAction`: enum of actions taken during deployment.
     - :class:`DeployResult`: result of a single file deployment.
     - :class:`ExampleSpec`: describes example assets to generate.
@@ -20,7 +22,14 @@ System Integration
 
 from __future__ import annotations
 
-from .deploy import ConflictResolver, DeployAction, DeployResult, deploy_config
+from .deploy import (
+    ConflictResolver,
+    DeployAction,
+    DeployResult,
+    deploy_config,
+    deploy_config_paths,
+    read_deploy_config,
+)
 from .generate import DEFAULT_HOST_PLACEHOLDER, ExampleSpec, generate_examples
 
 __all__ = (
@@ -30,5 +39,7 @@ __all__ = (
     "DeployResult",
     "ExampleSpec",
     "deploy_config",
+    "deploy_config_paths",
     "generate_examples",
+    "read_deploy_config",
 )

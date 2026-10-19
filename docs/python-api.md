@@ -14,6 +14,8 @@ from lib_layered_config import (
     read_config_raw,
     default_env_prefix,
     deploy_config,
+    deploy_config_paths,
+    read_deploy_config,
     generate_examples,
     i_should_fail,
     # Profile validation
@@ -1169,6 +1171,70 @@ configs); an unsafe mode is refused. Use `set_permissions=False` when permission
 umask. Use `permission_overrides` for a runtime value (such as a `--set` option) laid over deploy's own read,
 rather than building a `permissions=` object from `read_config(...)`, which includes `.env`, the deployed
 files and a user file's `app_*`/`host_*` modes. On Windows, permission setting is automatically skipped.
+
+---
+
+### `deploy_config_paths` and `read_deploy_config`
+
+```python
+def deploy_config_paths(
+    source: str | Path,
+    *,
+    vendor: str,
+    app: str,
+    targets: Sequence[str],
+    slug: str | None = None,
+    profile: str | None = None,
+    platform: str | None = None,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+) -> frozenset[Path]
+
+def read_deploy_config(
+    source: str | Path,
+    *,
+    vendor: str,
+    app: str,
+    skip: Iterable[str | Path],
+    slug: str | None = None,
+    profile: str | None = None,
+    platform: str | None = None,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+) -> Config
+```
+
+What `deploy_config` sees, for a caller that must see the same: an application that reports which
+permission modes a deploy will use, or one that must read its configuration while a file the deploy is
+about to replace no longer parses.
+
+- `deploy_config_paths` returns every file a `deploy_config` of `source` to `targets` writes, resolved,
+  whether or not it exists yet: each target's configuration file and, in its companion `.d` directory, a
+  copy of every file in the source's own `.d` directory. It is computed by the code the deploy runs, so
+  it cannot drift from what the deploy reports writing.
+- `read_deploy_config` returns the configuration the deploy reads for its modes: `source` as the defaults
+  layer, then the app, host and user files not in `skip`, then the environment. It reads no `.env` file,
+  and a user-layer file keeps only its `user_*` and `enabled` permission settings. Each `skip` entry is
+  resolved before it is compared, so any spelling of a path matches; a single `str` or `Path` given as
+  `skip` raises `TypeError`.
+
+**Raises:** `FileNotFoundError` for a missing source, `ValueError` for an invalid profile, `ValidationError`
+for an unknown target (`deploy_config_paths`), and `LayerLoadError` for a file not left out that cannot be
+read or parsed (`read_deploy_config`).
+
+```python
+from lib_layered_config import deploy_config_paths, deploy_permissions_from_config, read_deploy_config
+
+identity = {"vendor": "Acme", "app": "MyApp", "slug": "myapp"}
+written = deploy_config_paths("./config.toml", targets=["user"], **identity)
+
+# The deploy's own read: every file it writes is left out, so none decides its own replacement
+used = read_deploy_config("./config.toml", skip=written, **identity)
+settings = deploy_permissions_from_config(used)  # the modes deploy_config would apply
+
+# Leave out fewer files: here only the main file, as an application might after finding it no longer
+# parses and before a forced deploy replaces it; the rest of what the deploy writes is still read
+broken = {path for path in written if path.name == "config.toml"}
+repaired = read_deploy_config("./config.toml", skip=broken, **identity)
+```
 
 ---
 

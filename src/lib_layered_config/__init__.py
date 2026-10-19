@@ -7,7 +7,9 @@ helpers.
 Contents:
     * :func:`lib_layered_config.core.read_config`
     * :func:`lib_layered_config.core.read_config_raw`
-    * :func:`lib_layered_config.examples.deploy.deploy_config`
+    * :func:`lib_layered_config.examples.deploy.deploy_config`, with
+      :func:`~lib_layered_config.examples.deploy.deploy_config_paths` and
+      :func:`~lib_layered_config.examples.deploy.read_deploy_config`
     * :class:`lib_layered_config.domain.config.Config`
     * Error hierarchy (:class:`ConfigError`, :class:`InvalidFormatError`, etc.)
     * Diagnostics helpers (:func:`lib_layered_config.testing.i_should_fail`)
@@ -57,7 +59,7 @@ from .domain.permissions import (
     DEFAULT_USER_FILE_MODE,
 )
 from .domain.redaction import REDACTED_PLACEHOLDER, NotSensitiveKeys, is_sensitive, is_sensitive_at, redact_mapping
-from .examples import deploy_config, generate_examples
+from .examples import deploy_config, deploy_config_paths, generate_examples, read_deploy_config
 from .observability import bind_trace_id, get_logger
 from .testing import i_should_fail
 
@@ -88,6 +90,7 @@ __all__ = [
     "bind_trace_id",
     "default_env_prefix",
     "deploy_config",
+    "deploy_config_paths",
     "deploy_permissions_from_config",
     "display_config",
     "generate_examples",
@@ -99,6 +102,7 @@ __all__ = [
     "read_config",
     "read_config_json",
     "read_config_raw",
+    "read_deploy_config",
     "redact_mapping",
     "validate_profile_name",
 ]

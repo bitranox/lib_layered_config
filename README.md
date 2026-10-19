@@ -71,7 +71,7 @@ Full reference: **[docs/python-api.md](docs/python-api.md)**
 - [Layer Enum](docs/python-api.md#layer-enum)
 - [Config Class](docs/python-api.md#config-class)
 - [`read_config`](docs/python-api.md#read_config) / [`read_config_json`](docs/python-api.md#read_config_json) / [`read_config_raw`](docs/python-api.md#read_config_raw)
-- [`deploy_config`](docs/python-api.md#deploy_config)
+- [`deploy_config`](docs/python-api.md#deploy_config) / [`deploy_config_paths` and `read_deploy_config`](docs/python-api.md#deploy_config_paths-and-read_deploy_config)
 - [`generate_examples` (Python)](docs/python-api.md#generate_examples)
 - [`default_env_prefix`](docs/python-api.md#default_env_prefix)
 - [Profile Validation](docs/python-api.md#profile-validation)

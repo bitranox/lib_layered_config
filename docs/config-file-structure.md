@@ -470,7 +470,8 @@ key reads `null`/`none` as None. A key the application declared with
 
 `deploy` and `deploy_config` read `[lib_layered_config.default_permissions]` to decide the Unix mode of each
 deployed file and directory. See [cli-reference.md's "Configuring the modes"](cli-reference.md#configuring-the-modes)
-for the settings, the resolution order, and the refusal rule.
+for the settings, the resolution order, and the refusal rule. `read_deploy_config` returns the configuration
+the deploy reads them from; see [python-api.md](python-api.md#deploy_config_paths-and-read_deploy_config).
 
 ---
 

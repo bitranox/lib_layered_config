@@ -657,6 +657,10 @@ lib_layered_config deploy --source ./config.toml \
   --vendor Acme --app MyApp --slug myapp --target user --dir-mode 750 --file-mode 640
 ```
 
+From Python, `deploy_config_paths(...)` lists the files a deploy writes and `read_deploy_config(..., skip=...)`
+returns the configuration described above; see
+[python-api.md](python-api.md#deploy_config_paths-and-read_deploy_config).
+
 #### Python API Usage
 
 ```python

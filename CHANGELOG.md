@@ -6,6 +6,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `deploy_config_paths(source, *, vendor, app, targets, ...)` returns every file a `deploy_config` of
+  those targets writes, resolved, and `read_deploy_config(source, *, vendor, app, skip, ...)` returns the
+  configuration the deploy reads for its permission modes (no `.env`, a user file keeping only its
+  `user_*` and `enabled` settings) with the `skip` files left out. Both are exported from the package root
+  and run the code `deploy_config` itself runs, so an application can report the modes a deploy will use,
+  or read its configuration past a broken file a forced deploy is about to replace, without importing
+  the library's internals.
+
 ## [7.1.9] 2026-10-12 22:33:42
 
 ### Added

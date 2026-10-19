@@ -7,6 +7,8 @@ Unix permissions per layer.
 Contents:
     - ``DeployAction`` / ``DeployResult``: the outcome vocabulary and per-file record.
     - ``deploy_config``: public entry point that resolves destinations and deploys each.
+    - ``deploy_config_paths`` / ``read_deploy_config``: the files a deploy writes and the
+      configuration it reads for its modes, for a caller that must see what the deploy sees.
     - ``DeploymentStrategy`` and its ``Linux`` / ``Mac`` / ``Windows`` subclasses: compute
       per-platform destination paths.
     - Conflict handling (``_handle_conflict`` / ``_execute_action``): backup-and-overwrite
@@ -26,10 +28,11 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..adapters._path_probe import PathKind, kind_or_raise
 from ..adapters.path_resolvers.default import DefaultPathResolver
@@ -48,6 +51,9 @@ from ..domain.deploy_permissions import (
 from ..domain.errors import ConfigError, ValidationError
 from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
 from ..domain.permissions import apply_mode, modes_apply
+
+if TYPE_CHECKING:
+    from ..domain.config import Config
 
 _VALID_TARGETS = {Layer.APP.value, Layer.HOST.value, Layer.USER.value}
 
@@ -704,10 +710,7 @@ def deploy_config(
         permissions=permissions,
         permission_overrides=permission_overrides,
     )
-    source_path = Path(source)
-    if kind_or_raise(source_path) is not PathKind.FILE:
-        raise FileNotFoundError(f"Configuration source not found: {source_path}")
-
+    source_path = _existing_source(source)
     source_dot_d = _get_dot_d_dir(source_path)
     dot_d_files = _collect_dot_d_sources(source_dot_d)
     resolver = _prepare_resolver(
@@ -754,6 +757,121 @@ def deploy_config(
             results.append(result)
 
     return results
+
+
+def deploy_config_paths(
+    source: str | Path,
+    *,
+    vendor: str,
+    app: str,
+    targets: Sequence[str],
+    slug: str | None = None,
+    profile: str | None = None,
+    platform: str | None = None,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+) -> frozenset[Path]:
+    r"""Return every file a :func:`deploy_config` of *source* to *targets* writes, resolved.
+
+    Each target's configuration file and, in its companion ``.d`` directory, a copy of every file
+    in the source's own ``.d`` directory, whether or not any of them exists yet. This is the set
+    the deploy leaves out of its own read (see :func:`read_deploy_config`), computed by the code
+    the deploy itself runs; the arguments mean what they mean there.
+
+    Returns:
+        The resolved paths.
+
+    Raises:
+        FileNotFoundError: The source file does not exist.
+        PermissionError: The source or its ``.d`` directory sits behind a permission wall.
+        ValueError: The profile name is invalid.
+        ValidationError: A target is not one of app, host and user.
+
+    Examples:
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     source = Path(tmp) / "config.toml"
+        ...     _ = source.write_text("[service]\nport = 1\n", encoding="utf-8")
+        ...     paths = deploy_config_paths(source, vendor="Acme", app="Demo", targets=["user"], platform="linux")
+        ...     [path.name for path in paths]
+        ['config.toml']
+    """
+    source_path = _existing_source(source)
+    resolver = _prepare_resolver(
+        vendor=vendor,
+        app=app,
+        slug=slug or app,
+        profile=profile,
+        platform=platform,
+        max_profile_length=max_profile_length,
+    )
+    dot_d_files = _collect_dot_d_sources(_get_dot_d_dir(source_path))
+    return _paths_written(list(_destinations_for(resolver, targets)), dot_d_files=dot_d_files)
+
+
+def read_deploy_config(
+    source: str | Path,
+    *,
+    vendor: str,
+    app: str,
+    skip: Iterable[str | Path],
+    slug: str | None = None,
+    profile: str | None = None,
+    platform: str | None = None,
+    max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
+) -> Config:
+    r"""Return the configuration :func:`deploy_config` reads for its modes, with *skip* left out.
+
+    Unlike :func:`~lib_layered_config.read_config`, *source* is the defaults layer, no ``.env``
+    file is read, and a user-layer file keeps only its ``user_*`` and ``enabled`` permission
+    settings. The deploy's exact read passes ``skip=deploy_config_paths(...)`` for the same
+    source and targets; a caller may leave out fewer files, for example only those that no
+    longer parse.
+
+    Args:
+        source: The configuration file a deploy would copy; read as the defaults layer.
+        vendor / app / slug / profile / platform / max_profile_length: As for
+            :func:`deploy_config`; *platform* chooses whose layer paths are read.
+        skip: Files to leave out, in any spelling; each is resolved before it is compared.
+
+    Returns:
+        The merged configuration, with provenance.
+
+    Raises:
+        TypeError: *skip* is a single ``str`` or ``Path`` rather than an iterable of them.
+        FileNotFoundError: The source file does not exist.
+        LayerLoadError: A file not left out cannot be read, decoded or parsed.
+        ValueError: The profile name is invalid, or the environment sets a key both as a value
+            and as a table.
+
+    Examples:
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     source = Path(tmp) / "config.toml"
+        ...     _ = source.write_text("[service]\nport = 1\n", encoding="utf-8")
+        ...     read_deploy_config(source, vendor="Acme", app="Demo", skip=(), platform="linux").get("service.port")
+        1
+    """
+    if isinstance(skip, (str, Path)):
+        raise TypeError(f"skip takes an iterable of paths, not a single {type(skip).__name__}: write [path]")
+    source_path = _existing_source(source)
+    resolver = _prepare_resolver(
+        vendor=vendor,
+        app=app,
+        slug=slug or app,
+        profile=profile,
+        platform=platform,
+        max_profile_length=max_profile_length,
+    )
+    left_out = frozenset(Path(path).resolve() for path in skip)
+    return read_config_for_deploy(resolver=resolver, default_file=source_path, skip=left_out)
+
+
+def _existing_source(source: str | Path) -> Path:
+    """Return *source* as a path, refusing one that is not a file as the deploy refuses it."""
+    source_path = Path(source)
+    if kind_or_raise(source_path) is not PathKind.FILE:
+        raise FileNotFoundError(f"Configuration source not found: {source_path}")
+    return source_path
 
 
 def _deploy_dot_d_files(

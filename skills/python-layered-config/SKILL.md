@@ -246,8 +246,28 @@ an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"
 `file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
 `ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
+`force=True` backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`.
 A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
 permission wall raises `PermissionError` on every Python, before anything is written.
+
+**What a deploy sees, before it runs** (7.2.0 and later). `deploy_config_paths(source, vendor=...,
+app=..., slug=..., targets=[...])` returns every file that deploy writes, resolved, as a frozenset:
+each target's config file (`config.toml`, or `hosts/<hostname>.toml` for host) plus, in the `.d`
+directory beside it (`config.d/`, `hosts/<hostname>.d/`), a copy of each file in the source's own `.d`
+(`defaults.d/` for `defaults.toml`).
+`read_deploy_config(source, vendor=..., app=..., slug=..., skip=...)` returns the configuration deploy
+reads its modes from: the source as defaults, the app, host and user files not in `skip`, the
+environment, never `.env`, and only `user_*`/`enabled` from a user file. Pass
+`skip=deploy_config_paths(...)` for the deploy's exact read, or a subset (say, only the files that no
+longer parse) to read past a broken file a forced deploy will replace; `skip` must be an iterable of
+paths, never one bare path (`TypeError`). Both take `profile=`/`platform=` like `deploy_config`, raise
+`FileNotFoundError` for a missing source, and a file not skipped (the source included) that does not
+parse raises `LayerLoadError`. Then `perms = deploy_permissions_from_config(that_config,
+overrides=<what you pass as permission_overrides>)`: `perms.enabled` says whether modes are set at all,
+and `perms.for_layer("app" | "host" | "user")` gives a `LayerModes` whose `.directory` and `.file`
+(each a `DeployMode`, printing as `0o700`) are that layer's modes, unless you pass an explicit
+`dir_mode`/`file_mode`, which wins. Modes are never applied on Windows. Use these instead of
+importing anything from `lib_layered_config.core` or `lib_layered_config.examples.deploy`.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
 the list of written paths.
 
