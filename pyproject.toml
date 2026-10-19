@@ -245,5 +245,5 @@ forbidden_modules = ["lib_layered_config.adapters", "lib_layered_config.applicat
 ignore-vulns = []
 
 [tool.uv]
-exclude-newer = "1 day"
-exclude-newer-package = {lib-cli-exit-tools = false}
+exclude-newer = "7 days"
+exclude-newer-package = {lib-cli-exit-tools = false, hypothesis = "2026-10-16T16:46:42Z", ruff = "2026-10-15T15:23:19Z"}
