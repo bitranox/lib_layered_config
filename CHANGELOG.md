@@ -6,10 +6,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **A TOML or YAML integer outside JSON's range refuses the file.** orjson writes an integer only
+  from -2**63 to 2**64-1, while rtoml reads up to 128 bits and a YAML hex literal any width, so
+  such a config loaded and then crashed every JSON view (`Config.to_json`, `read_config_json`,
+  `display_config` in JSON) with `TypeError: Integer exceeds 64-bit range`. The loader now refuses
+  the file, naming it and each integer's position and width, never its digits, the same rule a
+  YAML `!!set` or `!!binary` value follows. Write such a number as a string.
+
 ### Fixed
 - `display_config` and the `read` command no longer raise `ValueError: Exceeds the limit (4300
-  digits)` on a configured int too long for Python to write as decimal text, which a YAML hex
-  literal can carry. Such an int is shown as `<int, N bits>`; every other int prints as before.
+  digits)` on an int too long for Python to write as decimal text, which a `Config` the caller
+  builds can hold. Such an int is shown as `<int, N bits>`; every other int prints as before.
 - `.gitignore` no longer carries an inline comment on four patterns (`*$py.class`, `*.egg-info/`,
   `*.manifest`, `*.spec`): gitignore read the comment as part of the pattern, so each ignored nothing.
 

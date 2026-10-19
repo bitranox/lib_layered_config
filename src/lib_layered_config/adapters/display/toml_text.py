@@ -87,8 +87,9 @@ def _toml_scalar(value: object) -> str:
 def _toml_int(value: int) -> str:
     """Return *value* in decimal, or ``<int, N bits>`` when it is too long to write as text.
 
-    Python refuses to convert an int past its int-to-str digit limit (4300 digits by default) and
-    a YAML hex literal can carry one. The number is shown whenever the interpreter can write it, so
+    Python refuses to convert an int past its int-to-str digit limit (4300 digits by default). The
+    file loaders refuse one, but a ``Config`` the caller builds can hold any int, and a display must
+    not crash on what it is asked to show. The number is shown whenever the interpreter can write it, so
     a reader sees the real value; only past the limit is it named by its width, the way
     ``brief_repr`` names one in a refusal.
 

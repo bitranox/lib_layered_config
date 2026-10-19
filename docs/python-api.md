@@ -422,7 +422,9 @@ a BOM-marked YAML file that does not decode; `"<path> has keys that are not stri
 !!pairs, whose keys redaction cannot see; write a plain mapping instead: <position>[; <position>...]"`
 for a YAML `!!omap` or `!!pairs` value with entries (an empty one loads); `"<path> uses !!set or !!binary,
 which have no JSON form; write a list or a base64 string instead: <position> (<type>)[; ...]"` for a YAML
-`!!set` or `!!binary` value; `"<path> is a directory, not a
+`!!set` or `!!binary` value; `"<path> holds an integer JSON cannot write (it takes -2**63 to 2**64-1); write
+it as a string instead: <position> (int, N bits)[; ...]"` for a TOML or YAML integer outside that range (TOML
+reads up to 128 bits, a YAML hex literal any width); `"<path> is a directory, not a
 configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory;
 `"<path> cannot be read: <reason>"` when a layer's config location, the platform `.env` location, `default_file` or
 `dotenv_path` sits behind a permission wall (a directory on its path the user cannot enter, or a file the user

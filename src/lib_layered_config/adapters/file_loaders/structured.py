@@ -499,6 +499,7 @@ class TOMLFileLoader(BaseFileLoader):
         if parsed is _PARSE_FAILED:
             raise _log_and_build_invalid_format(path, "toml", failure)
         result = self._ensure_mapping(parsed, path=path)
+        _refuse_integers_json_cannot_carry(result, path=path, format_name="toml")
         _log_file_loaded(path, "toml")
         return result
 
@@ -596,6 +597,7 @@ class YAMLFileLoader(BaseFileLoader):
         _refuse_non_string_keys(mapping, path=path)
         _refuse_ordered_map_tags(mapping, path=path)
         _refuse_values_json_cannot_carry(mapping, path=path)
+        _refuse_integers_json_cannot_carry(mapping, path=path, format_name="yaml")
         _log_file_loaded(path, "yaml")
         return mapping
 
@@ -798,18 +800,80 @@ def _refuse_values_json_cannot_carry(data: object, *, path: str) -> None:
 def _unserialisable_positions(data: object) -> list[str]:
     """Describe every ``set`` or ``bytes`` value in *data* as ``"<position> (<type>)"``.
 
-    Walks with an explicit stack for the reason :func:`_non_string_keys` gives.
-
     Examples:
         >>> _unserialisable_positions({"a": [{"b": {1}}], "c": b"x", "d": [1]})
         ['a.0.b (set)', 'c (bytes)']
+    """
+    return _positions_of(data, lambda node: type(node).__name__ if type(node) in _TAG_OF_UNSERIALISABLE else None)
+
+
+#: The integer range orjson writes; every JSON view of a configuration goes through it.
+_JSON_INT_MIN: Final = -(2**63)
+_JSON_INT_MAX: Final = 2**64 - 1
+
+
+def _refuse_integers_json_cannot_carry(data: object, *, path: str, format_name: str) -> None:
+    """Refuse a document holding an integer outside ``-2**63 .. 2**64-1``.
+
+    orjson writes no integer outside that range, and rtoml reads up to 128 bits while PyYAML reads
+    a hex literal of any width: such a config loaded, then crashed every JSON view with an uncaught
+    ``TypeError``. The error names the file and each integer's dotted position with its width, never
+    its digits, which may be a secret and may run to thousands of characters.
+
+    Args:
+        data: Parsed document, already known to be a mapping at the top.
+        path: File the document came from, named in the error.
+        format_name: Format logged with the refusal (``toml`` or ``yaml``).
+
+    Raises:
+        InvalidFormatError: When any integer in *data* is outside the range.
+
+    Examples:
+        >>> _refuse_integers_json_cannot_carry({"port": 2**64 - 1}, path="a.toml", format_name="toml")
+        >>> _refuse_integers_json_cannot_carry({"port": 2**64}, path="a.toml", format_name="toml")  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: a.toml holds an integer JSON ...: port (int, 65 bits)
+    """
+    found = _positions_of(data, _describe_wide_int)
+    if not found:
+        return
+    message = (
+        f"{path} holds an integer JSON cannot write (it takes -2**63 to 2**64-1); "
+        f"write it as a string instead: {'; '.join(found)}"
+    )
+    _log_file_invalid(path, format_name, message)
+    raise InvalidFormatError(message)
+
+
+def _describe_wide_int(node: object) -> str | None:
+    """Return ``"int, N bits"`` for an integer outside JSON's range, else ``None``.
+
+    Examples:
+        >>> _describe_wide_int(2**64), _describe_wide_int(-(2**63)), _describe_wide_int(True)
+        ('int, 65 bits', None, None)
+    """
+    if type(node) is not int or _JSON_INT_MIN <= node <= _JSON_INT_MAX:
+        return None
+    return f"int, {node.bit_length()} bits"
+
+
+def _positions_of(data: object, describe: Callable[[object], str | None]) -> list[str]:
+    """Return ``"<position> (<description>)"`` for every node *describe* names, sorted.
+
+    Walks with an explicit stack for the reason :func:`_non_string_keys` gives.
+
+    Examples:
+        >>> _positions_of({"a": [1, "x"], "b": "y"}, lambda node: "str" if isinstance(node, str) else None)
+        ['a.1 (str)', 'b (str)']
     """
     found: list[str] = []
     pending: list[tuple[object, str]] = [(data, "")]
     while pending:
         node, position = pending.pop()
-        if type(node) in _TAG_OF_UNSERIALISABLE:
-            found.append(f"{position or '<top>'} ({type(node).__name__})")
+        description = describe(node)
+        if description is not None:
+            found.append(f"{position or '<top>'} ({description})")
         elif isinstance(node, Mapping):
             mapping = cast("Mapping[object, object]", node)
             pending.extend((value, _join_position(position, str(key))) for key, value in mapping.items())
