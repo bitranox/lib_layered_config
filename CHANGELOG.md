@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The `python-layered-config` skill (plugin 7.3.1) says to write an integer outside `-2**63` to
+  `2**64-1` as a string, and that a file the loader refuses surfaces as `LayerLoadError`.
+
 ## [7.3.0] 2026-10-19 22:57:34
 
 ### Changed

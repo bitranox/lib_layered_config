@@ -207,6 +207,8 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   tuples whose keys redaction cannot see, so the loader refuses the whole file.
 - **Write a set as a list and binary data as a base64 string, never `!!set` or `!!binary`**: those
   load as a Python `set` and `bytes`, which no JSON view can carry, so the loader refuses the whole file.
+- **Write an integer outside `-2**63` to `2**64-1` as a string**: no JSON view can write one, so a TOML
+  or YAML file holding it is refused whole, naming each integer's position and width.
 - **Use profiles for environments**, not copy-pasted files.
 - **Scaffold** a starting tree with `generate-examples` rather than hand-building paths.
 
@@ -217,7 +219,7 @@ Everything below is importable from `lib_layered_config`.
 **Errors.** Catch `ConfigError`, the base of every library error. Its subclasses:
 
 - `LayerLoadError` - `read_config*` could not decode or parse a layer file (broken TOML, invalid
-  UTF-8, a malformed `.env` line).
+  UTF-8, a malformed `.env` line), or the loader refused one (a rule under "Designing config files").
 - `InvalidFormatError` - a source cannot be parsed. `read_config*` re-raises it as `LayerLoadError`,
   so you meet it directly only from lower-level calls (nesting deeper than the limit in
   `redact_mapping`, for example).
