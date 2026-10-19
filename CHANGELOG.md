@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.2.0] 2026-10-19 18:47:03
+
 ### Added
 - `deploy_config_paths(source, *, vendor, app, targets, ...)` returns every file a `deploy_config` of
   those targets writes, resolved, and `read_deploy_config(source, *, vendor, app, skip, ...)` returns the
