@@ -88,15 +88,24 @@ value catches it. Check the floor in `pyproject.toml` before relying on the new 
 
 To label the layer `cli` instead, or to support a floor below 5.7.0, rebuild provenance for exactly
 the keys the override supplied - layer `cli`, path `None` - and leave every other key's source
-alone. Two details decide whether that lands:
+alone. Three details decide whether that lands:
 
 - the dotted key is the SECTION plus the key path, because a parsed override's key path EXCLUDES
   its section; joining only the key path matches nothing and silently changes no entry.
 - overriding a key that no file defined must still record a source, or the key appears with a
   value and no origin at all.
+- a `Config` you rebuild yourself takes a THIRD argument:
+  `Config(data, provenance, NotSensitiveKeys.of(NOT_SENSITIVE))`, built from the same set your
+  loader passes to `read_config(not_sensitive=...)`. It defaults to `NotSensitiveKeys.NONE`, so
+  leaving it out drops the declaration silently, and a redacted display then masks keys the app
+  declared safe. `with_overrides` carries the declaration through; only a hand-built `Config`
+  loses it.
 
 Assert it end to end, by running the command and reading the printed source, not by unit-testing
-the merge: the merge is correct in isolation, and the defect only exists in what is displayed.
+the merge: the merge is correct in isolation, and the defect only exists in what is displayed. Use
+an override value that differs from every file layer, so a source still pointing at a file cannot
+pass by showing the same value; and when the display redacts, check a declared not-sensitive key
+still shows its value.
 
 ## Environment-variable overrides (the trap)
 

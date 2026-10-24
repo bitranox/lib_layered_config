@@ -14,6 +14,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   directory with `start_dir=` set and anchor tests under `tmp_path`; a relative `start_dir` ends its
   `.env` search at the current directory; on Windows a deploy falls back to `%LOCALAPPDATA%` when
   the roaming directory is missing and never applies the configured modes.
+- The `python-layered-config` skill (plugin 7.3.3) says how to label the keys a
+  `Config.with_overrides` supplies as the CLI's in provenance: rebuild provenance for exactly those
+  keys and pass the not-sensitive set as the rebuilt `Config`'s third argument.
 
 ## [7.3.0] 2026-10-19 22:57:34
 
