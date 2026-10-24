@@ -69,6 +69,7 @@ dev = [
   "textual>=8.2.8",
   "twine>=7.0.0",
   "certifi>=2026.10.19",         # PYSEC-2026-4320
+  "filelock>=4.2.1; python_version >= '3.11'", # CVE-2026-112906, -112940, -112914, via cachecontrol; 4.2.1 needs 3.11, so 3.10 keeps 4.1.x
 ]
 yaml = [
   "PyYAML>=6.0.3"
@@ -247,4 +248,4 @@ ignore-vulns = []
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = {lib-cli-exit-tools = false, hypothesis = "2026-10-16T16:46:42Z", ruff = "2026-10-15T15:23:19Z", certifi = "2026-10-20T02:24:17Z"}
+exclude-newer-package = {lib-cli-exit-tools = false, certifi = "2026-10-20T02:24:17Z", filelock = "2026-10-17T16:48:15Z"}
