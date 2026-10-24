@@ -143,9 +143,48 @@ and `.yaml`/`.json` also accepted). `<Vendor>`/`<App>` are verbatim; `<slug>` is
 
 Notes: Linux `app`/`host` also read `/etc/<slug>/...`, after `/etc/xdg/<slug>/...`, so a key set in both
 takes the `/etc/<slug>` value; Linux honours
-`$XDG_CONFIG_HOME` for the user layer; Windows also checks `%LOCALAPPDATA%` for the user
-layer. Roots are overridable for tests (`LIB_LAYERED_CONFIG_ETC`,
-`LIB_LAYERED_CONFIG_MAC_APP_ROOT`, etc.).
+`$XDG_CONFIG_HOME` for the user layer; Windows reads the user layer from
+`%LOCALAPPDATA%\<Vendor>\<App>` when the `%APPDATA%` one holds no config file. Roots are
+overridable for tests (`LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_PROGRAMDATA`,
+`LIB_LAYERED_CONFIG_MAC_APP_ROOT`, `LIB_LAYERED_CONFIG_MAC_HOME_ROOT`,
+`LIB_LAYERED_CONFIG_APPDATA`, `LIB_LAYERED_CONFIG_LOCALAPPDATA`).
+
+The dotenv row is only the LAST place searched. The dotenv layer first looks for `.env` in
+`start_dir` and in every parent up to the filesystem root (the current directory and its parents
+when `start_dir` is not given; a RELATIVE `start_dir` is not resolved, so its search covers
+`start_dir` and its relative parents and ends at the current directory, not above it), then at the
+per-user path above, and loads only the first file it finds. `dotenv_path=` (CLI `--env-file`)
+loads that one file with no search.
+
+## Probing and testing an app built on it
+
+- **A probe or test started inside a repo loads that repo's `.env` secrets.** A `read_config`
+  probe, the app's CLI, or its pytest run from a repo root finds the repo's local `.env` (upload
+  tokens, passwords) by the upward search, and `config.as_dict()`, a full provenance dump or a
+  pytest assertion diff prints them. A gitignored `.env` is absent in a fresh git worktree, so a
+  test can pass there and leak in the main checkout's gate. Run probes from an empty temp
+  directory and pass `start_dir=` that directory (or `dotenv_path=` a test file); in tests anchor
+  every `start_dir` under `tmp_path` (or `monkeypatch.chdir(tmp_path)` first), never a relative
+  path. Print only what the question is about (`config.get(key)`, `config.origin(key)`), or use
+  `as_dict(redact=True)` / `to_json(redact=True)`. To isolate a run from every deployed layer
+  too, point `HOME`, `XDG_CONFIG_HOME`, `APPDATA`, `LOCALAPPDATA` and the
+  `LIB_LAYERED_CONFIG_*` roots above into that temp directory, and any network endpoint the app
+  reads at a closed local port (`127.0.0.1:1`).
+- **A Windows user-layer deploy whose `%APPDATA%` directory does not exist writes under
+  `%LOCALAPPDATA%` instead.** `deploy --target user` (and `deploy_config(..., targets=["user"])`)
+  on Windows writes `%LOCALAPPDATA%\<Vendor>\<App>\config.toml` whenever the `%APPDATA%`
+  directory is MISSING and `LIB_LAYERED_CONFIG_APPDATA` is unset; Linux and macOS have no such
+  fallback. A fixture that sets `APPDATA` to a `tmp_path` subdirectory it never creates sends
+  every Windows deploy elsewhere: a "file was written" check fails with the file not found, and
+  a "the refused deploy wrote nothing" check passes whatever the deploy did. Create the
+  directory in the fixture (`roaming.mkdir(parents=True)`), or set `LIB_LAYERED_CONFIG_APPDATA`,
+  which disables the fallback.
+- **Configured permission modes are not read on Windows.** Windows applies no modes, so a deploy
+  there never reads `[lib_layered_config.default_permissions]` and cannot refuse an unsafe
+  configured mode; it deploys. An explicit `--dir-mode`/`--file-mode` (`dir_mode=`/`file_mode=`)
+  or a `permission_overrides` mode (what an app's `--set` passes) is still validated on every
+  platform. Mark a test of a configured-mode refusal POSIX-only, and pin the Windows behaviour in
+  its own arm: the deploy proceeds.
 
 ## Profiles (per-environment config)
 
@@ -268,7 +307,8 @@ parse raises `LayerLoadError`. Then `perms = deploy_permissions_from_config(that
 overrides=<what you pass as permission_overrides>)`: `perms.enabled` says whether modes are set at all,
 and `perms.for_layer("app" | "host" | "user")` gives a `LayerModes` whose `.directory` and `.file`
 (each a `DeployMode`, printing as `0o700`) are that layer's modes, unless you pass an explicit
-`dir_mode`/`file_mode`, which wins. Modes are never applied on Windows. Use these instead of
+`dir_mode`/`file_mode`, which wins. Modes are never applied on Windows, and a deploy there never
+reads the configured ones (see "Probing and testing an app built on it"). Use these instead of
 importing anything from `lib_layered_config.core` or `lib_layered_config.examples.deploy`.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
 the list of written paths.

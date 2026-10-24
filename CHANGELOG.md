@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - The `python-layered-config` skill (plugin 7.3.1) says to write an integer outside `-2**63` to
   `2**64-1` as a string, and that a file the loader refuses surfaces as `LayerLoadError`.
+- The `python-layered-config` skill (plugin 7.3.2) adds "Probing and testing an app built on it": a
+  config probe run from inside a repository loads that repository's `.env`, so probe from an empty
+  directory with `start_dir=` set and anchor tests under `tmp_path`; a relative `start_dir` ends its
+  `.env` search at the current directory; on Windows a deploy falls back to `%LOCALAPPDATA%` when
+  the roaming directory is missing and never applies the configured modes.
 
 ## [7.3.0] 2026-10-19 22:57:34
 
