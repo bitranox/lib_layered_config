@@ -248,4 +248,4 @@ ignore-vulns = []
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = {lib-cli-exit-tools = false, certifi = "2026-10-20T02:24:17Z", filelock = "2026-10-17T16:48:15Z"}
+exclude-newer-package = {lib-cli-exit-tools = false, certifi = "2026-10-20T02:24:17Z"}
