@@ -36,6 +36,10 @@ def _clean_source(cell: dict[str, object]) -> str:
             continue
         if stripped.startswith("!") or stripped.startswith("%"):
             continue
+        # The `assert _exit_code == N` after each `!` line gates that shell command in CI's
+        # notebook run; the command is dropped above, so its gate has nothing to check here.
+        if stripped.startswith("assert _exit_code"):
+            continue
         kept.append(line)
     return "\n".join(kept).strip()
 
