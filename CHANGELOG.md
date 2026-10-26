@@ -22,6 +22,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   roots, the three app roots (`LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_MAC_APP_ROOT`,
   `LIB_LAYERED_CONFIG_PROGRAMDATA`) included; setting the OS variable `PROGRAMDATA` instead does
   nothing.
+- The `python-layered-config` skill (plugin 7.3.5) says an unquoted digit-only value with no
+  leading zero arrives as an `int` from `.env` and the environment alike, so a pydantic `str` field
+  fails startup; set `coerce_numbers_to_str=True` on one shared base model.
 
 ## [7.3.0] 2026-10-19 22:57:34
 

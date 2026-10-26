@@ -125,12 +125,21 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 
 - Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string. A sensitive key
   (one `redact=True` masks: `password`, `token`, `secret`, `*_key`) keeps `null`/`none` as text
-  unless declared with `read_config(not_sensitive=[...])`.
+  unless declared with `read_config(not_sensitive=[...])`; a number under a sensitive key still converts.
 - A value starting with `[` or `{` is parsed as JSON, in the environment AND unquoted in `.env`
   (`REPLICAS='["a","b"]'` in a shell, `REPLICAS=["a","b"]` in `.env`); a quoted `.env` value is always literal
   text; a comma list is never split.
 - A number converts only when it reads back as the same text: `5` and `3.5` do, `007123`, `0640` and `1.50`
   stay strings.
+- So an unquoted digit-only value with no leading zero (`DIR_MODE=2770`, a uid, an all-digit password)
+  arrives as an `int`, in `.env` and the environment alike; the sensitive-key rule protects only
+  `null`/`none`, never a number. A pydantic `str` field then fails startup with
+  `Input should be a valid string [type=string_type, input_value=2770, input_type=int]`. Put
+  `model_config = ConfigDict(coerce_numbers_to_str=True)` on one shared base class for every section
+  model, not per field: the conversion is lossless, so the text comes back exactly as written, `int`
+  fields stay ints, and field validators still check the text. Quoting the value fixes only that one
+  line, and the next digit-only value breaks startup again. Pin it with a test that writes a real
+  `.env` through the real loader and asserts the raw value is an `int` before the model parses it.
 - A `.env` key is the key path WITHOUT the prefix: `DATABASE__HOST=db1`. A `MY_APP___DATABASE__HOST` line in
   `.env` does not override `database.host`; it creates a separate `my_app` section.
 - An unquoted `.env` value converts exactly like an environment value; a quoted one stays literal text.
