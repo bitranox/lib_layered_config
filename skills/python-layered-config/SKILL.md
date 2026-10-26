@@ -178,7 +178,15 @@ loads that one file with no search.
   `as_dict(redact=True)` / `to_json(redact=True)`. To isolate a run from every deployed layer
   too, point `HOME`, `XDG_CONFIG_HOME`, `APPDATA`, `LOCALAPPDATA` and the
   `LIB_LAYERED_CONFIG_*` roots above into that temp directory, and any network endpoint the app
-  reads at a closed local port (`127.0.0.1:1`).
+  reads at a closed local port (`127.0.0.1:1`). Strip every inherited `LIB_LAYERED_CONFIG*` and
+  `<SLUG>___` variable from the copied environment first, then set all six roots. The three APP
+  roots are the ones a partial setup misses, `LIB_LAYERED_CONFIG_ETC`,
+  `LIB_LAYERED_CONFIG_MAC_APP_ROOT` and `LIB_LAYERED_CONFIG_PROGRAMDATA`: each platform reads only
+  its own, so a test that sets one is isolated on one OS and reads the deployed config on the
+  others. Setting the OS variable
+  `PROGRAMDATA` instead does nothing: without `LIB_LAYERED_CONFIG_PROGRAMDATA` the Windows
+  resolver looks up `ProgramData` in a plain-dict copy of `os.environ`, whose keys Windows
+  upper-cases, so the lookup misses and it reads the real `C:\ProgramData`.
 - **A Windows user-layer deploy whose `%APPDATA%` directory does not exist writes under
   `%LOCALAPPDATA%` instead.** `deploy --target user` (and `deploy_config(..., targets=["user"])`)
   on Windows writes `%LOCALAPPDATA%\<Vendor>\<App>\config.toml` whenever the `%APPDATA%`

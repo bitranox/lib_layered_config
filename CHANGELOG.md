@@ -17,6 +17,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The `python-layered-config` skill (plugin 7.3.3) says how to label the keys a
   `Config.with_overrides` supplies as the CLI's in provenance: rebuild provenance for exactly those
   keys and pass the not-sensitive set as the rebuilt `Config`'s third argument.
+- The `python-layered-config` skill (plugin 7.3.4) says which roots isolate a test from every
+  deployed layer: strip inherited `LIB_LAYERED_CONFIG*` and `<SLUG>___` variables, then set all six
+  roots, the three app roots (`LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_MAC_APP_ROOT`,
+  `LIB_LAYERED_CONFIG_PROGRAMDATA`) included; setting the OS variable `PROGRAMDATA` instead does
+  nothing.
 
 ## [7.3.0] 2026-10-19 22:57:34
 
