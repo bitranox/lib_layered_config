@@ -84,6 +84,10 @@ def iter_executable_cells() -> list[str]:
 def test_quickstart_notebook_executes_cells(tmp_path: Path) -> None:
     namespace: dict[str, object] = {}
     original_cwd = Path.cwd()
+    # The notebook sets LIB_LAYERED_CONFIG_ETC, XDG_CONFIG_HOME and a DEMO_CONFIG_* variable for
+    # its reader and never unsets them; put the environment back so they cannot reach whichever
+    # test this worker runs next.
+    original_environ = dict(os.environ)
     try:
         os.chdir(tmp_path)
         for source in iter_executable_cells():
@@ -91,3 +95,5 @@ def test_quickstart_notebook_executes_cells(tmp_path: Path) -> None:
             exec(compile(source, NOTEBOOK_PATH.name, "exec"), namespace, namespace)  # noqa: S102
     finally:
         os.chdir(original_cwd)
+        os.environ.clear()
+        os.environ.update(original_environ)
