@@ -71,6 +71,7 @@ __all__ = [
     "OrjsonCodec",
     "StdlibCodec",
     "dumps",
+    "duplicate_keys",
     "loads",
     "nesting_depth",
     "select_codec",
@@ -463,6 +464,45 @@ def loads(text: str) -> object:
         {'a': [1, 2]}
     """
     return CODEC.loads(text)
+
+
+class _ObjectPairs(list[tuple[str, object]]):
+    """One JSON object as its pairs in file order, so a repeated key is still there to see."""
+
+
+def duplicate_keys(text: str) -> list[str]:
+    """Return the dotted position of every key *text* repeats within one object, sorted.
+
+    orjson and stdlib json both keep the last value of a repeated key without a word, so a parse
+    that keeps every pair is the only place the repeat can be seen. *text* must already have
+    loaded through a codec: that parse has refused what this one would trip on (bad syntax, a
+    constant, a nesting past :data:`CONFIG_MAX_DEPTH`).
+
+    Examples:
+        >>> duplicate_keys('{"a": 1, "b": {"c": 1, "c": 2}, "a": 3, "d": [{"e": 1, "e": 2}]}')
+        ['a', 'b.c', 'd.0.e']
+        >>> duplicate_keys('{"a": {"x": 1}, "b": {"x": 2}}')
+        []
+    """
+    root: object = json.loads(text, object_pairs_hook=_ObjectPairs, parse_int=_orjson_int)
+    found: list[str] = []
+    pending: list[tuple[object, str]] = [(root, "")]
+    while pending:
+        node, position = pending.pop()
+        if isinstance(node, _ObjectPairs):
+            seen: set[str] = set()
+            for key, value in node:
+                child = f"{position}.{key}" if position else key
+                if key in seen:
+                    found.append(child)
+                seen.add(key)
+                pending.append((value, child))
+        elif isinstance(node, list):
+            items = cast("list[object]", node)
+            pending.extend(
+                (item, f"{position}.{index}" if position else str(index)) for index, item in enumerate(items)
+            )
+    return sorted(set(found))
 
 
 def nesting_depth(value: object) -> int:

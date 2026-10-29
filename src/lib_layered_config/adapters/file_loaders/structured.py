@@ -38,6 +38,7 @@ from ...domain.json_codec import (
     JSON_INT_MIN,
     JsonCodec,
     JsonLoadError,
+    duplicate_keys,
     nesting_depth,
 )
 from ...domain.source_position import SourcePosition
@@ -45,17 +46,20 @@ from ...observability import log_debug, log_error
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
 from ._toml_backend import PARSER, TomlLoadError, TomlParser
-from ._yaml_facade import as_yaml_module
+from ._yaml_facade import as_yaml_module, compose_document
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ._yaml_facade import YAMLModule
+    from ._yaml_facade import YAMLModule, YAMLNode
 
 #: Maximum size of a single configuration file. A config file is normally a few KB; this
 #: generous 10 MiB ceiling bounds memory so an oversized or adversarial file (including
 #: one dropped into a ``.d`` directory) cannot exhaust memory during a read.
 MAX_CONFIG_FILE_BYTES: Final[int] = 10 * 1024 * 1024
+
+#: The tag PyYAML resolves ``<<`` to; such a key merges a mapping in rather than naming a setting.
+_YAML_MERGE_TAG: Final[str] = "tag:yaml.org,2002:merge"
 
 yaml: YAMLModule | None = None
 
@@ -627,6 +631,7 @@ class JSONFileLoader(BaseFileLoader):
             raise _log_and_build_invalid_format(path, FileFormat.JSON, outcome.failure)
         result = self._ensure_mapping(outcome.value, path=path)
         _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.JSON)
+        _refuse_repeated_keys(duplicate_keys(decoded), path=path, file_format=FileFormat.JSON)
         _log_file_loaded(path, FileFormat.JSON)
         return result
 
@@ -681,6 +686,7 @@ class YAMLFileLoader(BaseFileLoader):
         _refuse_values_json_cannot_carry(mapping, path=path)
         _refuse_integers_json_cannot_carry(mapping, path=path, file_format=FileFormat.YAML)
         _refuse_nesting_json_cannot_write(mapping, path=path, file_format=FileFormat.YAML)
+        _refuse_repeated_keys(_yaml_repeated_keys(decoded, yaml_module), path=path, file_format=FileFormat.YAML)
         _log_file_loaded(path, FileFormat.YAML)
         return mapping
 
@@ -721,6 +727,78 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
     if outcome.failure is not None:
         raise _log_and_build_invalid_format(path, FileFormat.YAML, outcome.failure)
     return {} if outcome.value is None else outcome.value
+
+
+def _refuse_repeated_keys(positions: list[str], *, path: str, file_format: FileFormat) -> None:
+    """Refuse a file that repeats a key within one table, naming every repeat's position.
+
+    JSON and YAML parsers keep the last value of a repeated key without a word, so a copy-pasted
+    block silently replaces the setting above it; TOML refuses the same file as invalid. The
+    message names positions only, never a value, which may be a secret.
+
+    Examples:
+        >>> _refuse_repeated_keys([], path="demo.json", file_format=FileFormat.JSON)
+        >>> _refuse_repeated_keys(["db.host"], path="demo.json", file_format=FileFormat.JSON)  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: demo.json repeats a key, ...: db.host
+    """
+    if not positions:
+        return
+    message = f"{path} repeats a key, and only its last value would load: {'; '.join(positions)}"
+    _log_file_invalid(path, file_format, message)
+    raise InvalidFormatError(message)
+
+
+def _yaml_repeated_keys(document: str, module: YAMLModule) -> list[str]:
+    """Return ``"<position> (line L, column C)"`` for every key *document* repeats in one mapping.
+
+    ``safe_load`` keeps only the last of two equal keys, so the check reads the composed node
+    graph, where both are still there. Two keys are equal when their resolved tag and text are, so
+    ``a`` and ``"a"`` are one key. A merge key (``<<``) is not a setting and may appear more than once
+    in a mapping, so it is skipped as a key; its value is still checked. Every node is visited once: an alias is
+    the same node as its anchor, and a document may alias a node into itself.
+
+    Examples:
+        >>> module = _load_yaml_module()
+        >>> module is None or _yaml_repeated_keys("a: 1\\nb: {c: 1, c: 2}\\n", module) == ["b.c (line 2, column 11)"]
+        True
+    """
+    root = compose_document(module, document)
+    found: list[tuple[int, int, str]] = []
+    visited: set[int] = set()
+    pending: list[tuple[YAMLNode, str]] = [] if root is None else [(root, "")]
+    while pending:
+        node, position = pending.pop()
+        if id(node) in visited:
+            continue
+        visited.add(id(node))
+        if node.id == "mapping":
+            found.extend(_repeats_in_mapping(node, position, pending))
+        elif node.id == "sequence":
+            items = cast("list[YAMLNode]", node.value)
+            pending.extend((item, _join_position(position, str(index))) for index, item in enumerate(items))
+    return [f"{where} (line {line + 1}, column {column + 1})" for line, column, where in sorted(found)]
+
+
+def _repeats_in_mapping(
+    node: YAMLNode, position: str, pending: list[tuple[YAMLNode, str]]
+) -> list[tuple[int, int, str]]:
+    """Return ``(line, column, position)`` of each repeated key in one mapping node; queue its values."""
+    repeats: list[tuple[int, int, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for key_node, value_node in cast("list[tuple[YAMLNode, YAMLNode]]", node.value):
+        if key_node.tag == _YAML_MERGE_TAG or key_node.id != "scalar":
+            # A non-scalar key is refused afterwards, as a key that is not a string.
+            pending.append((value_node, position))
+            continue
+        key = (key_node.tag, cast("str", key_node.value))
+        child = _join_position(position, key[1])
+        if key in seen:
+            repeats.append((key_node.start_mark.line, key_node.start_mark.column, child))
+        seen.add(key)
+        pending.append((value_node, child))
+    return repeats
 
 
 def _refuse_non_string_keys(data: object, *, path: str) -> None:

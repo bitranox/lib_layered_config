@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- A JSON or YAML config file that names the same key twice in one table is refused with
+  `LayerLoadError`: `"<path> repeats a key, and only its last value would load: db.host"`, a YAML
+  position adding its line and column. Both parsers kept the last value without a word, so a
+  copy-pasted block silently replaced the setting above it; TOML already refused such a file. A YAML
+  merge key (`<<`) may still appear more than once, and a JSON value in an environment variable or `.env`
+  still keeps the last of a repeated key.
+
 ## [7.5.0] - 2026-10-29
 
 ### Fixed
