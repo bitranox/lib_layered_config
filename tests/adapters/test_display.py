@@ -6,6 +6,7 @@ implicitly through the public API.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -224,9 +225,11 @@ def test_display_human_redacts_sensitive_values(capsys: pytest.CaptureFixture[st
     display_config(config, output_format=OutputFormat.HUMAN)
 
     output = capsys.readouterr().out
+    lines = [line.strip() for line in output.splitlines()]
     assert "secret123" not in output
-    assert "***REDACTED***" in output
-    assert "smtp.example.com" in output
+    assert 'password = "***REDACTED***"' in lines
+    # A whole-line compare: a substring check would also pass a wrong host such as xsmtp.example.com.
+    assert 'host = "smtp.example.com"' in lines
 
 
 def test_display_json_redacts_sensitive_values(capsys: pytest.CaptureFixture[str]) -> None:
@@ -237,8 +240,7 @@ def test_display_json_redacts_sensitive_values(capsys: pytest.CaptureFixture[str
 
     output = capsys.readouterr().out
     assert "secret123" not in output
-    assert "***REDACTED***" in output
-    assert "smtp.example.com" in output
+    assert json.loads(output) == {"email": {"password": "***REDACTED***", "host": "smtp.example.com"}}
 
 
 # ======================== List values ========================
