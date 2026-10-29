@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.4.1] 2026-10-29 17:14:23
+
 ### Fixed
 - `read_config*(default_file=...)` refuses a FIFO, character or block device, or socket, naming the
   kind (`"/dev/fd/63 is a FIFO, not a configuration file"`). Such a path, a shell's `<(...)` among
@@ -15,6 +17,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   suffix at all): `"defaults.conf has no supported format (.toml, .json, .yaml, .yml)"`. It loaded
   nothing and raised nothing before. The layers found on disk and the files in a `.d` directory are
   unchanged: those still skip any other suffix.
+
+### Changed
+- The `python-layered-config` skill (plugin 7.4.1) says a redactor that masks only strings leaks a
+  secret the loader delivered as a list or table: mask by key whatever the value's shape, name a
+  secret-bearing key no built-in pattern matches, and refuse a non-text value for a text setting.
 
 ## [7.4.0] 2026-10-29 14:03:17
 
