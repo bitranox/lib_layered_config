@@ -15,6 +15,7 @@ import pytest
 
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from lib_layered_config.domain.errors import InvalidFormatError
+from lib_layered_config.domain.json_codec import OrjsonCodec, StdlibCodec
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -52,10 +53,30 @@ def test_a_toml_file_nested_too_deep_says_so(tmp_path: Path, text: str, where: s
 
 
 @os_agnostic
-def test_a_json_file_nested_too_deep_says_so(tmp_path: Path) -> None:
-    path, message = _refusal(tmp_path, "deep.json", '{"x": ' + "[" * 1100 + "]" * 1100 + "}", JSONFileLoader())
+def test_a_json_file_nested_too_deep_says_so_with_orjson_s_position(tmp_path: Path) -> None:
+    orjson = pytest.importorskip("orjson")
+    deep = '{"x": ' + "[" * 1100 + "]" * 1100 + "}"
+
+    path, message = _refusal(tmp_path, "deep.json", deep, JSONFileLoader(OrjsonCodec(orjson)))
 
     assert message.startswith(f"{path} nests deeper than the JSON parser allows (line 1, column ")
+
+
+@os_agnostic
+def test_a_json_file_nested_too_deep_says_so_with_the_stdlib_codec(tmp_path: Path) -> None:
+    deep = '{"x": ' + "[" * 1100 + "]" * 1100 + "}"
+
+    path, message = _refusal(tmp_path, "deep.json", deep, JSONFileLoader(StdlibCodec()))
+
+    assert message == f"{path} nests deeper than the JSON parser allows"
+
+
+@os_agnostic
+@pytest.mark.parametrize("text", ['{"x": NaN}', '{"x": 1e400}'], ids=["nan", "infinity"])
+def test_the_stdlib_codec_calls_a_json_file_orjson_refuses_invalid(tmp_path: Path, text: str) -> None:
+    path, message = _refusal(tmp_path, "bad.json", text, JSONFileLoader(StdlibCodec()))
+
+    assert message == f"{path} is not valid JSON"
 
 
 @_needs_yaml

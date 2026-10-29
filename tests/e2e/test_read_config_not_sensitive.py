@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, cast
 
-import orjson
 import pytest
 
 from lib_layered_config import REDACTED_PLACEHOLDER, Config, read_config, read_config_json
@@ -45,7 +45,7 @@ def _read(sandbox: LayeredSandbox, not_sensitive: list[str] | None = None) -> Co
 
 @os_agnostic
 def test_to_json_shows_a_declared_key_while_a_secret_stays_masked(sandbox: LayeredSandbox) -> None:
-    shown = orjson.loads(_read(sandbox, _DECLARED).to_json(redact=True))
+    shown = json.loads(_read(sandbox, _DECLARED).to_json(redact=True))
 
     assert shown == {"performance": {"max_token_bytes": 4096}, "db": {"password": REDACTED_PLACEHOLDER}}
 
@@ -57,7 +57,7 @@ def test_without_a_declaration_the_key_stays_masked(sandbox: LayeredSandbox) -> 
 
 @os_agnostic
 def test_read_config_json_applies_the_declaration(sandbox: LayeredSandbox) -> None:
-    payload = orjson.loads(
+    payload = json.loads(
         read_config_json(
             vendor="Acme",
             app="ConfigKit",

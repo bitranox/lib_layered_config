@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import orjson
 import rich_click as click
 
+from ..domain import json_codec
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from ..domain.deploy_permissions import DeployPermissionsError
 from ..examples import DeployAction, DeployResult
@@ -106,7 +106,7 @@ def _format_results(results: list[DeployResult]) -> str:
         _append_result_to_output(r, output)
         for dot_d_r in r.dot_d_results:
             _append_result_to_output(dot_d_r, output, prefix="dot_d_")
-    return orjson.dumps({k: v for k, v in output.items() if v}, option=orjson.OPT_INDENT_2).decode()
+    return json_codec.dumps({k: v for k, v in output.items() if v}, indent=True)
 
 
 @click.command("deploy", context_settings=CLICK_CONTEXT_SETTINGS)

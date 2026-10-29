@@ -14,7 +14,7 @@ import re
 from collections.abc import Mapping, Set
 from typing import TypeGuard
 
-import orjson
+from ...domain import json_codec
 
 __all__ = ["is_array", "is_table", "toml_key", "toml_path", "toml_value"]
 
@@ -113,7 +113,7 @@ def _toml_string(text: str) -> str:
         '"say \\"hi\\"\\u001b"'
     """
     # A JSON string is a TOML basic string, except that TOML also forbids a raw DEL.
-    escaped = orjson.dumps(text).decode().replace("\x7f", "\\u007f")
+    escaped = json_codec.dumps(text).replace("\x7f", "\\u007f")
     return _C1_CONTROL.sub(lambda match: f"\\u{ord(match.group()):04x}", escaped)
 
 

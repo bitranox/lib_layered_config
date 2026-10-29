@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
-
-import orjson
 
 from lib_layered_config import REDACTED_PLACEHOLDER, Config, OutputFormat, display_config
 from lib_layered_config.domain.config import SourceInfo
@@ -25,7 +24,7 @@ def _config(not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> Config:
 
 def _section_json(capsys: pytest.CaptureFixture[str], config: Config, section: str) -> object:
     display_config(config, output_format=OutputFormat.JSON, section=section)
-    return orjson.loads(capsys.readouterr().out)
+    return json.loads(capsys.readouterr().out)
 
 
 @os_agnostic

@@ -24,7 +24,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
-import orjson
 import rich_click as click
 
 from .. import __init__conf__
@@ -33,6 +32,7 @@ from .._platform import normalise_resolver_platform as _normalise_resolver_platf
 from ..adapters.display.toml_text import is_table, toml_key, toml_path, toml_value
 from ..application.ports import OutputFormat, SourceInfoPayload
 from ..core import read_config, read_config_json, read_config_raw
+from ..domain import json_codec
 from ..domain.redaction import redact_mapping
 from .constants import DEFAULT_JSON_INDENT
 
@@ -373,7 +373,7 @@ def json_paths(paths: Iterable[Path]) -> str:
 
     Provide machine-readable artifacts for deployment/generation commands.
     """
-    return orjson.dumps([str(path) for path in paths], option=orjson.OPT_INDENT_2).decode()
+    return json_codec.dumps([str(path) for path in paths], indent=True)
 
 
 def human_payload(query: ReadQuery, *, redact: bool = False) -> str:

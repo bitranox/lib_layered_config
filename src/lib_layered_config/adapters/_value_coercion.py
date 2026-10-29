@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Final
+from typing import Final, cast
 
-import orjson
-
+from ..domain import json_codec
 from ..domain.json_codec import JSON_INT_MAX, JSON_INT_MIN
 from ..domain.redaction import NotSensitiveKeys, is_sensitive_at
 from ._nested_keys import NESTED_KEY_DELIMITER
@@ -104,9 +103,11 @@ def parse_json_container(value: str) -> list[object] | dict[str, object] | None:
     if not value.startswith(_JSON_CONTAINER_PREFIXES):
         return None
     try:
-        return orjson.loads(value)
-    except orjson.JSONDecodeError:
+        parsed = json_codec.loads(value)
+    except json_codec.JsonLoadError:
         return None
+    # The text opens with "[" or "{", so a document that parsed is an array or an object; JSON keys are strings.
+    return cast("list[object] | dict[str, object]", parsed) if isinstance(parsed, (list, dict)) else None
 
 
 def parse_number(value: str) -> int | float | None:

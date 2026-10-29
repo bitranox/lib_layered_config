@@ -19,12 +19,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import orjson
 import rich_click as click
 from rich.console import Console
 from rich.text import Text
 
 from ...application.ports import OutputFormat
+from ...domain import json_codec
 from ...domain.redaction import REDACTED_PLACEHOLDER
 from .toml_text import is_array, is_table, toml_key, toml_path, toml_value
 
@@ -235,7 +235,7 @@ def _display_json(config: Config, section: str | None) -> None:
         if config.get(section, default=_ABSENT) is _ABSENT:
             raise ValueError(f"Section '{section}' not found")
         redacted = {section: config.get_redacted(section)}
-        click.echo(orjson.dumps(redacted, option=orjson.OPT_INDENT_2).decode())
+        click.echo(json_codec.dumps(redacted, indent=True))
     else:
         click.echo(config.to_json(indent=2, redact=True))
 

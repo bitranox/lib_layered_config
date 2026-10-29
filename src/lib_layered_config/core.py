@@ -26,12 +26,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import orjson
-
 from ._layers import collect_deploy_layers, collect_layers, merge_or_empty
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.path_resolvers.default import DefaultPathResolver
+from .domain import json_codec
 from .domain.config import EMPTY_CONFIG, Config
 from .domain.errors import (
     ConfigError,
@@ -169,7 +168,7 @@ def read_config_json(
         vendor / app / slug / profile / prefer / start_dir / default_file / dotenv_path: Same meaning as
             :func:`read_config`.
         indent: Optional indentation level.  Any non-``None`` value produces
-            2-space indented output (orjson only supports 2-space indentation).
+            2-space indented output (always a 2-space indent).
         redact: When ``True``, sensitive values (passwords, tokens, secrets,
             API keys) are replaced with ``***REDACTED***`` in the config data.
         max_profile_length: Maximum allowed profile name length (default: 64).
@@ -419,7 +418,7 @@ def _dump_json(payload: object, indent: int | None) -> str:
     Args:
         payload: JSON-serialisable object to dump.
         indent: When set to any non-``None`` value, produces 2-space indented
-            output (orjson only supports 2-space indentation).  ``None``
+            output (always a 2-space indent).  ``None``
             produces compact output.
 
     Returns:
@@ -431,8 +430,7 @@ def _dump_json(payload: object, indent: int | None) -> str:
         >>> "\\n" in _dump_json({"a": 1}, indent=2)
         True
     """
-    option = orjson.OPT_INDENT_2 if indent is not None else 0
-    return orjson.dumps(payload, option=option).decode()
+    return json_codec.dumps(payload, indent=indent is not None)
 
 
 __all__ = [

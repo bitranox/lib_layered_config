@@ -30,8 +30,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Final, TypedDict, TypeGuard, TypeVar, cast
 
-import orjson
-
+from . import json_codec
 from .redaction import REDACTED_PLACEHOLDER, NotSensitiveKeys, redact_mapping
 
 __all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo"]
@@ -172,7 +171,7 @@ class Config(MappingABC[str, Any]):
 
         Args:
             indent: When set to any non-``None`` value, produces 2-space
-                indented output (orjson only supports 2-space indentation).
+                indented output (always a 2-space indent).
             redact: When ``True``, sensitive values (passwords, tokens, secrets,
                 API keys) are replaced with ``***REDACTED***`` before
                 serialisation.
@@ -188,8 +187,7 @@ class Config(MappingABC[str, Any]):
             True
         """
         data = self.as_dict(redact=redact)
-        option = orjson.OPT_INDENT_2 if indent is not None else 0
-        return orjson.dumps(data, option=option).decode()
+        return json_codec.dumps(data, indent=indent is not None)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Return the value for *key* or a default when the path is missing.

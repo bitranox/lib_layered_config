@@ -5,7 +5,7 @@ hex literal of any width, so a config holding a wider integer loaded and then cr
 view (``Config.to_json``, ``read_config_json``, ``display_config`` in JSON) with an uncaught
 ``TypeError: Integer exceeds 64-bit range``. The loader refuses the file instead, naming the file,
 where each such integer sits and its width, never its digits - the rule ``!!set`` and ``!!binary``
-already follow. JSON itself never reaches it: orjson reads a wide integer as a float.
+already follow. JSON itself never reaches it: the JSON codec reads a wide integer as a float, as orjson does.
 """
 
 from __future__ import annotations

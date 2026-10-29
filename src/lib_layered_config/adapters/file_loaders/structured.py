@@ -29,11 +29,10 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
-import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
-from ...domain.json_codec import JSON_INT_MAX, JSON_INT_MIN
+from ...domain.json_codec import CODEC, JSON_INT_MAX, JSON_INT_MIN, JsonCodec, JsonLoadError
 from ...observability import log_debug, log_error
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
@@ -94,9 +93,6 @@ _TOML_POSITION: Final[re.Pattern[str]] = re.compile(r"line (\d+),? column (\d+)"
 #: array or inline table, "recursion limit" for a table header or dotted key. Fixed wording that
 #: carries no file content.
 _TOML_TOO_DEEP: Final[re.Pattern[str]] = re.compile(r"recursion")
-
-#: orjson's depth refusal: "depth limit exceeded: line 1 column 1026 (char 1025)".
-_JSON_TOO_DEEP: Final[str] = "depth limit exceeded"
 
 
 @dataclass(frozen=True)
@@ -240,19 +236,6 @@ def _yaml_position(exc: BaseException) -> tuple[int, int] | None:
     return None
 
 
-def _json_position(exc: BaseException) -> tuple[int, int] | None:
-    """Return the 1-based line and column an ``orjson.JSONDecodeError`` reports, or None.
-
-    Args:
-        exc: The exception caught while parsing; only ``orjson.JSONDecodeError`` carries a
-            position, so any other exception type yields ``None``.
-
-    Returns:
-        The (line, column) pair, or ``None``.
-    """
-    return (exc.lineno, exc.colno) if isinstance(exc, orjson.JSONDecodeError) else None
-
-
 def _toml_failure(exc: BaseException) -> _ParseFailure:
     """Read an ``rtoml.TomlParsingError`` into its position and whether it is rtoml's depth limit.
 
@@ -267,17 +250,17 @@ def _toml_failure(exc: BaseException) -> _ParseFailure:
 
 
 def _json_failure(exc: BaseException) -> _ParseFailure:
-    """Read an ``orjson.JSONDecodeError`` into its position and whether it is orjson's depth limit.
+    """Read a :class:`JsonLoadError` into its position and whether the document nests too deep.
 
     Examples:
-        >>> import orjson
-        >>> try:
-        ...     orjson.loads("[" * 1100 + "]" * 1100)
-        ... except orjson.JSONDecodeError as error:
-        ...     _json_failure(error).too_deep
-        True
+        >>> _json_failure(JsonLoadError("deep", too_deep=True))
+        _ParseFailure(position=None, too_deep=True)
+        >>> _json_failure(JsonLoadError("bad", position=(2, 8)))
+        _ParseFailure(position=(2, 8), too_deep=False)
     """
-    return _ParseFailure(_json_position(exc), too_deep=str(exc).startswith(_JSON_TOO_DEEP))
+    if not isinstance(exc, JsonLoadError):
+        return _ParseFailure(None)
+    return _ParseFailure(exc.position, too_deep=exc.too_deep)
 
 
 #: Sentinel returned by :func:`_run_parser` in place of a value when the parse failed. A real
@@ -546,8 +529,13 @@ class JSONFileLoader(BaseFileLoader):
 
     Provide a drop-in parser for JSON configuration files.
 
-    Uses :mod:`orjson` to parse files and delegates validation/logging to the base class.
+    Parses with the interpreter's JSON codec (orjson, or stdlib json with the same answers) and
+    delegates validation/logging to the base class.
     """
+
+    def __init__(self, codec: JsonCodec = CODEC) -> None:
+        """Parse with *codec*; the default is the codec this interpreter chose at import."""
+        self._codec = codec
 
     def load(self, path: str) -> Mapping[str, object]:
         """Return mapping extracted from JSON file at *path*.
@@ -578,7 +566,7 @@ class JSONFileLoader(BaseFileLoader):
         except InvalidFormatError as exc:
             _log_file_invalid(path, "json", str(exc))
             raise
-        payload, failure = _run_parser(lambda: orjson.loads(decoded), orjson.JSONDecodeError, _json_failure)
+        payload, failure = _run_parser(lambda: self._codec.loads(decoded), JsonLoadError, _json_failure)
         if payload is _PARSE_FAILED:
             raise _log_and_build_invalid_format(path, "json", failure)
         result = self._ensure_mapping(payload, path=path)

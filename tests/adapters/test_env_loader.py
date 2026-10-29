@@ -172,7 +172,7 @@ def test_env_loader_parses_nested_json_value() -> None:
 
 @os_agnostic
 def test_json_decoded_value_is_independent_between_loads() -> None:
-    """orjson allocates fresh objects, so mutating one load must not leak into the next."""
+    """The JSON codec allocates fresh objects, so mutating one load must not leak into the next."""
     environ = {"MYAPP___ITEMS": '["a", "b"]'}
     first = DefaultEnvLoader(environ=environ).load("MYAPP")
     assert isinstance(first["items"], list)
