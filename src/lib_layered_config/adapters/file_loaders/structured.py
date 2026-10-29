@@ -151,8 +151,8 @@ def special_file_not_config_file(path: Path) -> InvalidFormatError:
         The error to raise.
 
     Examples:
-        >>> str(special_file_not_config_file(Path("/nonexistent-lib-layered-config-probe")))
-        '/nonexistent-lib-layered-config-probe is a special file, not a configuration file'
+        >>> str(special_file_not_config_file(Path("nonexistent-lib-layered-config-probe")))
+        'nonexistent-lib-layered-config-probe is a special file, not a configuration file'
     """
     try:
         mode = path.stat().st_mode
