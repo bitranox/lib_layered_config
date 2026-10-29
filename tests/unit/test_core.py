@@ -71,6 +71,9 @@ def test_module_entry_exits_with_cli_status(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr("lib_layered_config.cli.main", fake_main)
 
     monkeypatch.setattr(sys, "argv", ["lib_layered_config"])
+    # Another test may have imported the module already; runpy then warns that re-running it as
+    # __main__ "may result in unpredictable behaviour". Run it from a clean slate instead.
+    monkeypatch.delitem(sys.modules, "lib_layered_config.__main__", raising=False)
 
     with pytest.raises(SystemExit) as captured:
         runpy.run_module("lib_layered_config.__main__", run_name="__main__")
