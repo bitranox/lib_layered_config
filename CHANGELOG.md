@@ -26,6 +26,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   leading zero arrives as an `int` from `.env` and the environment alike, so a pydantic `str` field
   fails startup; set `coerce_numbers_to_str=True` on one shared base model.
 
+### Fixed
+- `read_config(dotenv_path=...)` and `--env-file` read a FIFO or a device, so a shell process
+  substitution (`--env-file <(printf 'KEY=value')`) works. It used to load nothing, silently. The
+  read stops one byte past the 10 MiB cap, so an endless source such as `/dev/zero` is refused
+  instead of read forever. A path that does not exist still loads nothing.
+- An environment or `.env` integer outside `-2**63 .. 2**64-1` (such as `-9999999999999999999`)
+  stays a string. As an int it loaded and then made `Config.to_json()` and every other JSON view
+  raise `TypeError: Integer exceeds 64-bit range`.
+- The docstring of the `.env` upward search said it searches nowhere without a start directory;
+  it starts in the current directory.
+
 ## [7.3.0] 2026-10-19 22:57:34
 
 ### Changed

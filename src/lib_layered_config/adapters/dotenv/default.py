@@ -30,7 +30,7 @@ from .._nested_keys import assign_nested
 from .._path_probe import PathKind, checked_kind, config_path_unreadable, current_directory, probe_path
 from .._text_decoding import decode_utf8
 from .._value_coercion import coerce_value
-from ..file_loaders.structured import directory_not_config_file, ensure_within_size_cap
+from ..file_loaders.structured import directory_not_config_file, read_capped_bytes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -51,9 +51,9 @@ def _log_dotenv_loaded(path: Path, keys: Mapping[str, object]) -> None:
     log_debug("dotenv_loaded", layer=DOTENV_LAYER, path=str(path), keys=sorted(keys.keys()))
 
 
-def _log_dotenv_missing() -> None:
-    """Log that no dotenv file was found in the search path."""
-    log_debug("dotenv_not_found", layer=DOTENV_LAYER, path=None)
+def _log_dotenv_missing(path: Path | None = None) -> None:
+    """Log that no dotenv file was found: in the search path, or at the explicit *path* given."""
+    log_debug("dotenv_not_found", layer=DOTENV_LAYER, path=None if path is None else str(path))
 
 
 def _log_dotenv_error(path: Path, line_number: int) -> None:
@@ -102,13 +102,17 @@ class DefaultDotEnvLoader:
         return {}
 
     def _load_explicit(self, path: Path) -> Mapping[str, object]:
-        """Load a specific dotenv file without directory search."""
+        """Load a specific dotenv file without directory search.
+
+        A FIFO or device is read like a file, so ``--env-file <(...)`` works; a path that does not
+        exist loads nothing.
+        """
         self.last_loaded_path = None
         kind = checked_kind(path)
         if kind is PathKind.DIRECTORY:
             raise directory_not_config_file(path)
-        if kind is not PathKind.FILE:
-            _log_dotenv_missing()
+        if kind is PathKind.MISSING:
+            _log_dotenv_missing(path)
             return {}
         self.last_loaded_path = str(path)
         data = _parse_dotenv(path, not_sensitive=self._not_sensitive)
@@ -144,13 +148,13 @@ def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveK
     Raises:
         InvalidFormatError: On malformed lines or bytes, or when the file is larger than
             :data:`~lib_layered_config.adapters.file_loaders.structured.MAX_CONFIG_FILE_BYTES`
-            (checked before the file is read, the same cap and refusal shape structured
-            configuration files use), or when it cannot be read.
+            (a regular file is sized before it is read, a FIFO or device is read to one byte past
+            the cap; the same cap and refusal shape structured configuration files use), or when
+            it cannot be read.
     """
     result: dict[str, object] = {}
     try:
-        ensure_within_size_cap(str(path), path.stat().st_size)
-        raw = path.read_bytes()
+        raw = read_capped_bytes(path)
     except OSError as error:
         raise config_path_unreadable(path, error) from error
     text = decode_utf8(raw, path=path)

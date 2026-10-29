@@ -20,7 +20,9 @@ before passing the results to the merge policy.
 
 from __future__ import annotations
 
+import os
 import re
+import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import import_module
@@ -382,6 +384,40 @@ def ensure_within_size_cap(path: str, size: int) -> None:
         raise InvalidFormatError(
             f"Configuration file {path} is {size} bytes, exceeding the {MAX_CONFIG_FILE_BYTES}-byte limit"
         )
+
+
+def read_capped_bytes(path: Path) -> bytes:
+    """Read *path* whole, refusing it once it holds more than :data:`MAX_CONFIG_FILE_BYTES`.
+
+    A regular file is sized with ``stat()`` first, so an oversized one is refused unread. A stream
+    (a FIFO such as a shell's ``<(...)``, or a device) has no size to ask, so at most one byte past
+    the cap is read: an endless source like ``/dev/zero`` is refused instead of read forever. A
+    refused stream reports the cap plus one as its size, the most that was read.
+
+    Args:
+        path: The file or stream to read.
+
+    Returns:
+        The content.
+
+    Raises:
+        InvalidFormatError: When the content exceeds the cap.
+        OSError: When *path* cannot be opened or read.
+
+    Examples:
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     target = Path(tmp) / "a.env"
+        ...     _ = target.write_bytes(b"A=1")
+        ...     read_capped_bytes(target)
+        b'A=1'
+    """
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        ensure_within_size_cap(str(path), opened.st_size if stat.S_ISREG(opened.st_mode) else 0)
+        payload = stream.read(MAX_CONFIG_FILE_BYTES + 1)
+    ensure_within_size_cap(str(path), len(payload))
+    return payload
 
 
 class BaseFileLoader:
