@@ -1,6 +1,6 @@
 [project]
 name = "lib_layered_config"
-version = "7.4.2"
+version = "7.5.0"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -67,7 +67,7 @@ dev = [
   "coverage[toml]>=7.16.2",
   "httpx2>=2.14.0",
   "hypothesis>=6.168.5,<6.169; python_version<'3.11'",  # 6.169 requires Python 3.11
-  "hypothesis>=6.170.6; python_version>='3.11'",
+  "hypothesis>=6.170.7; python_version>='3.11'",
   "import-linter>=2.15",
   "bandit>=1.9.4",
   "pip-audit>=2.10.1",

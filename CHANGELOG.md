@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.5.0] - 2026-10-29
+
 ### Fixed
 - The `layer` field of the `layer_loaded`, `layer_error` and `deploy_setting_ignored` log events holds the
   layer's plain name (`"defaults"`), as the other events already did. It held the `Layer` member, which a
