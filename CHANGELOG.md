@@ -6,7 +6,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Free-threaded Python: the package installs and runs on 3.14t and 3.15t with the GIL off, and
+  declares `Free Threading :: 3 - Stable`. CI runs free-threaded cells for 3.14 and 3.15.
+- The extras `rtoml` and `orjson` (`pip install "lib_layered_config[rtoml,orjson]"`) bring the
+  Rust-based parsers back on Python 3.14+ with the GIL.
+
 ### Changed
+- `rtoml` and `orjson` are required only below Python 3.14; neither ships a free-threaded build,
+  and importing one would turn the GIL back on. Without them, and on every free-threaded
+  interpreter, TOML is read with stdlib `tomllib` and JSON with stdlib `json`. The stdlib
+  backends give the same results and refuse the same input: JSON nested past 1024 levels to read
+  or 254 to write, `NaN`/`Infinity`, numbers past the float range, lone surrogates, integers no
+  JSON view can carry, and TOML nested too deep. The one difference: `rtoml` stops at 80 levels
+  of TOML syntax, which is 80 to 82 levels of data depending on the form, and `tomllib` refuses
+  data deeper than 82 levels, so a file within two levels of that limit can load on `tomllib`
+  where `rtoml` refuses it.
 - The `python-layered-config` skill (plugin 7.3.1) says to write an integer outside `-2**63` to
   `2**64-1` as a string, and that a file the loader refuses surfaces as `LayerLoadError`.
 - The `python-layered-config` skill (plugin 7.3.2) adds "Probing and testing an app built on it": a
