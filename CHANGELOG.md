@@ -18,7 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   JSON view and the CLI `read` crashed with `TypeError: str is not valid UTF-8`. A `.env` file with the
   same bytes was already refused this way. Variables outside the prefix are not looked at.
 
-## [7.4.1] 2026-10-29 17:14:23
+## [7.4.1] - 2026-10-29
 
 ### Fixed
 - `read_config*(default_file=...)` refuses a FIFO, character or block device, or socket, naming the
@@ -35,7 +35,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   secret the loader delivered as a list or table: mask by key whatever the value's shape, name a
   secret-bearing key no built-in pattern matches, and refuse a non-text value for a text setting.
 
-## [7.4.0] 2026-10-29 14:03:17
+## [7.4.0] - 2026-10-29
 
 ### Added
 - Free-threaded Python: the package installs and runs on 3.14t and 3.15t with the GIL off, and
@@ -99,7 +99,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The docstring of the `.env` upward search said it searches nowhere without a start directory;
   it starts in the current directory.
 
-## [7.3.0] 2026-10-19 22:57:34
+## [7.3.0] - 2026-10-19
 
 ### Changed
 - **A TOML or YAML integer outside JSON's range refuses the file.** orjson writes an integer only
@@ -116,7 +116,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `.gitignore` no longer carries an inline comment on four patterns (`*$py.class`, `*.egg-info/`,
   `*.manifest`, `*.spec`): gitignore read the comment as part of the pattern, so each ignored nothing.
 
-## [7.2.0] 2026-10-19 18:47:03
+## [7.2.0] - 2026-10-19
 
 ### Added
 - `deploy_config_paths(source, *, vendor, app, targets, ...)` returns every file a `deploy_config` of
@@ -127,7 +127,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   or read its configuration past a broken file a forced deploy is about to replace, without importing
   the library's internals.
 
-## [7.1.9] 2026-10-12 22:33:42
+## [7.1.9] - 2026-10-12
 
 ### Added
 - Python 3.15 is a supported version: declared in the classifiers, so CI and `make test-all` run it.
@@ -139,7 +139,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The install section explains why installing with uv protects against supply-chain attacks and why
   a plain `pip install` from PyPI does not.
 
-## [7.1.8] 2026-10-12 20:54:35
+## [7.1.8] - 2026-10-12
 
 ### Fixed
 
@@ -150,7 +150,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   back to the layers below. It now refuses with "`<path>` is a directory, not a configuration
   file" on every platform. The upward `.env` search still passes over a directory named `.env`.
 
-## [7.1.7] 2026-10-12 20:25:56
+## [7.1.7] - 2026-10-12
 
 ### Fixed
 
@@ -171,7 +171,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   directory's attributes and the parent's listing, and switches off the backup privileges an
   elevated session would use to see through it.
 
-## [7.1.6] 2026-10-12 13:21:20
+## [7.1.6] - 2026-10-12
 
 ### Fixed
 
@@ -198,7 +198,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   way `display_config` does, through one shared module; plain keys and values print as before, and
   a list prints with a space after each comma (`["a", "b"]`).
 
-## [7.1.5] 2026-10-12 11:22:15
+## [7.1.5] - 2026-10-12
 
 ### Fixed
 
@@ -214,7 +214,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `# layer:<layer> profile:<profile> (<path>)`, the `read` command `# source: layer=..., path=...`)
   instead of calling them the same, and says a plain YAML mapping keeps the file's key order.
 
-## [7.1.4] 2026-10-12 09:40:16
+## [7.1.4] - 2026-10-12
 
 ### Fixed
 
@@ -244,7 +244,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   TOML parser allows`, with `(line N, column M)` when the parser gives a position: TOML stops at 80
   levels, JSON at 1024, YAML at Python's recursion limit. A malformed file keeps `is not valid`.
 
-## [7.1.3] 2026-10-12 01:45:26
+## [7.1.3] - 2026-10-12
 
 ### Fixed
 
@@ -257,7 +257,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   counts every mapping, list and tuple level and is 300 (was 100 mapping levels), so a redacted view
   never refuses a configuration that reading accepted.
 
-## [7.1.2] 2026-10-11 23:32:02
+## [7.1.2] - 2026-10-11
 
 ### Fixed
 
@@ -279,7 +279,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `"a\"b"`), a datetime is ISO with a `T`, and a list has a space after each comma. A set prints as a
   sorted array in both views.
 
-## [7.1.1] 2026-10-11 22:58:02
+## [7.1.1] - 2026-10-11
 
 ### Fixed
 
@@ -301,7 +301,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 - The dev dependency on hypothesis is split by Python version: 6.169 requires 3.11, so 3.10 stays below it.
 
-## [7.1.0] 2026-10-09 15:29:06
+## [7.1.0] - 2026-10-09
 
 ### Added
 
@@ -332,7 +332,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the whole section as `***REDACTED***`. A key below a masked section is now masked too.
 - The `DotEnvLoader` port declares the `dotenv_path` parameter its adapter already took.
 
-## [7.0.1] 2026-10-02 18:46:32
+## [7.0.1] - 2026-10-02
 
 ### Fixed
 
@@ -346,7 +346,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   Linux reads both `/etc/xdg/<slug>/` and `/etc/<slug>/` for the app and host layers, the latter
   winning, rather than using `/etc/<slug>/` as a fallback.
 
-## [7.0.0] 2026-10-02 18:29:51
+## [7.0.0] - 2026-10-02
 
 Breaking release. Each change below turns a case that loaded silently, or with only a warning, into
 either the documented value or a refusal at load time.
@@ -388,7 +388,7 @@ either the documented value or a refusal at load time.
   `<name>.d/` companion directory is unaffected, and the upward `.env` search still passes over a
   directory named `.env`, such as a virtualenv. The `config_directory_skipped` warning is removed.
 
-## [6.1.1] 2026-10-01 16:50:57
+## [6.1.1] - 2026-10-01
 
 ### Security
 
@@ -406,7 +406,7 @@ either the documented value or a refusal at load time.
   lookup, no per-key provenance, replaced whole by a higher layer - with no sign of why. The file still loads
   as before; the next major release refuses such keys.
 
-## [6.1.0] 2026-10-01 15:48:36
+## [6.1.0] - 2026-10-01
 
 ### Security
 
@@ -445,7 +445,7 @@ either the documented value or a refusal at load time.
   The File Permissions section of the CLI reference says so and names the two ways to avoid it.
 - **`DeployModeError`** lists the refusal of a `dir_mode`/`file_mode` given together with `set_permissions=False`.
 
-## [6.0.0] 2026-09-29 11:13:07
+## [6.0.0] - 2026-09-29
 
 ### Added
 
@@ -555,7 +555,7 @@ as `0o444`, `0o440` or `0o400` (no owner write) and a directory mode without own
 way. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
 <parser text>`) must match the new one instead (see the exception-type-change bullet above).
 
-## [5.7.0] 2026-09-27 21:56:37
+## [5.7.0] - 2026-09-27
 
 ### Changed
 
@@ -571,7 +571,7 @@ way. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
 - **`docs/python-api.md` describes `with_overrides` as the deep merge it has been since 5.3.0**, not
   a shallow top-level one.
 
-## [5.6.2] 2026-07-30 18:09:42
+## [5.6.2] - 2026-07-30
 
 ### Changed
 
@@ -583,7 +583,7 @@ way. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
   it is the only way to seed the `defaults` layer, existed only in the bitranox-skills mirror; this
   copy has been behind since. No functional change to the library.
 
-## [5.6.1] 2026-07-24 16:50:15
+## [5.6.1] - 2026-07-24
 
 ### Fixed
 
@@ -611,7 +611,7 @@ way. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
   with `Path.replace()` in `examples/deploy.py`, and a non-raw regex anchor pattern in
   `tests/unit/test_testing.py` with a raw string.
 
-## [5.6.0] 2026-07-13
+## [5.6.0] - 2026-07-13
 
 ### Added
 
@@ -641,7 +641,7 @@ way. Code that grepped the old loader message form (`Invalid <FORMAT> in <path>:
 
 - Pruned all stale `pip-audit` exclusions; documented the single remaining one (`PYSEC-2026-2132` / `CVE-2026-7246`, the `click.edit()` CVE present only in the dev/CI toolchain).
 
-## [5.5.2] 2026-06-14
+## [5.5.2] - 2026-06-14
 
 ### Changed
 - Added a `cli/typed_click.py` facade wrapping rich-click's `option` / `version_option` / `argument` decorators behind explicit, fully-known signatures, keeping the CLI strict-clean under pyright 1.1.410 (`reportUnknownMemberType`) without disabling the rule (ignore isolated to the facade).
