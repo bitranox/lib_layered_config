@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
@@ -163,9 +163,8 @@ def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveK
         entry = _split_line(raw_line, line_number, path)
         if entry is None:
             continue
-        key, raw_value = entry
-        value = _dotenv_value(key, raw_value, not_sensitive=not_sensitive)
-        assign_nested(result, key, value, error_cls=InvalidFormatError)
+        value = _dotenv_value(entry.key, entry.raw_value, not_sensitive=not_sensitive)
+        assign_nested(result, entry.key, value, error_cls=InvalidFormatError)
     return result
 
 
@@ -174,7 +173,14 @@ def _is_ignorable(line: str) -> bool:
     return not line or line.startswith(_COMMENT_CHAR)
 
 
-def _split_line(raw_line: str, line_number: int, path: Path) -> tuple[str, str] | None:
+class _DotenvEntry(NamedTuple):
+    """One ``KEY=value`` line: the stripped key and the stripped, not yet converted value."""
+
+    key: str
+    raw_value: str
+
+
+def _split_line(raw_line: str, line_number: int, path: Path) -> _DotenvEntry | None:
     """Return a dotenv line's key and raw value, or None for a blank or comment line.
 
     Raises:
@@ -187,7 +193,7 @@ def _split_line(raw_line: str, line_number: int, path: Path) -> tuple[str, str] 
         _log_dotenv_error(path, line_number)
         raise InvalidFormatError(f"Malformed line {line_number} in {path}")
     key, value = line.split(_KEY_VALUE_DELIMITER, 1)
-    return key.strip(), value.strip()
+    return _DotenvEntry(key=key.strip(), raw_value=value.strip())
 
 
 def _dotenv_value(key: str, raw: str, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> object:

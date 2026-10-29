@@ -7,6 +7,7 @@ file) stays reachable through ``__context__``.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import TYPE_CHECKING, Final
 
 from ..domain.errors import InvalidFormatError
@@ -22,6 +23,26 @@ _UTF32_LE_BOM: Final[bytes] = b"\xff\xfe\x00\x00"
 _UTF32_BE_BOM: Final[bytes] = b"\x00\x00\xfe\xff"
 _UTF16_LE_BOM: Final[bytes] = b"\xff\xfe"
 _UTF16_BE_BOM: Final[bytes] = b"\xfe\xff"
+
+
+class _BomEncoding(str, Enum):
+    """A BOM-detected encoding: the value is the Python codec, the label derives from it.
+
+    One member carries both the codec and its display name, so the two cannot be mismatched.
+    The generic codec form (no ``-le``/``-be``) strips the BOM and picks the byte order from it.
+
+    Examples:
+        >>> _BomEncoding.UTF_16.label
+        'UTF-16'
+    """
+
+    UTF_16 = "utf-16"
+    UTF_32 = "utf-32"
+
+    @property
+    def label(self) -> str:
+        """Human-readable encoding name for error messages (``"UTF-16"``/``"UTF-32"``)."""
+        return self.value.upper()
 
 
 def decode_utf8(raw: bytes, *, path: str | Path) -> str:
@@ -79,30 +100,28 @@ def decode_yaml_text(raw: bytes, *, path: str | Path) -> str:
         x.yaml is not valid UTF-16 (byte offset 2)
     """
     if raw.startswith(_UTF32_LE_BOM) or raw.startswith(_UTF32_BE_BOM):
-        return _decode_bom(raw, "utf-32", "UTF-32", path=path)
+        return _decode_bom(raw, _BomEncoding.UTF_32, path=path)
     if raw.startswith(_UTF16_LE_BOM) or raw.startswith(_UTF16_BE_BOM):
-        return _decode_bom(raw, "utf-16", "UTF-16", path=path)
+        return _decode_bom(raw, _BomEncoding.UTF_16, path=path)
     return decode_utf8(raw, path=path)
 
 
-def _decode_bom(raw: bytes, codec: str, label: str, *, path: str | Path) -> str:
-    """Decode *raw* with *codec* (a BOM-aware generic codec name), or raise content-free.
+def _decode_bom(raw: bytes, encoding: _BomEncoding, *, path: str | Path) -> str:
+    """Decode *raw* with *encoding*, or raise content-free.
 
     Args:
-        raw: Raw file bytes, starting with the BOM that selected *codec*.
-        codec: Python codec name (``"utf-16"`` or ``"utf-32"``); the generic form strips the
-            BOM and picks the byte order from it.
-        label: Human-readable encoding name for the error message (``"UTF-16"``/``"UTF-32"``).
+        raw: Raw file bytes, starting with the BOM that selected *encoding*.
+        encoding: The encoding the BOM selected.
         path: Source path used to build the error message.
 
     Returns:
         The decoded text.
 
     Raises:
-        InvalidFormatError: *raw* does not decode under *codec*.
+        InvalidFormatError: *raw* does not decode under *encoding*.
     """
     try:
-        return raw.decode(codec)
+        return raw.decode(encoding.value)
     except UnicodeDecodeError as exc:
         offset = exc.start
-    raise InvalidFormatError(f"{path} is not valid {label} (byte offset {offset})")
+    raise InvalidFormatError(f"{path} is not valid {encoding.label} (byte offset {offset})")
