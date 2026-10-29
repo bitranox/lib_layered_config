@@ -103,8 +103,8 @@ Full reference: **[docs/python-api.md](docs/python-api.md)**
 - **`.d` directory support** - split configuration into multiple files using the Linux `.d` pattern (e.g., `config.d/10-database.toml`). Supports mixed formats (TOML, YAML, JSON) in the same directory.
 - **Easy deployment** - deploy configs to app, host, and user layers with smart conflict handling that protects user customizations through automatic backups (`.bak`) and UCF files (`.ucf`) for safe CI/CD updates.
 - **Fast parsing where it can run, free-threaded where it cannot** - TOML and JSON go through the Rust-based
-  `rtoml` and `orjson` below Python 3.14, and through stdlib `tomllib` and `json` on 3.14+ and on free-threaded
-  builds (3.14t, 3.15t), with the same results either way.
+  `rtoml` and `orjson` below Python 3.14, and through `tomli` (3.14) or stdlib `tomllib` (3.15+) and stdlib
+  `json` on 3.14+ and on free-threaded builds (3.14t, 3.15t), with the same results either way.
 - **Extensible formats** - TOML and JSON are built-in; YAML is available via the optional `yaml` extra.
 - **Automation-friendly CLI** - inspect, deploy, or scaffold configurations without writing Python.
 - **Structured logging** - adapters emit trace-aware events without polluting the domain layer.
@@ -116,15 +116,17 @@ Full reference: **[docs/python-api.md](docs/python-api.md)**
 pip install lib_layered_config
 # or with optional YAML support
 pip install "lib_layered_config[yaml]"
-# on Python 3.14+ with the GIL, opt back into the Rust-based parsers
+# on Python 3.14+ with the GIL (never on a free-threaded build), opt back into the Rust-based parsers
 pip install "lib_layered_config[rtoml,orjson]"
 ```
 
 > **Requires Python 3.10+**, free-threaded 3.14t and 3.15t included. Below 3.14 `rtoml` and `orjson` are
 > installed and used. From 3.14 they are optional extras, because neither ships a free-threaded build and
 > importing one would turn the GIL back on: without them, or on any free-threaded interpreter, the library
-> parses with stdlib `tomllib` and `json`, refusing the same files the Rust parsers refuse. The one difference:
-> a TOML file nested within two levels of rtoml's 80-level limit can load on `tomllib` where `rtoml` refuses it.
+> parses TOML with `tomli` (a dependency on 3.14) or stdlib `tomllib` (3.15+) and JSON with stdlib `json`,
+> refusing the same files the Rust parsers refuse. Do not install the extras on a free-threaded build: they have
+> no free-threaded wheel, and the library never imports them there. The one difference is TOML depth: a single
+> table header, dotted key or inline table 81 to 101 levels deep loads there and is refused by `rtoml`.
 >
 > Install the optional `yaml` extra only when you actually ship `.yml` files to keep the dependency footprint small.
 

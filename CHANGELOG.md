@@ -10,18 +10,29 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Free-threaded Python: the package installs and runs on 3.14t and 3.15t with the GIL off, and
   declares `Free Threading :: 3 - Stable`. CI runs free-threaded cells for 3.14 and 3.15.
 - The extras `rtoml` and `orjson` (`pip install "lib_layered_config[rtoml,orjson]"`) bring the
-  Rust-based parsers back on Python 3.14+ with the GIL.
+  Rust-based parsers back on Python 3.14+ with the GIL. Do not install them on a free-threaded
+  build: neither has a free-threaded wheel, and the package never imports them there.
+- `tomli>=2.4.0` is a dependency on Python 3.14, where stdlib `tomllib` reads only TOML 1.0, so a
+  TOML 1.1 file loads on 3.14 and 3.14t as it does with `rtoml`.
 
 ### Changed
 - `rtoml` and `orjson` are required only below Python 3.14; neither ships a free-threaded build,
   and importing one would turn the GIL back on. Without them, and on every free-threaded
-  interpreter, TOML is read with stdlib `tomllib` and JSON with stdlib `json`. The stdlib
-  backends give the same results and refuse the same input: JSON nested past 1024 levels to read
-  or 254 to write, `NaN`/`Infinity`, numbers past the float range, lone surrogates, integers no
-  JSON view can carry, and TOML nested too deep. The one difference: `rtoml` stops at 80 levels
-  of TOML syntax, which is 80 to 82 levels of data depending on the form, and `tomllib` refuses
-  data deeper than 82 levels, so a file within two levels of that limit can load on `tomllib`
-  where `rtoml` refuses it.
+  interpreter, TOML is read with `tomli` (Python 3.14) or stdlib `tomllib` (3.15+) and JSON with
+  stdlib `json`. These backends give the same results and refuse the same files: JSON nested past
+  1024 levels, `NaN`/`Infinity`, numbers past the float range and lone surrogates on read; TOML
+  with a float past the float range or nested too deep. Writing JSON refuses the same values
+  orjson does: nesting past 254 levels, integers outside `-2**63 .. 2**64-1`, and text holding a
+  lone surrogate. A JSON integer past 64 bits reads as a float on both. The difference left is
+  TOML depth: `rtoml` allows 80 levels per table header, dotted key and value, which the parsed
+  data cannot tell apart, so `tomli`/`tomllib` refuse tables nested past 101 levels (the depth the
+  merge refuses on every path) and arrays nested in arrays past 80. A single header, dotted key or
+  inline table 81 to 101 levels deep therefore loads there and is refused by `rtoml`.
+- The `python-layered-config` skill (plugin 7.4.0) says where rtoml and orjson are used (below
+  Python 3.14, or from the `rtoml`/`orjson` extras on a GIL build, never to be installed on a
+  free-threaded one), that a free-threaded interpreter never imports them and parses with `tomli`
+  or `tomllib`, and that `dotenv_path=` / `--env-file` reads a FIFO or device under the shared
+  10 MiB cap, while a missing path is an empty layer in Python and a usage error on the CLI.
 - The `python-layered-config` skill (plugin 7.3.1) says to write an integer outside `-2**63` to
   `2**64-1` as a string, and that a file the loader refuses surfaces as `LayerLoadError`.
 - The `python-layered-config` skill (plugin 7.3.2) adds "Probing and testing an app built on it": a
@@ -45,9 +56,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `read_config(dotenv_path=...)` and `--env-file` read a FIFO or a device, so a shell process
   substitution (`--env-file <(printf 'KEY=value')`) works. It used to load nothing, silently. The
   read stops one byte past the 10 MiB cap, so an endless source such as `/dev/zero` is refused
-  instead of read forever. A path that does not exist still loads nothing.
-- An environment or `.env` integer outside `-2**63 .. 2**64-1` (such as `-9999999999999999999`)
-  stays a string. As an int it loaded and then made `Config.to_json()` and every other JSON view
+  instead of read forever. Like `cat`, the read waits for a FIFO's writer and for it to close. A
+  path that does not exist still loads nothing in the Python API (`--env-file` refuses it as a
+  usage error, as before); a socket, which used to load nothing too, is now an unreadable-file
+  error.
+- An environment or `.env` integer below `-2**63` (such as `-9999999999999999999`) stays a
+  string, as one of more than 19 digits already did. As an int it loaded and then made `Config.to_json()` and every other JSON view
   raise `TypeError: Integer exceeds 64-bit range`.
 - The docstring of the `.env` upward search said it searches nowhere without a start directory;
   it starts in the current directory.

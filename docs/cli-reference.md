@@ -38,18 +38,18 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 
 **Parameters:**
 
-| Parameter                          | Type   | Required | Default        | Description                                                                                                                                         |
-|------------------------------------|--------|----------|----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                   |
-| `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                   |
-| `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                            |
-| `--prefer`                         | string | No       | None           | Preferred file suffix (repeatable flag: `--prefer toml --prefer json`). Earlier values take precedence. Valid values: `toml`, `json`, `yaml`, `yml` |
-| `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                     |
-| `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file                                                                                   |
-| `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too                                  |
-| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (annotated prose), `json` (structured JSON)                                                                    |
-| `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                        |
-| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                       |
+| Parameter                          | Type   | Required | Default        | Description                                                                                                                                           |
+|------------------------------------|--------|----------|----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                     |
+| `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                     |
+| `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                              |
+| `--prefer`                         | string | No       | None           | Preferred file suffix (repeatable flag: `--prefer toml --prefer json`). Earlier values take precedence. Valid values: `toml`, `json`, `yaml`, `yml`   |
+| `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                       |
+| `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file                                                                                     |
+| `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat` |
+| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (annotated prose), `json` (structured JSON)                                                                      |
+| `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                          |
+| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                         |
 
 **Examples:**
 
