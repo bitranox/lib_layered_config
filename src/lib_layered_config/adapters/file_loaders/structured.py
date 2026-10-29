@@ -1,7 +1,7 @@
 """Structured configuration file loaders.
 
 Convert on-disk artifacts into Python mappings that the merge layer understands.
-Adapters are small wrappers around ``rtoml``/``json``/``yaml.safe_load`` so
+Adapters are small wrappers around the TOML parser, the JSON codec and ``yaml.safe_load`` so
 error handling, observability, and immutability policies live in one place.
 
 Contents:
@@ -21,7 +21,6 @@ before passing the results to the merge policy.
 from __future__ import annotations
 
 import os
-import re
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -29,13 +28,12 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
-import rtoml
-
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...domain.json_codec import CODEC, JSON_INT_MAX, JSON_INT_MIN, JsonCodec, JsonLoadError
 from ...observability import log_debug, log_error
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
+from ._toml_backend import PARSER, TomlLoadError, TomlParser
 from ._yaml_facade import as_yaml_module
 
 if TYPE_CHECKING:
@@ -83,16 +81,6 @@ def _log_file_loaded(path: str, format_name: str) -> None:
         format_name: Parser identifier (e.g., ``"toml"``).
     """
     log_debug("config_file_loaded", layer=FILE_LAYER, path=path, format=format_name)
-
-
-#: rtoml's message is read only for the numbers in it; "line 1 column 4" (toml 0.5) and
-#: "line 1, column 4" (newer renderers, which also print a source snippet) both match.
-_TOML_POSITION: Final[re.Pattern[str]] = re.compile(r"line (\d+),? column (\d+)")
-
-#: rtoml's two depth refusals: "cannot recurse further; max recursion depth met at ..." for an
-#: array or inline table, "recursion limit" for a table header or dotted key. Fixed wording that
-#: carries no file content.
-_TOML_TOO_DEEP: Final[re.Pattern[str]] = re.compile(r"recursion")
 
 
 @dataclass(frozen=True)
@@ -189,27 +177,6 @@ def _log_and_build_invalid_format(path: str, format_name: str, failure: _ParseFa
     return InvalidFormatError(message)
 
 
-def _toml_position(message: str) -> tuple[int, int] | None:
-    """Return the 1-based line and column rtoml reports, or None.
-
-    Args:
-        message: The text of the ``rtoml.TomlParsingError``.
-
-    Returns:
-        The (line, column) pair, or ``None`` when the message carries no position.
-
-    Examples:
-        >>> _toml_position("expected an equals, found eof at line 1 column 4")
-        (1, 4)
-        >>> _toml_position("TOML parse error at line 3, column 7")
-        (3, 7)
-        >>> _toml_position("boom") is None
-        True
-    """
-    found = _TOML_POSITION.search(message)
-    return (int(found.group(1)), int(found.group(2))) if found else None
-
-
 def _yaml_position(exc: BaseException) -> tuple[int, int] | None:
     """Return the 1-based line and column of a PyYAML ``MarkedYAMLError``, or None.
 
@@ -236,29 +203,16 @@ def _yaml_position(exc: BaseException) -> tuple[int, int] | None:
     return None
 
 
-def _toml_failure(exc: BaseException) -> _ParseFailure:
-    """Read an ``rtoml.TomlParsingError`` into its position and whether it is rtoml's depth limit.
+def _backend_failure(exc: BaseException) -> _ParseFailure:
+    """Read a TOML or JSON backend's refusal into its position and whether the document nests too deep.
 
     Examples:
-        >>> _toml_failure(ValueError("cannot recurse further; max recursion depth met at line 1 column 85"))
-        _ParseFailure(position=(1, 85), too_deep=True)
-        >>> _toml_failure(ValueError("extra `=`, expected nothing at line 1 column 5"))
-        _ParseFailure(position=(1, 5), too_deep=False)
-    """
-    message = str(exc)
-    return _ParseFailure(_toml_position(message), too_deep=_TOML_TOO_DEEP.search(message) is not None)
-
-
-def _json_failure(exc: BaseException) -> _ParseFailure:
-    """Read a :class:`JsonLoadError` into its position and whether the document nests too deep.
-
-    Examples:
-        >>> _json_failure(JsonLoadError("deep", too_deep=True))
+        >>> _backend_failure(JsonLoadError("deep", too_deep=True))
         _ParseFailure(position=None, too_deep=True)
-        >>> _json_failure(JsonLoadError("bad", position=(2, 8)))
+        >>> _backend_failure(TomlLoadError("bad", position=(2, 8)))
         _ParseFailure(position=(2, 8), too_deep=False)
     """
-    if not isinstance(exc, JsonLoadError):
+    if not isinstance(exc, (JsonLoadError, TomlLoadError)):
         return _ParseFailure(None)
     return _ParseFailure(exc.position, too_deep=exc.too_deep)
 
@@ -483,7 +437,11 @@ class BaseFileLoader:
 
 
 class TOMLFileLoader(BaseFileLoader):
-    """Load TOML documents using the rtoml (Rust-based) parser for 5x faster parsing."""
+    """Load TOML documents with the interpreter's TOML parser (rtoml, or tomllib with the same answers)."""
+
+    def __init__(self, parser: TomlParser = PARSER) -> None:
+        """Parse with *parser*; the default is the parser this interpreter chose at import."""
+        self._parser = parser
 
     def load(self, path: str) -> Mapping[str, object]:
         """Return mapping extracted from TOML file at *path*.
@@ -515,7 +473,7 @@ class TOMLFileLoader(BaseFileLoader):
         except InvalidFormatError as exc:
             _log_file_invalid(path, "toml", str(exc))
             raise
-        parsed, failure = _run_parser(lambda: rtoml.loads(decoded), rtoml.TomlParsingError, _toml_failure)
+        parsed, failure = _run_parser(lambda: self._parser.loads(decoded), TomlLoadError, _backend_failure)
         if parsed is _PARSE_FAILED:
             raise _log_and_build_invalid_format(path, "toml", failure)
         result = self._ensure_mapping(parsed, path=path)
@@ -566,7 +524,7 @@ class JSONFileLoader(BaseFileLoader):
         except InvalidFormatError as exc:
             _log_file_invalid(path, "json", str(exc))
             raise
-        payload, failure = _run_parser(lambda: self._codec.loads(decoded), JsonLoadError, _json_failure)
+        payload, failure = _run_parser(lambda: self._codec.loads(decoded), JsonLoadError, _backend_failure)
         if payload is _PARSE_FAILED:
             raise _log_and_build_invalid_format(path, "json", failure)
         result = self._ensure_mapping(payload, path=path)

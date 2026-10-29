@@ -67,7 +67,7 @@ def test_a_declared_exemption_reaches_through_nested_lists() -> None:
 def test_list_nesting_the_loader_accepts_still_shows_in_every_redacted_view(tmp_path: Path) -> None:
     # The merge bounds MAPPING nesting at 100 and list nesting not at all, so 120 levels of
     # array load fine; a redacted view must not refuse what reading accepted. JSON, because
-    # rtoml (from 0.14.0) refuses TOML nested deeper than 80 levels.
+    # TOML is refused deeper than 80 levels (rtoml's limit, which the tomllib parser keeps).
     defaults = tmp_path / "defaults.json"
     defaults.write_text('{"x": ' + "[" * 120 + "1" + "]" * 120 + "}\n", encoding="utf-8")
     config = read_config(

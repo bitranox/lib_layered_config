@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import rtoml
 from click.testing import CliRunner
 
 from lib_layered_config import cli as cli_module
 from tests.support.os_markers import os_agnostic
+from tests.support.toml_read import loads_toml
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -67,7 +67,7 @@ def test_the_read_output_parses_back_to_the_configuration(
 ) -> None:
     output = _read_text(sandbox, monkeypatch, tmp_path, _TRICKY)
 
-    assert rtoml.loads(output) == rtoml.loads(_TRICKY)
+    assert loads_toml(output) == loads_toml(_TRICKY)
 
 
 @os_agnostic
