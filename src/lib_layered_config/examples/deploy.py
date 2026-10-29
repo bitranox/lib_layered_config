@@ -58,6 +58,9 @@ if TYPE_CHECKING:
 #: The layers a deploy writes, by the target name a caller spells (case-insensitively).
 _TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in (Layer.APP, Layer.HOST, Layer.USER)}
 
+#: The deploy_config parameter each kind of explicit mode comes from, named in its refusal.
+_MODE_PARAMETERS: Mapping[ModeKind, str] = {ModeKind.DIRECTORY: "dir_mode", ModeKind.FILE: "file_mode"}
+
 #: How to deploy when the configured modes cannot be read. Both modes come first: turning permission
 #: setting off leaves every mode to the umask, which can make a user file that holds secrets readable
 #: by other accounts. The CLI replaces this with its own spelling (Task 7).
@@ -279,18 +282,18 @@ def _validate_target(target: str) -> Layer:
     return layer
 
 
-def _checked_mode(name: str, *, value: int | None, kind: ModeKind) -> _CheckedMode:
+def _checked_mode(value: int | None, *, kind: ModeKind) -> _CheckedMode:
     """Return the mode when *value* is safe (None when not given), or one refusal line when it is not."""
     try:
         return _CheckedMode(None if value is None else DeployMode(value, kind), None)
     except DeployModeError as exc:
-        return _CheckedMode(None, f"{name}: {exc}")
+        return _CheckedMode(None, f"{_MODE_PARAMETERS[kind]}: {exc}")
 
 
 def _explicit_modes(*, dir_mode: int | None, file_mode: int | None) -> _ExplicitModes:
     """Validate the caller-given modes, one refusal line per bad parameter, both checked first."""
-    directory = _checked_mode("dir_mode", value=dir_mode, kind=ModeKind.DIRECTORY)
-    file = _checked_mode("file_mode", value=file_mode, kind=ModeKind.FILE)
+    directory = _checked_mode(dir_mode, kind=ModeKind.DIRECTORY)
+    file = _checked_mode(file_mode, kind=ModeKind.FILE)
     problems = [checked.problem for checked in (directory, file) if checked.problem is not None]
     if problems:
         raise DeployModeError("\n".join(problems))
