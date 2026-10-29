@@ -14,6 +14,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -25,7 +26,7 @@ from tests.support import create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
 VENDOR = "Acme"
@@ -42,12 +43,26 @@ def fifo(tmp_path: Path) -> Iterator[Path]:
     writer = threading.Thread(target=path.write_bytes, args=(_PAYLOAD,), daemon=True)
     writer.start()
     yield path
-    if writer.is_alive():
-        # Nobody opened the FIFO: open it ourselves so the writer is released, then fail loudly.
-        path.read_bytes()
+    _finish_writer(path, writer)
+
+
+def _finish_writer(path: Path, writer: threading.Thread, *, grace: float = 5.0) -> None:
+    """Wait for the FIFO's writer thread, failing the test when nothing ever opened the FIFO.
+
+    A writer that delivered can still be alive for a moment after its close, so a bare
+    ``is_alive()`` check cannot tell it from one stuck in ``open()``: join first. Only a writer
+    still alive after that is waiting for a reader. It is released with a NON-blocking open, which
+    returns at once either way; a blocking open would wait for good if the writer had just left.
+    """
+    writer.join(timeout=grace)
+    if not writer.is_alive():
+        return
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
         writer.join(timeout=5)
-        pytest.fail("the code under test never opened the FIFO")
-    writer.join(timeout=5)
+    finally:
+        os.close(descriptor)
+    pytest.fail("the code under test never opened the FIFO")
 
 
 @posix_only
@@ -72,6 +87,61 @@ def test_read_config_reads_a_fifo_and_names_it_as_the_origin(
     origin = config.origin("ssh.key")
     assert origin is not None
     assert origin["path"] == str(fifo)
+
+
+def _run_bounded(call: Callable[[], None], seconds: float) -> tuple[bool, BaseException | None]:
+    """Run *call* on a daemon thread; return whether it returned in time, and what it raised."""
+    raised: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            call()
+        except BaseException as error:
+            raised.append(error)
+
+    runner = threading.Thread(target=target, daemon=True)
+    runner.start()
+    runner.join(timeout=seconds)
+    return not runner.is_alive(), (raised[0] if raised else None)
+
+
+@posix_only
+def test_the_fifo_teardown_waits_for_a_writer_that_already_delivered(tmp_path: Path) -> None:
+    """The writer thread outlives its write by a moment: the FIFO was read, the thread has not
+    exited yet. The teardown used to take that for "nobody opened it" and open the FIFO itself,
+    which blocks for good with no writer left; it hung a CI job until the job timeout."""
+    path = tmp_path / "env.fifo"
+    os.mkfifo(path)
+
+    def write_then_linger() -> None:
+        path.write_bytes(_PAYLOAD)
+        time.sleep(0.5)
+
+    writer = threading.Thread(target=write_then_linger, daemon=True)
+    writer.start()
+    assert path.read_bytes() == _PAYLOAD
+
+    finished, raised = _run_bounded(lambda: _finish_writer(path, writer), seconds=3)
+
+    assert finished, "the teardown blocked opening a FIFO whose writer had already left"
+    assert raised is None
+
+
+@posix_only
+def test_the_fifo_teardown_fails_when_nothing_opened_the_fifo(tmp_path: Path) -> None:
+    """A writer still waiting in open() means the code under test never read the FIFO: the
+    teardown releases it and fails the test rather than hang or pass."""
+    path = tmp_path / "env.fifo"
+    os.mkfifo(path)
+    writer = threading.Thread(target=path.write_bytes, args=(_PAYLOAD,), daemon=True)
+    writer.start()
+
+    finished, raised = _run_bounded(lambda: _finish_writer(path, writer, grace=0.2), seconds=15)
+
+    assert finished
+    assert isinstance(raised, pytest.fail.Exception)
+    assert "never opened the FIFO" in str(raised)
+    assert not writer.is_alive()
 
 
 #: Long enough for a cold interpreter start on a slow CI runner; a FIFO read never takes this long.
