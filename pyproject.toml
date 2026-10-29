@@ -186,6 +186,7 @@ markers = [
   "mac_only: requires macOS semantics",
   "windows_only: requires Windows semantics",
 ]
+faulthandler_timeout = 300 # dump every thread's stack when one test runs past 5 min; a CI hang otherwise leaves no trace
 
 [tool.coverage.run]
 branch = true
