@@ -367,11 +367,13 @@ paths, never one bare path (`TypeError`). Both take `profile=`/`platform=` like 
 `FileNotFoundError` for a missing source, and a file not skipped (the source included) that does not
 parse raises `LayerLoadError`. Then `perms = deploy_permissions_from_config(that_config,
 overrides=<what you pass as permission_overrides>)`: `perms.enabled` says whether modes are set at all,
-and `perms.for_layer("app" | "host" | "user")` gives a `LayerModes` whose `.directory` and `.file`
-(each a `DeployMode`, printing as `0o700`) are that layer's modes, unless you pass an explicit
-`dir_mode`/`file_mode`, which wins. Modes are never applied on Windows, and a deploy there never
-reads the configured ones (see "Probing and testing an app built on it"). Use these instead of
-importing anything from `lib_layered_config.core` or `lib_layered_config.examples.deploy`.
+and `perms.for_layer(Layer.APP)` (the `Layer` enum from `lib_layered_config`; `Layer.HOST`,
+`Layer.USER` likewise) gives a `LayerModes` whose `.directory` and `.file` (each a `DeployMode` that
+prints in octal, such as `0o600`, the user layer's default file mode, and whose `.value` is the `int`
+mode) are that layer's modes, unless you pass an explicit `dir_mode`/`file_mode`, which wins. Modes
+are never applied on Windows, and a deploy there never reads the configured ones (see "Probing and
+testing an app built on it"). Use these instead of importing anything from `lib_layered_config.core`
+or `lib_layered_config.examples.deploy`.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
 the list of written paths.
 
