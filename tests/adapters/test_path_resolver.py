@@ -574,8 +574,9 @@ def test_windows_unc_app_paths_resolve_from_network_share(tmp_path: Path) -> Non
     program_data = strategy._program_data_root()
     assert program_data == Path(unc_root)
     assert program_data.as_posix().startswith("//server/share")
-    # Verify app_paths() can be called without error (paths may not exist)
-    list(strategy.app_paths())
+    # No app_paths() call: on Windows it stats //server/share, a live SMB lookup of a host that does
+    # not exist. The runner usually answers "bad network path" (read as absent) but has answered
+    # winerror 64, which the probe refuses by design, so the outcome tracked the runner's network.
 
 
 @os_agnostic
