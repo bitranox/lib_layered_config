@@ -29,7 +29,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 from ...domain.errors import InvalidFormatError, NotFoundError
-from ...domain.json_codec import CODEC, JSON_INT_MAX, JSON_INT_MIN, JsonCodec, JsonLoadError
+from ...domain.json_codec import (
+    CODEC,
+    CONFIG_MAX_DEPTH,
+    JSON_INT_MAX,
+    JSON_INT_MIN,
+    JsonCodec,
+    JsonLoadError,
+    nesting_depth,
+)
 from ...observability import log_debug, log_error
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
@@ -534,6 +542,7 @@ class TOMLFileLoader(BaseFileLoader):
             raise _log_and_build_invalid_format(path, "toml", failure)
         result = self._ensure_mapping(parsed, path=path)
         _refuse_integers_json_cannot_carry(result, path=path, format_name="toml")
+        _refuse_nesting_json_cannot_write(result, path=path, format_name="toml")
         _log_file_loaded(path, "toml")
         return result
 
@@ -584,6 +593,7 @@ class JSONFileLoader(BaseFileLoader):
         if payload is _PARSE_FAILED:
             raise _log_and_build_invalid_format(path, "json", failure)
         result = self._ensure_mapping(payload, path=path)
+        _refuse_nesting_json_cannot_write(result, path=path, format_name="json")
         _log_file_loaded(path, "json")
         return result
 
@@ -637,6 +647,7 @@ class YAMLFileLoader(BaseFileLoader):
         _refuse_ordered_map_tags(mapping, path=path)
         _refuse_values_json_cannot_carry(mapping, path=path)
         _refuse_integers_json_cannot_carry(mapping, path=path, format_name="yaml")
+        _refuse_nesting_json_cannot_write(mapping, path=path, format_name="yaml")
         _log_file_loaded(path, "yaml")
         return mapping
 
@@ -878,6 +889,91 @@ def _refuse_integers_json_cannot_carry(data: object, *, path: str, format_name: 
     )
     _log_file_invalid(path, format_name, message)
     raise InvalidFormatError(message)
+
+
+def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, format_name: str) -> None:
+    """Refuse a document nesting deeper than JSON output can write.
+
+    orjson writes at most 254 levels and ``read_config_json`` wraps the config in one more, so a
+    config may nest :data:`CONFIG_MAX_DEPTH` levels counted from its top-level table. A deeper
+    document loaded, then crashed every JSON view with ``TypeError: Recursion limit reached``.
+
+    Args:
+        data: Parsed document, already known to be a mapping at the top.
+        path: File the document came from, named in the error.
+        format_name: Format logged with the refusal (``toml``, ``json`` or ``yaml``).
+
+    Raises:
+        InvalidFormatError: When *data* nests past :data:`CONFIG_MAX_DEPTH`.
+
+    Examples:
+        >>> def nested(depth):
+        ...     value = 1
+        ...     for _ in range(depth):
+        ...         value = [value]
+        ...     return value
+        >>> _refuse_nesting_json_cannot_write({"deep": nested(252)}, path="a.json", format_name="json")
+        >>> _refuse_nesting_json_cannot_write({"deep": nested(253)}, path="a.json", format_name="json")
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: a.json nests deep 254 levels deep; JSON ... 253, ...
+    """
+    position = _first_position_past_the_json_depth(data)
+    if position is None:
+        return
+    message = (
+        f"{path} nests {position} {nesting_depth(data)} levels deep; JSON output takes "
+        f"{CONFIG_MAX_DEPTH}, counted from the top-level table: flatten it, or write it as a string"
+    )
+    _log_file_invalid(path, format_name, message)
+    raise InvalidFormatError(message)
+
+
+def _first_position_past_the_json_depth(data: Mapping[str, object]) -> str | None:
+    """Return the key position under which *data* first nests past :data:`CONFIG_MAX_DEPTH`.
+
+    The position names mapping keys only, down to the first list: an index path through a list
+    nested 250 levels deep would make the message the size of the document. Walks with an explicit
+    stack for the reason :func:`_non_string_keys` gives.
+
+    Examples:
+        >>> deep = [1]
+        >>> for _ in range(CONFIG_MAX_DEPTH):
+        ...     deep = [deep]
+        >>> _first_position_past_the_json_depth({"a": {"b": [{"c": deep}]}, "d": 1})
+        'a.b'
+        >>> _first_position_past_the_json_depth({"a": [[1]]}) is None
+        True
+    """
+    pending: list[tuple[object, str, int, bool]] = [(data, "", 1, False)]
+    while pending:
+        node, position, depth, in_list = pending.pop()
+        if depth > CONFIG_MAX_DEPTH:
+            return position or "<top>"
+        if isinstance(node, Mapping):
+            mapping = cast("Mapping[object, object]", node)
+            pending.extend(
+                (value, position if in_list else _join_position(position, str(key)), depth + 1, in_list)
+                for key, value in mapping.items()
+                if _is_container(value)
+            )
+        elif isinstance(node, list):
+            items = cast("list[object]", node)
+            pending.extend((item, position, depth + 1, True) for item in items if _is_container(item))
+    return None
+
+
+def _is_container(node: object) -> bool:
+    """Return whether *node* adds a nesting level (a mapping or a list).
+
+    A plain ``bool``, not a ``TypeGuard``: narrowing to ``Mapping`` would type the walk's items
+    as ``Mapping[Unknown, Unknown]``.
+
+    Examples:
+        >>> _is_container({}), _is_container([]), _is_container("[]")
+        (True, True, False)
+    """
+    return isinstance(node, (Mapping, list))
 
 
 def _describe_wide_int(node: object) -> str | None:

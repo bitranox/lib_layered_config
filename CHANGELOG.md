@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A config nested more than 253 levels deep (counted from its top-level table) no longer loads and then
+  crashes every JSON view (`to_json`, `read_config_json`, `read-json`) with `TypeError: Recursion limit
+  reached`. A TOML, JSON or YAML file that deep is refused, naming the file, the key it nests under and
+  the depth; an environment or `.env` JSON value that deep stays the text it was written as. Both follow
+  the rule an integer outside JSON's range already follows.
+
 ## [7.4.1] 2026-10-29 17:14:23
 
 ### Fixed

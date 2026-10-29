@@ -50,14 +50,16 @@ import math
 import re
 import sysconfig
 import uuid
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from types import ModuleType
 
 __all__ = [
     "CODEC",
+    "CONFIG_MAX_DEPTH",
     "JSON_ENCODE_MAX_DEPTH",
     "JSON_INT_MAX",
     "JSON_INT_MIN",
@@ -68,6 +70,7 @@ __all__ = [
     "StdlibCodec",
     "dumps",
     "loads",
+    "nesting_depth",
     "select_codec",
 ]
 
@@ -83,6 +86,12 @@ JSON_MAX_DEPTH: Final[int] = 1024
 
 #: The deepest nesting a value may have when written; orjson refuses level 255.
 JSON_ENCODE_MAX_DEPTH: Final[int] = 254
+
+#: The deepest a config may nest, counting its top-level table as level 1. ``read_config_json``
+#: writes the config one level down, inside ``{"config": ..., "provenance": ...}``, so one level
+#: of :data:`JSON_ENCODE_MAX_DEPTH` is spent before the config starts. A deeper value either stays
+#: text (environment, .env) or refuses its file (JSON, YAML), as an out-of-range integer does.
+CONFIG_MAX_DEPTH: Final[int] = JSON_ENCODE_MAX_DEPTH - 1
 
 #: The longest integer text read as an int; longer ones are past the 64-bit range anyway, and
 #: keeping them away from ``int()`` keeps them away from Python's 4300-digit conversion limit.
@@ -450,3 +459,28 @@ def loads(text: str) -> object:
         {'a': [1, 2]}
     """
     return CODEC.loads(text)
+
+
+def nesting_depth(value: object) -> int:
+    """Return how many mappings and lists *value* nests, itself included; a scalar is 0.
+
+    Counted with an explicit stack: a value read from JSON may nest 1024 levels, past Python's
+    default recursion limit of 1000.
+
+    Examples:
+        >>> nesting_depth(1), nesting_depth([]), nesting_depth({"a": [[1], 2]})
+        (0, 1, 3)
+    """
+    deepest = 0
+    pending: list[tuple[object, int]] = [(value, 1)]
+    while pending:
+        node, depth = pending.pop()
+        if isinstance(node, Mapping):
+            children: Iterable[object] = cast("Mapping[object, object]", node).values()
+        elif isinstance(node, (list, tuple)):
+            children = cast("Iterable[object]", node)
+        else:
+            continue
+        deepest = max(deepest, depth)
+        pending.extend((child, depth + 1) for child in children)
+    return deepest

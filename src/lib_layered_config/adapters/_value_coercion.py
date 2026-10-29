@@ -17,7 +17,7 @@ import re
 from typing import Final, cast
 
 from ..domain import json_codec
-from ..domain.json_codec import JSON_INT_MIN
+from ..domain.json_codec import CONFIG_MAX_DEPTH, JSON_INT_MIN, nesting_depth
 from ..domain.redaction import NotSensitiveKeys, is_sensitive_at
 from ._nested_keys import NESTED_KEY_DELIMITER
 
@@ -65,7 +65,7 @@ def coerce_value(raw_key: str, value: str, *, not_sensitive: NotSensitiveKeys = 
     """
     container = parse_json_container(value)
     if container is not None:
-        return container
+        return value if _too_deep_to_write(raw_key, container) else container
     lowered = value.lower()
     if lowered in _BOOL_LITERALS:
         return lowered == _BOOL_TRUE
@@ -73,6 +73,21 @@ def coerce_value(raw_key: str, value: str, *, not_sensitive: NotSensitiveKeys = 
         return value if _key_is_sensitive(raw_key, not_sensitive) else None
     number = parse_number(value)
     return value if number is None else number
+
+
+def _too_deep_to_write(raw_key: str, container: object) -> bool:
+    """Return whether *container*, placed at *raw_key*, nests the config past what JSON writes.
+
+    A key of N segments sits N tables down (the top-level one included), so its value may nest
+    :data:`CONFIG_MAX_DEPTH` minus N levels. A deeper one stays text, like an integer outside
+    JSON's range: as a list it would load and then crash every JSON view.
+
+    Examples:
+        >>> deep = [[[1]]]
+        >>> _too_deep_to_write("DEEP", deep), _too_deep_to_write("__".join(["K"] * 251), deep)
+        (False, True)
+    """
+    return len(raw_key.split(NESTED_KEY_DELIMITER)) + nesting_depth(container) > CONFIG_MAX_DEPTH
 
 
 def _key_is_sensitive(raw_key: str, not_sensitive: NotSensitiveKeys) -> bool:
