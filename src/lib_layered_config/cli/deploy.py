@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import rich_click as click
 
@@ -57,56 +57,55 @@ _CLI_DEPLOY_ANYWAY_HINT = (
 )
 
 
-_ACTION_TO_KEY: dict[DeployAction, str] = {
-    DeployAction.CREATED: "created",
-    DeployAction.OVERWRITTEN: "overwritten",
-    DeployAction.KEPT: "kept",
-    DeployAction.SKIPPED: "skipped",
-}
+#: The JSON envelope names the ``.d`` section's lists like the main ones, with this in front.
+_DOT_D_KEY_PREFIX = "dot_d_"
 
 
-def _append_result_to_output(
-    r: DeployResult,
-    output: dict[str, list[str]],
-    prefix: str = "",
-) -> None:
-    """Append a single deployment result to the output dictionary.
+class _SectionReport(NamedTuple):
+    """What one section of a deploy did (the main files or their ``.d`` copies), as path strings."""
 
-    Args:
-        r: The deployment result to process.
-        output: Dictionary to append results to.
-        prefix: Key prefix for .d directory results (e.g., "dot_d_").
-    """
-    key = _ACTION_TO_KEY.get(r.action)
-    if key:
-        output[f"{prefix}{key}"].append(str(r.destination))
-    if r.backup_path:
-        output[f"{prefix}backups"].append(str(r.backup_path))
-    if r.ucf_path:
-        output[f"{prefix}ucf_files"].append(str(r.ucf_path))
+    created: list[str]
+    overwritten: list[str]
+    kept: list[str]
+    skipped: list[str]
+    backups: list[str]
+    ucf_files: list[str]
+
+    @classmethod
+    def of(cls, results: Sequence[DeployResult]) -> _SectionReport:
+        """Sort *results* into the section's lists, each in deploy order."""
+
+        def destinations(action: DeployAction) -> list[str]:
+            return [str(r.destination) for r in results if r.action == action]
+
+        return cls(
+            created=destinations(DeployAction.CREATED),
+            overwritten=destinations(DeployAction.OVERWRITTEN),
+            kept=destinations(DeployAction.KEPT),
+            skipped=destinations(DeployAction.SKIPPED),
+            backups=[str(r.backup_path) for r in results if r.backup_path is not None],
+            ucf_files=[str(r.ucf_path) for r in results if r.ucf_path is not None],
+        )
+
+    def json_fields(self) -> tuple[tuple[str, list[str]], ...]:
+        """The section's lists under their envelope names, in the envelope's order."""
+        return (
+            ("created", self.created),
+            ("overwritten", self.overwritten),
+            ("kept", self.kept),
+            ("skipped", self.skipped),
+            ("backups", self.backups),
+            ("ucf_files", self.ucf_files),
+        )
 
 
 def _format_results(results: list[DeployResult]) -> str:
-    """Format deployment results as JSON, including .d directory results."""
-    output: dict[str, list[str]] = {
-        "created": [],
-        "overwritten": [],
-        "kept": [],
-        "skipped": [],
-        "backups": [],
-        "ucf_files": [],
-        "dot_d_created": [],
-        "dot_d_overwritten": [],
-        "dot_d_kept": [],
-        "dot_d_skipped": [],
-        "dot_d_backups": [],
-        "dot_d_ucf_files": [],
-    }
-    for r in results:
-        _append_result_to_output(r, output)
-        for dot_d_r in r.dot_d_results:
-            _append_result_to_output(dot_d_r, output, prefix="dot_d_")
-    return json_codec.dumps({k: v for k, v in output.items() if v}, indent=True)
+    """Format deployment results as JSON, including .d directory results; an empty list is left out."""
+    main = _SectionReport.of(results)
+    dot_d = _SectionReport.of([dot_d_result for r in results for dot_d_result in r.dot_d_results])
+    envelope = {name: values for name, values in main.json_fields() if values}
+    envelope.update({_DOT_D_KEY_PREFIX + name: values for name, values in dot_d.json_fields() if values})
+    return json_codec.dumps(envelope, indent=True)
 
 
 @click.command("deploy", context_settings=CLICK_CONTEXT_SETTINGS)

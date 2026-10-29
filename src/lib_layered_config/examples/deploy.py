@@ -32,7 +32,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from ..adapters._path_probe import PathKind, kind_or_raise
 from ..adapters.path_resolvers.default import DefaultPathResolver
@@ -49,13 +49,14 @@ from ..domain.deploy_permissions import (
     parse_deploy_permissions,
 )
 from ..domain.errors import ConfigError, ValidationError
-from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
+from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer, PlatformFamily, platform_family
 from ..domain.permissions import apply_mode, modes_apply
 
 if TYPE_CHECKING:
     from ..domain.config import Config
 
-_VALID_TARGETS = {Layer.APP.value, Layer.HOST.value, Layer.USER.value}
+#: The layers a deploy writes, by the target name a caller spells (case-insensitively).
+_TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in (Layer.APP, Layer.HOST, Layer.USER)}
 
 #: How to deploy when the configured modes cannot be read. Both modes come first: turning permission
 #: setting off leaves every mode to the umask, which can make a user file that holds secrets readable
@@ -111,6 +112,34 @@ class DeployAction(Enum):
     SKIPPED = "skipped"  # No action taken
 
 
+class _Sidecar(str, Enum):
+    """The files a deploy writes beside an existing destination; the value is the name suffix."""
+
+    BACKUP = ".bak"  # the replaced file, kept when a deploy overwrites it
+    UCF = ".ucf"  # the new file, written beside the kept one for review
+
+
+class _Destination(NamedTuple):
+    """Where a deploy writes one target, and the layer whose modes that file gets."""
+
+    path: Path
+    layer: Layer
+
+
+class _CheckedMode(NamedTuple):
+    """One caller-given mode after validation: the mode (None when not given) or why it is refused."""
+
+    mode: DeployMode | None
+    problem: str | None
+
+
+class _ExplicitModes(NamedTuple):
+    """The caller-given directory and file mode, validated; None for a side not given."""
+
+    directory: DeployMode | None
+    file: DeployMode | None
+
+
 def _empty_deploy_results() -> list[DeployResult]:
     """Return an empty list of DeployResult for default_factory."""
     return []
@@ -163,7 +192,7 @@ def _collect_dot_d_sources(dot_d_dir: Path) -> list[Path]:
     return sorted(f for f in dot_d_dir.iterdir() if kind_or_raise(f) is PathKind.FILE)
 
 
-def _next_available_path(base: Path, suffix: str) -> Path:
+def _next_available_path(base: Path, sidecar: _Sidecar) -> Path:
     """Find next available path with numbered suffix if needed.
 
     Examples:
@@ -171,15 +200,15 @@ def _next_available_path(base: Path, suffix: str) -> Path:
         >>> from pathlib import Path
         >>> with tempfile.TemporaryDirectory() as td:
         ...     p = Path(td) / "config.toml"
-        ...     _next_available_path(p, ".bak").name
+        ...     _next_available_path(p, _Sidecar.BACKUP).name
         'config.toml.bak'
     """
-    candidate = base.parent / (base.name + suffix)
+    candidate = base.parent / (base.name + sidecar.value)
     if kind_or_raise(candidate) is PathKind.MISSING:
         return candidate
     n = 1
     while True:
-        candidate = base.parent / f"{base.name}{suffix}.{n}"
+        candidate = base.parent / f"{base.name}{sidecar.value}.{n}"
         if kind_or_raise(candidate) is PathKind.MISSING:
             return candidate
         n += 1
@@ -194,7 +223,7 @@ def _backup_file(path: Path) -> Path:
     Returns:
         Path to the created backup file.
     """
-    backup = _next_available_path(path, ".bak")
+    backup = _next_available_path(path, _Sidecar.BACKUP)
     shutil.copy2(path, backup)
     return backup
 
@@ -214,7 +243,7 @@ def _write_ucf(destination: Path, payload: bytes, *, modes: LayerModes | None) -
     Returns:
         Path to the created .ucf file.
     """
-    ucf_path = _next_available_path(destination, ".ucf")
+    ucf_path = _next_available_path(destination, _Sidecar.UCF)
     ucf_path.parent.mkdir(parents=True, exist_ok=True)
     if modes is not None:
         apply_mode(ucf_path.parent, modes.directory)
@@ -242,39 +271,35 @@ def _content_matches(destination: Path, payload: bytes) -> bool:
         return False
 
 
-def _validate_target(target: str) -> str:
-    normalised = target.lower()
-    if normalised not in _VALID_TARGETS:
+def _validate_target(target: str) -> Layer:
+    """Return the layer a caller-spelled *target* names (any case), refusing any other name."""
+    layer = _TARGET_LAYERS.get(target.lower())
+    if layer is None:
         raise ValidationError(f"Unsupported deployment target: {target}")
-    return normalised
+    return layer
 
 
-def _checked_mode(name: str, *, value: int | None, kind: ModeKind) -> tuple[DeployMode | None, str | None]:
-    """Return (mode, None) when *value* is safe, or (None, one refusal line) when it is not."""
+def _checked_mode(name: str, *, value: int | None, kind: ModeKind) -> _CheckedMode:
+    """Return the mode when *value* is safe (None when not given), or one refusal line when it is not."""
     try:
-        return (None if value is None else DeployMode(value, kind)), None
+        return _CheckedMode(None if value is None else DeployMode(value, kind), None)
     except DeployModeError as exc:
-        return None, f"{name}: {exc}"
+        return _CheckedMode(None, f"{name}: {exc}")
 
 
-def _explicit_modes(*, dir_mode: int | None, file_mode: int | None) -> tuple[DeployMode | None, DeployMode | None]:
+def _explicit_modes(*, dir_mode: int | None, file_mode: int | None) -> _ExplicitModes:
     """Validate the caller-given modes, one refusal line per bad parameter, both checked first."""
-    checked = [
-        _checked_mode(name, value=value, kind=kind)
-        for name, value, kind in (
-            ("dir_mode", dir_mode, ModeKind.DIRECTORY),
-            ("file_mode", file_mode, ModeKind.FILE),
-        )
-    ]
-    problems = [problem for _, problem in checked if problem is not None]
+    directory = _checked_mode("dir_mode", value=dir_mode, kind=ModeKind.DIRECTORY)
+    file = _checked_mode("file_mode", value=file_mode, kind=ModeKind.FILE)
+    problems = [checked.problem for checked in (directory, file) if checked.problem is not None]
     if problems:
         raise DeployModeError("\n".join(problems))
-    return checked[0][0], checked[1][0]
+    return _ExplicitModes(directory=directory.mode, file=file.mode)
 
 
 def _resolve_layer_modes(
     settings: DeployPermissions,
-    layer: str,
+    layer: Layer,
     *,
     dir_mode: DeployMode | None,
     file_mode: DeployMode | None,
@@ -305,11 +330,11 @@ def _mode_request(
     ``permission_overrides`` are checked here on every call and platform, like an explicit mode,
     even when the settings are never read (D15); combining them with ``permissions`` is refused.
     """
-    explicit_dir, explicit_file = _explicit_modes(dir_mode=dir_mode, file_mode=file_mode)
+    explicit = _explicit_modes(dir_mode=dir_mode, file_mode=file_mode)
     request = _ModeRequest(
         set_permissions=set_permissions,
-        dir_mode=explicit_dir,
-        file_mode=explicit_file,
+        dir_mode=explicit.directory,
+        file_mode=explicit.file,
         permissions=permissions,
         overrides=permission_overrides,
     )
@@ -353,12 +378,12 @@ def _permission_settings(
     return settings
 
 
-def _paths_written(destinations: Sequence[tuple[Path, str]], *, dot_d_files: Sequence[Path]) -> frozenset[Path]:
+def _paths_written(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> frozenset[Path]:
     """Every file this call may write, resolved: each destination and each of its ``.d`` copies."""
     written: set[Path] = set()
-    for destination, _layer in destinations:
-        written.add(destination.resolve())
-        dest_dot_d = _get_dot_d_dir(destination)
+    for destination in destinations:
+        written.add(destination.path.resolve())
+        dest_dot_d = _get_dot_d_dir(destination.path)
         written.update((dest_dot_d / source_file.name).resolve() for source_file in dot_d_files)
     return frozenset(written)
 
@@ -423,14 +448,11 @@ class DeploymentStrategy:
     def iter_destinations(self, targets: Sequence[str]) -> Iterator[Path]:
         """Yield destination paths for each valid target in *targets*."""
         for raw_target in targets:
-            target = raw_target.lower()
-            if target not in _VALID_TARGETS:
-                raise ValidationError(f"Unsupported deployment target: {raw_target}")
-            destination = self.destination_for(target)
+            destination = self.destination_for(_validate_target(raw_target))
             if destination is not None:
                 yield destination
 
-    def destination_for(self, target: str) -> Path | None:  # pragma: no cover - abstract
+    def destination_for(self, target: Layer) -> Path | None:  # pragma: no cover - abstract
         """Return the destination path for *target*, or None if unsupported."""
         raise NotImplementedError
 
@@ -438,12 +460,12 @@ class DeploymentStrategy:
 class LinuxDeployment(DeploymentStrategy):
     """Linux deployment using XDG Base Directory paths."""
 
-    def destination_for(self, target: str) -> Path | None:
+    def destination_for(self, target: Layer) -> Path | None:
         """Return Linux-specific destination path for *target*."""
         mapping = {
-            "app": self._app_path,
-            "host": self._host_path,
-            "user": self._user_path,
+            Layer.APP: self._app_path,
+            Layer.HOST: self._host_path,
+            Layer.USER: self._user_path,
         }
         builder = mapping.get(target)
         return builder() if builder else None
@@ -469,12 +491,12 @@ class LinuxDeployment(DeploymentStrategy):
 class MacDeployment(DeploymentStrategy):
     """macOS deployment using Application Support paths."""
 
-    def destination_for(self, target: str) -> Path | None:
+    def destination_for(self, target: Layer) -> Path | None:
         """Return macOS-specific destination path for *target*."""
         mapping = {
-            "app": self._app_path,
-            "host": self._host_path,
-            "user": self._user_path,
+            Layer.APP: self._app_path,
+            Layer.HOST: self._host_path,
+            Layer.USER: self._user_path,
         }
         builder = mapping.get(target)
         return builder() if builder else None
@@ -504,12 +526,12 @@ class MacDeployment(DeploymentStrategy):
 class WindowsDeployment(DeploymentStrategy):
     """Windows deployment using ProgramData and AppData paths."""
 
-    def destination_for(self, target: str) -> Path | None:
+    def destination_for(self, target: Layer) -> Path | None:
         """Return Windows-specific destination path for *target*."""
         mapping = {
-            "app": self._app_path,
-            "host": self._host_path,
-            "user": self._user_path,
+            Layer.APP: self._app_path,
+            Layer.HOST: self._host_path,
+            Layer.USER: self._user_path,
         }
         builder = mapping.get(target)
         return builder() if builder else None
@@ -736,14 +758,16 @@ def deploy_config(
     payload = source_path.read_bytes()
     results: list[DeployResult] = []
 
-    for destination, layer in destinations:
+    for destination in destinations:
         modes = (
             None
             if settings is None
-            else _resolve_layer_modes(settings, layer, dir_mode=request.dir_mode, file_mode=request.file_mode)
+            else _resolve_layer_modes(
+                settings, destination.layer, dir_mode=request.dir_mode, file_mode=request.file_mode
+            )
         )
         result = _deploy_to_destination(
-            destination=destination,
+            destination=destination.path,
             source_path=source_path,
             payload=payload,
             dot_d_files=dot_d_files,
@@ -1041,38 +1065,34 @@ def _prepare_resolver(
     )
 
 
-def _platform_family(platform: str) -> str:
-    if platform.startswith("win"):
-        return "windows"
-    if platform == "darwin":
-        return "mac"
-    return "linux"
-
-
 def _strategy_for(resolver: DefaultPathResolver) -> DeploymentStrategy:
-    family = _platform_family(resolver.platform)
-    if family == "windows":
+    """Pick the layout for the resolver's platform; one with no known layout deploys the Linux one."""
+    family = platform_family(resolver.platform)
+    if family == PlatformFamily.WINDOWS:
         return WindowsDeployment(resolver)
-    if family == "mac":
+    if family == PlatformFamily.MACOS:
         return MacDeployment(resolver)
     return LinuxDeployment(resolver)
 
 
-def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> Iterator[tuple[Path, str]]:
-    """Yield (destination_path, layer) tuples for each valid target.
+def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> Iterator[_Destination]:
+    """Yield the destination of each valid target, with the layer it deploys to.
 
     Args:
         resolver: Path resolver for computing destinations.
-        targets: Target layer names.
+        targets: Target layer names, as the caller spells them.
 
     Yields:
-        Tuples of (destination_path, normalised_layer_name).
+        One ``_Destination`` per target the platform has a destination for.
+
+    Raises:
+        ValidationError: A target is not one of app, host and user.
     """
     for raw_target in targets:
-        normalised = _validate_target(raw_target)
-        destination = _strategy_for(resolver).destination_for(normalised)
+        layer = _validate_target(raw_target)
+        destination = _strategy_for(resolver).destination_for(layer)
         if destination is not None:
-            yield destination, normalised
+            yield _Destination(destination, layer)
 
 
 def _copy_payload(destination: Path, payload: bytes, *, modes: LayerModes | None) -> None:
