@@ -17,6 +17,12 @@ from __future__ import annotations
 
 from typing import Final
 
+__all__ = [
+    "FAILURE_MESSAGE",
+    "i_should_fail",
+]
+
+
 FAILURE_MESSAGE: Final[str] = "i should fail"
 """Stable message emitted when :func:`i_should_fail` triggers a failure.
 

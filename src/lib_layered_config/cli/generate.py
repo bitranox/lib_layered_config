@@ -11,6 +11,11 @@ from .common import json_paths, normalise_examples_platform_option
 from .constants import CLICK_CONTEXT_SETTINGS
 from .typed_click import option
 
+__all__ = [
+    "generate_examples_command",
+    "register",
+]
+
 
 @click.command("generate-examples", context_settings=CLICK_CONTEXT_SETTINGS)
 @option(

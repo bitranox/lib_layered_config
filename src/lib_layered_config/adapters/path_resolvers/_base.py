@@ -26,6 +26,14 @@ from .._path_probe import PathKind, checked_kind
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+__all__ = [
+    "PlatformContext",
+    "PlatformStrategy",
+    "collect_layer",
+    "config_path_present",
+]
+
+
 #: Supported structured configuration file extensions used when expanding
 #: ``config.d`` directories.
 _ALLOWED_EXTENSIONS = (".toml", ".yaml", ".yml", ".json")

@@ -53,6 +53,22 @@ if TYPE_CHECKING:
 
     from ._yaml_facade import YAMLModule, YAMLNode
 
+__all__ = [
+    "FILE_LAYER",
+    "MAX_CONFIG_FILE_BYTES",
+    "BaseFileLoader",
+    "FileFormat",
+    "JSONFileLoader",
+    "TOMLFileLoader",
+    "YAMLFileLoader",
+    "directory_not_config_file",
+    "ensure_within_size_cap",
+    "read_capped_bytes",
+    "special_file_not_config_file",
+    "unsupported_config_format",
+]
+
+
 #: Maximum size of a single configuration file. A config file is normally a few KB; this
 #: generous 10 MiB ceiling bounds memory so an oversized or adversarial file (including
 #: one dropped into a ``.d`` directory) cannot exhaust memory during a read.

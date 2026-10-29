@@ -35,6 +35,12 @@ from ..file_loaders.structured import directory_not_config_file, read_capped_byt
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
+__all__ = [
+    "DOTENV_LAYER",
+    "DefaultDotEnvLoader",
+]
+
+
 # Constants for dotenv parsing
 _QUOTE_CHARS: Final[frozenset[str]] = frozenset({'"', "'"})
 _COMMENT_CHAR: Final[str] = "#"

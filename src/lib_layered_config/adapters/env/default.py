@@ -28,6 +28,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
 
+__all__ = [
+    "DefaultEnvLoader",
+    "default_env_prefix",
+]
+
+
 def default_env_prefix(slug: str) -> str:
     """Return the canonical environment prefix for *slug*.
 

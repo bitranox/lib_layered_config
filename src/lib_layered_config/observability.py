@@ -29,6 +29,18 @@ if TYPE_CHECKING:
 
     from .domain.identifiers import Layer
 
+__all__ = [
+    "TRACE_ID",
+    "bind_trace_id",
+    "get_logger",
+    "log_debug",
+    "log_error",
+    "log_info",
+    "log_warn",
+    "make_event",
+]
+
+
 TRACE_ID: ContextVar[str | None] = ContextVar("lib_layered_config_trace_id", default=None)
 """Current trace identifier propagated through logging helpers.
 

@@ -7,6 +7,11 @@ import rich_click as click
 from ..testing import i_should_fail
 from .constants import CLICK_CONTEXT_SETTINGS
 
+__all__ = [
+    "fail_command",
+    "register",
+]
+
 
 @click.command("fail", context_settings=CLICK_CONTEXT_SETTINGS)
 def fail_command() -> None:

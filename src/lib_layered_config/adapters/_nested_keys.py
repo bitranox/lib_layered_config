@@ -123,4 +123,9 @@ def ensure_child_mapping(
     return typed_child
 
 
-__all__ = ["assign_nested", "ensure_child_mapping", "resolve_key"]
+__all__ = [
+    "NESTED_KEY_DELIMITER",
+    "assign_nested",
+    "ensure_child_mapping",
+    "resolve_key",
+]

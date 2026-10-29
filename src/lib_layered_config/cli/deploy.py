@@ -20,6 +20,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
 
+__all__ = [
+    "deploy_command",
+    "register",
+]
+
+
 def _prompt_for_action(destination: Path) -> DeployAction:
     """Prompt user for action when destination file exists."""
     click.echo(f"\nFile exists: {destination}")

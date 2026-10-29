@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
+__all__ = [
+    "MacOSStrategy",
+]
+
+
 class MacOSStrategy(PlatformStrategy):
     """Resolve paths following macOS Application Support conventions.
 

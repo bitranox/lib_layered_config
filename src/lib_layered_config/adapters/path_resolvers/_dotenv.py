@@ -20,6 +20,11 @@ if TYPE_CHECKING:
     from ._base import PlatformStrategy
 
 
+__all__ = [
+    "DotenvPathFinder",
+]
+
+
 class DotenvPathFinder:
     """Discover ``.env`` files by walking upward and checking platform fallbacks.
 

@@ -27,6 +27,11 @@ from .structured import directory_not_config_file
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+__all__ = [
+    "expand_dot_d",
+]
+
+
 _ALLOWED_EXTENSIONS = (".toml", ".yaml", ".yml", ".json")
 """File suffixes considered when expanding ``.d`` directories.
 

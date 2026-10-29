@@ -42,6 +42,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+__all__ = [
+    "DefaultPathResolver",
+]
+
+
 class DefaultPathResolver:
     """Resolve candidate paths for each configuration layer.
 

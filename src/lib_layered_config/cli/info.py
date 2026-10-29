@@ -9,6 +9,12 @@ from .common import describe_distribution
 from .constants import CLICK_CONTEXT_SETTINGS
 from .typed_click import argument
 
+__all__ = [
+    "env_prefix_command",
+    "info_command",
+    "register",
+]
+
 
 @click.command("info", context_settings=CLICK_CONTEXT_SETTINGS)
 def info_command() -> None:

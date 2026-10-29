@@ -32,6 +32,14 @@ from ..domain.identifiers import ExamplePlatform
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+__all__ = [
+    "DEFAULT_HOST_PLACEHOLDER",
+    "ExamplePlan",
+    "ExampleSpec",
+    "generate_examples",
+]
+
+
 DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 """Filename stub used for host-specific example files (documented in README)."""
 

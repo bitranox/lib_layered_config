@@ -52,6 +52,7 @@ __all__ = [
     "normalise_platform_option",
     "normalise_prefer",
     "normalise_targets",
+    "package_metadata",
     "parse_output_format",
     "render_human",
     "resolve_indent",

@@ -13,6 +13,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   copy-pasted block silently replaced the setting above it; TOML already refused such a file. A YAML
   merge key (`<<`) may still appear more than once, and a JSON value in an environment variable or `.env`
   still keeps the last of a repeated key.
+- Every module states its public names in `__all__`, and a test keeps it that way. Each name that was
+  public before stays public; only `adapters.file_loaders.structured.yaml`, the lazily imported PyYAML
+  module object, is no longer a public name to a type checker.
 
 ## [7.5.0] - 2026-10-29
 

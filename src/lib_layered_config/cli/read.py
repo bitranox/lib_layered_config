@@ -22,6 +22,13 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+__all__ = [
+    "read_command",
+    "read_json_command",
+    "register",
+]
+
+
 @click.command("read", context_settings=CLICK_CONTEXT_SETTINGS)
 @option("--vendor", required=True, help="Vendor namespace")
 @option("--app", required=True, help="Application name")

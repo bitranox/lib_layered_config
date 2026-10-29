@@ -25,6 +25,12 @@ from typing import Final
 from .domain.errors import ValidationError
 from .domain.identifiers import ExamplePlatform
 
+__all__ = [
+    "normalise_examples_platform",
+    "normalise_resolver_platform",
+]
+
+
 #: Canonical resolver identifiers used when wiring the path resolver adapter.
 #: Values mirror ``sys.platform`` strings so downstream code can branch safely.
 _CANONICAL_RESOLVER: Final[dict[str, str]] = {

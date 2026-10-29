@@ -20,6 +20,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
+__all__ = [
+    "WindowsStrategy",
+]
+
+
 class WindowsStrategy(PlatformStrategy):
     """Resolve paths following Windows directory conventions.
 

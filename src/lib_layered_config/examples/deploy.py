@@ -55,6 +55,20 @@ from ..domain.permissions import apply_mode, modes_apply
 if TYPE_CHECKING:
     from ..domain.config import Config
 
+__all__ = [
+    "ConflictResolver",
+    "DeployAction",
+    "DeployResult",
+    "DeploymentStrategy",
+    "LinuxDeployment",
+    "MacDeployment",
+    "WindowsDeployment",
+    "deploy_config",
+    "deploy_config_paths",
+    "read_deploy_config",
+]
+
+
 #: The layers a deploy writes, by the target name a caller spells (case-insensitively).
 _TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in (Layer.APP, Layer.HOST, Layer.USER)}
 

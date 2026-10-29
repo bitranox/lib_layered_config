@@ -638,4 +638,9 @@ def _warn_list_index_out_of_range(dotted: str, snapshot: LayerSnapshot, index: i
     )
 
 
-__all__ = ["LayerSnapshot", "MergeResult", "merge_layers"]
+__all__ = [
+    "LayerSnapshot",
+    "MergeResult",
+    "ValueKind",
+    "merge_layers",
+]
