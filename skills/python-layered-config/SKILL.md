@@ -322,6 +322,22 @@ declaration; pass a tuple of segments, never a dotted `str` (refused with `TypeE
 of a plain dict; `not_sensitive` takes dotted paths or a `NotSensitiveKeys`. Use it on
 `read_config_raw(...).data`, which does not carry the declaration.
 
+**A mask keyed on the value's type leaks.** A value starting with `[` or `{` in the environment or
+unquoted in `.env` is parsed as JSON, so a setting documented as text can arrive as a list, a
+table, a number, a bool or None. An app-written mask guarded by `isinstance(value, str)` passes a
+password wrapped in a list (`'["postgresql://user:pw@db.example/app"]'`) straight through, in every
+output mode. Mask by KEY, whatever the value's shape: `redact_mapping` and `redact=True` already
+mask a sensitive-named key whatever its value and recurse into nested mappings, lists and tuples.
+A secret-bearing key whose name matches no built-in pattern (a database `url`:
+`is_sensitive("url")` is `False`) is masked by neither, so your own mask must name it and mask
+every shape; only None, which carries no secret, may show. Such a key reads an unquoted
+`null`/`none` as None, while a sensitive-named key keeps them as text (see "Environment-variable
+overrides") and is masked anyway. Refuse a non-text value for a text setting at the boundary,
+naming the setting and its type, never the value: unrefused, a number or list reaches a text
+consumer that uses it anyway (a numeric URL taken as a relative file name). Test each
+secret-bearing setting with one arm per shape (string, JSON array, JSON object, number, `null`),
+in every output mode, with and without redaction.
+
 **Profiles.** `validate_profile_name("production")` returns the name or raises `ValidationError`;
 `is_valid_profile_name(name)` answers `True`/`False` instead. Both take `max_length=` (default 64).
 
