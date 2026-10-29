@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -21,7 +21,8 @@ from lib_layered_config.domain.deploy_permissions import (
     drop_app_and_host_modes,
     parse_deploy_permissions,
 )
-from lib_layered_config.domain.errors import ConfigError
+from lib_layered_config.domain.errors import ConfigError, ValidationError
+from lib_layered_config.domain.identifiers import Layer
 from lib_layered_config.domain.permissions import LAYER_PERMISSIONS
 from tests.support.os_markers import os_agnostic
 
@@ -47,8 +48,8 @@ def _problems(section: object, **kwargs: Any) -> list[str]:
 def test_an_absent_section_gives_the_built_in_layer_modes() -> None:
     settings = deploy_permissions_from_config(Config({}, {}))
     for layer, modes in LAYER_PERMISSIONS.items():
-        assert settings.for_layer(layer).directory.value == modes["dir"]
-        assert settings.for_layer(layer).file.value == modes["file"]
+        assert settings.for_layer(layer).directory.value == modes.directory
+        assert settings.for_layer(layer).file.value == modes.file
     assert settings.enabled is True
     assert settings == DeployPermissions.defaults()
 
@@ -135,9 +136,36 @@ def test_parse_accepts_none_as_absent() -> None:
 
 @os_agnostic
 def test_layer_modes_keep_their_kinds() -> None:
-    modes = DeployPermissions.defaults().for_layer("user")
+    modes = DeployPermissions.defaults().for_layer(Layer.USER)
     assert modes.directory.kind is ModeKind.DIRECTORY
     assert modes.file.kind is ModeKind.FILE
+
+
+@os_agnostic
+@pytest.mark.parametrize("layer", [Layer.APP, Layer.HOST, Layer.USER])
+def test_for_layer_still_accepts_the_plain_layer_value(layer: Layer) -> None:
+    # DeployPermissions is public API: an untyped caller passing "app" must get the app modes,
+    # which it does because a (str, Enum) member hashes and compares equal to its value.
+    settings = deploy_permissions_from_config(_config({"app_file": "0o640"}))
+    plain = cast("Callable[[str], LayerModes]", settings.for_layer)
+    assert plain(layer.value) == settings.for_layer(layer)
+    assert plain(layer.value) == getattr(settings, layer.value)
+
+
+@os_agnostic
+def test_for_layer_refuses_an_unknown_string_with_the_unchanged_message() -> None:
+    plain = cast("Callable[[str], LayerModes]", DeployPermissions.defaults().for_layer)
+    with pytest.raises(ValidationError) as caught:
+        plain("bogus")
+    assert str(caught.value) == "Unsupported deployment target: bogus"
+
+
+@os_agnostic
+@pytest.mark.parametrize("layer", [Layer.DEFAULTS, Layer.DOTENV, Layer.ENV])
+def test_for_layer_refuses_a_non_deployment_layer_by_its_value(layer: Layer) -> None:
+    with pytest.raises(ValidationError) as caught:
+        DeployPermissions.defaults().for_layer(layer)
+    assert str(caught.value) == f"Unsupported deployment target: {layer.value}"
 
 
 @os_agnostic

@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, ModeKind
+from lib_layered_config.domain.identifiers import Layer
 from lib_layered_config.domain.permissions import (
     DEFAULT_APP_DIR_MODE,
     DEFAULT_APP_FILE_MODE,
     DEFAULT_USER_DIR_MODE,
     DEFAULT_USER_FILE_MODE,
     LAYER_PERMISSIONS,
+    DefaultLayerModes,
     apply_mode,
 )
 from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, MutableMapping
     from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -42,19 +45,28 @@ class TestPermissionConstants:
         assert DEFAULT_USER_FILE_MODE == 0o600
 
     def test_layer_permissions_has_app_layer(self) -> None:
-        assert "app" in LAYER_PERMISSIONS
-        assert LAYER_PERMISSIONS["app"]["dir"] == 0o755
-        assert LAYER_PERMISSIONS["app"]["file"] == 0o644
+        assert LAYER_PERMISSIONS[Layer.APP] == DefaultLayerModes(directory=0o755, file=0o644)
 
     def test_layer_permissions_has_host_layer(self) -> None:
-        assert "host" in LAYER_PERMISSIONS
-        assert LAYER_PERMISSIONS["host"]["dir"] == 0o755
-        assert LAYER_PERMISSIONS["host"]["file"] == 0o644
+        assert LAYER_PERMISSIONS[Layer.HOST] == DefaultLayerModes(directory=0o755, file=0o644)
 
     def test_layer_permissions_has_user_layer(self) -> None:
-        assert "user" in LAYER_PERMISSIONS
-        assert LAYER_PERMISSIONS["user"]["dir"] == 0o700
-        assert LAYER_PERMISSIONS["user"]["file"] == 0o600
+        assert LAYER_PERMISSIONS[Layer.USER] == DefaultLayerModes(directory=0o700, file=0o600)
+
+    def test_layer_permissions_holds_exactly_the_deployment_layers(self) -> None:
+        assert set(LAYER_PERMISSIONS) == {Layer.APP, Layer.HOST, Layer.USER}
+
+    def test_layer_permissions_finds_an_entry_by_the_plain_layer_value(self) -> None:
+        # Layer is a (str, Enum): its members hash and compare equal to their values.
+        # The cast stands for an untyped caller that indexes with the string.
+        lookup = cast("Mapping[str, DefaultLayerModes]", LAYER_PERMISSIONS)
+        assert lookup["user"] == DefaultLayerModes(directory=0o700, file=0o600)
+
+    def test_layer_permissions_is_read_only(self) -> None:
+        # The cast stands for a caller outside the type checker that tries to change a default.
+        table = cast("MutableMapping[Layer, DefaultLayerModes]", LAYER_PERMISSIONS)
+        with pytest.raises(TypeError):
+            table[Layer.USER] = DefaultLayerModes(directory=0o777, file=0o666)
 
 
 # ---------------------------------------------------------------------------

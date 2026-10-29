@@ -16,11 +16,13 @@ permission bits; a refused mode is refused on every platform.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from .identifiers import Layer
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from .deploy_mode import DeployMode
@@ -31,6 +33,7 @@ __all__ = [
     "DEFAULT_USER_DIR_MODE",
     "DEFAULT_USER_FILE_MODE",
     "LAYER_PERMISSIONS",
+    "DefaultLayerModes",
     "apply_mode",
     "modes_apply",
 ]
@@ -43,12 +46,24 @@ DEFAULT_APP_FILE_MODE: int = 0o644
 DEFAULT_USER_DIR_MODE: int = 0o700
 DEFAULT_USER_FILE_MODE: int = 0o600
 
-# Mapping of layer to default permissions (keyed by the Layer enum values)
-LAYER_PERMISSIONS: dict[str, dict[str, int]] = {
-    Layer.APP.value: {"dir": DEFAULT_APP_DIR_MODE, "file": DEFAULT_APP_FILE_MODE},
-    Layer.HOST.value: {"dir": DEFAULT_APP_DIR_MODE, "file": DEFAULT_APP_FILE_MODE},
-    Layer.USER.value: {"dir": DEFAULT_USER_DIR_MODE, "file": DEFAULT_USER_FILE_MODE},
-}
+
+class DefaultLayerModes(NamedTuple):
+    """The built-in directory and file mode of one deployment layer, as plain ints."""
+
+    directory: int
+    file: int
+
+
+#: The built-in modes of every deployment layer. Read-only, so a caller cannot change the
+#: defaults every later deploy falls back to. Keyed by ``Layer`` members; since ``Layer`` is a
+#: ``(str, Enum)``, a lookup by the plain value (``"app"``) finds the same entry.
+LAYER_PERMISSIONS: Final[Mapping[Layer, DefaultLayerModes]] = MappingProxyType(
+    {
+        Layer.APP: DefaultLayerModes(directory=DEFAULT_APP_DIR_MODE, file=DEFAULT_APP_FILE_MODE),
+        Layer.HOST: DefaultLayerModes(directory=DEFAULT_APP_DIR_MODE, file=DEFAULT_APP_FILE_MODE),
+        Layer.USER: DefaultLayerModes(directory=DEFAULT_USER_DIR_MODE, file=DEFAULT_USER_FILE_MODE),
+    }
+)
 
 
 def modes_apply() -> bool:

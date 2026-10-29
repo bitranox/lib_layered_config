@@ -141,8 +141,8 @@ def _rebuild_permissions_error(
 
 
 def _built_in(layer: Layer) -> LayerModes:
-    modes = LAYER_PERMISSIONS[layer.value]
-    return LayerModes(DeployMode(modes["dir"], ModeKind.DIRECTORY), DeployMode(modes["file"], ModeKind.FILE))
+    modes = LAYER_PERMISSIONS[layer]
+    return LayerModes(DeployMode(modes.directory, ModeKind.DIRECTORY), DeployMode(modes.file, ModeKind.FILE))
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,12 +168,32 @@ class DeployPermissions:
         """Return the built-in layer modes (``LAYER_PERMISSIONS``) with ``enabled`` true."""
         return cls(app=_built_in(Layer.APP), host=_built_in(Layer.HOST), user=_built_in(Layer.USER))
 
-    def for_layer(self, layer: str) -> LayerModes:
-        """Return the modes for *layer* (``"app"``, ``"host"`` or ``"user"``)."""
-        by_layer = {Layer.APP.value: self.app, Layer.HOST.value: self.host, Layer.USER.value: self.user}
-        if layer not in by_layer:
-            raise ValidationError(f"Unsupported deployment target: {layer}")
-        return by_layer[layer]
+    def for_layer(self, layer: Layer) -> LayerModes:
+        """Return the modes for *layer* (``Layer.APP``, ``Layer.HOST`` or ``Layer.USER``).
+
+        Raises:
+            ValidationError: *layer* is not one of the three deployment layers.
+
+        Examples:
+            >>> oct(DeployPermissions.defaults().for_layer(Layer.USER).file.value)
+            '0o600'
+        """
+        by_layer = {Layer.APP: self.app, Layer.HOST: self.host, Layer.USER: self.user}
+        modes = by_layer.get(layer)
+        if modes is None:
+            raise ValidationError(f"Unsupported deployment target: {_target_name(layer)}")
+        return modes
+
+
+def _target_name(layer: object) -> object:
+    """Return what a refusal names for *layer*: a member's value, anything else as given.
+
+    ``for_layer`` is public, and an untyped caller still passes the plain string (``"app"``),
+    which finds its member's entry because a ``(str, Enum)`` member hashes and compares equal to
+    its value. A plain string has no ``value``, so it is named as given, as before; a member is
+    named by its value because an f-string over a member reads ``Layer.ENV`` on 3.11+.
+    """
+    return getattr(layer, "value", layer)
 
 
 def _no_source(_key: str) -> str | None:
@@ -201,14 +221,14 @@ def _unknown_setting(name: str) -> str | None:
 def _assemble(modes: Mapping[str, DeployMode], *, enabled: bool) -> DeployPermissions:
     defaults = DeployPermissions.defaults()
 
-    def pick(layer: str) -> LayerModes:
+    def pick(layer: Layer) -> LayerModes:
         fallback = defaults.for_layer(layer)
         return LayerModes(
-            modes.get(f"{layer}_directory", fallback.directory),
-            modes.get(f"{layer}_file", fallback.file),
+            modes.get(f"{layer.value}_directory", fallback.directory),
+            modes.get(f"{layer.value}_file", fallback.file),
         )
 
-    return DeployPermissions(app=pick("app"), host=pick("host"), user=pick("user"), enabled=enabled)
+    return DeployPermissions(app=pick(Layer.APP), host=pick(Layer.HOST), user=pick(Layer.USER), enabled=enabled)
 
 
 def parse_deploy_permissions(
