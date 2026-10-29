@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.4.0] 2026-10-29 14:03:17
+
 ### Added
 - Free-threaded Python: the package installs and runs on 3.14t and 3.15t with the GIL off, and
   declares `Free Threading :: 3 - Stable`. CI runs free-threaded cells for 3.14 and 3.15.

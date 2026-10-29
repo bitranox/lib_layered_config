@@ -27,11 +27,24 @@ Do not forget `defaults` (the lowest layer, seeded from an explicit `default_fil
 ## Install
 
 ```bash
-pip install lib_layered_config          # TOML + JSON (via rtoml / orjson)
-pip install "lib_layered_config[yaml]"  # add optional YAML support
+pip install lib_layered_config                  # TOML + JSON (rtoml/orjson below 3.14, else stdlib)
+pip install "lib_layered_config[yaml]"          # add optional YAML support
+pip install "lib_layered_config[rtoml,orjson]"  # Python 3.14+ with the GIL only: the Rust parsers
 ```
 
-Requires Python 3.10+. Install the `yaml` extra only if you ship `.yml` files.
+Requires Python 3.10+, free-threaded 3.14t and 3.15t included. Below Python 3.14, `rtoml` and
+`orjson` are installed and parse TOML and JSON. On 3.14+ a plain install leaves both out: they are
+the optional extras `rtoml` and `orjson` (installed on a GIL build, they are used), because neither
+ships a free-threaded build and importing one turns the GIL back on (your own `import orjson` does
+the same). Never install the extras on a free-threaded build: they have no free-threaded wheel, so
+pip builds them from source or fails, for nothing. Without them, and on every free-threaded
+interpreter even when they are installed, the library never imports them, parses TOML with `tomli`
+(a dependency on 3.14 and 3.14t) or stdlib `tomllib` (3.15+) and JSON with stdlib `json`, and the
+GIL stays off. Both backends give the same values and refuse the same files, except TOML depth: a
+single table header or inline table nested 81 to 100 levels deep (a dotted key up to 101 keys) loads
+without rtoml and is refused by rtoml; tables deeper than 101 levels are refused everywhere outside
+arrays, while inside an array of tables rtoml loads them and the other parsers refuse them. Install
+the `yaml` extra only if you ship `.yml` files.
 
 ## Load config (Python)
 
@@ -172,7 +185,14 @@ The dotenv row is only the LAST place searched. The dotenv layer first looks for
 when `start_dir` is not given; a RELATIVE `start_dir` is not resolved, so its search covers
 `start_dir` and its relative parents and ends at the current directory, not above it), then at the
 per-user path above, and loads only the first file it finds. `dotenv_path=` (CLI `--env-file`)
-loads that one file with no search.
+loads that one file with no search. It may be a regular file, a FIFO such as a shell process
+substitution (`--env-file <(printf 'KEY=value')`), or a device. Every config file has the same
+10 MiB cap: exactly 10 MiB (10485760 bytes) loads, one byte more is refused, and an endless
+source such as `/dev/zero` is refused after reading one byte past the cap. Like `cat`, a FIFO read
+waits for its writer and for it to close, with no timeout: a writer that never closes blocks the
+read forever. In Python a `dotenv_path=` that does not exist loads
+nothing (an empty dotenv layer, no error); the CLI's `--env-file` refuses a missing path as a usage
+error (exit 2). A directory is refused either way.
 
 ## Probing and testing an app built on it
 
