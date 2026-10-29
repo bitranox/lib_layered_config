@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import subprocess
+import sys
 import threading
 from typing import TYPE_CHECKING
 
 import pytest
-from click.testing import CliRunner
 
-from lib_layered_config import cli, read_config
+from lib_layered_config import read_config
 from lib_layered_config.adapters.dotenv.default import DefaultDotEnvLoader
 from lib_layered_config.core import LayerLoadError
 from tests.support import create_layered_sandbox
@@ -72,15 +74,31 @@ def test_read_config_reads_a_fifo_and_names_it_as_the_origin(
     assert origin["path"] == str(fifo)
 
 
+#: Long enough for a cold interpreter start on a slow CI runner; a FIFO read never takes this long.
+_CLI_TIMEOUT_SECONDS = 120
+
+
 @posix_only
 def test_the_read_command_takes_a_fifo_as_env_file(tmp_path: Path, fifo: Path) -> None:
+    # A real process, as a shell runs `--env-file <(...)`. If the read ever blocks, the timeout ends
+    # the test with every thread's stack (faulthandler prints them on SIGABRT) instead of stalling
+    # the whole CI job.
     sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG)
     args = ["read", "--vendor", VENDOR, "--app", APP, "--slug", SLUG, "--format", "json", "--no-provenance"]
+    command = [sys.executable, "-X", "faulthandler", "-m", "lib_layered_config", *args, "--env-file", str(fifo)]
 
-    result = CliRunner().invoke(cli.cli, [*args, "--env-file", str(fifo)], env=sandbox.env)
+    with subprocess.Popen(  # noqa: S603 - argv is this interpreter and constants, no shell
+        command, env={**os.environ, **sandbox.env}, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    ) as process:
+        try:
+            out, err = process.communicate(timeout=_CLI_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.send_signal(signal.SIGABRT)
+            _, err = process.communicate()
+            pytest.fail("read --env-file <fifo> hung:\n" + err.decode("utf-8", errors="replace"))
 
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == {"ssh": {"key": "/opt/keys/id"}}
+    assert process.returncode == 0, err.decode("utf-8", errors="replace")
+    assert json.loads(out) == {"ssh": {"key": "/opt/keys/id"}}
 
 
 @posix_only

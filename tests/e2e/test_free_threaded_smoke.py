@@ -10,6 +10,9 @@ free-threaded build, and importing either would turn the GIL back on.
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 import sysconfig
 from concurrent.futures import ThreadPoolExecutor
@@ -73,17 +76,39 @@ def test_concurrent_reads_all_return_the_single_threaded_result(
     assert set(results) == {(expected.to_json(), expected.to_json(redact=True))}
 
 
+#: Run in a fresh interpreter: a test module in the same worker may import rtoml or orjson itself
+#: (to compare backends), which would turn the GIL on for every later test in that process.
+_GIL_PROBE = """
+import json, sys
+from lib_layered_config import read_config
+config = read_config(vendor=sys.argv[1], app=sys.argv[2], slug=sys.argv[3], default_file=sys.argv[4],
+                     start_dir=sys.argv[5], dotenv_path=sys.argv[6])
+config.to_json()
+print(json.dumps({
+    "name": config.get("service.name"),
+    "loaded": sorted(name for name in ("orjson", "rtoml") if name in sys.modules),
+    "gil": sys._is_gil_enabled(),
+}))
+"""
+
+
 @os_agnostic
 @pytest.mark.skipif(not _FREE_THREADED, reason="only a free-threaded interpreter can lose the GIL")
 def test_the_gil_stays_off_after_reading_toml_and_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _layers(tmp_path, monkeypatch)
+    # PYTHON_GIL=0 would force the GIL off whatever gets imported, so the check would assert nothing.
+    env = {name: value for name, value in os.environ.items() if name != "PYTHON_GIL"}
+    argv = [VENDOR, APP, SLUG, str(tmp_path / "defaults.json"), str(tmp_path), str(tmp_path / "threads.env")]
 
-    config = _read(tmp_path)
+    probe = subprocess.run(  # noqa: S603 - argv is this interpreter and constants, no shell
+        [sys.executable, "-W", "error::RuntimeWarning", "-c", _GIL_PROBE, *argv],
+        env=env,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+        check=False,
+    )
 
-    assert config.get("service.name") == "app"
-    assert config.to_json()
-    assert "orjson" not in sys.modules
-    assert "rtoml" not in sys.modules
-    is_gil_enabled = getattr(sys, "_is_gil_enabled", None)
-    assert callable(is_gil_enabled)
-    assert is_gil_enabled() is False
+    assert probe.returncode == 0, probe.stderr
+    assert json.loads(probe.stdout) == {"name": "app", "loaded": [], "gil": False}
