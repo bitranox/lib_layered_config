@@ -7,8 +7,14 @@ requires-python = ">=3.10"
 dependencies = [
   "rich-click>=1.9.9",
   "lib_cli_exit_tools>=2.4.1",
-  "rtoml>=0.14.0",
-  "orjson>=3.13.0",
+  # orjson and rtoml have no free-threaded build (their source builds refuse one) and no marker
+  # tells a free-threaded 3.14 from a normal one, so from 3.14, the first release that supports
+  # free-threading, they are the optional "orjson" and "rtoml" extras; without them
+  # lib_layered_config.domain.json_codec falls back to stdlib json and
+  # adapters.file_loaders._toml_backend to tomllib, with the same answers. Make them
+  # unconditional again once both ship free-threaded wheels.
+  "rtoml>=0.14.0; python_version < \"3.14\"",
+  "orjson>=3.13.0; python_version < \"3.14\"",
 ]
 license = { text = "MIT" }
 authors = [{ name = "bitranox", email = "bitranox@gmail.com" }]
@@ -22,6 +28,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: 3.15",
+  "Programming Language :: Python :: Free Threading :: 3 - Stable",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Typing :: Typed",
@@ -35,6 +42,7 @@ system-dependencies-macos = []
 system-dependencies-windows-pip = []
 system-dependencies-windows-choco = []
 os = ["ubuntu-latest", "windows-latest", "macos-latest"]
+free-threaded = ["3.14", "3.15"]
 
 [project.urls]
 Homepage = "https://github.com/bitranox/lib_layered_config"
@@ -75,6 +83,8 @@ dev = [
 yaml = [
   "PyYAML>=6.0.3"
 ]
+orjson = ["orjson>=3.13.0"]
+rtoml = ["rtoml>=0.14.0"]
 
 [project.scripts]
 lib_layered_config = "lib_layered_config.cli:main"

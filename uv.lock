@@ -1157,9 +1157,9 @@ version = "7.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "lib-cli-exit-tools" },
-    { name = "orjson" },
+    { name = "orjson", marker = "python_full_version < '3.14'" },
     { name = "rich-click" },
-    { name = "rtoml" },
+    { name = "rtoml", marker = "python_full_version < '3.14'" },
 ]
 
 [package.optional-dependencies]
@@ -1186,6 +1186,12 @@ dev = [
     { name = "textual" },
     { name = "twine" },
 ]
+orjson = [
+    { name = "orjson" },
+]
+rtoml = [
+    { name = "rtoml" },
+]
 yaml = [
     { name = "pyyaml" },
 ]
@@ -1203,7 +1209,8 @@ requires-dist = [
     { name = "hypothesis", marker = "python_full_version < '3.11' and extra == 'dev'", specifier = ">=6.168.5,<6.169" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = ">=2.15" },
     { name = "lib-cli-exit-tools", specifier = ">=2.4.1" },
-    { name = "orjson", specifier = ">=3.13.0" },
+    { name = "orjson", marker = "python_full_version < '3.14'", specifier = ">=3.13.0" },
+    { name = "orjson", marker = "extra == 'orjson'", specifier = ">=3.13.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.10.1" },
     { name = "pyright", extras = ["nodejs"], marker = "extra == 'dev'", specifier = ">=1.1.414" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
@@ -1213,12 +1220,13 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.3" },
     { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6.0.3" },
     { name = "rich-click", specifier = ">=1.9.9" },
-    { name = "rtoml", specifier = ">=0.14.0" },
+    { name = "rtoml", marker = "python_full_version < '3.14'", specifier = ">=0.14.0" },
+    { name = "rtoml", marker = "extra == 'rtoml'", specifier = ">=0.14.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.17.1" },
     { name = "textual", marker = "extra == 'dev'", specifier = ">=8.2.8" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=7.0.0" },
 ]
-provides-extras = ["dev", "yaml"]
+provides-extras = ["dev", "yaml", "orjson", "rtoml"]
 
 [[package]]
 name = "license-expression"
