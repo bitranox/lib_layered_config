@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from lib_layered_config import bind_trace_id, get_logger
+from lib_layered_config.domain.identifiers import Layer
 from lib_layered_config.observability import TRACE_ID, _merge_payload, log_info, make_event
 from tests.support.os_markers import os_agnostic
 
@@ -37,8 +38,17 @@ def test_bind_trace_id_none_clears_context_variable() -> None:
 
 @os_agnostic
 def test_make_event_merges_optional_payload_without_losing_base_fields() -> None:
-    event = make_event("env", None, {"keys": 3})
+    event = make_event(Layer.ENV, None, {"keys": 3})
     assert event == {"layer": "env", "path": None, "keys": 3}
+
+
+@os_agnostic
+def test_make_event_records_the_layer_as_its_plain_name() -> None:
+    """A text formatter renders the context with str(); a Layer member reads 'Layer.DEFAULTS' there on 3.11+."""
+    layer = make_event(Layer.DEFAULTS, None)["layer"]
+
+    assert type(layer) is str
+    assert str(layer) == "defaults"
 
 
 @os_agnostic

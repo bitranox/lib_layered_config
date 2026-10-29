@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The `layer` field of the `layer_loaded`, `layer_error` and `deploy_setting_ignored` log events holds the
+  layer's plain name (`"defaults"`), as the other events already did. It held the `Layer` member, which a
+  text formatter printed as `Layer.DEFAULTS` on Python 3.11 and later.
+
 ### Changed
 - `DeployPermissions.for_layer` is typed `layer: Layer`. A plain `"app"`, `"host"` or `"user"` still
   works at runtime, since `Layer` is a string enum; a strictly type-checked caller passes `Layer.APP`.

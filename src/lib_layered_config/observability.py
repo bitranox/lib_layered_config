@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, Any, Final
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from .domain.identifiers import Layer
+
 TRACE_ID: ContextVar[str | None] = ContextVar("lib_layered_config_trace_id", default=None)
 """Current trace identifier propagated through logging helpers.
 
@@ -120,7 +122,7 @@ def log_error(message: str, **fields: Any) -> None:
 
 
 def make_event(
-    layer: str,
+    layer: Layer,
     path: str | None,
     payload: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -129,7 +131,7 @@ def make_event(
     Keep event construction consistent so downstream log processors can rely on stable keys.
 
     Args:
-        layer: Name of the configuration layer being observed.
+        layer: The configuration layer being observed, recorded by its name (``"env"``).
         path: Filesystem path associated with the event, if available.
         payload: Optional mapping with extra diagnostic detail.
 
@@ -138,7 +140,8 @@ def make_event(
         or :func:`log_error`.
 
     Examples:
-        >>> make_event('env', None, {'keys': 3})
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> make_event(Layer.ENV, None, {'keys': 3})
         {'layer': 'env', 'path': None, 'keys': 3}
     """
     event = _base_event(layer, path)
@@ -177,19 +180,20 @@ def _with_trace(fields: Mapping[str, Any]) -> dict[str, Any]:
     return context
 
 
-def _base_event(layer: str, path: str | None) -> dict[str, Any]:
+def _base_event(layer: Layer, path: str | None) -> dict[str, Any]:
     """Create the minimal event payload containing layer and path information.
 
     Provide a consistent foundation for layer-related logging events.
 
     Args:
-        layer: Layer name to annotate the event.
+        layer: Layer to annotate the event with. Its value goes in, never the member: a text
+            formatter renders the context with ``str()``, which reads ``Layer.ENV`` on 3.11+.
         path: Optional filesystem path associated with the event.
 
     Returns:
         dict[str, Any]: Base payload ready for augmentation.
     """
-    return {"layer": layer, "path": path}
+    return {"layer": layer.value, "path": path}
 
 
 def _merge_payload(event: dict[str, Any], payload: Mapping[str, Any] | None) -> dict[str, Any]:
