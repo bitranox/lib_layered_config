@@ -6,6 +6,8 @@ compatibility.
 
 Contents:
     - ``Layer``: enumeration of configuration layer names.
+    - ``PlatformFamily`` / ``platform_family``: the three directory layouts, classified from ``sys.platform``.
+    - ``ExamplePlatform``: the two layouts the example generator writes.
     - ``DEFAULT_MAX_PROFILE_LENGTH``: default maximum length for profile names (64).
     - ``validate_path_segment``: core validation for filesystem path segments (strict, no spaces).
     - ``validate_identifier``: validate slug/profile identifiers (strict, no spaces).
@@ -212,6 +214,42 @@ class Layer(str, Enum):
     USER = "user"
     DOTENV = "dotenv"
     ENV = "env"
+
+
+class PlatformFamily(str, Enum):
+    """The directory layouts the path resolver and deploy know, one per operating-system family."""
+
+    LINUX = "linux"
+    MACOS = "macos"
+    WINDOWS = "windows"
+
+
+def platform_family(platform: str) -> PlatformFamily | None:
+    """Classify a ``sys.platform`` value, or return ``None`` for a platform with no known layout.
+
+    ``None`` leaves the fallback to the caller: the resolver offers no paths there, while deploy
+    writes the Linux layout.
+
+    Examples:
+        >>> platform_family("linux"), platform_family("darwin"), platform_family("win32")
+        (<PlatformFamily.LINUX: 'linux'>, <PlatformFamily.MACOS: 'macos'>, <PlatformFamily.WINDOWS: 'windows'>)
+        >>> platform_family("freebsd14") is None
+        True
+    """
+    if platform.startswith("linux"):
+        return PlatformFamily.LINUX
+    if platform == "darwin":
+        return PlatformFamily.MACOS
+    if platform.startswith("win"):
+        return PlatformFamily.WINDOWS
+    return None
+
+
+class ExamplePlatform(str, Enum):
+    """The two directory layouts ``generate_examples`` writes; the values are the CLI's choices."""
+
+    POSIX = "posix"
+    WINDOWS = "windows"
 
 
 def validate_path_segment(value: str, name: str, *, allow_dots: bool = False) -> str:
@@ -548,8 +586,11 @@ def validate_hostname(value: str) -> str:
 
 __all__ = [
     "DEFAULT_MAX_PROFILE_LENGTH",
+    "ExamplePlatform",
     "Layer",
+    "PlatformFamily",
     "is_valid_profile_name",
+    "platform_family",
     "validate_hostname",
     "validate_identifier",
     "validate_path_segment",
