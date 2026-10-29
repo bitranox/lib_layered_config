@@ -426,6 +426,9 @@ which have no JSON form; write a list or a base64 string instead: <position> (<t
 it as a string instead: <position> (int, N bits)[; ...]"` for a TOML or YAML integer outside that range (TOML
 reads up to 128 bits, a YAML hex literal any width); `"<path> is a directory, not a
 configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory;
+`"<path> is a FIFO, not a configuration file"` (or `character device`, `block device`, `socket`) when
+`default_file` names one, a shell's `<(...)` included (a `default_file` that does not exist is no defaults
+layer, and a discovered config path that is one of these is passed over);
 `"<path> cannot be read: <reason>"` when a layer's config location, the platform `.env` location, `default_file` or
 `dotenv_path` sits behind a permission wall (a directory on its path the user cannot enter, or a file the user
 cannot read) or is a name the operating system cannot take (a NUL byte). With `dotenv_path` set, the search

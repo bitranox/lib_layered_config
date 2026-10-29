@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+import os
+import socket
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
@@ -15,7 +17,7 @@ from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolv
 from lib_layered_config.core import LayerLoadError
 from tests.adapters.test_loader_errors import _chain
 from tests.support import LayeredSandbox, create_layered_sandbox
-from tests.support.os_markers import os_agnostic
+from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -257,6 +259,52 @@ def test_read_config_dotenv_path_provenance_records_explicit_file(
     assert result.data["service"]["region"] == "us-east"  # type: ignore[index]
     assert result.provenance["service.region"]["layer"] == "dotenv"
     assert result.provenance["service.region"]["path"] == str(explicit_env)
+
+
+@posix_only
+def test_read_config_refuses_a_fifo_given_as_default_file(tmp_path: Path) -> None:
+    """A FIFO at `default_file` (a shell's `<(...)` is one) refuses the load naming its kind. It
+    used to be passed over as if absent, so the defaults layer vanished without a word. The FIFO
+    has no writer: a refusal that opened it first would hang here, not pass."""
+    fifo = tmp_path / "defaults.toml"
+    os.mkfifo(fifo)
+
+    with pytest.raises(LayerLoadError, match="is a FIFO, not a configuration file") as caught:
+        read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file=fifo)
+
+    assert str(fifo) in str(caught.value)
+
+
+@posix_only
+def test_read_config_refuses_a_device_given_as_default_file(tmp_path: Path) -> None:
+    """A device at `default_file` refuses the load naming its kind, rather than reading as no defaults."""
+    with pytest.raises(LayerLoadError, match="/dev/null is a character device, not a configuration file"):
+        read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file="/dev/null")
+
+
+@posix_only
+def test_read_config_refuses_a_socket_given_as_default_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Unix socket at `default_file` refuses the load naming its kind. Bound by a relative name
+    from inside tmp_path: macOS caps a socket path near 104 bytes and its tmp_path is longer."""
+    monkeypatch.chdir(tmp_path)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+        listener.bind("defaults.toml")
+
+        with pytest.raises(LayerLoadError, match="is a socket, not a configuration file"):
+            read_config(
+                vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file=tmp_path / "defaults.toml"
+            )
+
+
+@os_agnostic
+def test_read_config_treats_a_missing_default_file_as_no_defaults(tmp_path: Path) -> None:
+    """A `default_file` that does not exist stays optional: only a path that exists as something
+    other than a file is refused."""
+    config = read_config(
+        vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file=tmp_path / "absent.toml"
+    )
+
+    assert config.as_dict() == {}
 
 
 @os_agnostic

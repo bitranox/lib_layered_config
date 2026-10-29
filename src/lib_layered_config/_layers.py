@@ -22,9 +22,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .adapters._path_probe import PathKind, checked_kind
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.file_loaders._dot_d import expand_dot_d
-from .adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
+from .adapters.file_loaders.structured import (
+    JSONFileLoader,
+    TOMLFileLoader,
+    YAMLFileLoader,
+    special_file_not_config_file,
+)
 from .application.merge import LayerSnapshot, MergeResult, merge_layers
 from .domain.deploy_permissions import drop_app_and_host_modes
 from .domain.errors import InvalidFormatError, NotFoundError
@@ -192,6 +198,10 @@ def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
     """
     if not default_file:
         return
+    # Discovered layer paths pass a FIFO or device over (config_path_present); a default_file is
+    # named by the caller, so an existing path that is not a file is refused, never dropped.
+    if checked_kind(Path(default_file)) is PathKind.OTHER:
+        raise special_file_not_config_file(Path(default_file))
 
     snapshots = list(_load_entry_with_dot_d(Layer.DEFAULTS, default_file))
     if not snapshots:

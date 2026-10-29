@@ -128,6 +128,43 @@ def directory_not_config_file(path: Path) -> InvalidFormatError:
     return InvalidFormatError(message)
 
 
+_SPECIAL_FILE_KINDS: Final = (
+    (stat.S_ISFIFO, "FIFO"),
+    (stat.S_ISCHR, "character device"),
+    (stat.S_ISBLK, "block device"),
+    (stat.S_ISSOCK, "socket"),
+)
+
+
+def special_file_not_config_file(path: Path) -> InvalidFormatError:
+    """Log and build the refusal for a configured file path that is a FIFO, device or socket.
+
+    A defaults file comes with a ``.d`` companion named after it, which has no meaning for a
+    stream such as ``/dev/fd/63``, so a stream is refused rather than read; passed over as absent,
+    the layer vanished without a word. Naming the kind tells the caller why an existing path did
+    not load.
+
+    Args:
+        path: The configured path that exists as something other than a file or directory.
+
+    Returns:
+        The error to raise.
+
+    Examples:
+        >>> str(special_file_not_config_file(Path("/nonexistent-lib-layered-config-probe")))
+        '/nonexistent-lib-layered-config-probe is a special file, not a configuration file'
+    """
+    try:
+        mode = path.stat().st_mode
+    except (OSError, ValueError):
+        # Gone or changed between the caller's check and this one: name no kind rather than guess.
+        mode = 0
+    kind = next((name for is_kind, name in _SPECIAL_FILE_KINDS if is_kind(mode)), "special file")
+    message = f"{path} is a {kind}, not a configuration file"
+    log_error("config_path_is_special_file", layer=FILE_LAYER, path=str(path), error=message)
+    return InvalidFormatError(message)
+
+
 def _build_invalid_format_message(path: str, format_name: str, failure: _ParseFailure | None) -> str:
     """Build the caller-facing message: path, format, why and, when known, line and column.
 

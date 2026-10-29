@@ -6,6 +6,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- `read_config*(default_file=...)` refuses a FIFO, character or block device, or socket, naming the
+  kind (`"/dev/fd/63 is a FIFO, not a configuration file"`). Such a path, a shell's `<(...)` among
+  them, was passed over as if absent, so the defaults layer vanished without a word. A
+  `default_file` that does not exist is still no defaults layer.
+
 ## [7.4.0] 2026-10-29 14:03:17
 
 ### Added
