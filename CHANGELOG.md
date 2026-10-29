@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   kind (`"/dev/fd/63 is a FIFO, not a configuration file"`). Such a path, a shell's `<(...)` among
   them, was passed over as if absent, so the defaults layer vanished without a word. A
   `default_file` that does not exist is still no defaults layer.
+- `read_config*(default_file=...)` refuses a file whose suffix no loader reads (`defaults.conf`, or no
+  suffix at all): `"defaults.conf has no supported format (.toml, .json, .yaml, .yml)"`. It loaded
+  nothing and raised nothing before. The layers found on disk and the files in a `.d` directory are
+  unchanged: those still skip any other suffix.
 
 ## [7.4.0] 2026-10-29 14:03:17
 

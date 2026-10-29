@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lib_layered_config._layers import (
-    _default_snapshots,
     _load_entry,
     _note_layer_error,
     _paths_in_preferred_order,
@@ -27,10 +26,13 @@ def test_merge_or_empty_reports_empty_when_no_layers() -> None:
 
 
 @os_agnostic
-def test_load_default_layer_skips_unknown_extension(tmp_path: Path) -> None:
+def test_load_entry_skips_unknown_extension(tmp_path: Path) -> None:
+    """The per-file loader passes over a suffix no loader reads, so a `.d` directory can hold a
+    README. A `default_file` with such a suffix is refused before it gets here (see
+    tests/e2e/test_read_config.py)."""
     path = tmp_path / "config.ini"
     path.write_text("ignored", encoding="utf-8")
-    assert list(_default_snapshots(str(path))) == []
+    assert _load_entry("defaults", str(path)) is None
 
 
 @os_agnostic

@@ -297,12 +297,36 @@ def test_read_config_refuses_a_socket_given_as_default_file(tmp_path: Path, monk
 
 
 @os_agnostic
-def test_read_config_treats_a_missing_default_file_as_no_defaults(tmp_path: Path) -> None:
-    """A `default_file` that does not exist stays optional: only a path that exists as something
-    other than a file is refused."""
-    config = read_config(
-        vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file=tmp_path / "absent.toml"
-    )
+@pytest.mark.parametrize("name", ["defaults.conf", "defaults"])
+def test_read_config_refuses_a_default_file_without_a_supported_suffix(tmp_path: Path, name: str) -> None:
+    """A `default_file` whose suffix no loader reads refuses the load naming the supported ones.
+    It used to load nothing and raise nothing, so the defaults layer vanished without a word."""
+    default_file = tmp_path / name
+    default_file.write_text("a = 1\n", encoding="utf-8")
+
+    with pytest.raises(LayerLoadError, match=r"has no supported format \(\.toml, \.json, \.yaml, \.yml\)") as caught:
+        read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file=default_file)
+
+    assert str(default_file) in str(caught.value)
+
+
+@os_agnostic
+def test_read_config_reads_a_default_file_suffix_in_any_case(tmp_path: Path) -> None:
+    """The suffix is matched without regard to case, so an upper-case `.TOML` is a supported one."""
+    default_file = tmp_path / "DEFAULTS.TOML"
+    default_file.write_text("a = 1\n", encoding="utf-8")
+
+    config = read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file=default_file)
+
+    assert config.as_dict() == {"a": 1}
+
+
+@os_agnostic
+@pytest.mark.parametrize("name", ["absent.toml", "absent.conf"])
+def test_read_config_treats_a_missing_default_file_as_no_defaults(tmp_path: Path, name: str) -> None:
+    """A `default_file` that does not exist stays optional, whatever its suffix: only a path that
+    exists as something other than a readable configuration file is refused."""
+    config = read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), default_file=tmp_path / name)
 
     assert config.as_dict() == {}
 

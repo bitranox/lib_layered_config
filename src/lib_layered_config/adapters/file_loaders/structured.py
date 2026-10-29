@@ -165,6 +165,25 @@ def special_file_not_config_file(path: Path) -> InvalidFormatError:
     return InvalidFormatError(message)
 
 
+def unsupported_config_format(path: Path, suffixes: tuple[str, ...]) -> InvalidFormatError:
+    """Log and build the refusal for a configured file whose suffix no loader reads.
+
+    Args:
+        path: The configured file.
+        suffixes: The suffixes a loader reads, in the order the message lists them.
+
+    Returns:
+        The error to raise.
+
+    Examples:
+        >>> str(unsupported_config_format(Path("defaults.conf"), (".toml", ".json")))
+        'defaults.conf has no supported format (.toml, .json)'
+    """
+    message = f"{path} has no supported format ({', '.join(suffixes)})"
+    log_error("config_path_unsupported_format", layer=FILE_LAYER, path=str(path), error=message)
+    return InvalidFormatError(message)
+
+
 def _build_invalid_format_message(path: str, format_name: str, failure: _ParseFailure | None) -> str:
     """Build the caller-facing message: path, format, why and, when known, line and column.
 

@@ -30,6 +30,7 @@ from .adapters.file_loaders.structured import (
     TOMLFileLoader,
     YAMLFileLoader,
     special_file_not_config_file,
+    unsupported_config_format,
 )
 from .application.merge import LayerSnapshot, MergeResult, merge_layers
 from .domain.deploy_permissions import drop_app_and_host_modes
@@ -198,10 +199,7 @@ def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
     """
     if not default_file:
         return
-    # Discovered layer paths pass a FIFO or device over (config_path_present); a default_file is
-    # named by the caller, so an existing path that is not a file is refused, never dropped.
-    if checked_kind(Path(default_file)) is PathKind.OTHER:
-        raise special_file_not_config_file(Path(default_file))
+    _refuse_an_unloadable_default_file(Path(default_file))
 
     snapshots = list(_load_entry_with_dot_d(Layer.DEFAULTS, default_file))
     if not snapshots:
@@ -210,6 +208,28 @@ def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
     for snapshot in snapshots:
         _note_layer_loaded(snapshot.name, snapshot.origin, {"keys": len(snapshot.payload)})
         yield snapshot
+
+
+def _refuse_an_unloadable_default_file(path: Path) -> None:
+    """Refuse a *path* that exists but cannot be read as the defaults file.
+
+    Discovered layer paths have fixed names and pass a FIFO or device over
+    (``config_path_present``), and a ``.d`` directory skips a README on purpose. A
+    ``default_file`` is named by the caller, so an existing path no loader reads is refused,
+    never dropped: dropped, the defaults layer vanished without a word. A missing path stays
+    no defaults layer.
+
+    Args:
+        path: The caller's ``default_file``.
+
+    Raises:
+        InvalidFormatError: *path* is a FIFO, device or socket, or a file whose suffix no loader reads.
+    """
+    kind = checked_kind(path)
+    if kind is PathKind.OTHER:
+        raise special_file_not_config_file(path)
+    if kind is PathKind.FILE and path.suffix.lower() not in _FILE_LOADERS:
+        raise unsupported_config_format(path, tuple(_FILE_LOADERS))
 
 
 def _filesystem_snapshots(

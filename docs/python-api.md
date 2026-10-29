@@ -428,7 +428,9 @@ reads up to 128 bits, a YAML hex literal any width); `"<path> is a directory, no
 configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory;
 `"<path> is a FIFO, not a configuration file"` (or `character device`, `block device`, `socket`) when
 `default_file` names one, a shell's `<(...)` included (a `default_file` that does not exist is no defaults
-layer, and a discovered config path that is one of these is passed over);
+layer, and a discovered config path that is one of these is passed over); `"<path> has no supported format
+(.toml, .json, .yaml, .yml)"` when `default_file` is a file with any other suffix, or none (matched without
+regard to case);
 `"<path> cannot be read: <reason>"` when a layer's config location, the platform `.env` location, `default_file` or
 `dotenv_path` sits behind a permission wall (a directory on its path the user cannot enter, or a file the user
 cannot read) or is a name the operating system cannot take (a NUL byte). With `dotenv_path` set, the search
