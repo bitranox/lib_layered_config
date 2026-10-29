@@ -122,7 +122,11 @@ def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Pa
 
 
 def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
-    """Yield `.env` paths from start_dir upward to filesystem root; none when there is no start."""
+    """Yield `.env` paths from start_dir upward to the filesystem root.
+
+    Without a start_dir the search starts in the current directory; it yields nothing only when
+    the current directory cannot be resolved.
+    """
     base = Path(start_dir) if start_dir else current_directory()
     if base is None:
         return
