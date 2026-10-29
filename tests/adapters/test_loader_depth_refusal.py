@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from lib_layered_config.adapters.file_loaders._toml_backend import RtomlParser, StdlibTomlParser
+from lib_layered_config.adapters.file_loaders._toml_backend import RtomlParser, TomliParser
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from lib_layered_config.domain.errors import InvalidFormatError
 from lib_layered_config.domain.json_codec import JsonCodec, OrjsonCodec, StdlibCodec
@@ -70,7 +70,7 @@ def test_a_toml_file_nested_too_deep_says_so_with_rtoml_s_position(tmp_path: Pat
     ids=["array", "inline-table", "table-header", "dotted-key"],
 )
 def test_a_toml_file_nested_too_deep_says_so_with_tomllib(tmp_path: Path, text: str) -> None:
-    parser = StdlibTomlParser(importlib.import_module("tomllib"))
+    parser = TomliParser(importlib.import_module("tomllib"))
 
     path, message = _refusal(tmp_path, "deep.toml", text, TOMLFileLoader(parser))
 

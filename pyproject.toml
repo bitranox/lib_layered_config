@@ -11,10 +11,13 @@ dependencies = [
   # tells a free-threaded 3.14 from a normal one, so from 3.14, the first release that supports
   # free-threading, they are the optional "orjson" and "rtoml" extras; without them
   # lib_layered_config.domain.json_codec falls back to stdlib json and
-  # adapters.file_loaders._toml_backend to tomllib, with the same answers. Make them
+  # adapters.file_loaders._toml_backend to tomli or tomllib, with the same answers. Make them
   # unconditional again once both ship free-threaded wheels.
   "rtoml>=0.14.0; python_version < \"3.14\"",
   "orjson>=3.13.0; python_version < \"3.14\"",
+  # tomllib reads TOML 1.1 (which rtoml reads) only from 3.15; on 3.14 tomli, which has
+  # free-threaded wheels, parses instead. 2.4.0 is the first tomli that reads TOML 1.1.
+  "tomli>=2.4.0; python_version == \"3.14\"",
 ]
 license = { text = "MIT" }
 authors = [{ name = "bitranox", email = "bitranox@gmail.com" }]

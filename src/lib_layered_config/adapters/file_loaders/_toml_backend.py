@@ -1,23 +1,31 @@
-"""TOML parsing with rtoml where it can run, and stdlib tomllib where it cannot - with the same answers.
+"""TOML parsing with rtoml where it can run, and tomli / tomllib where it cannot - with the same answers.
 
 rtoml ships no free-threaded build: importing a build without free-threading support would turn the
 GIL back on, and from Python 3.14 rtoml is an optional extra. On a free-threaded interpreter, or
-wherever rtoml is not installed, TOML files are parsed with :mod:`tomllib` (Python 3.11+). Below
-3.14 rtoml is a required dependency, so Python 3.10, which has no tomllib, always has rtoml.
+wherever rtoml is not installed, TOML files are parsed with tomli (a dependency on Python 3.14, where
+:mod:`tomllib` still reads TOML 1.0) or :mod:`tomllib` (TOML 1.1 from Python 3.15). Below 3.14
+rtoml is a required dependency, so Python 3.10, which has no tomllib, always has rtoml.
 
-Measured differences the stdlib parser closes, so a file loads or is refused the same way everywhere:
+Measured differences the tomli parser closes, so a file loads or is refused the same way everywhere:
 
-- rtoml refuses nesting past 80 levels of syntax; tomllib nests until Python's recursion limit.
-  The two count differently (a dotted key at rtoml's limit is 80 levels deep as data, an array of
-  tables 82), so no single bound matches rtoml exactly: the stdlib parser refuses a document more
-  than :data:`TOML_MAX_DEPTH` levels deep, the smallest bound that never refuses a document rtoml
-  accepts. Within two levels of the limit the stdlib parser therefore accepts slightly more.
-- rtoml refuses an integer past 128 bits, tomllib reads any width. The file loader refuses every
-  integer outside the JSON range after either parser, so both end in the same refusal - except a
-  literal past Python's 4300-digit conversion limit, which both refuse as invalid TOML.
+- rtoml refuses more than 80 levels of nesting per construct: a table header, a dotted key, and a
+  value each count on their own, so a header holding a dotted key can be 160 tables deep. The parsed
+  data no longer shows which construct made a level, so the tomli parser applies two bounds instead:
+  tables nested past :data:`TOML_MAX_TABLE_DEPTH`, the depth the merge refuses on every path, and
+  arrays nested directly in arrays past :data:`TOML_MAX_ARRAY_DEPTH`, rtoml's own limit. What stays
+  apart: a single header, dotted key or inline table 81 to 101 levels deep loads with tomli and is
+  refused by rtoml, and so does a value alternating arrays and inline tables past 80 levels.
+- rtoml accepts a leading byte order mark; tomli refuses it, so the parser skips it.
+- rtoml refuses a float literal too large for a float (``1e400``); tomli reads it as infinity, so
+  the parser refuses it. The ``inf`` and ``nan`` literals load on both.
+- rtoml refuses an integer past 128 bits, tomli reads any width. The file loader refuses every
+  integer outside the JSON range after either parser, so both end in a refusal, with different
+  messages - except a literal past Python's 4300-digit conversion limit, which both refuse as
+  invalid TOML.
 
 Contents:
-    - ``TomlParser`` / ``RtomlParser`` / ``StdlibTomlParser``: the two backends behind one protocol.
+    - ``TomlParser`` / ``RtomlParser`` / ``TomliParser``: the backends behind one protocol; the
+      tomli parser runs tomli or tomllib, which share one API.
     - ``TomlLoadError``: a refused document, with its position and whether it nests too deep.
     - ``PARSER``: the parser this interpreter uses, chosen once at import.
 """
@@ -25,7 +33,9 @@ Contents:
 from __future__ import annotations
 
 import importlib
+import math
 import re
+import sys
 import sysconfig
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
@@ -35,17 +45,25 @@ if TYPE_CHECKING:
 
 __all__ = [
     "PARSER",
-    "TOML_MAX_DEPTH",
+    "TOML_MAX_ARRAY_DEPTH",
+    "TOML_MAX_TABLE_DEPTH",
     "RtomlParser",
-    "StdlibTomlParser",
     "TomlLoadError",
     "TomlParser",
+    "TomliParser",
     "select_parser",
 ]
 
-#: The deepest nesting, counted as data levels with the document itself as level 1, the stdlib
-#: parser accepts. rtoml's 80-level limit reaches 82 data levels for an array of tables.
-TOML_MAX_DEPTH: Final[int] = 82
+#: The deepest table nesting the tomli parser accepts, counting the document as level 1. The merge
+#: refuses deeper tables on every path (``application.merge``), so a file this parser refuses for
+#: its tables is one that rtoml's path refuses too, one step later.
+TOML_MAX_TABLE_DEPTH: Final[int] = 101
+
+#: The most arrays nested directly in one another the tomli parser accepts: rtoml's limit for a value.
+TOML_MAX_ARRAY_DEPTH: Final[int] = 80
+
+#: A UTF-8 byte order mark as the decoder leaves it at the start of the text.
+_BYTE_ORDER_MARK: Final[str] = chr(0xFEFF)
 
 #: rtoml's message is read only for the numbers in it; "line 1 column 4" (toml 0.5) and
 #: "line 1, column 4" (newer renderers, which also print a source snippet) both match.
@@ -95,12 +113,12 @@ class _RtomlModule(Protocol):
     def loads(self, toml: str, /) -> dict[str, object]: ...
 
 
-class _TomllibModule(Protocol):
-    """The part of the ``tomllib`` module the parser uses."""
+class _TomliModule(Protocol):
+    """The part of the ``tomli`` / ``tomllib`` module the parser uses."""
 
     TOMLDecodeError: type[ValueError]
 
-    def loads(self, s: str, /) -> dict[str, object]: ...
+    def loads(self, s: str, /, *, parse_float: Callable[[str], object]) -> dict[str, object]: ...
 
 
 def _rtoml_position(message: str) -> tuple[int, int] | None:
@@ -145,26 +163,54 @@ class RtomlParser:
             ) from error
 
 
-class StdlibTomlParser:
-    """Parse with tomllib, answering as rtoml does."""
+class TomliParser:
+    """Parse with tomli or tomllib, answering as rtoml does.
 
-    def __init__(self, tomllib: ModuleType) -> None:
-        """Bind the parser to the imported ``tomllib`` module."""
-        self._tomllib = cast("_TomllibModule", tomllib)
+    Examples:
+        >>> import importlib.util
+        >>> name = "tomllib" if importlib.util.find_spec("tomllib") else "tomli"
+        >>> TomliParser(importlib.import_module(name)).loads(chr(0xFEFF) + "a = 1")
+        {'a': 1}
+    """
+
+    def __init__(self, tomli: ModuleType) -> None:
+        """Bind the parser to the imported ``tomli`` or ``tomllib`` module."""
+        self._tomli = cast("_TomliModule", tomli)
 
     def loads(self, text: str) -> dict[str, object]:
         """Return the table *text* holds (see :class:`TomlParser`)."""
         try:
-            table = self._tomllib.loads(text)
-        except self._tomllib.TOMLDecodeError as error:
+            table = self._tomli.loads(text.removeprefix(_BYTE_ORDER_MARK), parse_float=_finite_float)
+        except self._tomli.TOMLDecodeError as error:
             raise TomlLoadError(str(error), position=_tomllib_position(error)) from error
         except RecursionError as error:
             raise TomlLoadError("the document nests too deep", too_deep=True) from error
-        except ValueError as error:  # an integer literal past Python's 4300-digit conversion limit
+        except ValueError as error:  # a float past the float range, or an integer past 4300 digits
             raise TomlLoadError(str(error)) from error
-        if _deeper_than(table, TOML_MAX_DEPTH):
-            raise TomlLoadError(f"the document nests deeper than {TOML_MAX_DEPTH} levels", too_deep=True)
+        if _nests_too_deep(table):
+            raise TomlLoadError(
+                f"the document nests tables deeper than {TOML_MAX_TABLE_DEPTH} levels "
+                f"or arrays deeper than {TOML_MAX_ARRAY_DEPTH}",
+                too_deep=True,
+            )
         return table
+
+
+def _finite_float(text: str) -> float:
+    """Read a TOML float literal, refusing one too large for a float as rtoml does.
+
+    Examples:
+        >>> _finite_float("1_000.5"), _finite_float("inf"), _finite_float("1e-400")
+        (1000.5, inf, 0.0)
+        >>> _finite_float("-1e400")
+        Traceback (most recent call last):
+        ...
+        ValueError: the float -1e400 is too large
+    """
+    value = float(text)
+    if math.isfinite(value) or text.lstrip("+-") in {"inf", "nan"}:
+        return value
+    raise ValueError(f"the float {text} is too large")
 
 
 def _tomllib_position(error: ValueError) -> tuple[int, int] | None:
@@ -186,28 +232,34 @@ def _tomllib_position(error: ValueError) -> tuple[int, int] | None:
     return (int(found.group(1)), int(found.group(2))) if found else None
 
 
-def _deeper_than(table: dict[str, object], limit: int) -> bool:
-    """Return whether *table* nests more than *limit* levels, counting itself as level 1.
+def _nests_too_deep(table: dict[str, object]) -> bool:
+    """Return whether *table* nests tables or directly nested arrays past the parser's bounds.
 
-    Walks with an explicit stack: the table is as deep as Python's recursion limit let the parser
-    go, so a recursive walk could fail where the parser did not.
+    Tables count from the document as level 1 (:data:`TOML_MAX_TABLE_DEPTH`); arrays count only
+    while each sits directly in the one before (:data:`TOML_MAX_ARRAY_DEPTH`). Walks with an
+    explicit stack: the table is as deep as Python's recursion limit let the parser go, so a
+    recursive walk could fail where the parser did not.
 
     Examples:
-        >>> _deeper_than({"a": [[1]]}, 3), _deeper_than({"a": [[1]]}, 2)
-        (False, True)
+        >>> _nests_too_deep({"a": [[1]]})
+        False
+        >>> deep: dict[str, object] = {"k": 1}
+        >>> for _ in range(TOML_MAX_TABLE_DEPTH):
+        ...     deep = {"a": deep}
+        >>> _nests_too_deep(deep)
+        True
     """
-    stack: list[tuple[object, int]] = [(table, 1)]
+    stack: list[tuple[object, int, int]] = [(table, 1, 0)]
     while stack:
-        node, depth = stack.pop()
+        node, tables, arrays = stack.pop()
         if isinstance(node, dict):
-            children: list[object] = list(cast("dict[str, object]", node).values())
+            if tables > TOML_MAX_TABLE_DEPTH:
+                return True
+            stack.extend((child, tables + 1, 0) for child in cast("dict[str, object]", node).values())
         elif isinstance(node, list):
-            children = cast("list[object]", node)
-        else:
-            continue
-        if depth > limit:
-            return True
-        stack.extend((child, depth + 1) for child in children)
+            if arrays + 1 > TOML_MAX_ARRAY_DEPTH:
+                return True
+            stack.extend((child, tables, arrays + 1) for child in cast("list[object]", node))
     return False
 
 
@@ -225,6 +277,12 @@ def _import_rtoml() -> ModuleType | None:
     return _import_module("rtoml")
 
 
+def _import_tomli() -> ModuleType | None:
+    # From Python 3.15 tomllib reads TOML 1.1 itself, and a tomli some other package installed there
+    # may be older than the 2.4.0 this package requires on 3.14.
+    return _import_module("tomli") if sys.version_info < (3, 15) else None
+
+
 def _import_tomllib() -> ModuleType | None:
     return _import_module("tomllib")
 
@@ -233,31 +291,35 @@ def select_parser(
     *,
     free_threaded: bool,
     import_rtoml: Callable[[], ModuleType | None],
+    import_tomli: Callable[[], ModuleType | None],
     import_tomllib: Callable[[], ModuleType | None],
 ) -> TomlParser:
-    """Return the rtoml parser when it can run here, else the tomllib one.
+    """Return the rtoml parser when it can run here, else tomli, else tomllib.
 
     Args:
         free_threaded: Whether the interpreter is a free-threaded build. rtoml is never imported
             there: it has no free-threaded build, and importing one would re-enable the GIL.
         import_rtoml: Returns the ``rtoml`` module, or ``None`` when it is not installed.
+        import_tomli: Returns the ``tomli`` module, or ``None`` when it is not installed or not
+            wanted (from Python 3.15 tomllib reads TOML 1.1).
         import_tomllib: Returns the ``tomllib`` module, or ``None`` before Python 3.11.
 
     Raises:
-        ImportError: When neither can be imported, which only a Python 3.10 without rtoml reaches.
+        ImportError: When none can be imported, which only a Python 3.10 without rtoml reaches.
     """
     rtoml = None if free_threaded else import_rtoml()
     if rtoml is not None:
         return RtomlParser(rtoml)
-    tomllib = import_tomllib()
-    if tomllib is None:
+    tomli = import_tomli() or import_tomllib()
+    if tomli is None:
         raise ImportError("lib_layered_config needs rtoml on Python 3.10: pip install rtoml")
-    return StdlibTomlParser(tomllib)
+    return TomliParser(tomli)
 
 
 #: The parser this interpreter uses, chosen once at import.
 PARSER: Final[TomlParser] = select_parser(
     free_threaded=bool(sysconfig.get_config_var("Py_GIL_DISABLED")),
     import_rtoml=_import_rtoml,
+    import_tomli=_import_tomli,
     import_tomllib=_import_tomllib,
 )
