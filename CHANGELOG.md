@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.4.2] - 2026-10-29
+
 ### Fixed
 - A config nested more than 253 levels deep (counted from its top-level table) no longer loads and then
   crashes every JSON view (`to_json`, `read_config_json`, `read-json`) with `TypeError: Recursion limit
