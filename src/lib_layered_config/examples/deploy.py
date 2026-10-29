@@ -445,30 +445,22 @@ class DeploymentStrategy:
             return Path("profile") / self.resolver.profile
         return Path()
 
-    def iter_destinations(self, targets: Sequence[str]) -> Iterator[Path]:
-        """Yield destination paths for each valid target in *targets*."""
-        for raw_target in targets:
-            destination = self.destination_for(_validate_target(raw_target))
-            if destination is not None:
-                yield destination
-
-    def destination_for(self, target: Layer) -> Path | None:  # pragma: no cover - abstract
-        """Return the destination path for *target*, or None if unsupported."""
+    def destination_for(self, target: Layer) -> Path:  # pragma: no cover - abstract
+        """Return the destination path for *target*, one of the deploy layers app, host and user."""
         raise NotImplementedError
 
 
 class LinuxDeployment(DeploymentStrategy):
     """Linux deployment using XDG Base Directory paths."""
 
-    def destination_for(self, target: Layer) -> Path | None:
+    def destination_for(self, target: Layer) -> Path:
         """Return Linux-specific destination path for *target*."""
         mapping = {
             Layer.APP: self._app_path,
             Layer.HOST: self._host_path,
             Layer.USER: self._user_path,
         }
-        builder = mapping.get(target)
-        return builder() if builder else None
+        return mapping[target]()
 
     def _etc_root(self) -> Path:
         return Path(self.resolver.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
@@ -491,15 +483,14 @@ class LinuxDeployment(DeploymentStrategy):
 class MacDeployment(DeploymentStrategy):
     """macOS deployment using Application Support paths."""
 
-    def destination_for(self, target: Layer) -> Path | None:
+    def destination_for(self, target: Layer) -> Path:
         """Return macOS-specific destination path for *target*."""
         mapping = {
             Layer.APP: self._app_path,
             Layer.HOST: self._host_path,
             Layer.USER: self._user_path,
         }
-        builder = mapping.get(target)
-        return builder() if builder else None
+        return mapping[target]()
 
     def _app_root(self) -> Path:
         default_root = Path("/Library/Application Support")
@@ -526,15 +517,14 @@ class MacDeployment(DeploymentStrategy):
 class WindowsDeployment(DeploymentStrategy):
     """Windows deployment using ProgramData and AppData paths."""
 
-    def destination_for(self, target: Layer) -> Path | None:
+    def destination_for(self, target: Layer) -> Path:
         """Return Windows-specific destination path for *target*."""
         mapping = {
             Layer.APP: self._app_path,
             Layer.HOST: self._host_path,
             Layer.USER: self._user_path,
         }
-        builder = mapping.get(target)
-        return builder() if builder else None
+        return mapping[target]()
 
     def _program_data_root(self) -> Path:
         return Path(
@@ -1083,16 +1073,14 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
         targets: Target layer names, as the caller spells them.
 
     Yields:
-        One ``_Destination`` per target the platform has a destination for.
+        One ``_Destination`` per target, in the order given.
 
     Raises:
         ValidationError: A target is not one of app, host and user.
     """
     for raw_target in targets:
         layer = _validate_target(raw_target)
-        destination = _strategy_for(resolver).destination_for(layer)
-        if destination is not None:
-            yield _Destination(destination, layer)
+        yield _Destination(_strategy_for(resolver).destination_for(layer), layer)
 
 
 def _copy_payload(destination: Path, payload: bytes, *, modes: LayerModes | None) -> None:

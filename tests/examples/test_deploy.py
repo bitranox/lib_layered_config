@@ -270,47 +270,6 @@ def test_strategy_for_defaults_to_linux_strategy() -> None:
 
 
 @os_agnostic
-def test_deployment_strategy_iterates_known_targets(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-    strategy = deploy_module.LinuxDeployment(resolver)
-
-    destinations = list(strategy.iter_destinations(["app", "user"]))
-
-    assert destinations[-1].as_posix().endswith("config.toml")
-
-
-@os_agnostic
-def test_deployment_strategy_raises_on_unknown_target(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-    strategy = deploy_module.LinuxDeployment(resolver)
-
-    with pytest.raises(ValueError):
-        list(strategy.iter_destinations(["mystery"]))
-
-
-@os_agnostic
-def test_deployment_strategy_skips_none_destinations(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
-    )
-
-    class NullStrategy(deploy_module.DeploymentStrategy):
-        def destination_for(self, target: Layer) -> Path | None:  # pragma: no cover - abstract contract
-            return None
-
-    strategy = NullStrategy(resolver)
-
-    assert list(strategy.iter_destinations(["app"])) == []
-
-
-@os_agnostic
 def test_strategy_for_selects_windows_for_any_win_platform() -> None:
     resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="win64")
     assert isinstance(deploy_module._strategy_for(resolver), deploy_module.WindowsDeployment)
@@ -337,18 +296,17 @@ def test_destinations_carry_the_layer_each_target_names(tmp_path: Path) -> None:
 
 
 @os_agnostic
-def test_destinations_skip_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    class DummyResolver(DefaultPathResolver):
-        pass
+@pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
+def test_every_platform_layout_gives_each_deploy_target_a_destination(tmp_path: Path, platform: str) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform=platform)
+    resolver = DefaultPathResolver(
+        vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform=platform, hostname="penguin"
+    )
 
-    class NullStrategy:
-        def destination_for(self, target: Layer) -> Path | None:
-            return None
+    destinations = list(deploy_module._destinations_for(resolver, ["app", "host", "user"]))
 
-    resolver = DummyResolver(vendor=VENDOR, app=APP, slug=SLUG)
-    monkeypatch.setattr(deploy_module, "_strategy_for", lambda *_: NullStrategy())
-
-    assert list(deploy_module._destinations_for(resolver, ["app"])) == []
+    assert [destination.layer for destination in destinations] == [Layer.APP, Layer.HOST, Layer.USER]
+    assert [destination.path.name for destination in destinations] == ["config.toml", "penguin.toml", "config.toml"]
 
 
 @os_agnostic
