@@ -12,6 +12,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   reached`. A TOML, JSON or YAML file that deep is refused, naming the file, the key it nests under and
   the depth; an environment or `.env` JSON value that deep stays the text it was written as. Both follow
   the rule an integer outside JSON's range already follows.
+- An environment variable under the app's prefix whose value or name is not valid UTF-8 (on POSIX,
+  `MYAPP___DB__NAME=$'a\xffb'`) is refused with `LayerLoadError`: `"environment variable
+  MYAPP___DB__NAME is not valid UTF-8 (byte offset 1)"`, never naming the value. It loaded, then every
+  JSON view and the CLI `read` crashed with `TypeError: str is not valid UTF-8`. A `.env` file with the
+  same bytes was already refused this way. Variables outside the prefix are not looked at.
 
 ## [7.4.1] 2026-10-29 17:14:23
 

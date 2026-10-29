@@ -16,8 +16,9 @@ Each value is converted by ``.._value_coercion.coerce_value``, the rule the dote
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
+from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
 from .._nested_keys import assign_nested
@@ -108,6 +109,7 @@ class DefaultEnvLoader:
         normalized_prefix = _normalize_prefix(prefix)
         collected: dict[str, object] = {}
         for raw_key, value in _iter_namespace_entries(self._environ.items(), normalized_prefix):
+            _refuse_undecodable(normalized_prefix + raw_key, value)
             assign_nested(
                 collected,
                 raw_key,
@@ -142,6 +144,78 @@ def _normalize_prefix(prefix: str) -> str:
     if prefix and not prefix.endswith("___"):
         return f"{prefix}___"
     return prefix
+
+
+def _refuse_undecodable(name: str, value: str) -> None:
+    r"""Refuse a variable whose name or value has no UTF-8 form, naming it, never its value.
+
+    POSIX hands Python each byte of an environment entry that is not UTF-8 as a lone surrogate
+    (``b"a\xff"`` reads as ``"a\udcff"``), and Windows passes an unpaired UTF-16 surrogate through
+    as one. Such a value loaded, then crashed every JSON view; a ``.env`` file with the same bytes
+    is already refused, and this gives the environment the same rule.
+
+    Raises:
+        InvalidFormatError: When *name* or *value* holds a lone surrogate.
+
+    Examples:
+        >>> _refuse_undecodable("DEMO___KEY", "Gr\u00fc\u00dfe")
+        >>> _refuse_undecodable("DEMO___KEY", "a\udcffb")
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: environment variable DEMO___KEY ... (byte offset 1)
+        >>> _refuse_undecodable("DEMO___K\udcffEY", "a")
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: environment variable name DEMO___K\xffEY ...
+    """
+    name_offset = _first_undecodable_offset(name)
+    if name_offset is not None:
+        message = f"environment variable name {_escape_surrogates(name)} is not valid UTF-8 (byte offset {name_offset})"
+        raise InvalidFormatError(message)
+    value_offset = _first_undecodable_offset(value)
+    if value_offset is not None:
+        raise InvalidFormatError(f"environment variable {name} is not valid UTF-8 (byte offset {value_offset})")
+
+
+def _first_undecodable_offset(text: str) -> int | None:
+    r"""Return the UTF-8 byte offset of the first lone surrogate in *text*, or ``None``.
+
+    Examples:
+        >>> _first_undecodable_offset("\u00e9a\udcff"), _first_undecodable_offset("plain")
+        (3, None)
+    """
+    for index, char in enumerate(text):
+        if _SURROGATE_FIRST <= ord(char) <= _SURROGATE_LAST:
+            return len(text[:index].encode("utf-8"))
+    return None
+
+
+def _escape_surrogates(text: str) -> str:
+    r"""Return *text* with each lone surrogate written as an escape: ``\xNN`` for a byte POSIX passed
+    through undecoded, ``\uXXXX`` for any other.
+
+    Examples:
+        >>> print(_escape_surrogates("K\udcffY\ud800"))
+        K\xffY\ud800
+    """
+    return "".join(_escape_one(char) for char in text)
+
+
+def _escape_one(char: str) -> str:
+    code = ord(char)
+    if _ESCAPED_BYTE_FIRST <= code <= _SURROGATE_LAST:
+        return f"\\x{code - _SURROGATE_ESCAPE_BASE:02x}"
+    if _SURROGATE_FIRST <= code <= _SURROGATE_LAST:
+        return f"\\u{code:04x}"
+    return char
+
+
+#: The UTF-16 surrogate range; a lone one has no UTF-8 encoding.
+_SURROGATE_FIRST: Final[int] = 0xD800
+_SURROGATE_LAST: Final[int] = 0xDFFF
+#: Python's ``surrogateescape`` error handler maps an undecodable byte B to ``U+DC00 + B`` (B >= 0x80).
+_SURROGATE_ESCAPE_BASE: Final[int] = 0xDC00
+_ESCAPED_BYTE_FIRST: Final[int] = 0xDC80
 
 
 def _iter_namespace_entries(

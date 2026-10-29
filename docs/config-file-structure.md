@@ -461,7 +461,8 @@ text: `5`, `-7` and `3.5` convert; `007123`, `0640`, `1.50`, `+5`, `1_000` and `
 integer of more than 19 digits, or below `-2**63`, stays a string too, since no JSON view could write it, and so
 does a JSON array or object that would nest the config more than 253 levels deep (counted from the top-level
 table, the levels the key itself adds included: `A__B__DEEP` puts its value three tables down). A quoted
-`.env` value is always the literal text.
+`.env` value is always the literal text. A value or name that is not valid UTF-8 is refused, in the environment
+(naming the variable and byte offset, never the value) as in `.env` (naming the file, line and byte offset).
 
 A sensitive key keeps an unquoted `null` or `none` as text, in the environment and in `.env` alike, so a
 secret spelled that way is never read as "no credential". A key is sensitive when the last segment of its

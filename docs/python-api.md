@@ -426,7 +426,9 @@ which have no JSON form; write a list or a base64 string instead: <position> (<t
 it as a string instead: <position> (int, N bits)[; ...]"` for a TOML or YAML integer outside that range (TOML
 reads up to 128 bits, a YAML hex literal any width); `"<path> nests <position> N levels deep; JSON output
 takes 253, counted from the top-level table: flatten it, or write it as a string"` for a TOML, JSON or YAML
-file nesting deeper than any JSON view can write; `"<path> is a directory, not a
+file nesting deeper than any JSON view can write; `"environment variable <NAME> is not valid UTF-8 (byte
+offset N)"` (or `environment variable name <NAME>`, its bad bytes written as `\xNN`) for a variable under the
+app's prefix whose value or name is not UTF-8, never naming the value; `"<path> is a directory, not a
 configuration file"` when `default_file`, a discovered config path or `dotenv_path` names a directory;
 `"<path> is a FIFO, not a configuration file"` (or `character device`, `block device`, `socket`) when
 `default_file` names one, a shell's `<(...)` included (a `default_file` that does not exist is no defaults
