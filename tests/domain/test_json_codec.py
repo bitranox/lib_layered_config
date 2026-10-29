@@ -12,8 +12,9 @@ import datetime
 import enum
 import importlib.util
 import json
+import sys
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from hypothesis import given
@@ -60,6 +61,15 @@ def _nested(depth: int, *, kind: str) -> object:
     for _ in range(depth):
         value = [value] if kind == "list" else {"a": value}
     return value
+
+
+def _depth_and_leaf(value: object) -> tuple[int, object]:
+    # Walked iteratively: `==` on a 1024-deep value recurses past the 3.10/3.11 recursion limit.
+    depth = 0
+    while isinstance(value, (list, dict)):
+        depth += 1
+        value = cast("list[object]", value)[0] if isinstance(value, list) else cast("dict[str, object]", value)["a"]
+    return depth, value
 
 
 def _nested_text(depth: int, *, kind: str) -> str:
@@ -130,12 +140,38 @@ def test_a_document_orjson_refuses_is_refused(codec: JsonCodec, text: str) -> No
 @pytest.mark.parametrize("codec", CODECS, ids=_codec_id)
 @pytest.mark.parametrize("kind", ["list", "dict"])
 def test_nesting_up_to_the_limit_loads_and_one_more_is_too_deep(codec: JsonCodec, kind: str) -> None:
-    assert codec.loads(_nested_text(JSON_MAX_DEPTH, kind=kind)) == _nested(JSON_MAX_DEPTH, kind=kind)
+    if isinstance(codec, StdlibCodec) and sys.version_info < (3, 12):
+        pytest.skip(
+            "the 3.10/3.11 C json scanner stops at sys.getrecursionlimit() (1000); there orjson is a "
+            "required dependency and no free-threaded build exists, so the stdlib codec never runs"
+        )
+
+    assert _depth_and_leaf(codec.loads(_nested_text(JSON_MAX_DEPTH, kind=kind))) == (JSON_MAX_DEPTH, 1)
 
     with pytest.raises(JsonLoadError) as caught:
         codec.loads(_nested_text(JSON_MAX_DEPTH + 1, kind=kind))
 
     assert caught.value.too_deep is True
+
+
+@os_agnostic
+@pytest.mark.parametrize("codec", CODECS, ids=_codec_id)
+@pytest.mark.parametrize(
+    ("text", "position"),
+    # Positions measured from orjson 3.13.0: the column is one past the bracket that goes too deep.
+    [
+        ("[" * 1025 + "1" + "]" * 1025, (1, 1026)),
+        ("[" * 1100 + "1" + "]" * 1099, (1, 1026)),
+        ('{\n "a": ' + "[" * 1024 + "1" + "]" * 1024 + "}", (2, 1031)),
+        ('["[[[' + _B + '"", ' + "[" * 1024 + "1" + "]" * 1025, (1, 1035)),
+    ],
+    ids=["list", "later-syntax-error", "second-line", "brackets-in-a-string"],
+)
+def test_too_deep_is_reported_where_orjson_reports_it(codec: JsonCodec, text: str, position: tuple[int, int]) -> None:
+    with pytest.raises(JsonLoadError) as caught:
+        codec.loads(text)
+
+    assert (caught.value.too_deep, caught.value.position) == (True, position)
 
 
 @os_agnostic
@@ -198,8 +234,29 @@ def test_dumps_writes_nan_and_infinity_as_null(codec: JsonCodec) -> None:
 @pytest.mark.parametrize("codec", CODECS, ids=_codec_id)
 @pytest.mark.parametrize(
     "value",
-    [{"n": JSON_INT_MAX + 1}, {"n": JSON_INT_MIN - 1}, {1: "int key"}, {"s": {1, 2}}, {"b": b"raw"}, {"o": object()}],
-    ids=["above-uint64", "below-int64", "int-key", "set", "bytes", "object"],
+    [
+        {"n": JSON_INT_MAX + 1},
+        {"n": JSON_INT_MIN - 1},
+        {1: "int key"},
+        {"s": {1, 2}},
+        {"b": b"raw"},
+        {"o": object()},
+        # A lone surrogate is what an undecodable environment byte becomes (surrogateescape).
+        {"s": "caf" + chr(0xDCE9)},
+        ["ok", ["x" + chr(0xD800)]],
+        {chr(0xDCFF): 1},
+    ],
+    ids=[
+        "above-uint64",
+        "below-int64",
+        "int-key",
+        "set",
+        "bytes",
+        "object",
+        "surrogate",
+        "nested-surrogate",
+        "surrogate-key",
+    ],
 )
 def test_dumps_refuses_what_orjson_refuses(codec: JsonCodec, value: object) -> None:
     with pytest.raises(TypeError):

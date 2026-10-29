@@ -10,14 +10,23 @@ loads, is refused, and is written the same way on every interpreter. Measured di
 
 - Reading: stdlib json accepts ``NaN``/``Infinity``, ``1e400`` (infinity), a lone surrogate escape
   and nesting deeper than orjson's 1024 levels, and reads an integer outside ``-2**63 .. 2**64-1``
-  as an exact int where orjson reads a float. Each now answers as orjson does.
+  as an exact int where orjson reads a float. Each now answers as orjson does; a too-deep document
+  is refused at orjson's position even when a syntax error follows.
 - Writing: orjson writes NaN and infinity as ``null``; datetimes, dates and times as ISO text; a
   UUID as its string and an Enum as its value; and refuses an integer outside the range above, a
-  non-string key, a type it does not know, and nesting deeper than 254 levels. So does the stdlib
-  codec.
+  non-string key, a lone surrogate, a type it does not know, and nesting deeper than 254 levels.
+  So does the stdlib codec.
 
-One difference remains, valid JSON either way: a float exponent is written ``1e-07`` by stdlib json
-and ``1e-7`` by orjson.
+Differences that remain:
+
+- A small float is spelled differently, valid JSON either way and the same value when read back:
+  stdlib json writes ``1e-07`` and ``1e-05`` where orjson writes ``1e-7`` and ``0.00001``.
+- A refusal from the stdlib parse hooks (``NaN``, ``Infinity``, ``1e400``, a lone surrogate) names
+  no position, and some syntax-error columns and messages differ by a character.
+- On Python 3.10 and 3.11 the stdlib parser stops at Python's recursion limit (1000) instead of
+  1024 levels; orjson is a required dependency there, so the stdlib codec does not run.
+- Values only Python code can supply (tuples, a ``time`` with ``tzinfo``, a ``str`` subclass as a
+  key, dataclasses) are written by one codec and refused by the other.
 
 Contents:
     - ``JSON_INT_MIN`` / ``JSON_INT_MAX``: the integer range a JSON view writes.
@@ -33,6 +42,7 @@ import enum
 import importlib
 import json
 import math
+import re
 import sysconfig
 import uuid
 from typing import TYPE_CHECKING, Final, Protocol, cast
@@ -74,6 +84,9 @@ JSON_ENCODE_MAX_DEPTH: Final[int] = 254
 _MAX_INT_TEXT: Final[int] = 20
 
 _ORJSON_TOO_DEEP: Final[str] = "depth limit exceeded"
+
+#: The characters that open, close or quote JSON structure; the depth scan skips everything else.
+_JSON_STRUCTURE: Final[re.Pattern[str]] = re.compile(r'[\[\]{}"\\]')
 
 
 class JsonLoadError(ValueError):
@@ -162,18 +175,26 @@ class StdlibCodec:
         )
 
     def loads(self, text: str) -> object:
-        """Return the value *text* holds (see :class:`JsonCodec`)."""
+        """Return the value *text* holds (see :class:`JsonCodec`).
+
+        Depth is judged by a scan of the text, not by the parse: orjson stops at the first
+        bracket past :data:`JSON_MAX_DEPTH`, so a too-deep document is too deep even when a
+        syntax error follows, and the 3.10/3.11 parser hits Python's recursion limit first.
+        """
         try:
             value: object = json.loads(
                 text, parse_int=_orjson_int, parse_float=_finite_float, parse_constant=_refuse_constant
             )
         except json.JSONDecodeError as error:
+            _refuse_too_deep(text, end=error.pos)
             raise JsonLoadError(str(error), position=(error.lineno, error.colno)) from error
         except RecursionError as error:
+            _refuse_too_deep(text, end=len(text))
             raise JsonLoadError("the document nests too deep", too_deep=True) from error
         except ValueError as error:  # raised by the parse hooks below
             raise JsonLoadError(str(error)) from error
-        _refuse_what_orjson_refuses(value)
+        _refuse_too_deep(text, end=len(text))
+        _refuse_lone_surrogates(value)
         return value
 
 
@@ -212,31 +233,81 @@ def _refuse_constant(name: str) -> object:
     raise ValueError(f"{name} is not a JSON value")
 
 
-def _refuse_what_orjson_refuses(value: object) -> None:
-    """Refuse nesting deeper than :data:`JSON_MAX_DEPTH` and text holding a lone surrogate.
+def _refuse_too_deep(text: str, *, end: int) -> None:
+    """Refuse *text* when a bracket before *end* opens a level deeper than :data:`JSON_MAX_DEPTH`.
+
+    Scans the text rather than the parsed value, so the verdict and position match orjson's,
+    which stops at that bracket: a syntax error after it, or a parser that gives up earlier, does
+    not change them. Brackets inside strings, escaped quotes included, are not counted.
+
+    Raises:
+        JsonLoadError: At orjson's position, one column past the offending bracket.
+
+    Examples:
+        >>> _refuse_too_deep('["[[["]', end=7)
+        >>> _refuse_too_deep("[" * 1025, end=1025)
+        Traceback (most recent call last):
+        lib_layered_config.domain.json_codec.JsonLoadError: the document nests deeper than 1024 levels
+    """
+    depth = 0
+    in_string = False
+    escaped_index = -1
+    for match in _JSON_STRUCTURE.finditer(text, 0, end):
+        index = match.start()
+        char = match.group()
+        if index == escaped_index:
+            continue
+        if in_string:
+            if char == "\\":
+                escaped_index = index + 1
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char in "[{":
+            depth += 1
+            if depth > JSON_MAX_DEPTH:
+                raise JsonLoadError(
+                    f"the document nests deeper than {JSON_MAX_DEPTH} levels",
+                    position=_orjson_position(text, index),
+                    too_deep=True,
+                )
+        elif char in "]}":
+            depth -= 1
+
+
+def _orjson_position(text: str, index: int) -> tuple[int, int]:
+    """Return the (line, column) orjson reports for a depth refusal at *index*.
+
+    Examples:
+        >>> _orjson_position("ab\\ncd[", 5)
+        (2, 4)
+    """
+    line_start = text.rfind("\n", 0, index) + 1
+    return text.count("\n", 0, index) + 1, index - line_start + 2
+
+
+def _refuse_lone_surrogates(value: object) -> None:
+    """Refuse a parsed document holding text with a lone surrogate, as orjson does.
 
     Walks with an explicit stack: the document is as deep as the parser allowed, and a recursive
     walk would hit Python's recursion limit first.
 
     Raises:
-        JsonLoadError: For either.
+        JsonLoadError: When a key or value holds one.
     """
-    stack: list[tuple[object, int]] = [(value, 0)]
+    stack: list[object] = [value]
     while stack:
-        node, depth = stack.pop()
+        node = stack.pop()
         if isinstance(node, str):
             _refuse_lone_surrogate(node)
-            continue
-        if not isinstance(node, (dict, list)):
-            continue
-        if depth >= JSON_MAX_DEPTH:
-            raise JsonLoadError(f"the document nests deeper than {JSON_MAX_DEPTH} levels", too_deep=True)
-        if isinstance(node, dict):
+        elif isinstance(node, dict):
             mapping = cast("dict[str, object]", node)
-            stack.extend((key, depth) for key in mapping)
-            stack.extend((item, depth + 1) for item in mapping.values())
-        else:
-            stack.extend((item, depth + 1) for item in cast("list[object]", node))
+            stack.extend(mapping)
+            stack.extend(mapping.values())
+        elif isinstance(node, list):
+            stack.extend(cast("list[object]", node))
 
 
 def _refuse_lone_surrogate(text: str) -> None:
@@ -273,13 +344,40 @@ def _orjson_container(
     for key, item in value.items():
         if not isinstance(key, str):
             raise TypeError("Dict key must be str")
-        shaped[key] = _orjson_shape(item, depth=depth + 1)
+        shaped[_utf8_text(key)] = _orjson_shape(item, depth=depth + 1)
     return shaped
+
+
+def _utf8_text(text: str) -> str:
+    """Return *text* when it can be written as UTF-8, as orjson requires.
+
+    A lone surrogate - what an undecodable environment byte becomes under ``surrogateescape`` -
+    has no UTF-8 form; orjson refuses it, while stdlib json with ``ensure_ascii=False`` would write
+    it into text no UTF-8 reader accepts.
+
+    Raises:
+        TypeError: When *text* holds a lone surrogate.
+
+    Examples:
+        >>> _utf8_text("caf" + chr(0xE9)) == "caf" + chr(0xE9)
+        True
+        >>> _utf8_text("caf" + chr(0xDCE9))
+        Traceback (most recent call last):
+        TypeError: str is not valid UTF-8: surrogates not allowed
+    """
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise TypeError("str is not valid UTF-8: surrogates not allowed") from error
+    return text
 
 
 def _orjson_scalar(value: object) -> object:
     """Shape a scalar the way orjson writes it (see :func:`_orjson_shape`)."""
-    if value is None or isinstance(value, (str, bool)):
+    if isinstance(value, (str, uuid.UUID)):
+        # A str subclass (a str-valued Enum member) keeps its own text; a UUID becomes its string.
+        return _utf8_text(value if isinstance(value, str) else str(value))
+    if value is None or isinstance(value, bool):
         return value
     if isinstance(value, int):
         if not JSON_INT_MIN <= value <= JSON_INT_MAX:
@@ -289,8 +387,6 @@ def _orjson_scalar(value: object) -> object:
         return value if math.isfinite(value) else None
     if isinstance(value, (dt.datetime, dt.date, dt.time)):
         return value.isoformat()
-    if isinstance(value, uuid.UUID):
-        return str(value)
     if isinstance(value, enum.Enum):
         return _orjson_scalar(cast("object", value.value))
     raise TypeError(f"Type is not JSON serializable: {type(value).__name__}")

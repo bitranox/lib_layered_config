@@ -18,7 +18,7 @@ import pytest
 from lib_layered_config.adapters.file_loaders._toml_backend import RtomlParser, StdlibTomlParser
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from lib_layered_config.domain.errors import InvalidFormatError
-from lib_layered_config.domain.json_codec import OrjsonCodec, StdlibCodec
+from lib_layered_config.domain.json_codec import JsonCodec, OrjsonCodec, StdlibCodec
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -77,23 +77,21 @@ def test_a_toml_file_nested_too_deep_says_so_with_tomllib(tmp_path: Path, text: 
     assert message == f"{path} nests deeper than the TOML parser allows"
 
 
-@os_agnostic
-def test_a_json_file_nested_too_deep_says_so_with_orjson_s_position(tmp_path: Path) -> None:
-    orjson = pytest.importorskip("orjson")
-    deep = '{"x": ' + "[" * 1100 + "]" * 1100 + "}"
-
-    path, message = _refusal(tmp_path, "deep.json", deep, JSONFileLoader(OrjsonCodec(orjson)))
-
-    assert message.startswith(f"{path} nests deeper than the JSON parser allows (line 1, column ")
+def _json_codecs() -> list[JsonCodec]:
+    codecs: list[JsonCodec] = [StdlibCodec()]
+    if importlib.util.find_spec("orjson") is not None:
+        codecs.append(OrjsonCodec(importlib.import_module("orjson")))
+    return codecs
 
 
 @os_agnostic
-def test_a_json_file_nested_too_deep_says_so_with_the_stdlib_codec(tmp_path: Path) -> None:
+@pytest.mark.parametrize("codec", _json_codecs(), ids=lambda codec: type(codec).__name__)
+def test_a_json_file_nested_too_deep_names_orjson_s_position(tmp_path: Path, codec: JsonCodec) -> None:
     deep = '{"x": ' + "[" * 1100 + "]" * 1100 + "}"
 
-    path, message = _refusal(tmp_path, "deep.json", deep, JSONFileLoader(StdlibCodec()))
+    path, message = _refusal(tmp_path, "deep.json", deep, JSONFileLoader(codec))
 
-    assert message == f"{path} nests deeper than the JSON parser allows"
+    assert message == f"{path} nests deeper than the JSON parser allows (line 1, column 1031)"
 
 
 @os_agnostic
