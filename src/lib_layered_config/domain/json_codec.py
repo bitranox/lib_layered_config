@@ -23,6 +23,11 @@ Differences that remain:
   stdlib json writes ``1e-07`` and ``1e-05`` where orjson writes ``1e-7`` and ``0.00001``.
 - A refusal from the stdlib parse hooks (``NaN``, ``Infinity``, ``1e400``, a lone surrogate) names
   no position, and some syntax-error columns and messages differ by a character.
+- A document refused for two reasons can name a different one on each codec, while both refuse it:
+  nested past 1024 levels and holding ``NaN``, ``Infinity`` or ``1e400``, the stdlib codec names
+  the value even when the depth comes first; holding a lone surrogate before the deep part, it
+  names the depth. orjson reports an unclosed document 1026 to about 1100 levels deep as a memory
+  error rather than as too deep.
 - On Python 3.10 and 3.11 the stdlib parser stops at Python's recursion limit (1000) instead of
   1024 levels; orjson is a required dependency there, so the stdlib codec does not run.
 - Values only Python code can supply (tuples, a ``time`` with ``tzinfo``, a ``str`` subclass as a

@@ -11,10 +11,15 @@ Measured differences the tomli parser closes, so a file loads or is refused the 
 - rtoml refuses more than 80 levels of nesting per construct: a table header, a dotted key, and a
   value each count on their own, so a header holding a dotted key can be 160 tables deep. The parsed
   data no longer shows which construct made a level, so the tomli parser applies two bounds instead:
-  tables nested past :data:`TOML_MAX_TABLE_DEPTH`, the depth the merge refuses on every path, and
-  arrays nested directly in arrays past :data:`TOML_MAX_ARRAY_DEPTH`, rtoml's own limit. What stays
-  apart: a single header, dotted key or inline table 81 to 101 levels deep loads with tomli and is
-  refused by rtoml, and so does a value alternating arrays and inline tables past 80 levels.
+  tables nested past :data:`TOML_MAX_TABLE_DEPTH`, the depth the merge refuses for tables outside
+  arrays on every path, and arrays nested directly in arrays past :data:`TOML_MAX_ARRAY_DEPTH`,
+  rtoml's own limit. What stays apart: a single table header or inline table 81 to 100 levels deep,
+  or a dotted key of 81 to 101 keys, loads with tomli and is refused by rtoml, and so does a value
+  alternating arrays and inline tables past 80 levels. The other way round, the merge does not look
+  inside arrays, so rtoml's path loads tables nested past 101 levels inside an array of tables
+  (80 per construct), while the tomli parser counts tables through the array and refuses them.
+  Counting afresh inside each array instead would let a chain of array-of-tables headers nest
+  without any bound.
 - rtoml accepts a leading byte order mark; tomli refuses it, so the parser skips it.
 - rtoml refuses a float literal too large for a float (``1e400``); tomli reads it as infinity, so
   the parser refuses it. The ``inf`` and ``nan`` literals load on both.
@@ -22,6 +27,8 @@ Measured differences the tomli parser closes, so a file loads or is refused the 
   integer outside the JSON range after either parser, so both end in a refusal, with different
   messages - except a literal past Python's 4300-digit conversion limit, which both refuse as
   invalid TOML.
+- A too-deep or float-overflow refusal from the tomli parser names no position, where rtoml names
+  one, and some syntax-error columns differ by one.
 
 Contents:
     - ``TomlParser`` / ``RtomlParser`` / ``TomliParser``: the backends behind one protocol; the
@@ -54,9 +61,10 @@ __all__ = [
     "select_parser",
 ]
 
-#: The deepest table nesting the tomli parser accepts, counting the document as level 1. The merge
-#: refuses deeper tables on every path (``application.merge``), so a file this parser refuses for
-#: its tables is one that rtoml's path refuses too, one step later.
+#: The deepest table nesting the tomli parser accepts, counting the document as level 1 and counting
+#: through arrays. The merge refuses deeper tables outside arrays on every path (``application.merge``),
+#: so there a file this parser refuses for its tables is one that rtoml's path refuses too, one step
+#: later; inside an array the two differ (see the module docstring).
 TOML_MAX_TABLE_DEPTH: Final[int] = 101
 
 #: The most arrays nested directly in one another the tomli parser accepts: rtoml's limit for a value.
@@ -279,7 +287,7 @@ def _import_rtoml() -> ModuleType | None:
 
 def _import_tomli() -> ModuleType | None:
     # From Python 3.15 tomllib reads TOML 1.1 itself, and a tomli some other package installed there
-    # may be older than the 2.4.0 this package requires on 3.14.
+    # may predate tomli 2.4.0, the first that reads TOML 1.1.
     return _import_module("tomli") if sys.version_info < (3, 15) else None
 
 

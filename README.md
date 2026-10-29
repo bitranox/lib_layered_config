@@ -125,8 +125,10 @@ pip install "lib_layered_config[rtoml,orjson]"
 > importing one would turn the GIL back on: without them, or on any free-threaded interpreter, the library
 > parses TOML with `tomli` (a dependency on 3.14) or stdlib `tomllib` (3.15+) and JSON with stdlib `json`,
 > refusing the same files the Rust parsers refuse. Do not install the extras on a free-threaded build: they have
-> no free-threaded wheel, and the library never imports them there. The one difference is TOML depth: a single
-> table header, dotted key or inline table 81 to 101 levels deep loads there and is refused by `rtoml`.
+> no free-threaded wheel, and the library never imports them there. The one difference is TOML depth past 80
+> levels: a single table header or inline table 81 to 100 levels deep (a dotted key up to 101 keys) loads there
+> and is refused by `rtoml`, while tables nested past 101 levels inside an array of tables load with `rtoml` and
+> are refused there.
 >
 > Install the optional `yaml` extra only when you actually ship `.yml` files to keep the dependency footprint small.
 

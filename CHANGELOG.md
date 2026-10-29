@@ -26,8 +26,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   lone surrogate. A JSON integer past 64 bits reads as a float on both. The difference left is
   TOML depth: `rtoml` allows 80 levels per table header, dotted key and value, which the parsed
   data cannot tell apart, so `tomli`/`tomllib` refuse tables nested past 101 levels (the depth the
-  merge refuses on every path) and arrays nested in arrays past 80. A single header, dotted key or
-  inline table 81 to 101 levels deep therefore loads there and is refused by `rtoml`.
+  merge refuses for tables outside arrays) and arrays nested in arrays past 80. A single header or
+  inline table 81 to 100 levels deep (a dotted key up to 101 keys) therefore loads there and is
+  refused by `rtoml`, while tables nested past 101 levels inside an array of tables load with
+  `rtoml` and are refused there.
 - The `python-layered-config` skill (plugin 7.4.0) says where rtoml and orjson are used (below
   Python 3.14, or from the `rtoml`/`orjson` extras on a GIL build, never to be installed on a
   free-threaded one), that a free-threaded interpreter never imports them and parses with `tomli`
