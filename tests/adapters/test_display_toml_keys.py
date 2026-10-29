@@ -17,6 +17,7 @@ from rich.console import Console
 
 from lib_layered_config import Config, OutputFormat, display_config
 from lib_layered_config.application.merge import LayerSnapshot, merge_layers
+from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -127,7 +128,7 @@ def test_a_dotted_section_view_shows_the_source_of_its_keys() -> None:
 # --- shapes the real merge produces -----------------------------------------------------------
 
 
-def _merged(*layers: tuple[str, dict[str, Any], str | None]) -> Config:
+def _merged(*layers: tuple[Layer, dict[str, Any], str | None]) -> Config:
     result = merge_layers([LayerSnapshot(name, payload, origin) for name, payload, origin in layers])
     return Config(result.data, result.provenance)
 
@@ -136,8 +137,8 @@ def _merged(*layers: tuple[str, dict[str, Any], str | None]) -> Config:
 def test_a_list_element_a_higher_layer_overrode_names_that_layer_too() -> None:
     # An indexed override (APP___HOSTS__0__NAME=x) records hosts.0.name, not hosts.
     config = _merged(
-        ("defaults", {"hosts": [{"name": "a"}, {"name": "b"}]}, "/etc/app/defaults.toml"),
-        ("env", {"hosts": {"0": {"name": "x"}}}, None),
+        (Layer.DEFAULTS, {"hosts": [{"name": "a"}, {"name": "b"}]}, "/etc/app/defaults.toml"),
+        (Layer.ENV, {"hosts": {"0": {"name": "x"}}}, None),
     )
 
     lines = _render(config)
@@ -149,7 +150,7 @@ def test_a_list_element_a_higher_layer_overrode_names_that_layer_too() -> None:
 
 @os_agnostic
 def test_an_empty_table_shows_its_source_above_its_header() -> None:
-    config = _merged(("defaults", {"styles": {}}, "/etc/app/defaults.toml"))
+    config = _merged((Layer.DEFAULTS, {"styles": {}}, "/etc/app/defaults.toml"))
 
     lines = _render(config)
 
@@ -204,8 +205,8 @@ def test_a_utc_datetime_ends_in_z_as_toml_writes_it() -> None:
 @os_agnostic
 def test_an_override_from_the_list_s_own_source_adds_no_line() -> None:
     config = _merged(
-        ("env", {"h": [{"n": "a"}, {"n": "b"}]}, None),
-        ("env", {"h": {"0": {"n": "x"}}}, None),
+        (Layer.ENV, {"h": [{"n": "a"}, {"n": "b"}]}, None),
+        (Layer.ENV, {"h": {"0": {"n": "x"}}}, None),
     )
 
     lines = _render(config)
@@ -216,8 +217,8 @@ def test_an_override_from_the_list_s_own_source_adds_no_line() -> None:
 @os_agnostic
 def test_an_override_under_a_dotted_key_names_its_path_quoted() -> None:
     config = _merged(
-        ("defaults", {"a.b": [{"n": "a"}]}, "/etc/app/defaults.toml"),
-        ("env", {"a.b": {"0": {"n": "x"}}}, None),
+        (Layer.DEFAULTS, {"a.b": [{"n": "a"}]}, "/etc/app/defaults.toml"),
+        (Layer.ENV, {"a.b": {"0": {"n": "x"}}}, None),
     )
 
     lines = _render(config)

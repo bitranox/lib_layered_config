@@ -1645,7 +1645,8 @@ Exported from the package root, used to configure or override `deploy_config`'s 
 - `ModeKind`: Whether a mode applies to a directory or a file (`DIRECTORY`, `FILE`).
 - `LayerModes`: The directory mode and the file mode one layer is deployed with.
 - `DeployPermissions`: Directory and file modes per deployment layer, plus whether to set them at all;
-  `.defaults()` returns the built-in layer modes, `.for_layer(layer)` returns one layer's `LayerModes`.
+  `.defaults()` returns the built-in layer modes, `.for_layer(layer)` returns one layer's `LayerModes`
+  (`layer` is a `Layer`, such as `Layer.APP`).
 - `deploy_permissions_from_config`: Reads `[lib_layered_config.default_permissions]` from a merged
   configuration, with an `overrides=` mapping laid over the configured values for building a
   `DeployPermissions` yourself. It reads the `Config` as it is, so a user file's `app_*`/`host_*` in a

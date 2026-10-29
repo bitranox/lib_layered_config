@@ -32,6 +32,7 @@ from lib_layered_config.adapters.file_loaders._toml_backend import (
 from lib_layered_config.adapters.file_loaders.structured import TOMLFileLoader
 from lib_layered_config.application.merge import LayerSnapshot, merge_layers
 from lib_layered_config.domain.errors import InvalidFormatError
+from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -92,7 +93,7 @@ _FORMS: dict[str, Callable[[int], str]] = {
 def _load_and_merge(parser: TomlParser, path: Path) -> dict[str, object]:
     """Read *path* the way ``read_config`` does: load it, then merge it as a layer."""
     data = TOMLFileLoader(parser).load(str(path))
-    return merge_layers([LayerSnapshot("app", data, str(path))]).data
+    return merge_layers([LayerSnapshot(Layer.APP, data, str(path))]).data
 
 
 def _nested_tables(levels: int) -> dict[str, object]:
@@ -136,12 +137,12 @@ def test_an_array_nests_exactly_as_deep_as_rtoml_allows(parser: TomlParser) -> N
 def test_tables_nest_exactly_as_deep_as_the_merge_allows(parser: TomlParser) -> None:
     assert TOML_MAX_TABLE_DEPTH == 101
     deepest = parser.loads(_header_then_dotted(51, 50))
-    merge_layers([LayerSnapshot("app", deepest, None)])
+    merge_layers([LayerSnapshot(Layer.APP, deepest, None)])
 
     with pytest.raises(TomlLoadError) as caught:
         parser.loads(_header_then_dotted(52, 50))
     with pytest.raises(InvalidFormatError):
-        merge_layers([LayerSnapshot("app", _nested_tables(TOML_MAX_TABLE_DEPTH + 1), None)])
+        merge_layers([LayerSnapshot(Layer.APP, _nested_tables(TOML_MAX_TABLE_DEPTH + 1), None)])
 
     assert caught.value.too_deep is True
 

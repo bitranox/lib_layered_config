@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import inspect
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,6 +14,9 @@ from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, M
 from lib_layered_config.domain.errors import ConfigError
 from lib_layered_config.domain.permissions import LAYER_PERMISSIONS
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from lib_layered_config.domain.identifiers import Layer
 
 D = ModeKind.DIRECTORY
 F = ModeKind.FILE
@@ -153,9 +157,9 @@ def test_the_refusal_is_a_config_error_and_a_value_error() -> None:
 
 @os_agnostic
 @pytest.mark.parametrize("layer", sorted(LAYER_PERMISSIONS))
-def test_every_built_in_layer_default_passes_the_rule(layer: str) -> None:
-    assert DeployMode(LAYER_PERMISSIONS[layer]["dir"], D).kind is D
-    assert DeployMode(LAYER_PERMISSIONS[layer]["file"], F).kind is F
+def test_every_built_in_layer_default_passes_the_rule(layer: Layer) -> None:
+    assert DeployMode(LAYER_PERMISSIONS[layer].directory, D).kind is D
+    assert DeployMode(LAYER_PERMISSIONS[layer].file, F).kind is F
 
 
 @os_agnostic

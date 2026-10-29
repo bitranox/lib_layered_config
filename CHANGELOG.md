@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- `DeployPermissions.for_layer` is typed `layer: Layer`. A plain `"app"`, `"host"` or `"user"` still
+  works at runtime, since `Layer` is a string enum; a strictly type-checked caller passes `Layer.APP`.
+- `lib_layered_config.domain.permissions.LAYER_PERMISSIONS` is a read-only mapping keyed by `Layer`,
+  each entry a `DefaultLayerModes` record: read `.directory` and `.file` where it read `["dir"]` and
+  `["file"]`.
+
 ## [7.4.2] - 2026-10-29
 
 ### Fixed
