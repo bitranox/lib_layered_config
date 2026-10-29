@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import Final
 
 from .domain.errors import ValidationError
+from .domain.identifiers import ExamplePlatform
 
 #: Canonical resolver identifiers used when wiring the path resolver adapter.
 #: Values mirror ``sys.platform`` strings so downstream code can branch safely.
@@ -40,16 +41,16 @@ _CANONICAL_RESOLVER: Final[dict[str, str]] = {
 
 #: Canonical families used by documentation/example helpers. They collapse the
 #: wide variety of aliases into the two supported directory layouts.
-_CANONICAL_EXAMPLES: Final[dict[str, str]] = {
-    "posix": "posix",
-    "linux": "posix",
-    "darwin": "posix",
-    "mac": "posix",
-    "macos": "posix",
-    "windows": "windows",
-    "win": "windows",
-    "win32": "windows",
-    "wine": "windows",
+_CANONICAL_EXAMPLES: Final[dict[str, ExamplePlatform]] = {
+    "posix": ExamplePlatform.POSIX,
+    "linux": ExamplePlatform.POSIX,
+    "darwin": ExamplePlatform.POSIX,
+    "mac": ExamplePlatform.POSIX,
+    "macos": ExamplePlatform.POSIX,
+    "windows": ExamplePlatform.WINDOWS,
+    "win": ExamplePlatform.WINDOWS,
+    "win32": ExamplePlatform.WINDOWS,
+    "wine": ExamplePlatform.WINDOWS,
 }
 
 
@@ -129,7 +130,7 @@ def normalise_resolver_platform(alias: str | None) -> str | None:
         raise ValidationError(f"Platform must be one of: {allowed}.") from exc
 
 
-def normalise_examples_platform(alias: str | None) -> str | None:
+def normalise_examples_platform(alias: str | None) -> ExamplePlatform | None:
     """Return the example-generation platform family for *alias*.
 
     Documentation and example helpers target two directory layouts (POSIX and
@@ -140,17 +141,18 @@ def normalise_examples_platform(alias: str | None) -> str | None:
         alias: User-provided alias or ``None`` to let the caller choose a default.
 
     Returns:
-        Canonical example platform (``"posix"`` or ``"windows"``) or ``None`` when
-        the caller should rely on runtime defaults.
+        Canonical example platform (``ExamplePlatform.POSIX`` or
+        ``ExamplePlatform.WINDOWS``, equal to ``"posix"`` / ``"windows"``) or
+        ``None`` when the caller should rely on runtime defaults.
 
     Raises:
         ValueError: If *alias* is provided but not known.
 
     Examples:
         >>> normalise_examples_platform('darwin')
-        'posix'
-        >>> normalise_examples_platform('windows')
-        'windows'
+        <ExamplePlatform.POSIX: 'posix'>
+        >>> normalise_examples_platform('windows') == 'windows'
+        True
         >>> normalise_examples_platform(None) is None
         True
         >>> normalise_examples_platform('amiga')

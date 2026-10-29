@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from .._platform import normalise_examples_platform
 from ..adapters._path_probe import PathKind, kind_or_raise
+from ..domain.identifiers import ExamplePlatform
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -62,7 +63,7 @@ class ExamplePlan:
         vendor: Vendor name interpolated into paths/content.
         app: Application name interpolated into paths/content.
         force: Whether generation should overwrite existing files.
-        platform: Normalised platform key (``"posix"`` or ``"windows"``).
+        platform: Normalised directory layout to write.
     """
 
     destination: Path
@@ -70,7 +71,7 @@ class ExamplePlan:
     vendor: str
     app: str
     force: bool
-    platform: str
+    platform: ExamplePlatform
 
 
 def generate_examples(
@@ -213,7 +214,9 @@ def _ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platform: str) -> Iterator[ExampleSpec]:
+def _build_specs(
+    destination: Path, *, slug: str, vendor: str, app: str, platform: ExamplePlatform
+) -> Iterator[ExampleSpec]:
     """Yield :class:`ExampleSpec` instances for each canonical layer.
 
     Keep file templates in one place so they stay aligned with documentation.
@@ -223,13 +226,14 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platfor
         slug: Metadata interpolated into template content.
         vendor: Metadata interpolated into template content.
         app: Metadata interpolated into template content.
-        platform: Normalised platform key (``"posix"`` or ``"windows"``).
+        platform: Normalised directory layout to write.
 
     Yields:
         ExampleSpec: Specification describing one file to render.
 
     Examples:
-        >>> specs = list(_build_specs(Path('.'), slug='demo', vendor='Acme', app='ConfigKit', platform='posix'))
+        >>> posix = ExamplePlatform.POSIX
+        >>> specs = list(_build_specs(Path('.'), slug='demo', vendor='Acme', app='ConfigKit', platform=posix))
         >>> specs[0].relative_path.as_posix()
         'xdg/demo/config.toml'
     """
@@ -237,19 +241,19 @@ def _build_specs(destination: Path, *, slug: str, vendor: str, app: str, platfor
     yield _env_example(slug)
 
 
-def _platform_specs(*, slug: str, vendor: str, app: str, platform: str) -> Iterator[ExampleSpec]:
+def _platform_specs(*, slug: str, vendor: str, app: str, platform: ExamplePlatform) -> Iterator[ExampleSpec]:
     """Dispatch to platform-specific example specifications.
 
     Args:
         slug: Metadata interpolated into generated content.
         vendor: Metadata interpolated into generated content.
         app: Metadata interpolated into generated content.
-        platform: Normalised platform key (``"posix"`` or ``"windows"``).
+        platform: Normalised directory layout to write.
 
     Yields:
         ExampleSpec: Specifications describing files to create.
     """
-    if platform == "windows":
+    if platform == ExamplePlatform.WINDOWS:
         yield from _windows_specs(slug=slug, vendor=vendor, app=app)
         return
     yield from _posix_specs(slug=slug, vendor=vendor, app=app)
@@ -378,27 +382,27 @@ def _env_secrets_body(slug: str) -> str:
 """
 
 
-def _default_platform() -> str:
-    """Return the default platform based on OS."""
-    return "windows" if os.name == "nt" else "posix"
+def _default_platform() -> ExamplePlatform:
+    """Return the default layout for the running OS."""
+    return ExamplePlatform.WINDOWS if os.name == "nt" else ExamplePlatform.POSIX
 
 
-def _normalise_platform(value: str | None) -> str:
+def _normalise_platform(value: str | None) -> ExamplePlatform:
     """Return a canonical platform key for example generation.
 
     Args:
         value: Optional platform alias supplied by the caller.
 
     Returns:
-        str: Normalised platform key (``"posix"`` or ``"windows"``).
+        ExamplePlatform: Normalised directory layout.
 
     Raises:
         ValueError: When *value* is invalid.
 
     Examples:
         >>> _normalise_platform('posix')
-        'posix'
-        >>> _normalise_platform(None) in {'posix', 'windows'}
+        <ExamplePlatform.POSIX: 'posix'>
+        >>> _normalise_platform(None) in set(ExamplePlatform)
         True
     """
     if value is None:

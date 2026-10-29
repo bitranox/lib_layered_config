@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 from ...domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
+    PlatformFamily,
+    platform_family,
     validate_hostname,
     validate_identifier,
     validate_profile,
@@ -117,12 +119,13 @@ class DefaultPathResolver:
         return self._ctx
 
     def _select_strategy(self) -> PlatformStrategy | None:
-        """Select the appropriate platform strategy based on the current platform."""
-        if self.platform.startswith("linux"):
+        """Select the platform strategy, or ``None`` for a platform with no known layout."""
+        family = platform_family(self.platform)
+        if family == PlatformFamily.LINUX:
             return LinuxStrategy(self._ctx)
-        if self.platform == "darwin":
+        if family == PlatformFamily.MACOS:
             return MacOSStrategy(self._ctx)
-        if self.platform.startswith("win"):
+        if family == PlatformFamily.WINDOWS:
             return WindowsStrategy(self._ctx)
         return None
 
@@ -150,7 +153,8 @@ class DefaultPathResolver:
             ['config.toml']
             >>> tmp.cleanup()
         """
-        return self._iter_layer(Layer.APP.value)
+        strategy = self._strategy
+        return self._record_candidates(Layer.APP, strategy.app_paths() if strategy is not None else ())
 
     def host(self) -> Iterable[str]:
         """Return host-specific overrides.
@@ -161,7 +165,8 @@ class DefaultPathResolver:
         Returns:
             Ordered host-level configuration paths.
         """
-        return self._iter_layer(Layer.HOST.value)
+        strategy = self._strategy
+        return self._record_candidates(Layer.HOST, strategy.host_paths() if strategy is not None else ())
 
     def user(self) -> Iterable[str]:
         """Return user-level configuration locations.
@@ -172,7 +177,8 @@ class DefaultPathResolver:
         Returns:
             Ordered user-level configuration paths.
         """
-        return self._iter_layer(Layer.USER.value)
+        strategy = self._strategy
+        return self._record_candidates(Layer.USER, strategy.user_paths() if strategy is not None else ())
 
     def dotenv(self) -> Iterable[str]:
         """Return candidate ``.env`` locations discovered during path resolution.
@@ -185,21 +191,13 @@ class DefaultPathResolver:
         """
         return list(self._dotenv_finder.find_paths())
 
-    def _iter_layer(self, layer: str) -> list[str]:
-        """Dispatch to the strategy for *layer* with logging."""
-        if self._strategy is None:
-            return []
+    @staticmethod
+    def _record_candidates(layer: Layer, candidates: Iterable[str]) -> list[str]:
+        """Materialise *candidates* for *layer* and log how many were found.
 
-        method_map = {
-            Layer.APP.value: self._strategy.app_paths,
-            Layer.HOST.value: self._strategy.host_paths,
-            Layer.USER.value: self._strategy.user_paths,
-        }
-        method = method_map.get(layer)
-        if method is None:
-            return []
-
-        paths = list(method())
+        An unknown platform has no strategy, so its callers pass an empty iterable and nothing is logged.
+        """
+        paths = list(candidates)
         if paths:
-            log_debug("path_candidates", layer=layer, path=None, count=len(paths))
+            log_debug("path_candidates", layer=layer.value, path=None, count=len(paths))
         return paths
