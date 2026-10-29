@@ -25,10 +25,10 @@ from enum import Enum
 from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
 from ..domain.errors import InvalidFormatError
-from ..domain.identifiers import Layer
 from ..observability import log_warn
 
 if TYPE_CHECKING:
+    from ..domain.identifiers import Layer
     from .ports import SourceInfoPayload
 
 #: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
@@ -75,14 +75,13 @@ class LayerSnapshot:
     precedence without coupling to adapter implementations.
 
     Attributes:
-        name: Logical name of the layer (``"defaults"``, ``"app"``, ``"host"``,
-            ``"user"``, ``"dotenv"``, ``"env"``).
+        name: The layer the payload belongs to.
         payload: Mapping produced by adapters; expected to contain only JSON-serialisable
             types.
         origin: Optional filesystem path (or ``None`` for in-memory sources).
     """
 
-    name: str
+    name: Layer
     payload: Mapping[str, object]
     origin: str | None
 
@@ -102,8 +101,9 @@ def merge_layers(layers: Iterable[LayerSnapshot]) -> MergeResult:
         mapping keyed by dotted path.
 
     Examples:
-        >>> base = LayerSnapshot("app", {"db": {"host": "localhost"}}, "/etc/app.toml")
-        >>> override = LayerSnapshot("env", {"db": {"host": "prod"}}, None)
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> base = LayerSnapshot(Layer.APP, {"db": {"host": "localhost"}}, "/etc/app.toml")
+        >>> override = LayerSnapshot(Layer.ENV, {"db": {"host": "prod"}}, None)
         >>> result = merge_layers([base, override])
         >>> result.data["db"]["host"], result.provenance["db.host"]["layer"]
         ('prod', 'env')
@@ -137,7 +137,8 @@ def _weave_layer(
 
     Examples:
         >>> merged, prov = {}, {}
-        >>> snap = LayerSnapshot('env', {'flag': True}, None)
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> snap = LayerSnapshot(Layer.ENV, {'flag': True}, None)
         >>> _weave_layer(merged, prov, snap)
         >>> merged['flag'], prov['flag']['layer']
         (True, 'env')
@@ -208,7 +209,8 @@ def _store_branch(
 
     Examples:
         >>> target, prov = {}, {}
-        >>> branch_snapshot = LayerSnapshot('env', {'child': {'enabled': True}}, None)
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> branch_snapshot = LayerSnapshot(Layer.ENV, {'child': {'enabled': True}}, None)
         >>> _store_branch(
         ...     target, provenance=prov, key='child', value={'enabled': True}, dotted='child',
         ...     snapshot=branch_snapshot, segments=[],
@@ -392,9 +394,13 @@ def _build_new_element(
 
 
 def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfoPayload:
-    """Return the provenance record for a value contributed by *snapshot* at *dotted*."""
+    """Return the provenance record for a value contributed by *snapshot* at *dotted*.
+
+    The record stores the layer's plain ``.value``, not the member: provenance is handed to
+    callers (``Config.origin``) and serialised, where a plain string is the documented shape.
+    """
     return {
-        "layer": snapshot.name.value if isinstance(snapshot.name, Layer) else snapshot.name,
+        "layer": snapshot.name.value,
         "path": snapshot.origin,
         "key": dotted,
     }
@@ -524,7 +530,8 @@ def _store_branch_provenance(
 
     Examples:
         >>> prov = {}
-        >>> snap = LayerSnapshot('app', {'styles': {}}, '/etc/app.toml')
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> snap = LayerSnapshot(Layer.APP, {'styles': {}}, '/etc/app.toml')
         >>> _store_branch_provenance({}, 'styles', prov, snap)
         >>> prov['styles']['layer']
         'app'

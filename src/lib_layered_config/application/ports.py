@@ -19,9 +19,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ..domain.config import SourceInfo
+
+if TYPE_CHECKING:
+    from .merge import LayerSnapshot, MergeResult
 
 
 class OutputFormat(str, Enum):
@@ -112,8 +115,8 @@ class EnvLoader(Protocol):
 class Merger(Protocol):
     """Combine ordered layers into merged data and provenance structures."""
 
-    def merge(self, layers: Iterable[tuple[str, ConfigData, str | None]]) -> tuple[ConfigData, ProvenanceData]:
-        """Merge *layers* into unified configuration data with provenance."""
+    def merge(self, layers: Iterable[LayerSnapshot]) -> MergeResult:
+        """Merge *layers*, lowest precedence first, into unified configuration data with provenance."""
         ...  # pragma: no cover - protocol
 
 

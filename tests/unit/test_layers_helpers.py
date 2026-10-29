@@ -13,6 +13,7 @@ from lib_layered_config._layers import (
     _snapshots_from_paths,
     merge_or_empty,
 )
+from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -32,20 +33,20 @@ def test_load_entry_skips_unknown_extension(tmp_path: Path) -> None:
     tests/e2e/test_read_config.py)."""
     path = tmp_path / "config.ini"
     path.write_text("ignored", encoding="utf-8")
-    assert _load_entry("defaults", str(path)) is None
+    assert _load_entry(Layer.DEFAULTS, str(path)) is None
 
 
 @os_agnostic
 def test_load_entry_returns_none_when_file_missing(tmp_path: Path) -> None:
     target = tmp_path / "absent.toml"
-    assert _load_entry("defaults", str(target)) is None
+    assert _load_entry(Layer.DEFAULTS, str(target)) is None
 
 
 @os_agnostic
 def test_load_entry_ignores_empty_payload(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     path.write_text(json.dumps({}), encoding="utf-8")
-    assert _load_entry("defaults", str(path)) is None
+    assert _load_entry(Layer.DEFAULTS, str(path)) is None
 
 
 @os_agnostic
@@ -53,7 +54,7 @@ def test_snapshots_from_paths_skip_entries_without_loaders(tmp_path: Path) -> No
     stray = tmp_path / "orphan.ini"
     stray.write_text("ignored", encoding="utf-8")
 
-    snapshots = list(_snapshots_from_paths("app", [str(stray)], None))
+    snapshots = list(_snapshots_from_paths(Layer.APP, [str(stray)], None))
 
     assert snapshots == []
 
@@ -81,7 +82,7 @@ def test_note_layer_error_emits_event_with_exception(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("lib_layered_config._layers.log_debug", fake_log)
 
-    _note_layer_error("user", "/tmp/config.toml", RuntimeError("boom"))
+    _note_layer_error(Layer.USER, "/tmp/config.toml", RuntimeError("boom"))
 
     assert captured == {
         "event": "layer_error",

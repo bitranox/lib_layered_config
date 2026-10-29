@@ -301,7 +301,7 @@ def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapsho
 
 
 def _snapshots_from_paths(
-    layer: str,
+    layer: Layer,
     paths: Iterable[str],
     prefer: Sequence[str] | None,
     *,
@@ -312,7 +312,7 @@ def _snapshots_from_paths(
     Each path is expanded to include any companion ``.d`` directory files.
 
     Args:
-        layer: Logical layer name the files belong to.
+        layer: The layer the files belong to.
         paths: Iterable of candidate file paths.
         prefer: Optional suffix ordering hint passed by the CLI/API.
         skip: Resolved paths that are not loaded (empty for every normal read).
@@ -324,11 +324,11 @@ def _snapshots_from_paths(
         yield from _load_entry_with_dot_d(layer, path, skip=skip)
 
 
-def _load_entry(layer: str, path: str) -> LayerSnapshot | None:
+def _load_entry(layer: Layer, path: str) -> LayerSnapshot | None:
     """Load *path* using the configured file loaders and return a snapshot.
 
     Args:
-        layer: Logical layer name associated with the file.
+        layer: The layer the file belongs to.
         path: Absolute path to the candidate configuration file.
 
     Returns:
@@ -353,7 +353,7 @@ def _load_entry(layer: str, path: str) -> LayerSnapshot | None:
     return LayerSnapshot(layer, data, path)
 
 
-def _load_entry_with_dot_d(layer: str, path: str, *, skip: frozenset[Path] = frozenset()) -> Iterator[LayerSnapshot]:
+def _load_entry_with_dot_d(layer: Layer, path: str, *, skip: frozenset[Path] = frozenset()) -> Iterator[LayerSnapshot]:
     """Load *path* and any companion .d directory files as snapshots.
 
     For a file ``foo.toml``, checks for ``foo.toml.d/`` directory and yields
@@ -364,7 +364,7 @@ def _load_entry_with_dot_d(layer: str, path: str, *, skip: frozenset[Path] = fro
     Both the base file and .d directory are optional.
 
     Args:
-        layer: Logical layer name associated with the files.
+        layer: The layer the files belong to.
         path: Absolute path to the base configuration file.
         skip: Resolved paths that are not loaded, base file or ``.d`` entry alike (empty for
             every normal read).
@@ -411,11 +411,11 @@ def _paths_in_preferred_order(paths: Iterable[str], prefer: Sequence[str] | None
     return sorted(ordered, key=lambda candidate: ranking.get(Path(candidate).suffix.lower().lstrip("."), len(ranking)))
 
 
-def _note_layer_loaded(layer: str, path: str | None, details: Mapping[str, object]) -> None:
+def _note_layer_loaded(layer: Layer, path: str | None, details: Mapping[str, object]) -> None:
     """Emit a debug event capturing successful layer discovery.
 
     Args:
-        layer: Logical layer name.
+        layer: The layer that was loaded.
         path: Optional path associated with the event.
         details: Additional structured metadata (e.g., number of files or keys).
 
@@ -425,7 +425,7 @@ def _note_layer_loaded(layer: str, path: str | None, details: Mapping[str, objec
     log_debug("layer_loaded", **make_event(layer, path, dict(details)))
 
 
-def _note_layer_error(layer: str, path: str, exc: Exception) -> None:
+def _note_layer_error(layer: Layer, path: str, exc: Exception) -> None:
     """Emit a debug event describing a recoverable layer error.
 
     Args:
