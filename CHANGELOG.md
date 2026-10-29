@@ -17,6 +17,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   public before stays public; only `adapters.file_loaders.structured.yaml`, the lazily imported PyYAML
   module object, is no longer a public name to a type checker.
 
+### Fixed
+- `LayerSnapshot` named by the plain layer string (`LayerSnapshot("user", {...}, None)`) merges
+  again: 7.5.0 raised `AttributeError: 'str' object has no attribute 'value'` from `merge_layers`,
+  which bit a caller rebuilding snapshots from `Config.origin(key)["layer"]`, a plain string. The
+  name is parsed into its `Layer` member when the snapshot is built, and an unknown name raises
+  `ValueError` there.
+
 ## [7.5.0] - 2026-10-29
 
 ### Fixed

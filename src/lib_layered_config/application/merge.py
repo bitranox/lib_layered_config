@@ -25,10 +25,10 @@ from enum import Enum
 from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
 from ..domain.errors import InvalidFormatError
+from ..domain.identifiers import Layer
 from ..observability import log_warn
 
 if TYPE_CHECKING:
-    from ..domain.identifiers import Layer
     from .ports import SourceInfoPayload
 
 #: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
@@ -84,6 +84,19 @@ class LayerSnapshot:
     name: Layer
     payload: Mapping[str, object]
     origin: str | None
+
+    def __post_init__(self) -> None:
+        """Parse a plain layer string into its :class:`Layer` member.
+
+        ``Config.origin(...)["layer"]`` hands callers the plain string, so a caller rebuilding
+        snapshots from provenance passes ``"user"`` back in; the merge reads ``.value``, so it must
+        hold the member. An unknown name raises ``ValueError`` here rather than deep in the merge.
+
+        Examples:
+            >>> LayerSnapshot("user", {}, None).name is Layer.USER
+            True
+        """
+        object.__setattr__(self, "name", Layer(self.name))
 
 
 def merge_layers(layers: Iterable[LayerSnapshot]) -> MergeResult:

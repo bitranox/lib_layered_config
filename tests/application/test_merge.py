@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import pytest
 from hypothesis import given
@@ -411,3 +412,21 @@ def test_a_list_replaced_wholesale_forgets_the_entries_of_its_overridden_element
     )
     assert "ports.0.n" not in result.provenance
     assert set(result.provenance) == _values_and_empty_tables(result.data)
+
+
+@os_agnostic
+@pytest.mark.parametrize("name", [layer.value for layer in Layer])
+def test_a_snapshot_named_by_the_plain_layer_string_merges_like_the_member(name: str) -> None:
+    """A caller rebuilding snapshots from ``Config.origin(...)["layer"]`` holds the plain string."""
+    snapshot = LayerSnapshot(cast("Layer", name), {"a": 1}, None)
+
+    result = merge_layers([snapshot])
+
+    assert snapshot.name is Layer(name)
+    assert result.provenance["a"]["layer"] == name
+
+
+@os_agnostic
+def test_a_snapshot_named_by_an_unknown_layer_string_is_refused_at_construction() -> None:
+    with pytest.raises(ValueError, match="'nosuchlayer' is not a valid Layer"):
+        LayerSnapshot(cast("Layer", "nosuchlayer"), {"a": 1}, None)
