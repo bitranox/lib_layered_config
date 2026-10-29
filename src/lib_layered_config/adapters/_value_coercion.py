@@ -17,7 +17,7 @@ import re
 from typing import Final, cast
 
 from ..domain import json_codec
-from ..domain.json_codec import JSON_INT_MAX, JSON_INT_MIN
+from ..domain.json_codec import JSON_INT_MIN
 from ..domain.redaction import NotSensitiveKeys, is_sensitive_at
 from ._nested_keys import NESTED_KEY_DELIMITER
 
@@ -113,8 +113,8 @@ def parse_json_container(value: str) -> list[object] | dict[str, object] | None:
 def parse_number(value: str) -> int | float | None:
     """Return the int or float *value* spells exactly, else ``None``.
 
-    An integer outside the range a JSON view writes stays text too: as a number it would load and
-    then crash ``Config.to_json`` and every other JSON view.
+    An integer of more than 19 digits stays text, and so does one below the range a JSON view
+    writes: as a number it would load and then crash ``Config.to_json`` and every other JSON view.
 
     Examples:
         >>> parse_number("5"), parse_number("-7"), parse_number("3.5")
@@ -126,7 +126,8 @@ def parse_number(value: str) -> int | float | None:
     """
     if _INT_TEXT.fullmatch(value):
         number = int(value)
-        return number if JSON_INT_MIN <= number <= JSON_INT_MAX else None
+        # 19 digits never reach the top of the JSON range (2**64 - 1 has 20), only its bottom.
+        return number if number >= JSON_INT_MIN else None
     if len(value) > _MAX_FLOAT_TEXT or not value.isascii():
         return None
     try:
