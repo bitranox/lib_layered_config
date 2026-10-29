@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.6.0] - 2026-10-30
+
 ### Changed
 - A JSON or YAML config file that names the same key twice in one table is refused with
   `LayerLoadError`: `"<path> repeats a key, and only its last value would load: db.host"`, a YAML
