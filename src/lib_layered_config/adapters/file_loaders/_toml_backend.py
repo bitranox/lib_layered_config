@@ -46,6 +46,8 @@ import sys
 import sysconfig
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
+from ...domain.source_position import SourcePosition
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
@@ -90,11 +92,11 @@ class TomlLoadError(ValueError):
     """A TOML document was refused.
 
     Attributes:
-        position: The 1-based (line, column) the parser stopped at, or ``None`` when unknown.
+        position: The 1-based line and column the parser stopped at, or ``None`` when unknown.
         too_deep: The document nests deeper than the parser allows; it may be well formed.
     """
 
-    def __init__(self, message: str, *, position: tuple[int, int] | None = None, too_deep: bool = False) -> None:
+    def __init__(self, message: str, *, position: SourcePosition | None = None, too_deep: bool = False) -> None:
         """Record *message* and what is known about where and why the document was refused."""
         super().__init__(message)
         self.position = position
@@ -129,19 +131,19 @@ class _TomliModule(Protocol):
     def loads(self, s: str, /, *, parse_float: Callable[[str], object]) -> dict[str, object]: ...
 
 
-def _rtoml_position(message: str) -> tuple[int, int] | None:
+def _rtoml_position(message: str) -> SourcePosition | None:
     """Return the 1-based line and column rtoml reports, or None.
 
     Examples:
         >>> _rtoml_position("expected an equals, found eof at line 1 column 4")
-        (1, 4)
+        SourcePosition(line=1, column=4)
         >>> _rtoml_position("TOML parse error at line 3, column 7")
-        (3, 7)
+        SourcePosition(line=3, column=7)
         >>> _rtoml_position("boom") is None
         True
     """
     found = _RTOML_POSITION.search(message)
-    return (int(found.group(1)), int(found.group(2))) if found else None
+    return SourcePosition(int(found.group(1)), int(found.group(2))) if found else None
 
 
 class RtomlParser:
@@ -221,23 +223,23 @@ def _finite_float(text: str) -> float:
     raise ValueError(f"the float {text} is too large")
 
 
-def _tomllib_position(error: ValueError) -> tuple[int, int] | None:
+def _tomllib_position(error: ValueError) -> SourcePosition | None:
     """Return the 1-based line and column a ``TOMLDecodeError`` reports, or None.
 
     Python 3.14 carries them as attributes; earlier versions only in the message.
 
     Examples:
         >>> _tomllib_position(ValueError("Invalid value (at line 3, column 5)"))
-        (3, 5)
+        SourcePosition(line=3, column=5)
         >>> _tomllib_position(ValueError("Invalid value (at end of document)")) is None
         True
     """
     line: object = getattr(error, "lineno", None)
     column: object = getattr(error, "colno", None)
     if isinstance(line, int) and isinstance(column, int):
-        return line, column
+        return SourcePosition(line, column)
     found = _TOMLLIB_POSITION.search(str(error))
-    return (int(found.group(1)), int(found.group(2))) if found else None
+    return SourcePosition(int(found.group(1)), int(found.group(2))) if found else None
 
 
 def _nests_too_deep(table: dict[str, object]) -> bool:

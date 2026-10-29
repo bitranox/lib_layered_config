@@ -53,6 +53,8 @@ import uuid
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
+from .source_position import SourcePosition
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from types import ModuleType
@@ -107,11 +109,11 @@ class JsonLoadError(ValueError):
     """A JSON document was refused.
 
     Attributes:
-        position: The 1-based (line, column) the parser stopped at, or ``None`` when unknown.
+        position: The 1-based line and column the parser stopped at, or ``None`` when unknown.
         too_deep: The document nests deeper than :data:`JSON_MAX_DEPTH`; it may be well formed.
     """
 
-    def __init__(self, message: str, *, position: tuple[int, int] | None = None, too_deep: bool = False) -> None:
+    def __init__(self, message: str, *, position: SourcePosition | None = None, too_deep: bool = False) -> None:
         """Record *message* and what is known about where and why the document was refused."""
         super().__init__(message)
         self.position = position
@@ -165,7 +167,9 @@ class OrjsonCodec:
             return self._orjson.loads(text)
         except json.JSONDecodeError as error:  # orjson.JSONDecodeError subclasses it
             raise JsonLoadError(
-                str(error), position=(error.lineno, error.colno), too_deep=str(error).startswith(_ORJSON_TOO_DEEP)
+                str(error),
+                position=SourcePosition(error.lineno, error.colno),
+                too_deep=str(error).startswith(_ORJSON_TOO_DEEP),
             ) from error
 
 
@@ -201,7 +205,7 @@ class StdlibCodec:
             )
         except json.JSONDecodeError as error:
             _refuse_too_deep(text, end=error.pos)
-            raise JsonLoadError(str(error), position=(error.lineno, error.colno)) from error
+            raise JsonLoadError(str(error), position=SourcePosition(error.lineno, error.colno)) from error
         except RecursionError as error:
             _refuse_too_deep(text, end=len(text))
             raise JsonLoadError("the document nests too deep", too_deep=True) from error
@@ -291,15 +295,15 @@ def _refuse_too_deep(text: str, *, end: int) -> None:
             depth -= 1
 
 
-def _orjson_position(text: str, index: int) -> tuple[int, int]:
-    """Return the (line, column) orjson reports for a depth refusal at *index*.
+def _orjson_position(text: str, index: int) -> SourcePosition:
+    """Return the line and column orjson reports for a depth refusal at *index*.
 
     Examples:
         >>> _orjson_position("ab\\ncd[", 5)
-        (2, 4)
+        SourcePosition(line=2, column=4)
     """
     line_start = text.rfind("\n", 0, index) + 1
-    return text.count("\n", 0, index) + 1, index - line_start + 2
+    return SourcePosition(text.count("\n", 0, index) + 1, index - line_start + 2)
 
 
 def _refuse_lone_surrogates(value: object) -> None:

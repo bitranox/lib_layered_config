@@ -5,6 +5,7 @@ Adapters are small wrappers around the TOML parser, the JSON codec and ``yaml.sa
 error handling, observability, and immutability policies live in one place.
 
 Contents:
+    - ``FileFormat``: the structured formats the loaders parse, as logs and messages name them.
     - ``BaseFileLoader``: shared primitives for reading files and asserting
       mapping outputs.
     - ``TOMLFileLoader`` / ``JSONFileLoader`` / ``YAMLFileLoader``: thin
@@ -24,9 +25,10 @@ import os
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ...domain.errors import InvalidFormatError, NotFoundError
 from ...domain.json_codec import (
@@ -38,6 +40,7 @@ from ...domain.json_codec import (
     JsonLoadError,
     nesting_depth,
 )
+from ...domain.source_position import SourcePosition
 from ...observability import log_debug, log_error
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
@@ -66,6 +69,23 @@ Constant referenced by logging helpers within this module.
 """
 
 
+class FileFormat(str, Enum):
+    """A structured format a file loader parses.
+
+    The value is the name the ``format`` field of a log event carries; messages name the format
+    upper-cased (``TOML``). Both are built from ``.value``, never from the member itself, whose
+    ``str()`` differs between Python 3.10 and 3.11+.
+
+    Examples:
+        >>> FileFormat.TOML.value, FileFormat("yaml") is FileFormat.YAML
+        ('toml', True)
+    """
+
+    TOML = "toml"
+    JSON = "json"
+    YAML = "yaml"
+
+
 def _log_file_read(path: str, size: int) -> None:
     """Record that *path* was read with *size* bytes.
 
@@ -79,16 +99,16 @@ def _log_file_read(path: str, size: int) -> None:
     log_debug("config_file_read", layer=FILE_LAYER, path=path, size=size)
 
 
-def _log_file_loaded(path: str, format_name: str) -> None:
-    """Record a successful parse for *path* and *format_name*.
+def _log_file_loaded(path: str, file_format: FileFormat) -> None:
+    """Record a successful parse for *path* and *file_format*.
 
     Trace successful parsing events and note which parser handled the file.
 
     Args:
         path: Absolute file path.
-        format_name: Parser identifier (e.g., ``"toml"``).
+        file_format: The format the file was parsed as; logged by its value (``"toml"``).
     """
-    log_debug("config_file_loaded", layer=FILE_LAYER, path=path, format=format_name)
+    log_debug("config_file_loaded", layer=FILE_LAYER, path=path, format=file_format.value)
 
 
 @dataclass(frozen=True)
@@ -96,23 +116,23 @@ class _ParseFailure:
     """What a parser's refusal says about the document, read without keeping its text.
 
     Attributes:
-        position: 1-based (line, column), or ``None`` when the parser reported none.
+        position: 1-based line and column, or ``None`` when the parser reported none.
         too_deep: The parser stopped at its nesting limit; the document may be well formed.
     """
 
-    position: tuple[int, int] | None
+    position: SourcePosition | None
     too_deep: bool = False
 
 
-def _log_file_invalid(path: str, format_name: str, message: str) -> None:
+def _log_file_invalid(path: str, file_format: FileFormat, message: str) -> None:
     """Log a parse failure with the content-free message the caller will see.
 
     Args:
         path: File path that failed to parse.
-        format_name: Parser identifier.
+        file_format: The format the file was parsed as; logged by its value.
         message: The content-free message the caller will also see.
     """
-    log_error("config_file_invalid", layer=FILE_LAYER, path=path, format=format_name, error=message)
+    log_error("config_file_invalid", layer=FILE_LAYER, path=path, format=file_format.value, error=message)
 
 
 def directory_not_config_file(path: Path) -> InvalidFormatError:
@@ -192,7 +212,7 @@ def unsupported_config_format(path: Path, suffixes: tuple[str, ...]) -> InvalidF
     return InvalidFormatError(message)
 
 
-def _build_invalid_format_message(path: str, format_name: str, failure: _ParseFailure | None) -> str:
+def _build_invalid_format_message(path: str, file_format: FileFormat, failure: _ParseFailure | None) -> str:
     """Build the caller-facing message: path, format, why and, when known, line and column.
 
     A refusal at the parser's nesting limit says so rather than calling a well-formed file
@@ -201,28 +221,32 @@ def _build_invalid_format_message(path: str, format_name: str, failure: _ParseFa
 
     Args:
         path: File path being parsed.
-        format_name: Parser identifier (e.g. ``"toml"``).
+        file_format: The format the file was parsed as, named upper-cased.
         failure: What the parser's refusal said, or ``None`` when nothing is known.
 
     Returns:
         The message text.
 
     Examples:
-        >>> print(_build_invalid_format_message("a.toml", "toml", _ParseFailure((2, 5))))
+        >>> print(_build_invalid_format_message("a.toml", FileFormat.TOML, _ParseFailure(SourcePosition(2, 5))))
         a.toml is not valid TOML (line 2, column 5)
-        >>> print(_build_invalid_format_message("a.yaml", "yaml", None))
+        >>> print(_build_invalid_format_message("a.yaml", FileFormat.YAML, None))
         a.yaml is not valid YAML
-        >>> print(_build_invalid_format_message("a.toml", "toml", _ParseFailure((1, 85), too_deep=True)))
+        >>> too_deep = _ParseFailure(SourcePosition(1, 85), too_deep=True)
+        >>> print(_build_invalid_format_message("a.toml", FileFormat.TOML, too_deep))
         a.toml nests deeper than the TOML parser allows (line 1, column 85)
     """
     position = failure.position if failure is not None else None
-    where = f" (line {position[0]}, column {position[1]})" if position is not None else ""
+    where = f" (line {position.line}, column {position.column})" if position is not None else ""
+    display_name = file_format.value.upper()
     if failure is not None and failure.too_deep:
-        return f"{path} nests deeper than the {format_name.upper()} parser allows{where}"
-    return f"{path} is not valid {format_name.upper()}{where}"
+        return f"{path} nests deeper than the {display_name} parser allows{where}"
+    return f"{path} is not valid {display_name}{where}"
 
 
-def _log_and_build_invalid_format(path: str, format_name: str, failure: _ParseFailure | None) -> InvalidFormatError:
+def _log_and_build_invalid_format(
+    path: str, file_format: FileFormat, failure: _ParseFailure | None
+) -> InvalidFormatError:
     """Log the parse failure, then build the error for it: path, format and, when known, line/column.
 
     The caller raises it OUTSIDE its ``except`` block, so the parser's exception, whose message or
@@ -230,32 +254,32 @@ def _log_and_build_invalid_format(path: str, format_name: str, failure: _ParseFa
 
     Args:
         path: File path being parsed.
-        format_name: Parser identifier (e.g. ``"toml"``).
+        file_format: The format the file was parsed as.
         failure: What the parser's refusal said, or ``None`` when nothing is known.
 
     Returns:
         The error to raise.
     """
-    message = _build_invalid_format_message(path, format_name, failure)
-    _log_file_invalid(path, format_name, message)
+    message = _build_invalid_format_message(path, file_format, failure)
+    _log_file_invalid(path, file_format, message)
     return InvalidFormatError(message)
 
 
-def _yaml_position(exc: BaseException) -> tuple[int, int] | None:
+def _yaml_position(exc: BaseException) -> SourcePosition | None:
     """Return the 1-based line and column of a PyYAML ``MarkedYAMLError``, or None.
 
     Args:
         exc: The exception PyYAML raised.
 
     Returns:
-        The (line, column) pair, or ``None`` when the exception carries no mark.
+        The position, or ``None`` when the exception carries no mark.
 
     Examples:
         >>> from types import SimpleNamespace
         >>> error = Exception()
         >>> error.problem_mark = SimpleNamespace(line=1, column=9)
         >>> _yaml_position(error)
-        (2, 10)
+        SourcePosition(line=2, column=10)
         >>> _yaml_position(Exception()) is None
         True
     """
@@ -263,7 +287,7 @@ def _yaml_position(exc: BaseException) -> tuple[int, int] | None:
     line: object = getattr(mark, "line", None)
     column: object = getattr(mark, "column", None)
     if isinstance(line, int) and isinstance(column, int):
-        return line + 1, column + 1
+        return SourcePosition(line + 1, column + 1)
     return None
 
 
@@ -273,25 +297,34 @@ def _backend_failure(exc: BaseException) -> _ParseFailure:
     Examples:
         >>> _backend_failure(JsonLoadError("deep", too_deep=True))
         _ParseFailure(position=None, too_deep=True)
-        >>> _backend_failure(TomlLoadError("bad", position=(2, 8)))
-        _ParseFailure(position=(2, 8), too_deep=False)
+        >>> _backend_failure(TomlLoadError("bad", position=SourcePosition(2, 8)))
+        _ParseFailure(position=SourcePosition(line=2, column=8), too_deep=False)
     """
     if not isinstance(exc, (JsonLoadError, TomlLoadError)):
         return _ParseFailure(None)
     return _ParseFailure(exc.position, too_deep=exc.too_deep)
 
 
-#: Sentinel returned by :func:`_run_parser` in place of a value when the parse failed. A real
-#: parsed value (including ``None`` from an empty JSON/YAML document) is never mistaken for a
-#: failure because this identity, not ``None``, marks it.
-_PARSE_FAILED: Final[object] = object()
+class _ParseOutcome(NamedTuple):
+    """What one parse attempt produced.
+
+    The failure, not the value, tells the two apart: a real parsed value can be ``None`` (an
+    empty JSON or YAML document).
+
+    Attributes:
+        value: The parsed value; ``None`` when the parse failed.
+        failure: What the parser's refusal said, or ``None`` when the parse succeeded.
+    """
+
+    value: object
+    failure: _ParseFailure | None
 
 
 def _run_parser(
     parse: Callable[[], object],
     exceptions: type[BaseException] | tuple[type[BaseException], ...],
     describe: Callable[[BaseException], _ParseFailure],
-) -> tuple[object, _ParseFailure | None]:
+) -> _ParseOutcome:
     """Run *parse*, collapsing its try/except into one reusable call per format.
 
     Args:
@@ -300,22 +333,22 @@ def _run_parser(
         describe: Callable reading the caught exception into a :class:`_ParseFailure`.
 
     Returns:
-        ``(value, None)`` on success. ``(_PARSE_FAILED, failure)`` when *parse* raised one of
-        *exceptions*; *failure* says where and whether the parser stopped at its nesting limit.
+        The parsed value with no failure on success. When *parse* raised one of *exceptions*, no
+        value and the failure, which says where and whether the parser stopped at its nesting limit.
 
     Examples:
         >>> _run_parser(lambda: 42, ValueError, lambda exc: _ParseFailure(None))
-        (42, None)
+        _ParseOutcome(value=42, failure=None)
         >>> def boom() -> int:
         ...     raise ValueError("bad line 2 column 4")
-        >>> value, failure = _run_parser(boom, ValueError, lambda exc: _ParseFailure((2, 4)))
-        >>> value is _PARSE_FAILED, failure.position
-        (True, (2, 4))
+        >>> outcome = _run_parser(boom, ValueError, lambda exc: _ParseFailure(SourcePosition(2, 4)))
+        >>> outcome.failure is not None, outcome.failure.position
+        (True, SourcePosition(line=2, column=4))
     """
     try:
-        return parse(), None
+        return _ParseOutcome(parse(), None)
     except exceptions as exc:
-        return _PARSE_FAILED, describe(exc)
+        return _ParseOutcome(None, describe(exc))
 
 
 def _ensure_yaml_available() -> None:
@@ -535,15 +568,15 @@ class TOMLFileLoader(BaseFileLoader):
         try:
             decoded = decode_utf8(raw_bytes, path=path)
         except InvalidFormatError as exc:
-            _log_file_invalid(path, "toml", str(exc))
+            _log_file_invalid(path, FileFormat.TOML, str(exc))
             raise
-        parsed, failure = _run_parser(lambda: self._parser.loads(decoded), TomlLoadError, _backend_failure)
-        if parsed is _PARSE_FAILED:
-            raise _log_and_build_invalid_format(path, "toml", failure)
-        result = self._ensure_mapping(parsed, path=path)
-        _refuse_integers_json_cannot_carry(result, path=path, format_name="toml")
-        _refuse_nesting_json_cannot_write(result, path=path, format_name="toml")
-        _log_file_loaded(path, "toml")
+        outcome = _run_parser(lambda: self._parser.loads(decoded), TomlLoadError, _backend_failure)
+        if outcome.failure is not None:
+            raise _log_and_build_invalid_format(path, FileFormat.TOML, outcome.failure)
+        result = self._ensure_mapping(outcome.value, path=path)
+        _refuse_integers_json_cannot_carry(result, path=path, file_format=FileFormat.TOML)
+        _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.TOML)
+        _log_file_loaded(path, FileFormat.TOML)
         return result
 
 
@@ -587,14 +620,14 @@ class JSONFileLoader(BaseFileLoader):
         try:
             decoded = decode_utf8(raw_bytes, path=path)
         except InvalidFormatError as exc:
-            _log_file_invalid(path, "json", str(exc))
+            _log_file_invalid(path, FileFormat.JSON, str(exc))
             raise
-        payload, failure = _run_parser(lambda: self._codec.loads(decoded), JsonLoadError, _backend_failure)
-        if payload is _PARSE_FAILED:
-            raise _log_and_build_invalid_format(path, "json", failure)
-        result = self._ensure_mapping(payload, path=path)
-        _refuse_nesting_json_cannot_write(result, path=path, format_name="json")
-        _log_file_loaded(path, "json")
+        outcome = _run_parser(lambda: self._codec.loads(decoded), JsonLoadError, _backend_failure)
+        if outcome.failure is not None:
+            raise _log_and_build_invalid_format(path, FileFormat.JSON, outcome.failure)
+        result = self._ensure_mapping(outcome.value, path=path)
+        _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.JSON)
+        _log_file_loaded(path, FileFormat.JSON)
         return result
 
 
@@ -639,16 +672,16 @@ class YAMLFileLoader(BaseFileLoader):
         try:
             decoded = decode_yaml_text(raw_bytes, path=path)
         except InvalidFormatError as exc:
-            _log_file_invalid(path, "yaml", str(exc))
+            _log_file_invalid(path, FileFormat.YAML, str(exc))
             raise
         parsed = _parse_yaml_text(decoded, yaml_module, path)
         mapping = self._ensure_mapping(parsed, path=path)
         _refuse_non_string_keys(mapping, path=path)
         _refuse_ordered_map_tags(mapping, path=path)
         _refuse_values_json_cannot_carry(mapping, path=path)
-        _refuse_integers_json_cannot_carry(mapping, path=path, format_name="yaml")
-        _refuse_nesting_json_cannot_write(mapping, path=path, format_name="yaml")
-        _log_file_loaded(path, "yaml")
+        _refuse_integers_json_cannot_carry(mapping, path=path, file_format=FileFormat.YAML)
+        _refuse_nesting_json_cannot_write(mapping, path=path, file_format=FileFormat.YAML)
+        _log_file_loaded(path, FileFormat.YAML)
         return mapping
 
 
@@ -684,12 +717,10 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
         position = _yaml_position(exc) if isinstance(exc, module.YAMLError) else None
         return _ParseFailure(position, too_deep=isinstance(exc, RecursionError))
 
-    parsed, failure = _run_parser(
-        lambda: module.safe_load(document), (module.YAMLError, ValueError, RecursionError), _describe
-    )
-    if parsed is _PARSE_FAILED:
-        raise _log_and_build_invalid_format(path, "yaml", failure)
-    return {} if parsed is None else parsed
+    outcome = _run_parser(lambda: module.safe_load(document), (module.YAMLError, ValueError, RecursionError), _describe)
+    if outcome.failure is not None:
+        raise _log_and_build_invalid_format(path, FileFormat.YAML, outcome.failure)
+    return {} if outcome.value is None else outcome.value
 
 
 def _refuse_non_string_keys(data: object, *, path: str) -> None:
@@ -719,7 +750,7 @@ def _refuse_non_string_keys(data: object, *, path: str) -> None:
     if not found:
         return
     message = f"{path} has keys that are not strings (quote them): {'; '.join(found)}"
-    _log_file_invalid(path, "yaml", message)
+    _log_file_invalid(path, FileFormat.YAML, message)
     raise InvalidFormatError(message)
 
 
@@ -780,7 +811,7 @@ def _refuse_ordered_map_tags(data: object, *, path: str) -> None:
         f"{path} uses !!omap or !!pairs, whose keys redaction cannot see; "
         f"write a plain mapping instead: {'; '.join(found)}"
     )
-    _log_file_invalid(path, "yaml", message)
+    _log_file_invalid(path, FileFormat.YAML, message)
     raise InvalidFormatError(message)
 
 
@@ -843,7 +874,7 @@ def _refuse_values_json_cannot_carry(data: object, *, path: str) -> None:
         f"{path} uses !!set or !!binary, which have no JSON form; "
         f"write a list or a base64 string instead: {'; '.join(found)}"
     )
-    _log_file_invalid(path, "yaml", message)
+    _log_file_invalid(path, FileFormat.YAML, message)
     raise InvalidFormatError(message)
 
 
@@ -857,7 +888,7 @@ def _unserialisable_positions(data: object) -> list[str]:
     return _positions_of(data, lambda node: type(node).__name__ if type(node) in _TAG_OF_UNSERIALISABLE else None)
 
 
-def _refuse_integers_json_cannot_carry(data: object, *, path: str, format_name: str) -> None:
+def _refuse_integers_json_cannot_carry(data: object, *, path: str, file_format: FileFormat) -> None:
     """Refuse a document holding an integer outside ``-2**63 .. 2**64-1``.
 
     orjson writes no integer outside that range, and rtoml reads up to 128 bits while PyYAML reads
@@ -868,14 +899,15 @@ def _refuse_integers_json_cannot_carry(data: object, *, path: str, format_name: 
     Args:
         data: Parsed document, already known to be a mapping at the top.
         path: File the document came from, named in the error.
-        format_name: Format logged with the refusal (``toml`` or ``yaml``).
+        file_format: Format logged with the refusal (TOML or YAML).
 
     Raises:
         InvalidFormatError: When any integer in *data* is outside the range.
 
     Examples:
-        >>> _refuse_integers_json_cannot_carry({"port": 2**64 - 1}, path="a.toml", format_name="toml")
-        >>> _refuse_integers_json_cannot_carry({"port": 2**64}, path="a.toml", format_name="toml")  # doctest: +ELLIPSIS
+        >>> _refuse_integers_json_cannot_carry({"port": 2**64 - 1}, path="a.toml", file_format=FileFormat.TOML)
+        >>> toml = FileFormat.TOML
+        >>> _refuse_integers_json_cannot_carry({"port": 2**64}, path="a.toml", file_format=toml)  # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: a.toml holds an integer JSON ...: port (int, 65 bits)
@@ -887,11 +919,11 @@ def _refuse_integers_json_cannot_carry(data: object, *, path: str, format_name: 
         f"{path} holds an integer JSON cannot write (it takes -2**63 to 2**64-1); "
         f"write it as a string instead: {'; '.join(found)}"
     )
-    _log_file_invalid(path, format_name, message)
+    _log_file_invalid(path, file_format, message)
     raise InvalidFormatError(message)
 
 
-def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, format_name: str) -> None:
+def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, file_format: FileFormat) -> None:
     """Refuse a document nesting deeper than JSON output can write.
 
     orjson writes at most 254 levels and ``read_config_json`` wraps the config in one more, so a
@@ -901,7 +933,7 @@ def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, 
     Args:
         data: Parsed document, already known to be a mapping at the top.
         path: File the document came from, named in the error.
-        format_name: Format logged with the refusal (``toml``, ``json`` or ``yaml``).
+        file_format: Format logged with the refusal (TOML, JSON or YAML).
 
     Raises:
         InvalidFormatError: When *data* nests past :data:`CONFIG_MAX_DEPTH`.
@@ -912,8 +944,8 @@ def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, 
         ...     for _ in range(depth):
         ...         value = [value]
         ...     return value
-        >>> _refuse_nesting_json_cannot_write({"deep": nested(252)}, path="a.json", format_name="json")
-        >>> _refuse_nesting_json_cannot_write({"deep": nested(253)}, path="a.json", format_name="json")
+        >>> _refuse_nesting_json_cannot_write({"deep": nested(252)}, path="a.json", file_format=FileFormat.JSON)
+        >>> _refuse_nesting_json_cannot_write({"deep": nested(253)}, path="a.json", file_format=FileFormat.JSON)
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: a.json nests deep 254 levels deep; JSON ... 253, ...
@@ -925,7 +957,7 @@ def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, 
         f"{path} nests {position} {nesting_depth(data)} levels deep; JSON output takes "
         f"{CONFIG_MAX_DEPTH}, counted from the top-level table: flatten it, or write it as a string"
     )
-    _log_file_invalid(path, format_name, message)
+    _log_file_invalid(path, file_format, message)
     raise InvalidFormatError(message)
 
 

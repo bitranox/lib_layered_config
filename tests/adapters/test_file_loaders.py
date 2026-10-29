@@ -182,6 +182,37 @@ def test_yaml_loader_refuses_an_out_of_range_calendar_date_without_leaking_the_c
     assert not any("month" in repr(vars(record)) for record in caplog.records)
 
 
+@os_agnostic
+def test_toml_loader_logs_the_format_as_its_plain_name(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """The ``format`` field is the plain string ``"toml"``, never the enum member, whose text differs by version."""
+    path = _write(tmp_path / "config.toml", "a = 1\n")
+    with caplog.at_level(logging.DEBUG, logger="lib_layered_config"):
+        TOMLFileLoader().load(str(path))
+    logged = [_context(record) for record in caplog.records if record.getMessage() == "config_file_loaded"]
+    assert [(type(context["format"]), context["format"]) for context in logged] == [(str, "toml")]
+
+
+@os_agnostic
+def test_json_loader_names_the_format_upper_cased_and_logs_it_plain(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = _write(tmp_path / "config.json", '{\n  "a": }\n')
+    with caplog.at_level(logging.DEBUG, logger="lib_layered_config"), pytest.raises(InvalidFormatError) as exc:
+        JSONFileLoader().load(str(path))
+    message = str(exc.value)
+    assert message.startswith(f"{path} is not valid JSON (line 2, column ")
+    logged = [_context(record) for record in caplog.records if record.getMessage() == "config_file_invalid"]
+    assert [(type(context["format"]), context["format"], context["error"]) for context in logged] == [
+        (str, "json", message)
+    ]
+
+
+def _context(record: logging.LogRecord) -> dict[str, object]:
+    """Return the structured fields a log helper attached to *record*."""
+    fields: dict[str, object] = vars(record)["context"]
+    return fields
+
+
 def _write(path: Path, text: str, *, encoding: str = "utf-8") -> Path:
     """Write text to *path* and return the path so the call reads like a sentence."""
 
