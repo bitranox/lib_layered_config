@@ -457,7 +457,8 @@ EMAIL__SMTP_HOSTS=["a.example:587","b.example:587"]
 
 An unquoted `.env` value is converted exactly like an environment value: `true`/`false` and `null`/`none`
 become booleans and null, and a value becomes an int or float only when the number reads back as the same
-text: `5`, `-7` and `3.5` convert; `007123`, `0640`, `1.50`, `+5`, `1_000` and `nan` stay strings. A quoted
+text: `5`, `-7` and `3.5` convert; `007123`, `0640`, `1.50`, `+5`, `1_000` and `nan` stay strings. An
+integer outside `-2**63 .. 2**64-1` stays a string too, since no JSON view could write it. A quoted
 `.env` value is always the literal text.
 
 A sensitive key keeps an unquoted `null` or `none` as text, in the environment and in `.env` alike, so a

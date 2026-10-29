@@ -22,6 +22,8 @@ KEPT = [
     ("3.5", 3.5),
     ("-0.25", -0.25),
     ("1e+20", 1e20),
+    ("-9223372036854775808", -(2**63)),  # the lowest integer a JSON view writes
+    ("9999999999999999999", 9999999999999999999),  # nineteen digits, inside 2**64-1
     ("true", True),
     ("FALSE", False),
     ("null", None),
@@ -41,6 +43,8 @@ UNCHANGED = [
     "Infinity",
     "\u0661\u0662\u0663",  # Arabic-Indic digits: str.isdigit() is True, the text is not ASCII
     "12345678901234567890",  # twenty digits: past the int bound
+    "-9223372036854775809",  # one below -2**63: no JSON view can write it as a number
+    "-9999999999999999999",  # nineteen digits below -2**63
     " 5",
     "5 ",
     "9" * 5000,  # used to raise ValueError: Exceeds the limit (4300 digits)
@@ -76,3 +80,15 @@ def test_a_leading_zero_secret_reaches_the_configuration_intact(
     config = read_config(vendor="Probe", app="Probe", slug="coerce-probe", dotenv_path=tmp_path / "absent.env")
     assert config.get("email.smtp_password") == "007123"
     assert config.get("email.huge") == "9" * 5000
+
+
+@os_agnostic
+def test_an_env_value_below_the_json_int_range_stays_writable_as_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_layered_sandbox(tmp_path, vendor="Probe", app="Probe", slug="coerce-probe").apply_env(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("COERCE_PROBE___LIMITS__FLOOR", "-9999999999999999999")
+    config = read_config(vendor="Probe", app="Probe", slug="coerce-probe", dotenv_path=tmp_path / "absent.env")
+    assert config.get("limits.floor") == "-9999999999999999999"
+    assert '"floor":"-9999999999999999999"' in config.to_json()

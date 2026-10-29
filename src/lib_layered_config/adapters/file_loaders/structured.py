@@ -31,6 +31,7 @@ import orjson
 import rtoml
 
 from ...domain.errors import InvalidFormatError, NotFoundError
+from ...domain.json_codec import JSON_INT_MAX, JSON_INT_MIN
 from ...observability import log_debug, log_error
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
@@ -807,11 +808,6 @@ def _unserialisable_positions(data: object) -> list[str]:
     return _positions_of(data, lambda node: type(node).__name__ if type(node) in _TAG_OF_UNSERIALISABLE else None)
 
 
-#: The integer range orjson writes; every JSON view of a configuration goes through it.
-_JSON_INT_MIN: Final = -(2**63)
-_JSON_INT_MAX: Final = 2**64 - 1
-
-
 def _refuse_integers_json_cannot_carry(data: object, *, path: str, format_name: str) -> None:
     """Refuse a document holding an integer outside ``-2**63 .. 2**64-1``.
 
@@ -853,7 +849,7 @@ def _describe_wide_int(node: object) -> str | None:
         >>> _describe_wide_int(2**64), _describe_wide_int(-(2**63)), _describe_wide_int(True)
         ('int, 65 bits', None, None)
     """
-    if type(node) is not int or _JSON_INT_MIN <= node <= _JSON_INT_MAX:
+    if type(node) is not int or JSON_INT_MIN <= node <= JSON_INT_MAX:
         return None
     return f"int, {node.bit_length()} bits"
 
