@@ -12,7 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The extras `rtoml` and `orjson` (`pip install "lib_layered_config[rtoml,orjson]"`) bring the
   Rust-based parsers back on Python 3.14+ with the GIL. Do not install them on a free-threaded
   build: neither has a free-threaded wheel, and the package never imports them there.
-- `tomli>=2.4.0` is a dependency on Python 3.14, where stdlib `tomllib` reads only TOML 1.0, so a
+- `tomli>=2.5.0` is a dependency on Python 3.14, where stdlib `tomllib` reads only TOML 1.0, so a
   TOML 1.1 file loads on 3.14 and 3.14t as it does with `rtoml`.
 
 ### Changed
