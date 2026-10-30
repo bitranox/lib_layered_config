@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.6.1] - 2026-10-30
+
+### Docs
+
+- The `python-layered-config` skill: a profile replaces the base paths, `ProtectHome` in a systemd
+  unit, and writing a value into one layer.
+
 ## [7.6.0] - 2026-10-30
 
 ### Changed

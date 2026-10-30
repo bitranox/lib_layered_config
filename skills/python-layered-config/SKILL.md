@@ -232,6 +232,20 @@ error (exit 2). A directory is refused either way.
   platform. Mark a test of a configured-mode refusal POSIX-only, and pin the Windows behaviour in
   its own arm: the deploy proceeds.
 
+## Running as a systemd service (ProtectHome)
+
+A layer path that exists but cannot be read is a load error, not a skipped layer: `read_config`
+raises `LayerLoadError` (`.../<slug>/.env cannot be read: Permission denied`), while a path that
+does not exist is skipped. `ProtectHome=yes` (or `true`) makes `/home`, `/root` and `/run/user`
+inaccessible to the service, so the user layer and the per-user `.env` under the service user's
+home fail with that error at every start, even when the home was never created; an app that
+reports a configuration error as EX_CONFIG exits 78. Use `ProtectHome=tmpfs` instead: the homes
+stay hidden but are mounted empty, so the user layer is simply absent. `ProtectHome=read-only`
+also loads. A plain `runuser -u <user>` check does not show the failure (outside the sandbox a
+missing home is absent, not unreadable): run the app's config command under the unit's own
+properties, `systemd-run --wait --pipe --collect -p User=<user> -p ProtectHome=<value> <app>
+config`, and require exit 0.
+
 ## Profiles (per-environment config)
 
 A profile keeps test/staging/production in separate trees. Pass `profile=`:
@@ -242,6 +256,13 @@ config = read_config(vendor="Acme Corp", app="My App", slug="my-app", profile="p
 
 This inserts a `profile/<name>/` segment into every layer path, e.g.
 `/etc/xdg/my-app/profile/production/config.toml`. Without a profile you get the base paths.
+The segment REPLACES the base paths, it is not added beside them: with a profile, the plain
+app, host and user files (and the per-user `.env`) are not read at all. Only the `defaults` file
+you pass, a `.env` found by the upward search and the environment still apply. So a profile file
+holding a single override loses every other setting the base files carried (a base
+`config.toml` with `[node] host = "pve1"` plus `profile/site-b/config.toml` holding only `[ssh]
+known_hosts_file` reads, under `--profile site-b`, with no `node.host` at all). Make each profile
+file the site's whole configuration, and name the section of every key in an example.
 Profile names are validated (no path traversal, control chars, reserved names, non-ASCII;
 max 64 chars). `--profile` is an OPTION on `deploy`, not a command on its own - the required
 flags come too: `deploy --source cfg.toml --vendor acme --app my-app --slug my-app --target user
@@ -296,6 +317,26 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   or YAML file holding it is refused whole, naming each integer's position and width.
 - **Use profiles for environments**, not copy-pasted files.
 - **Scaffold** a starting tree with `generate-examples` rather than hand-building paths.
+
+## Writing one value back into a layer
+
+Inside one layer the base file loads first, then every `.toml`, `.yaml`, `.yml` and `.json` file of
+its `config.d/` in sorted name order, a later file winning key by key. So a value written into
+`config.toml` is silently beaten by the same key in any `config.d/` file of that layer, and by
+every higher layer (`dotenv`, `env`, an override). To write a setting from code (a `calibrate set`
+command, a setup wizard):
+
+1. List the layer's files in load order: its base file, the one path `deploy_config_paths(<the
+   app's default config file>, vendor=..., app=..., slug=..., targets=["user"])` returns outside a
+   `.d` directory (pass `profile=` when the app runs with one), then the files in the `config.d/`
+   beside it on disk, sorted by name.
+2. Write into the LAST of those files that already sets the key; when none does, into the base
+   file. Edit it with a library that round-trips (tomlkit for TOML keeps comments and order), never
+   by text substitution.
+3. Re-read through the loader (an app that caches its loaded configuration must drop that cache
+   first) and compare `config.get(key)` with the value written. If they differ,
+   `config.origin(key)` names the layer and file still winning (a `.env`, an environment variable,
+   another file): report that to the user rather than writing past it.
 
 ## Python API beyond read_config
 

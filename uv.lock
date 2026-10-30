@@ -1298,7 +1298,7 @@ wheels = [
 
 [[package]]
 name = "lib-layered-config"
-version = "7.6.0"
+version = "7.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "lib-cli-exit-tools" },
