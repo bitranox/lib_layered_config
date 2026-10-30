@@ -597,7 +597,7 @@ environment before running `make` is recommended.
 
 The GitHub Actions workflow executes three jobs:
 
-- **Test matrix** (Linux/macOS/Windows, Python 3.10-3.13 + latest 3.x) running the same pipeline as `make test`.
+- **Test matrix** (Linux/macOS/Windows, Python 3.10-3.15, plus the free-threaded builds 3.14t and 3.15t on Linux and Windows) running the same pipeline as `make test`.
 - **pipx / uv verification** to prove the built wheel installs cleanly with the common Python app launchers.
 - **Notebook smoke test** that executes `notebooks/Quickstart.ipynb` to keep the tutorial in sync using the native nbformat workflow (no compatibility shims required).
 - CLI jobs run through `lib_cli_exit_tools.cli_session`, ensuring the `--traceback` flag behaves the same locally and in automation.
