@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -109,7 +110,7 @@ def test_dotenv_loader_reports_invalid_line(tmp_path: Path, caplog: pytest.LogCa
     env_file = tmp_path / ".env"
     env_file.write_text("INVALID", encoding="utf-8")
     loader = DefaultDotEnvLoader()
-    with pytest.raises(InvalidFormatError):
+    with caplog.at_level(logging.DEBUG, logger="lib_layered_config"), pytest.raises(InvalidFormatError):
         loader.load(str(tmp_path))
     assert any(record.message == "dotenv_invalid_line" for record in caplog.records)
 

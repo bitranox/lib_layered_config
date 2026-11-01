@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Final
 
 from ..domain.errors import InvalidFormatError
-from ..observability import log_debug, log_error
+from ..observability import log_debug
 
 __all__ = [
     "PathKind",
@@ -179,7 +179,7 @@ def config_path_unreadable(path: Path, error: OSError | ValueError) -> InvalidFo
     """
     reason = error.strerror if isinstance(error, OSError) and error.strerror else str(error)
     message = f"{path} cannot be read: {reason}"
-    log_error("config_path_unreadable", path=str(path), error=message)
+    log_debug("config_path_unreadable", path=str(path), error=message)
     refusal = InvalidFormatError(message)
     refusal.__cause__ = error
     refusal.__suppress_context__ = True

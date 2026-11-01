@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- A refused configuration file is reported by its exception alone. The library logged each refusal
+  at ERROR and then raised it, so a caller that caught the `ConfigError` and carried on still printed
+  an error line for a run that succeeded. The events `config_file_invalid`, `config_path_is_directory`,
+  `config_path_is_special_file`, `config_path_unsupported_format`, `config_path_unreadable` and
+  `dotenv_invalid_line` are now logged at DEBUG, with the same fields.
+
 ## [7.6.1] - 2026-10-30
 
 ### Docs

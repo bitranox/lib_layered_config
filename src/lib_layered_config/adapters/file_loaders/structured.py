@@ -42,7 +42,7 @@ from ...domain.json_codec import (
     nesting_depth,
 )
 from ...domain.source_position import SourcePosition
-from ...observability import log_debug, log_error
+from ...observability import log_debug
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
 from ._toml_backend import PARSER, TomlLoadError, TomlParser
@@ -145,14 +145,19 @@ class _ParseFailure:
 
 
 def _log_file_invalid(path: str, file_format: FileFormat, message: str) -> None:
-    """Log a parse failure with the content-free message the caller will see.
+    """Log a parse failure at DEBUG with the content-free message the caller will see.
+
+    A refusal is always raised after it is logged, and the exception is the report: the caller
+    decides how loud to be. Logged at ERROR, a caller that catches the refusal and carries on still
+    printed an error line for a run that succeeded, and could only hide it by hiding real errors.
+    Every refusal builder in the adapters logs at DEBUG for the same reason.
 
     Args:
         path: File path that failed to parse.
         file_format: The format the file was parsed as; logged by its value.
         message: The content-free message the caller will also see.
     """
-    log_error("config_file_invalid", layer=FILE_LAYER, path=path, format=file_format.value, error=message)
+    log_debug("config_file_invalid", layer=FILE_LAYER, path=path, format=file_format.value, error=message)
 
 
 def directory_not_config_file(path: Path) -> InvalidFormatError:
@@ -172,7 +177,7 @@ def directory_not_config_file(path: Path) -> InvalidFormatError:
         'config.toml is a directory, not a configuration file'
     """
     message = f"{path} is a directory, not a configuration file"
-    log_error("config_path_is_directory", layer=FILE_LAYER, path=str(path), error=message)
+    log_debug("config_path_is_directory", layer=FILE_LAYER, path=str(path), error=message)
     return InvalidFormatError(message)
 
 
@@ -209,7 +214,7 @@ def special_file_not_config_file(path: Path) -> InvalidFormatError:
         mode = 0
     kind = next((name for is_kind, name in _SPECIAL_FILE_KINDS if is_kind(mode)), "special file")
     message = f"{path} is a {kind}, not a configuration file"
-    log_error("config_path_is_special_file", layer=FILE_LAYER, path=str(path), error=message)
+    log_debug("config_path_is_special_file", layer=FILE_LAYER, path=str(path), error=message)
     return InvalidFormatError(message)
 
 
@@ -228,7 +233,7 @@ def unsupported_config_format(path: Path, suffixes: tuple[str, ...]) -> InvalidF
         'defaults.conf has no supported format (.toml, .json)'
     """
     message = f"{path} has no supported format ({', '.join(suffixes)})"
-    log_error("config_path_unsupported_format", layer=FILE_LAYER, path=str(path), error=message)
+    log_debug("config_path_unsupported_format", layer=FILE_LAYER, path=str(path), error=message)
     return InvalidFormatError(message)
 
 

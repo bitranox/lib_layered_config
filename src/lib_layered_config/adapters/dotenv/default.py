@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 
 from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
-from ...observability import log_debug, log_error
+from ...observability import log_debug
 from .._nested_keys import assign_nested
 from .._path_probe import PathKind, checked_kind, config_path_unreadable, current_directory, probe_path
 from .._text_decoding import decode_utf8
@@ -63,8 +63,8 @@ def _log_dotenv_missing(path: Path | None = None) -> None:
 
 
 def _log_dotenv_error(path: Path, line_number: int) -> None:
-    """Log a malformed line error with file path and line number."""
-    log_error("dotenv_invalid_line", layer=DOTENV_LAYER, path=str(path), line=line_number)
+    """Log a malformed line at DEBUG: the ``InvalidFormatError`` raised after it is the report."""
+    log_debug("dotenv_invalid_line", layer=DOTENV_LAYER, path=str(path), line=line_number)
 
 
 class DefaultDotEnvLoader:
