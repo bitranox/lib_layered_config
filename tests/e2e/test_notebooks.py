@@ -41,28 +41,15 @@ def _clean_source(cell: dict[str, object]) -> str:
         if stripped.startswith("assert _exit_code"):
             continue
         kept.append(line)
-    return "\n".join(kept).strip()
+    # Strip only the surrounding blank lines: stripping spaces too would take the first line's
+    # indent off alone, and a cell indented as a whole (which IPython runs, removing the common
+    # indent) would then no longer dedent as one block.
+    return "\n".join(kept).strip("\n")
 
 
 def _dedent_block(source: str) -> str:
-    if not source:
-        return ""
-    block = textwrap.dedent(source)
-    lines = block.splitlines()
-    indents = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
-    if 0 not in indents:
-        return block
-    positives = [indent for indent in indents if indent > 0]
-    trim = min(positives, default=0)
-    if trim == 0:
-        return block
-    adjusted: list[str] = []
-    for line in lines:
-        if line.strip() and len(line) - len(line.lstrip(" ")) >= trim:
-            adjusted.append(line[trim:])
-            continue
-        adjusted.append(line)
-    return "\n".join(adjusted)
+    # The same common-indent removal IPython applies before it runs a cell.
+    return textwrap.dedent(source)
 
 
 def iter_executable_cells() -> list[str]:
