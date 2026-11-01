@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
-from .._nested_keys import assign_nested
+from .._nested_keys import NestedEntry, build_nested
 from .._path_probe import PathKind, checked_kind, config_path_unreadable, current_directory, probe_path
 from .._text_decoding import decode_utf8
 from .._value_coercion import coerce_value
@@ -155,10 +155,11 @@ def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveK
         InvalidFormatError: On malformed lines or bytes, or when the file is larger than
             :data:`~lib_layered_config.adapters.file_loaders.structured.MAX_CONFIG_FILE_BYTES`
             (a regular file is sized before it is read, a FIFO or device is read to one byte past
-            the cap; the same cap and refusal shape structured configuration files use), or when
-            it cannot be read.
+            the cap; the same cap and refusal shape structured configuration files use), when
+            it cannot be read, or when one line sets a value and another a key below it
+            (``DB`` and ``DB__PORT``), in either order.
     """
-    result: dict[str, object] = {}
+    entries: list[NestedEntry] = []
     try:
         raw = read_capped_bytes(path)
     except OSError as error:
@@ -170,8 +171,8 @@ def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveK
         if entry is None:
             continue
         value = _dotenv_value(entry.key, entry.raw_value, not_sensitive=not_sensitive)
-        assign_nested(result, entry.key, value, error_cls=InvalidFormatError)
-    return result
+        entries.append(NestedEntry(entry.key, value, f"{entry.key} (line {line_number})"))
+    return build_nested(entries, error_cls=InvalidFormatError, where=f"{path}: ")
 
 
 def _is_ignorable(line: str) -> bool:

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Final
 from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
-from .._nested_keys import assign_nested
+from .._nested_keys import NestedEntry, build_nested
 from .._value_coercion import coerce_value
 
 if TYPE_CHECKING:
@@ -97,6 +97,10 @@ class DefaultEnvLoader:
             Nested mapping suitable for the merge algorithm. Keys are stored in
             lowercase to align with file-based layers.
 
+        Raises:
+            InvalidFormatError: A variable is not valid UTF-8, or one variable sets a value and
+                another a key below it (``DEMO___DB`` and ``DEMO___DB__PORT``), in either order.
+
         Side Effects:
             Emits ``env_variables_loaded`` debug events with summarised keys.
 
@@ -113,15 +117,12 @@ class DefaultEnvLoader:
             True
         """
         normalized_prefix = _normalize_prefix(prefix)
-        collected: dict[str, object] = {}
+        entries: list[NestedEntry] = []
         for raw_key, value in _iter_namespace_entries(self._environ.items(), normalized_prefix):
             _refuse_undecodable(normalized_prefix + raw_key, value)
-            assign_nested(
-                collected,
-                raw_key,
-                coerce_value(raw_key, value, not_sensitive=self._not_sensitive),
-                error_cls=ValueError,
-            )
+            coerced = coerce_value(raw_key, value, not_sensitive=self._not_sensitive)
+            entries.append(NestedEntry(raw_key, coerced, normalized_prefix + raw_key))
+        collected = build_nested(entries, error_cls=InvalidFormatError, where="environment: ")
         log_debug("env_variables_loaded", layer="env", path=None, keys=_collect_keys(collected))
         return collected
 

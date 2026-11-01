@@ -279,8 +279,8 @@ def read_config_for_deploy(
     that platform's paths), never reads ``.env``, and skips the files the deploy writes.
 
     Raises:
-        LayerLoadError: A layer file cannot be decoded or parsed (a content-free message).
-        ValueError: The environment layer sets a key both as a scalar and as a table.
+        LayerLoadError: A layer file cannot be decoded or parsed (a content-free message), or two
+            environment variables set a value and a key below it.
     """
     try:
         layers = collect_deploy_layers(

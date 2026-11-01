@@ -17,6 +17,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   tests the commit under test. It used to install `git+https://github.com/...` every time, which is
   the pushed default branch, so a pull request's notebook run tested the code already there.
   Outside a checkout (a downloaded notebook) it still installs from GitHub.
+- Two environment variables or `.env` lines that set a value and a key below it (`APP___DB=flat` and
+  `APP___DB__PORT=2`) are refused in either order with `LayerLoadError`, naming both variables and
+  the path: `environment: APP___DB sets db to a value, so APP___DB__PORT cannot set a key below it`.
+  Before, the result depended on the order the variables arrived in: one order raised a bare
+  `ValueError` (not a `ConfigError`), the other silently dropped `DB__PORT`. Keys below a JSON object
+  value (`APP___DB='{"host": "h"}'`) now merge into it in either order, the deeper variable winning
+  over the same key inside the object; before, they were dropped when the object came second.
 
 ### Security
 - Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,
