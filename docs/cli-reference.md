@@ -305,6 +305,11 @@ When a file exists with **different content** and neither `--force` nor `--batch
 - Prompts user with two options:
   - **[K]eep existing** - Save new config as `.ucf` (Update Configuration File) - **default**
   - **[O]verwrite** - Backup original to `.bak`, then write new file
+- The prompt is written to stderr, so stdout carries only the JSON result. The answer can come from a
+  pipe (`echo o | lib_layered_config deploy ...`).
+- When no answer can be read (stdin at end of file), deploy exits with a usage error (exit code 2)
+  naming the file and both unattended choices, `--batch` and `--force`. Files deployed before that
+  conflict stay deployed.
 
 #### **With `--force` Flag:**
 - **Creates new files** if they don't exist

@@ -27,14 +27,32 @@ __all__ = [
 
 
 def _prompt_for_action(destination: Path) -> DeployAction:
-    """Prompt user for action when destination file exists."""
-    click.echo(f"\nFile exists: {destination}")
-    choice = click.prompt(
-        "  [K]eep existing (save new as .ucf)\n  [O]verwrite (backup existing to .bak)\nChoose",
-        type=click.Choice(["k", "o"], case_sensitive=False),
-        default="k",
-        show_choices=False,
-    )
+    """Ask on stderr whether to keep or overwrite an existing *destination*.
+
+    stdout is reserved for the JSON result. An answer may come from a pipe; when none can be read
+    the refusal names the flags that make the command unattended.
+
+    Raises:
+        click.UsageError: stdin reached end of file before an answer.
+    """
+    click.echo(f"\nFile exists: {destination}", err=True)
+    try:
+        choice = click.prompt(
+            "  [K]eep existing (save new as .ucf)\n  [O]verwrite (backup existing to .bak)\nChoose",
+            type=click.Choice(["k", "o"], case_sensitive=False),
+            default="k",
+            show_choices=False,
+            err=True,
+        )
+    except click.Abort as exc:
+        # click raises Abort for both Ctrl-C and end of input; only the second is a usage problem.
+        # It raises "from None", which hides the cause but still records it as the context.
+        if not isinstance(exc.__context__, EOFError):
+            raise
+        raise click.UsageError(
+            f"{destination} exists and no answer could be read: pass --batch (keep it, write .ucf) "
+            "or --force (overwrite it, keep .bak)"
+        ) from None
     if choice.lower() == "o":
         return DeployAction.OVERWRITTEN
     return DeployAction.KEPT
@@ -189,7 +207,8 @@ def deploy_command(
     \b
     - With --force: backs up to .bak and overwrites
     - With --batch: keeps existing and writes new as .ucf (for CI/scripts)
-    - Otherwise: prompts to keep (save as .ucf) or overwrite (backup to .bak)
+    - Otherwise: prompts on stderr to keep (save as .ucf) or overwrite (backup to .bak);
+      with no answer to read, a usage error names --batch and --force
 
     \b
     Modes: --dir-mode/--file-mode win, then [lib_layered_config.default_permissions] from the

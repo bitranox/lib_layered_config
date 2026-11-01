@@ -29,6 +29,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   replaces the list like any other non-index key (`label`). An ASCII key of more than 4300 digits no
   longer crashes `int()`: leading zeros are ignored, and an index no list can reach is skipped with
   the usual `list_index_out_of_range` warning.
+- `deploy` asks its keep-or-overwrite question on stderr, so stdout holds only the JSON result; with
+  the prompt on stdout, a conflict made the output unparseable. When no answer can be read (stdin at
+  end of file), it exits 2 with a usage error naming the file, `--batch` and `--force`, instead of a
+  bare `Abort:` with exit 1. Answers piped on stdin still work, and Ctrl-C still aborts.
 
 ### Security
 - Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,
