@@ -24,6 +24,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `ValueError` (not a `ConfigError`), the other silently dropped `DB__PORT`. Keys below a JSON object
   value (`APP___DB='{"host": "h"}'`) now merge into it in either order, the deeper variable winning
   over the same key inside the object; before, they were dropped when the object came second.
+- Only ASCII digit keys (`APP___HOSTS__1`) address a list element. A superscript or another script's
+  digit (`²`, `١`) used to crash the merge with a bare `ValueError` or silently become an index; it now
+  replaces the list like any other non-index key (`label`). An ASCII key of more than 4300 digits no
+  longer crashes `int()`: leading zeros are ignored, and an index no list can reach is skipped with
+  the usual `list_index_out_of_range` warning.
 
 ### Security
 - Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,

@@ -19,6 +19,7 @@ System Role:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -35,6 +36,15 @@ if TYPE_CHECKING:
 #: recurse until Python raises an opaque ``RecursionError``; this bound turns that into a
 #: clear ``InvalidFormatError`` well before the interpreter stack limit.
 _MAX_MERGE_DEPTH: Final[int] = 100
+
+#: A list index is ASCII digits only: ``str.isdigit`` also accepts superscripts and other
+#: scripts' digits, which ``int()`` either refuses or reads as a number nobody typed.
+_LIST_INDEX_KEY: Final[re.Pattern[str]] = re.compile(r"[0-9]+")
+
+#: More significant digits than any list can have elements; such a key is out of range.
+#: Keeps ``int()`` far below its 4300-digit conversion limit.
+_MAX_INDEX_DIGITS: Final[int] = 18
+_INDEX_BEYOND_ANY_LIST: Final[int] = 10**_MAX_INDEX_DIGITS
 
 
 class ValueKind(str, Enum):
@@ -248,7 +258,7 @@ def _store_branch(
 
 
 def _all_numeric_keys(value: Mapping[str, object]) -> bool:
-    """Return ``True`` when *value* is a non-empty mapping whose keys are all digit strings.
+    """Return ``True`` when *value* is a non-empty mapping whose keys are all ASCII digit strings.
 
     A numeric-only mapping arriving on top of an existing list is the signal that the
     caller means to address list elements by index (e.g. ``PREFIX___HOSTS__0__NAME``),
@@ -269,8 +279,26 @@ def _all_numeric_keys(value: Mapping[str, object]) -> bool:
         False
         >>> _all_numeric_keys({})
         False
+        >>> _all_numeric_keys({chr(0x00B2): 'superscript two'})
+        False
     """
-    return bool(value) and all(key.isdigit() for key in value)
+    return bool(value) and all(_LIST_INDEX_KEY.fullmatch(key) for key in value)
+
+
+def _list_index(key: str) -> int:
+    """Return the list index an ASCII digit *key* names, ignoring leading zeros.
+
+    A key with more than :data:`_MAX_INDEX_DIGITS` significant digits names no reachable slot,
+    so it maps to :data:`_INDEX_BEYOND_ANY_LIST` and takes the out-of-range path.
+
+    Examples:
+        >>> _list_index('7'), _list_index('007'), _list_index('0' * 5000)
+        (7, 7, 0)
+        >>> _list_index('1' + '0' * 5000) == _INDEX_BEYOND_ANY_LIST
+        True
+    """
+    digits = key.lstrip("0") or "0"
+    return int(digits) if len(digits) <= _MAX_INDEX_DIGITS else _INDEX_BEYOND_ANY_LIST
 
 
 def _merge_mapping_into_list(
@@ -296,9 +324,9 @@ def _merge_mapping_into_list(
     Side Effects:
         Mutates *existing*, *provenance*, and *segments* while overlaying elements.
     """
-    for index_key in sorted(incoming, key=int):
+    for index_key in sorted(incoming, key=_list_index):
         override = incoming[index_key]
-        index = int(index_key)
+        index = _list_index(index_key)
         dotted = _join_segments(segments, index_key)
         if index < len(existing):
             existing[index] = _merge_list_element(
