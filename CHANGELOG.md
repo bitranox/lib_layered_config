@@ -33,6 +33,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the prompt on stdout, a conflict made the output unparseable. When no answer can be read (stdin at
   end of file), it exits 2 with a usage error naming the file, `--batch` and `--force`, instead of a
   bare `Abort:` with exit 1. Answers piped on stdin still work, and Ctrl-C still aborts.
+- `deploy_config`, `deploy_config_paths` and `read_deploy_config` read `platform` like the CLI's
+  `--platform`: `macos`, `mac` and `Darwin` give the macOS layout, and an unknown name raises
+  `ValidationError` listing the accepted ones. Before, any name the layouts did not recognise,
+  `macos` included, silently deployed the Linux layout. Leaving `platform` out still auto-detects.
 
 ### Security
 - Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,

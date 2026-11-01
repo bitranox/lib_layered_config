@@ -310,9 +310,9 @@ def test_every_platform_layout_gives_each_deploy_target_a_destination(tmp_path: 
 
 
 @os_agnostic
-def test_prepare_resolver_uses_platform_override() -> None:
+def test_prepare_resolver_reads_a_platform_alias_as_its_canonical_name() -> None:
     resolver = deploy_module._prepare_resolver(vendor=VENDOR, app=APP, slug=SLUG, profile=None, platform="macos")
-    assert resolver.platform == "macos"
+    assert resolver.platform == "darwin"
 
 
 @windows_only

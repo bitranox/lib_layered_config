@@ -131,7 +131,7 @@ def normalise_resolver_platform(alias: str | None) -> str | None:
         return None
     try:
         return _CANONICAL_RESOLVER[sanitized]
-    except KeyError as exc:  # pragma: no cover - exercised via caller tests
+    except KeyError as exc:
         allowed = ", ".join(sorted(_CANONICAL_RESOLVER))
         raise ValidationError(f"Platform must be one of: {allowed}.") from exc
 

@@ -34,6 +34,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
+from .._platform import normalise_resolver_platform
 from ..adapters._path_probe import PathKind, kind_or_raise
 from ..adapters.path_resolvers.default import DefaultPathResolver
 from ..core import read_config_for_deploy
@@ -682,7 +683,9 @@ def deploy_config(
         targets: Layer targets to deploy to (app, host, user).
         slug: Slug identifying the configuration set.
         profile: Configuration profile name.
-        platform: Override auto-detected platform.
+        platform: Override the auto-detected platform. Takes the CLI's ``--platform`` names
+            (``linux``, ``darwin``/``macos``/``mac``, ``win32``/``windows``/``win``, ...); any other
+            name raises :class:`~lib_layered_config.ValidationError`.
         force: If True, backup existing files and overwrite (no prompt).
         batch: If True, keep existing files and write new as .ucf for review (CI/scripts).
         conflict_resolver: Callback to resolve conflicts interactively.
@@ -1054,7 +1057,14 @@ def _prepare_resolver(
     platform: str | None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
 ) -> DefaultPathResolver:
-    if platform is None:
+    """Build the resolver, reading *platform* like the CLI's ``--platform``.
+
+    Raises:
+        ValidationError: *platform* names no known layout; an unknown name would otherwise get the
+            Linux layout without a word.
+    """
+    canonical = normalise_resolver_platform(platform)
+    if canonical is None:
         return DefaultPathResolver(
             vendor=vendor,
             app=app,
@@ -1067,7 +1077,7 @@ def _prepare_resolver(
         app=app,
         slug=slug,
         profile=profile,
-        platform=platform,
+        platform=canonical,
         max_profile_length=max_profile_length,
     )
 

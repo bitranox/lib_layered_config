@@ -879,7 +879,7 @@ Copy a source configuration file into one or more layer directories with conflic
 - `targets` (Sequence[str], required): Layer targets to deploy to. Valid values: `"app"`, `"host"`, `"user"`.
 - `slug` (str | None, optional): Configuration slug. Default: `None` (uses `app` as slug).
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to deployment paths. Default: `None`.
-- `platform` (str | None, optional): Override auto-detected platform. Valid values: `"linux"`, `"darwin"`, `"windows"`, or any value starting with `"win"`. Default: `None` (auto-detects from current platform).
+- `platform` (str | None, optional): Override the auto-detected platform. Takes the CLI's `--platform` names: `"linux"`/`"posix"`, `"darwin"`/`"macos"`/`"mac"`, `"win32"`/`"windows"`/`"win"`/`"wine"`, in any case. Any other name raises `ValidationError` listing them. Default: `None` (auto-detects from current platform).
 - `force` (bool, optional): When True and file exists with different content, backup to `.bak` and overwrite. Default: `False`.
 - `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`.
 - `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Custom callback for conflict resolution. Default: `None`.
