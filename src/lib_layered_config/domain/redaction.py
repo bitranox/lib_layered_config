@@ -58,17 +58,25 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+#: Where a camelCase or PascalCase name changes words: ``dbPassword`` -> ``db|Password`` and
+#: ``DBPassword`` -> ``DB|Password``. The pattern above knows only the underscore as a word
+#: boundary, so these and the kebab-case separators are rewritten to one before it runs.
+_CAMEL_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_SEPARATORS: re.Pattern[str] = re.compile(r"[-\s.]+")
+
 
 def is_sensitive(key: str) -> bool:
     """Return ``True`` when *key* matches a known sensitive name pattern.
 
-    Patterns are matched case-insensitively with underscore word boundaries.
-    Supported stems include ``password``, ``passwd``, ``passphrase``, ``secret``,
-    ``token``, ``credential``, ``apikey``, ``cookie``, ``jwt``, ``signature``, and
-    ``session_id``, with optional plural suffix and prefix/suffix separated by
-    underscores. A ``_key`` suffix also matches (``api_key`` / ``access_key`` /
-    ``signing_key``), but a field literally named ``key`` does not, so benign names like
-    ``keyboard``, ``monkey``, and a plain ``key`` map field are not treated as sensitive.
+    Patterns are matched case-insensitively at word boundaries. Supported stems include
+    ``password``, ``passwd``, ``passphrase``, ``secret``, ``token``, ``credential``,
+    ``apikey``, ``cookie``, ``jwt``, ``signature``, and ``session_id``, with optional plural
+    suffix and other words around them. A ``_key`` suffix also matches (``api_key`` /
+    ``access_key`` / ``signing_key``), but a field literally named ``key`` does not, so benign
+    names like ``keyboard``, ``monkey``, and a plain ``key`` map field are not treated as
+    sensitive. Words may be separated by underscores, hyphens, dots or spaces, or by a change of
+    case, so ``dbPassword``, ``DBPassword`` and ``client-secret`` match like ``db_password`` and
+    ``client_secret``.
 
     Args:
         key: Configuration key name to test.
@@ -85,8 +93,11 @@ def is_sensitive(key: str) -> bool:
         False
         >>> is_sensitive("monkey")
         False
+        >>> is_sensitive("dbPassword"), is_sensitive("client-secret"), is_sensitive("keyBinding")
+        (True, True, False)
     """
-    return _SENSITIVE_PATTERN.search(key) is not None
+    words = _SEPARATORS.sub("_", _CAMEL_BOUNDARY.sub("_", key))
+    return _SENSITIVE_PATTERN.search(words) is not None
 
 
 @dataclass(frozen=True, slots=True)

@@ -18,6 +18,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the pushed default branch, so a pull request's notebook run tested the code already there.
   Outside a checkout (a downloaded notebook) it still installs from GitHub.
 
+### Security
+- Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,
+  whitespace and a change of case before the name rule runs, so `dbPassword`, `DBPassword`,
+  `clientSecret`, `accessToken`, `client-secret` and `api-key` are masked like `db_password`.
+  Before, only underscore-separated names matched, and `to_json(redact=True)`, `read --redact`,
+  `read_config_json(redact=True)` and the display view printed camelCase and kebab-case secrets in
+  clear. The same rule now masks the camelCase form of every name it already masked, such as
+  `primaryKey` or `cacheKey` (like `primary_key`); exempt such a path with `not_sensitive`.
+  `key`, `keyBinding`, `hotkey` and `tokenizer` stay visible.
+
 ## [7.7.0] - 2026-11-01
 
 ### Changed

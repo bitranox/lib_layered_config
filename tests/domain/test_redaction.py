@@ -70,6 +70,22 @@ def test_redact_mapping_raises_on_pathologically_deep_nesting() -> None:
         "jwt",
         "signature",
         "passphrase",
+        # camelCase, PascalCase and kebab-case spellings name the same secrets
+        "dbPassword",
+        "clientSecret",
+        "accessToken",
+        "privateKey",
+        "signingKey",
+        "sessionId",
+        "DBPassword",
+        "JWTToken",
+        "APIKey",
+        "client-secret",
+        "db-password",
+        "api-key",
+        "secret-key",
+        "session-id",
+        "db password",
     ],
 )
 def test_is_sensitive_detects_known_patterns(key: str) -> None:
@@ -99,6 +115,14 @@ def test_is_sensitive_detects_known_patterns(key: str) -> None:
         "debug",
         "log_level",
         "secretary",
+        # the camelCase and kebab-case forms of the names above stay visible too
+        "keyBinding",
+        "key-binding",
+        "monkeyName",
+        "keyboardLayout",
+        "tokenizerModel",
+        "passwordlessLogin",
+        "Secretary",
     ],
 )
 def test_is_sensitive_ignores_non_sensitive_keys(key: str) -> None:
