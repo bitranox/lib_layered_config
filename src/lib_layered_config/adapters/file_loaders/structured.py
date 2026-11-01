@@ -56,6 +56,7 @@ if TYPE_CHECKING:
 __all__ = [
     "FILE_LAYER",
     "MAX_CONFIG_FILE_BYTES",
+    "YAML_MAX_EXPANDED_VALUES",
     "BaseFileLoader",
     "FileFormat",
     "JSONFileLoader",
@@ -64,6 +65,7 @@ __all__ = [
     "directory_not_config_file",
     "ensure_within_size_cap",
     "read_capped_bytes",
+    "refuse_yaml_alias_blowup",
     "special_file_not_config_file",
     "unsupported_config_format",
 ]
@@ -73,6 +75,11 @@ __all__ = [
 #: generous 10 MiB ceiling bounds memory so an oversized or adversarial file (including
 #: one dropped into a ``.d`` directory) cannot exhaust memory during a read.
 MAX_CONFIG_FILE_BYTES: Final[int] = 10 * 1024 * 1024
+
+#: Most values a YAML document may expand to through its aliases. A configuration file holds
+#: hundreds of values; a million leaves room for heavy legitimate aliasing while stopping an alias
+#: bomb, which a few hundred bytes can make expand to hundreds of millions.
+YAML_MAX_EXPANDED_VALUES: Final[int] = 1_000_000
 
 #: The tag PyYAML resolves ``<<`` to; such a key merges a mapping in rather than naming a setting.
 _YAML_MERGE_TAG: Final[str] = "tag:yaml.org,2002:merge"
@@ -702,6 +709,8 @@ class YAMLFileLoader(BaseFileLoader):
             raise
         parsed = _parse_yaml_text(decoded, yaml_module, path)
         mapping = self._ensure_mapping(parsed, path=path)
+        # First: every check below walks the document as a tree, which never ends on an alias cycle.
+        refuse_yaml_alias_blowup(mapping, path=path)
         _refuse_non_string_keys(mapping, path=path)
         _refuse_ordered_map_tags(mapping, path=path)
         _refuse_values_json_cannot_carry(mapping, path=path)
@@ -748,6 +757,108 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
     if outcome.failure is not None:
         raise _log_and_build_invalid_format(path, FileFormat.YAML, outcome.failure)
     return {} if outcome.value is None else outcome.value
+
+
+class _AliasGraphSize(NamedTuple):
+    """How many values a parsed document holds once every alias is written out, and without that.
+
+    Attributes:
+        expanded: Values counted as a tree walk sees them, an aliased container once per reference.
+        distinct: Values counted once per container actually in the document.
+        cyclic: A container reaches itself, so ``expanded`` has no finite value.
+    """
+
+    expanded: int
+    distinct: int
+    cyclic: bool
+
+
+def refuse_yaml_alias_blowup(data: object, *, path: str) -> None:
+    """Refuse a parsed YAML document whose aliases form a cycle or expand past a bound.
+
+    PyYAML builds an alias as a shared reference, so ``a: &x [*x]`` parses into a list that holds
+    itself, and a few hundred bytes of nested aliases parse into a graph a tree walk sees as
+    millions of values. Every later check walks the document as a tree, as does the merge, so a
+    cycle walked forever and a small alias bomb exhausted memory. The bound counts what aliases
+    ADD: a document without them is never refused for its size, which the file size cap governs.
+    The message names the file only, never a value, which may be a secret.
+
+    Args:
+        data: The parsed document.
+        path: File the document came from, named in the error.
+
+    Raises:
+        InvalidFormatError: When a container reaches itself, or the document expands to more than
+            :data:`YAML_MAX_EXPANDED_VALUES` values and to more than it holds without its aliases.
+
+    Examples:
+        >>> shared = [1, 2]
+        >>> refuse_yaml_alias_blowup({"a": shared, "b": shared}, path="demo.yaml")
+        >>> looped: list[object] = []
+        >>> looped.append(looped)
+        >>> refuse_yaml_alias_blowup({"a": looped}, path="demo.yaml")
+        Traceback (most recent call last):
+        ...
+        lib_layered_config.domain.errors.InvalidFormatError: demo.yaml aliases a node into itself
+    """
+    size = _alias_graph_size(data)
+    if size.cyclic:
+        message = f"{path} aliases a node into itself"
+    elif size.expanded > max(YAML_MAX_EXPANDED_VALUES, size.distinct):
+        message = f"{path} expands its aliases to more than {YAML_MAX_EXPANDED_VALUES:,} values"
+    else:
+        return
+    _log_file_invalid(path, FileFormat.YAML, message)
+    raise InvalidFormatError(message)
+
+
+def _alias_graph_size(data: object) -> _AliasGraphSize:
+    """Measure *data* once per container, the way a tree walk would count it and the way it is stored.
+
+    A post-order walk with an explicit stack (the parser accepted the document's depth, so the walk
+    must not fail on it) memoises each container's expanded size by identity, so a container
+    referenced many times is measured once. A container met again while its own children are
+    still being measured is its own descendant: a cycle.
+
+    Examples:
+        >>> shared = [1, 2]
+        >>> _alias_graph_size({"a": shared, "b": shared})
+        _AliasGraphSize(expanded=7, distinct=4, cyclic=False)
+    """
+    measured: dict[int, int] = {}
+    in_progress: set[int] = set()
+    distinct = 0
+    pending: list[tuple[object, bool]] = [(data, False)]
+    while pending:
+        node, children_done = pending.pop()
+        children = _container_children(node)
+        if children_done:
+            measured[id(node)] = 1 + sum(measured[id(child)] if _is_container(child) else 1 for child in children)
+            in_progress.discard(id(node))
+            continue
+        if id(node) in measured:
+            continue
+        if id(node) in in_progress:
+            return _AliasGraphSize(expanded=0, distinct=distinct, cyclic=True)
+        in_progress.add(id(node))
+        distinct += 1 + sum(1 for child in children if not _is_container(child))
+        pending.append((node, True))
+        pending.extend((child, False) for child in children if _is_container(child))
+    return _AliasGraphSize(expanded=measured.get(id(data), 1), distinct=distinct, cyclic=False)
+
+
+def _container_children(node: object) -> list[object]:
+    """Return the values a mapping or list holds, in order; nothing for anything else.
+
+    Examples:
+        >>> _container_children({"a": 1, "b": [2]}), _container_children([3]), _container_children("x")
+        ([1, [2]], [3], [])
+    """
+    if isinstance(node, Mapping):
+        return list(cast("Mapping[object, object]", node).values())
+    if isinstance(node, list):
+        return list(cast("list[object]", node))
+    return []
 
 
 def _refuse_repeated_keys(positions: list[str], *, path: str, file_format: FileFormat) -> None:

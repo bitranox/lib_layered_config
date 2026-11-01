@@ -7,7 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-
+- A YAML file whose aliases form a cycle (`a: &x [*x]`) or expand to more than 1,000,000 values (an
+  "alias bomb" of a few hundred bytes) is refused with `LayerLoadError`: `"<path> aliases a node into
+  itself"` or `"<path> expands its aliases to more than 1,000,000 values"`. A cycle made `read_config`
+  and `deploy` spin forever, and a small alias bomb ran for minutes and ended in `MemoryError`. The
+  bound counts only what aliases add, so a large file without aliases still loads; shared aliases below
+  the bound load as before.
 - `notebooks/Quickstart.ipynb` installs the checkout it runs in, so CI's "Execute notebooks" job
   tests the commit under test. It used to install `git+https://github.com/...` every time, which is
   the pushed default branch, so a pull request's notebook run tested the code already there.
