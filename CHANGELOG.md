@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.7.0] - 2026-11-01
+
 ### Changed
 - A refused configuration file is reported by its exception alone. The library logged each refusal
   at ERROR and then raised it, so a caller that caught the `ConfigError` and carried on still printed
