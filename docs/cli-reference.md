@@ -1044,8 +1044,8 @@ lib_layered_config generate-examples \
 [
   "/path/to/docs/configuration-examples/xdg/myapp/config.toml",
   "/path/to/docs/configuration-examples/xdg/myapp/hosts/your-hostname.toml",
-  "/path/to/docs/configuration-examples/xdg/myapp/config.d/10-override.toml",
   "/path/to/docs/configuration-examples/home/myapp/config.toml",
+  "/path/to/docs/configuration-examples/home/myapp/config.d/10-override.toml",
   "/path/to/docs/configuration-examples/.env.example"
 ]
 ```
@@ -1096,27 +1096,20 @@ lib_layered_config generate-examples \
   --vendor Acme --app MyApp --slug myapp \
   --platform posix
 
-# View the generated structure
-tree ./examples
+# View the generated files
+cd ./examples && find . -type f | sort
 ```
 
 **Output:**
 ```
-./examples/
-├── etc/
-│   └── myapp/
-│       ├── config.toml                    # System-wide defaults
-│       └── hosts/
-│           └── your-hostname.toml          # Host-specific overrides
-├── xdg/
-│   └── myapp/
-│       ├── config.toml                    # User preferences
-│       └── config.d/
-│           └── 10-override.toml           # Split configuration
-└── .env.example                            # Environment variable template
+./.env.example                            # environment variable template
+./home/myapp/config.d/10-override.toml    # user layer: split overrides, applied in lexical order
+./home/myapp/config.toml                  # user layer: belongs in ~/.config/myapp/
+./xdg/myapp/config.toml                   # app layer: belongs in /etc/xdg/myapp/
+./xdg/myapp/hosts/your-hostname.toml      # host layer: belongs in /etc/xdg/myapp/hosts/
 ```
 
-**Explanation:** The generated structure mirrors the actual configuration layout your application will use, making it easy for users to understand where to place their config files.
+**Explanation:** `xdg/` holds the system-wide files (app and host layers, installed under `/etc/xdg/`) and `home/` the per-user ones (installed under `~/.config/`), so users can see which file goes where.
 
 **Example 5: Use examples as onboarding templates**
 ```bash
@@ -1127,8 +1120,8 @@ lib_layered_config generate-examples \
 
 # User can copy these to actual locations
 echo "To get started, copy these examples:"
-echo "  sudo cp /tmp/myapp-examples/etc/myapp/config.toml /etc/myapp/"
-echo "  cp /tmp/myapp-examples/xdg/myapp/config.toml ~/.config/myapp/"
+echo "  sudo cp /tmp/myapp-examples/xdg/myapp/config.toml /etc/xdg/myapp/"
+echo "  cp /tmp/myapp-examples/home/myapp/config.toml ~/.config/myapp/"
 echo "  cp /tmp/myapp-examples/.env.example .env"
 ```
 
@@ -1146,8 +1139,8 @@ lib_layered_config generate-examples \
 
 # Check that all expected files were created
 expected_files=(
-  "etc/myapp/config.toml"
   "xdg/myapp/config.toml"
+  "home/myapp/config.toml"
   ".env.example"
 )
 

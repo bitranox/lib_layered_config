@@ -1286,10 +1286,10 @@ for file_path in created_files:
     print(f"  - {relative}")
 
 # Output shows:
-#   - etc/myapp/config.toml (app defaults)
-#   - etc/myapp/hosts/your-hostname.toml (host overrides)
-#   - xdg/myapp/config.toml (user preferences)
-#   - xdg/myapp/config.d/10-override.toml (split overrides)
+#   - xdg/myapp/config.toml (app defaults, for /etc/xdg/myapp/)
+#   - xdg/myapp/hosts/your-hostname.toml (host overrides)
+#   - home/myapp/config.toml (user preferences, for ~/.config/myapp/)
+#   - home/myapp/config.d/10-override.toml (split overrides)
 #   - .env.example (environment variables)
 ```
 **Explanation:** Perfect for generating example configurations to include in your documentation or repository. Users can copy these examples to get started quickly.
@@ -1315,7 +1315,6 @@ for file_path in created_files:
 
 # Output shows Windows paths:
 #   - ProgramData/Acme/MyApp/config.toml
-#   - ProgramData/Acme/MyApp/config.d/10-override.toml
 #   - ProgramData/Acme/MyApp/hosts/your-hostname.toml
 #   - AppData/Roaming/Acme/MyApp/config.toml
 #   - AppData/Roaming/Acme/MyApp/config.d/10-override.toml
@@ -1342,7 +1341,7 @@ def onboard_user(username: str):
     print(f"Generated {len(created)} example files for {username}:")
 
     # Customize the examples with user-specific values
-    user_config = user_examples / "xdg/myapp/config.toml"
+    user_config = user_examples / "home/myapp/config.toml"
     if user_config.exists():
         content = user_config.read_text()
         # Add user-specific comment

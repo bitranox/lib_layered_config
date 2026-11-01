@@ -40,6 +40,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `docs/python-api.md` shows `read_config_raw` returning a `MergeResult` (`.data`, `.provenance`); its
   examples unpacked a tuple and raised `TypeError`. Its imports use the package itself instead of
   internal module paths, and a test runs the documented calls and checks every import resolves.
+- The `generate-examples` / `generate_examples` docs name the files really written: `xdg/` holds the
+  app and host files, `home/` the user file and its `config.d/`. They described an `etc/` tree that is
+  never written (so the documented CI check always exited 1), put `config.d/` under `xdg/`, and listed
+  a `ProgramData/.../config.d/` file on Windows. A test compares every documented path with the
+  command's output.
 
 ### Added
 - `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what
