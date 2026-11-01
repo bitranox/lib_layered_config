@@ -12,10 +12,13 @@ from lib_layered_config import (
     read_config,
     read_config_json,
     read_config_raw,
+    MergeResult,  # what read_config_raw returns
     default_env_prefix,
     deploy_config,
     deploy_config_paths,
     read_deploy_config,
+    DeployResult,  # what deploy_config returns, one per file
+    DeployAction,
     generate_examples,
     i_should_fail,
     # Profile validation
@@ -248,7 +251,7 @@ Return the value at a dotted key as `as_dict(redact=True)` shows it, for a displ
 
 **Example:**
 ```python
-from lib_layered_config.domain.config import Config
+from lib_layered_config import Config
 
 config = Config({"credentials": {"user": "alice"}, "db": {"host": "h"}}, {})
 print(config.get_redacted("credentials.user"))  # ***REDACTED***
@@ -657,7 +660,8 @@ Return raw data and provenance mappings for advanced tooling.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
 - `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). An unquoted `null`/`none` in the environment or `.env` reads as `None` for them. The returned plain dicts do not carry the declaration: pass it again as `redact_mapping(data, not_sensitive=...)` when you redact them. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
 
-**Returns:** Tuple of `(data_dict, provenance_dict)` where both are mutable dictionaries.
+**Returns:** `MergeResult` with two mutable dictionaries: `.data`, the merged nested configuration, and
+`.provenance`, a flat mapping from each dotted key to `{"layer": ..., "path": ..., "key": ...}`.
 
 **Examples:**
 
@@ -667,7 +671,7 @@ from lib_layered_config import read_config_raw
 from jinja2 import Template
 
 # Load configuration as raw dictionaries
-data, provenance = read_config_raw(vendor="Acme", app="MyApp", slug="myapp")
+data = read_config_raw(vendor="Acme", app="MyApp", slug="myapp").data
 
 # Use in template rendering
 template = Template("""
@@ -691,7 +695,7 @@ print(output)
 from lib_layered_config import read_config_raw
 
 # Load configuration
-data, provenance = read_config_raw(vendor="Acme", app="MyApp", slug="myapp")
+data = read_config_raw(vendor="Acme", app="MyApp", slug="myapp").data
 
 # Validate required fields
 required_keys = [
@@ -727,8 +731,9 @@ else:
 ```python
 from lib_layered_config import read_config_raw
 
-# Load base configuration
-data, provenance = read_config_raw(vendor="Acme", app="MyApp", slug="myapp")
+# Load base configuration; result.provenance says where each value came from
+result = read_config_raw(vendor="Acme", app="MyApp", slug="myapp")
+data = result.data
 
 # Apply runtime overrides (e.g., from command-line arguments)
 if args.db_host:
@@ -918,8 +923,7 @@ combined with `permissions`; nothing is written).
 
 **Example 1: Deploy system-wide defaults**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 
 # Deploy app-wide defaults to the system directory
 results = deploy_config(
@@ -943,8 +947,7 @@ for result in results:
 
 **Example 2: Deploy with batch mode (CI/CD safe)**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 
 # Deploy in CI - keeps existing, writes new config as .ucf for review
 results = deploy_config(
@@ -969,8 +972,7 @@ for result in results:
 
 **Example 3: Deploy with force and check backups**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 
 # Force deploy - creates backups before overwriting
 results = deploy_config(
@@ -995,8 +997,7 @@ for result in results:
 
 **Example 4: Deploy to multiple layers at once**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 
 # Deploy the same config to multiple layers
 results = deploy_config(
@@ -1017,8 +1018,7 @@ for result in results:
 
 **Example 5: Cross-platform deployment script**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 import sys
 
 # Deployment script that works across platforms
@@ -1052,8 +1052,7 @@ except FileNotFoundError:
 
 **Example 6: Deploy to a specific profile (environment-specific)**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 
 # Deploy production configuration to the production profile
 results = deploy_config(
@@ -1089,8 +1088,7 @@ test_results = deploy_config(
 
 **Example 7: Deploy multiple profiles in a CI/CD pipeline**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 from pathlib import Path
 
 # Deploy configurations for all environments
@@ -1124,8 +1122,7 @@ for env in environments:
 
 **Example 8: Deploy with custom permissions**
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 
 # Deploy with configured or built-in layer defaults (the default: set_permissions=None)
 # - App layer: 755 dirs, 644 files (world-readable), unless configured otherwise

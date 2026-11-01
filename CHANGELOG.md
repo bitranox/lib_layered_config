@@ -37,6 +37,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `--platform`: `macos`, `mac` and `Darwin` give the macOS layout, and an unknown name raises
   `ValidationError` listing the accepted ones. Before, any name the layouts did not recognise,
   `macos` included, silently deployed the Linux layout. Leaving `platform` out still auto-detects.
+- `docs/python-api.md` shows `read_config_raw` returning a `MergeResult` (`.data`, `.provenance`); its
+  examples unpacked a tuple and raised `TypeError`. Its imports use the package itself instead of
+  internal module paths, and a test runs the documented calls and checks every import resolves.
+
+### Added
+- `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what
+  `deploy_config` returns) are importable from `lib_layered_config`.
 
 ### Security
 - Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,

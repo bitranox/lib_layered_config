@@ -850,8 +850,7 @@ python -m myapp
 The Python `deploy_config()` function returns `list[DeployResult]` with rich information:
 
 ```python
-from lib_layered_config import deploy_config
-from lib_layered_config.examples.deploy import DeployAction
+from lib_layered_config import DeployAction, deploy_config
 
 # Deploy with batch mode (CI/CD safe)
 results = deploy_config(
