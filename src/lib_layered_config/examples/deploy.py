@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from .._platform import normalise_resolver_platform
 from ..adapters._path_probe import PathKind, kind_or_raise
 from ..adapters.path_resolvers.default import DefaultPathResolver
-from ..core import read_config_for_deploy
+from ..core import read_config_for_deploy, refuse_an_unparseable_deploy_source
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from ..domain.deploy_permissions import (
     OVERRIDE_SOURCE,
@@ -433,8 +433,7 @@ def _load_configured_permissions(
     """
     try:
         config = read_config_for_deploy(resolver=resolver, default_file=source, skip=written)
-    except (ConfigError, OSError, ValueError) as exc:
-        # ValueError: the environment loader reports a scalar/mapping collision as a plain ValueError.
+    except (ConfigError, OSError) as exc:
         problems = [
             PermissionProblem(
                 SECTION_KEY,
@@ -725,6 +724,8 @@ def deploy_config(
 
     Raises:
         FileNotFoundError: If the source file does not exist.
+        LayerLoadError: The source, or a configuration file in its ``.d`` directory, does not
+            parse; refused in every mode, before anything is written.
         PermissionError: The source, a file in its ``.d`` directory, or a destination sits behind
             a permission wall (an ``OSError`` in general); the same on every Python.
         ValueError: When profile name is invalid (too long, path traversal, etc.).
@@ -743,6 +744,10 @@ def deploy_config(
         permission_overrides=permission_overrides,
     )
     source_path = _existing_source(source)
+    # Every mode, before anything is written: explicit modes skip the configuration read that
+    # would otherwise parse the source, and a deployed file the application cannot load is worse
+    # than no file.
+    refuse_an_unparseable_deploy_source(source_path)
     source_dot_d = _get_dot_d_dir(source_path)
     dot_d_files = _collect_dot_d_sources(source_dot_d)
     resolver = _prepare_resolver(
@@ -874,8 +879,7 @@ def read_deploy_config(
         TypeError: *skip* is a single ``str`` or ``Path`` rather than an iterable of them.
         FileNotFoundError: The source file does not exist.
         LayerLoadError: A file not left out cannot be read, decoded or parsed.
-        ValueError: The profile name is invalid, or the environment sets a key both as a value
-            and as a table.
+        ValueError: The profile name is invalid.
 
     Examples:
         >>> from tempfile import TemporaryDirectory

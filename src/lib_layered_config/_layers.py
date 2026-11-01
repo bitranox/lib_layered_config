@@ -54,7 +54,7 @@ _FILE_LOADERS = {
     ".yml": YAMLFileLoader(),
 }
 
-__all__ = ["collect_deploy_layers", "collect_layers", "merge_or_empty"]
+__all__ = ["collect_deploy_layers", "collect_layers", "merge_or_empty", "parse_with_dot_d"]
 
 
 def collect_layers(
@@ -356,7 +356,7 @@ def _load_entry(layer: Layer, path: str) -> LayerSnapshot | None:
 def _load_entry_with_dot_d(layer: Layer, path: str, *, skip: frozenset[Path] = frozenset()) -> Iterator[LayerSnapshot]:
     """Load *path* and any companion .d directory files as snapshots.
 
-    For a file ``foo.toml``, checks for ``foo.toml.d/`` directory and yields
+    For a file ``foo.toml``, checks for a ``foo.d/`` directory and yields
     snapshots for:
     1. The base file (if it exists)
     2. Files from the .d directory in lexicographical order (if directory exists)
@@ -385,6 +385,19 @@ def _load_entry_with_dot_d(layer: Layer, path: str, *, skip: frozenset[Path] = f
         snapshot = _load_entry(layer, expanded_path)
         if snapshot is not None:
             yield snapshot
+
+
+def parse_with_dot_d(path: Path) -> None:
+    """Parse *path* and the configuration files of its ``.d`` directory, keeping nothing.
+
+    The same loaders and ``.d`` rules as a layer read, so a file that would fail when the
+    application reads it fails here. A suffix no loader reads is not parsed.
+
+    Raises:
+        InvalidFormatError: A file does not parse; the message names it.
+    """
+    for _ in _load_entry_with_dot_d(Layer.DEFAULTS, str(path)):
+        pass
 
 
 def _paths_in_preferred_order(paths: Iterable[str], prefer: Sequence[str] | None) -> list[str]:

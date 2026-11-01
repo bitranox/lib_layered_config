@@ -26,7 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ._layers import collect_deploy_layers, collect_layers, merge_or_empty
+from ._layers import collect_deploy_layers, collect_layers, merge_or_empty, parse_with_dot_d
 from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.path_resolvers.default import DefaultPathResolver
@@ -292,6 +292,23 @@ def read_config_for_deploy(
     return _compose_config(result.data, result.provenance)
 
 
+def refuse_an_unparseable_deploy_source(source: Path) -> None:
+    """Refuse a deploy *source*, or a file in its ``.d`` directory, that the application could not load.
+
+    A file that cannot be read is not refused here: deploy reports it as the ``OSError`` its
+    contract names, when it reads the file to copy it.
+
+    Raises:
+        LayerLoadError: A file does not parse (the loader's content-free message, naming the file).
+    """
+    try:
+        parse_with_dot_d(source)
+    except InvalidFormatError as exc:
+        if isinstance(exc.__cause__, OSError):
+            return
+        raise LayerLoadError(str(exc)) from exc
+
+
 def _compose_config(
     data: dict[str, object],
     raw_meta: dict[str, SourceInfoPayload],
@@ -445,4 +462,5 @@ __all__ = [
     "read_config_for_deploy",
     "read_config_json",
     "read_config_raw",
+    "refuse_an_unparseable_deploy_source",
 ]

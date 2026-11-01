@@ -45,6 +45,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   never written (so the documented CI check always exited 1), put `config.d/` under `xdg/`, and listed
   a `ProgramData/.../config.d/` file on Windows. A test compares every documented path with the
   command's output.
+- `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
+  does not parse, in every mode and before anything is written, with `LayerLoadError` and the
+  loader's message. Before, the source was parsed only while reading the configured permission
+  modes: that refusal suggested giving both modes, and explicit modes or `--no-permissions` then
+  installed the broken file.
 
 ### Added
 - `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what

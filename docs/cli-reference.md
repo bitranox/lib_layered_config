@@ -281,6 +281,14 @@ lib_layered_config deploy --source ./configs/test.toml \
 
 The `deploy` command has **safe-by-default** behavior with smart conflict handling:
 
+#### **Source Check**
+
+Before anything is written, `deploy` parses the source and every TOML, YAML or JSON file in its `.d`
+directory with the same loaders the application uses. A file that does not parse is refused with the
+loader's message (`config.toml is not valid TOML (line 1, column 9)`), whatever `--force`, `--batch`,
+`--dir-mode`/`--file-mode` or `--no-permissions` say. Other files in the `.d` directory (a README) are
+copied as they are.
+
 #### **Smart Skipping (Content-Aware)**
 
 Before any conflict handling, the deploy command compares the source content with the existing destination file byte-by-byte. If the content is **identical**, the file is skipped without creating backups:
