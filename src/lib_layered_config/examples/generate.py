@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 
 from .._platform import normalise_examples_platform
 from ..adapters._path_probe import PathKind, kind_or_raise
-from ..domain.identifiers import ExamplePlatform
+from ..domain.identifiers import ExamplePlatform, validate_identifier, validate_vendor_app
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -130,13 +130,18 @@ def _build_example_plan(
 
     Returns:
         ExamplePlan: Immutable plan consumed by downstream helpers.
+
+    Raises:
+        ValidationError: When *slug*, *vendor* or *app* is not a safe path segment. They become
+            directory names under *destination*, so ``"../x"`` or an absolute value would write
+            outside it; the path resolver applies the same checks for every other entry point.
     """
     dest = Path(destination)
     return ExamplePlan(
         destination=dest,
-        slug=slug,
-        vendor=vendor,
-        app=app,
+        slug=validate_identifier(slug, "slug"),
+        vendor=validate_vendor_app(vendor, "vendor"),
+        app=validate_vendor_app(app, "app"),
         force=force,
         platform=_normalise_platform(platform),
     )

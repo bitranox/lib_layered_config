@@ -56,6 +56,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   square: a `.env` file of 20,000 lines took about 4 seconds to load (now 0.04 s), and 16,000 tables
   replaced by a later layer took about 4 seconds to merge (now 0.13 s). Results are unchanged; a key
   given in several cases still keeps its first spelling.
+- `generate_examples` / `generate-examples` check `slug`, `vendor` and `app` the way `read_config`
+  and `deploy` do, and refuse an unsafe one with `ValidationError` before writing anything. They
+  became directory names unchecked, so `--slug ../../x` wrote the example files outside
+  `--destination` and exited 0, an absolute slug aimed at the filesystem root, and a NUL character
+  raised a bare `ValueError`.
 
 ### Added
 - `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what

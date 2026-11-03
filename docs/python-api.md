@@ -1263,6 +1263,10 @@ Generate example configuration trees for documentation or onboarding.
 
 **Returns:** List of `Path` objects for files created.
 
+**Raises:** `ValidationError` before anything is written when `slug`, `vendor` or `app` is not a
+safe path segment (`../x`, an absolute path, a control character, empty), checked like
+`read_config` checks them. `vendor` and `app` may contain spaces; `slug` may not.
+
 **Examples:**
 
 **Example 1: Generate documentation examples**

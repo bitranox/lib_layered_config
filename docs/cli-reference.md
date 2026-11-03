@@ -1035,7 +1035,9 @@ lib_layered_config generate-examples --destination ./examples \
 | `--platform`             | choice | No       | auto-detect  | Override platform layout. Valid values: `posix` (Linux/macOS layout), `windows` (Windows layout) |
 | `--force` / `--no-force` | flag   | No       | `--no-force` | Overwrite existing example files                                                                 |
 
-**Returns:** JSON array of file paths created.
+**Returns:** JSON array of file paths created. A `--slug`, `--vendor` or `--app` that is not a
+safe path segment (`../x`, an absolute path, a control character) is refused with
+`ValidationError` before anything is written, as `read` and `deploy` refuse it.
 
 **Examples:**
 
