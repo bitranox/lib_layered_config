@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import pytest
 
@@ -21,7 +21,26 @@ from tests.support.os_markers import os_agnostic
 if TYPE_CHECKING:
     from pathlib import Path
 
-_IDENTITY = {"vendor": "Acme", "app": "Kit", "slug": "kit"}
+
+class _Identity(TypedDict):
+    """The vendor/app/slug every deploy call here is made with."""
+
+    vendor: str
+    app: str
+    slug: str
+
+
+class _DeployMode(TypedDict, total=False):
+    """The deploy_config options one parametrized mode sets."""
+
+    dir_mode: int
+    file_mode: int
+    set_permissions: bool
+    force: bool
+    batch: bool
+
+
+_IDENTITY: _Identity = {"vendor": "Acme", "app": "Kit", "slug": "kit"}
 _TARGETS = ["app", "user"]
 _BROKEN_TOML = "[service\nport = 1\n"
 
@@ -51,12 +70,12 @@ def _written(source: Path) -> list[Path]:
     ids=["configured-modes", "explicit-modes", "no-permissions", "force", "batch"],
 )
 def test_an_unparseable_source_is_refused_in_every_mode(
-    sandbox: LayeredSandbox, tmp_path: Path, mode: dict[str, object]
+    sandbox: LayeredSandbox, tmp_path: Path, mode: _DeployMode
 ) -> None:
     source = _source(tmp_path, _BROKEN_TOML)
 
     with pytest.raises(LayerLoadError, match=r"config\.toml is not valid TOML") as caught:
-        deploy_config(source, targets=_TARGETS, **_IDENTITY, **mode)  # type: ignore[arg-type]
+        deploy_config(source, targets=_TARGETS, **_IDENTITY, **mode)
 
     assert "deploy anyway" not in str(caught.value)
     assert _written(source) == []

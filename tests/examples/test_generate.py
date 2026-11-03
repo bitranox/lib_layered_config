@@ -5,11 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from lib_layered_config.examples import generate_examples
-from lib_layered_config.examples.generate import (
-    _app_defaults_body,
-    _env_secrets_body,
-    _split_override_body,
-)
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -31,6 +26,12 @@ def _write_tree(tmp_path: Path, platform: str, *, force: bool = False) -> tuple[
         force=force,
     )
     return destination, written
+
+
+def _generated_text(tmp_path: Path, *parts: str) -> str:
+    """Write the POSIX example tree and return the text of one generated file."""
+    destination, _ = _write_tree(tmp_path, "posix")
+    return destination.joinpath(*parts).read_text(encoding="utf-8")
 
 
 @os_agnostic
@@ -107,30 +108,30 @@ def test_when_windows_tree_is_written_the_roaming_home_exists(tmp_path: Path) ->
 
 
 @os_agnostic
-def test_when_app_defaults_body_speaks_it_mentions_defaults() -> None:
-    body = _app_defaults_body(SLUG)
+def test_when_app_defaults_body_speaks_it_mentions_defaults(tmp_path: Path) -> None:
+    body = _generated_text(tmp_path, "xdg", SLUG, "config.toml")
     assert "Application-wide defaults" in body
 
 
 @os_agnostic
-def test_when_app_defaults_body_speaks_it_mentions_timeout() -> None:
-    body = _app_defaults_body(SLUG)
+def test_when_app_defaults_body_speaks_it_mentions_timeout(tmp_path: Path) -> None:
+    body = _generated_text(tmp_path, "xdg", SLUG, "config.toml")
     assert "timeout = 10" in body
 
 
 @os_agnostic
-def test_when_env_body_sings_it_shouts_uppercase_slug() -> None:
-    body = _env_secrets_body(SLUG)
+def test_when_env_body_sings_it_shouts_uppercase_slug(tmp_path: Path) -> None:
+    body = _generated_text(tmp_path, ".env.example")
     assert SLUG.replace("-", "_").upper() in body
 
 
 @os_agnostic
-def test_when_env_body_sings_it_mentions_password_token() -> None:
-    body = _env_secrets_body(SLUG)
+def test_when_env_body_sings_it_mentions_password_token(tmp_path: Path) -> None:
+    body = _generated_text(tmp_path, ".env.example")
     assert "SERVICE__PASSWORD" in body
 
 
 @os_agnostic
-def test_when_split_override_body_speaks_it_mentions_config_directory() -> None:
-    body = _split_override_body()
+def test_when_split_override_body_speaks_it_mentions_config_directory(tmp_path: Path) -> None:
+    body = _generated_text(tmp_path, "home", SLUG, "config.d", "10-override.toml")
     assert "config.d" in body

@@ -6,7 +6,7 @@ answers to is refused with the CLI's own message instead of deploying the Linux 
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import pytest
 
@@ -17,7 +17,16 @@ from tests.support.os_markers import os_agnostic
 if TYPE_CHECKING:
     from pathlib import Path
 
-_IDENTITY = {"vendor": "Acme", "app": "Kit", "slug": "kit"}
+
+class _Identity(TypedDict):
+    """The vendor/app/slug every deploy function here is called with."""
+
+    vendor: str
+    app: str
+    slug: str
+
+
+_IDENTITY: _Identity = {"vendor": "Acme", "app": "Kit", "slug": "kit"}
 _TARGETS = ["app", "user"]
 
 

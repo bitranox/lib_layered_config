@@ -39,7 +39,13 @@ def test_a_hostile_identifier_is_refused_before_anything_is_written(
     identifiers = {**_GOOD, field: value}
 
     with pytest.raises(ValidationError, match=field):
-        generate_examples(destination, platform=platform, **identifiers)
+        generate_examples(
+            destination,
+            platform=platform,
+            slug=identifiers["slug"],
+            vendor=identifiers["vendor"],
+            app=identifiers["app"],
+        )
 
     assert _files_under(tmp_path) == []
 

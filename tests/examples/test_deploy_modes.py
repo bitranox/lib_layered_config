@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypedDict
 
 import pytest
 
@@ -39,8 +39,15 @@ def _destination(sandbox: LayeredSandbox, target: str) -> Path:
     return sandbox.roots[target] / "config.toml"
 
 
-def _deploy(source: Path, *, targets: list[str], **kwargs: Any) -> None:
-    deploy_config(source, vendor=VENDOR, app=APP, slug=SLUG, targets=targets, **kwargs)
+class _ExplicitModes(TypedDict, total=False):
+    """The explicit modes a parametrized case hands to deploy_config."""
+
+    dir_mode: int | None
+    file_mode: int | None
+
+
+def _deploy(source: Path, *, targets: list[str], dir_mode: int | None = None, file_mode: int | None = None) -> None:
+    deploy_config(source, vendor=VENDOR, app=APP, slug=SLUG, targets=targets, dir_mode=dir_mode, file_mode=file_mode)
 
 
 @os_agnostic
@@ -58,7 +65,7 @@ def _deploy(source: Path, *, targets: list[str], **kwargs: Any) -> None:
     ],
 )
 def test_a_refused_mode_stops_the_deploy_before_anything_is_written(
-    sandbox: LayeredSandbox, source: Path, kwargs: dict[str, object], fragments: list[str]
+    sandbox: LayeredSandbox, source: Path, kwargs: _ExplicitModes, fragments: list[str]
 ) -> None:
     with pytest.raises(DeployModeError) as caught:
         _deploy(source, targets=["user"], **kwargs)

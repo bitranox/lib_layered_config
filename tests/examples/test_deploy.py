@@ -17,6 +17,18 @@ from lib_layered_config.examples.deploy import DeployAction, DeployResult, deplo
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only, windows_only
 
+# Private helpers pinned one by one: deploy_config reaches them only in combination, so a
+# failure there would not say which helper broke.
+_validate_target = deploy_module._validate_target  # pyright: ignore[reportPrivateUsage] - pins target-name normalisation and its exact refusal text
+_strategy_for = deploy_module._strategy_for  # pyright: ignore[reportPrivateUsage] - pins which layout each platform string selects
+_destinations_for = deploy_module._destinations_for  # pyright: ignore[reportPrivateUsage] - pins the layer carried by each destination
+_prepare_resolver = deploy_module._prepare_resolver  # pyright: ignore[reportPrivateUsage] - pins the resolver built from the platform and profile overrides
+_copy_payload = deploy_module._copy_payload  # pyright: ignore[reportPrivateUsage] - pins the payload write primitive on its own
+_next_available_path = deploy_module._next_available_path  # pyright: ignore[reportPrivateUsage] - pins the sidecar numbering on its own
+_Sidecar = deploy_module._Sidecar  # pyright: ignore[reportPrivateUsage] - the sidecar kind _next_available_path takes
+_backup_file = deploy_module._backup_file  # pyright: ignore[reportPrivateUsage] - pins the backup copy on its own
+_write_ucf = deploy_module._write_ucf  # pyright: ignore[reportPrivateUsage] - pins the .ucf sidecar write and its modes on its own
+
 VENDOR = "Acme"
 APP = "Demo"
 SLUG = "demo"
@@ -232,54 +244,54 @@ def test_deploy_requires_source_file(tmp_path: Path) -> None:
 
 @os_agnostic
 def test_validate_target_normalises_known_names() -> None:
-    assert deploy_module._validate_target("APP") is Layer.APP
+    assert _validate_target("APP") is Layer.APP
 
 
 @os_agnostic
 def test_validate_target_rejects_unknown_names() -> None:
     with pytest.raises(ValueError, match=r"^Unsupported deployment target:  twilight $"):
-        deploy_module._validate_target(" twilight ")
+        _validate_target(" twilight ")
 
 
 @os_agnostic
 @pytest.mark.parametrize("name", ["defaults", "dotenv", "env"])
 def test_validate_target_refuses_a_layer_deploy_does_not_write(name: str) -> None:
     with pytest.raises(ValueError, match=f"^Unsupported deployment target: {name}$"):
-        deploy_module._validate_target(name)
+        _validate_target(name)
 
 
 @os_agnostic
 def test_strategy_for_selects_windows_strategy() -> None:
     resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    strategy = deploy_module._strategy_for(resolver)
+    strategy = _strategy_for(resolver)
     assert strategy.__class__.__name__ == "WindowsDeployment"
 
 
 @os_agnostic
 def test_strategy_for_selects_mac_strategy() -> None:
     resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    strategy = deploy_module._strategy_for(resolver)
+    strategy = _strategy_for(resolver)
     assert strategy.__class__.__name__ == "MacDeployment"
 
 
 @os_agnostic
 def test_strategy_for_defaults_to_linux_strategy() -> None:
     resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    strategy = deploy_module._strategy_for(resolver)
+    strategy = _strategy_for(resolver)
     assert strategy.__class__.__name__ == "LinuxDeployment"
 
 
 @os_agnostic
 def test_strategy_for_selects_windows_for_any_win_platform() -> None:
     resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="win64")
-    assert isinstance(deploy_module._strategy_for(resolver), deploy_module.WindowsDeployment)
+    assert isinstance(_strategy_for(resolver), deploy_module.WindowsDeployment)
 
 
 @os_agnostic
 @pytest.mark.parametrize("platform", ["freebsd", "macos", "sunos5"])
 def test_strategy_for_deploys_the_linux_layout_for_a_platform_with_no_layout(platform: str) -> None:
     resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform=platform)
-    assert type(deploy_module._strategy_for(resolver)) is deploy_module.LinuxDeployment
+    assert type(_strategy_for(resolver)) is deploy_module.LinuxDeployment
 
 
 @os_agnostic
@@ -289,7 +301,7 @@ def test_destinations_carry_the_layer_each_target_names(tmp_path: Path) -> None:
         vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform="linux", hostname="penguin"
     )
 
-    destinations = list(deploy_module._destinations_for(resolver, ["User", "HOST", "app"]))
+    destinations = list(_destinations_for(resolver, ["User", "HOST", "app"]))
 
     assert [destination.layer for destination in destinations] == [Layer.USER, Layer.HOST, Layer.APP]
     assert destinations[1].path.name == "penguin.toml"
@@ -303,7 +315,7 @@ def test_every_platform_layout_gives_each_deploy_target_a_destination(tmp_path: 
         vendor=VENDOR, app=APP, slug=SLUG, env=sandbox.env, platform=platform, hostname="penguin"
     )
 
-    destinations = list(deploy_module._destinations_for(resolver, ["app", "host", "user"]))
+    destinations = list(_destinations_for(resolver, ["app", "host", "user"]))
 
     assert [destination.layer for destination in destinations] == [Layer.APP, Layer.HOST, Layer.USER]
     assert [destination.path.name for destination in destinations] == ["config.toml", "penguin.toml", "config.toml"]
@@ -311,7 +323,7 @@ def test_every_platform_layout_gives_each_deploy_target_a_destination(tmp_path: 
 
 @os_agnostic
 def test_prepare_resolver_reads_a_platform_alias_as_its_canonical_name() -> None:
-    resolver = deploy_module._prepare_resolver(vendor=VENDOR, app=APP, slug=SLUG, profile=None, platform="macos")
+    resolver = _prepare_resolver(vendor=VENDOR, app=APP, slug=SLUG, profile=None, platform="macos")
     assert resolver.platform == "darwin"
 
 
@@ -397,7 +409,7 @@ def test_copy_payload_creates_parent_directories(tmp_path: Path) -> None:
     payload = b"echo"
     destination = tmp_path / "nested" / "config.toml"
 
-    deploy_module._copy_payload(destination, payload, modes=None)
+    _copy_payload(destination, payload, modes=None)
 
     assert destination.read_bytes() == payload
 
@@ -485,7 +497,7 @@ def test_deploy_with_profile_user_includes_profile_segment(
 
 @os_agnostic
 def test_prepare_resolver_with_profile_sets_profile(tmp_path: Path) -> None:
-    resolver = deploy_module._prepare_resolver(
+    resolver = _prepare_resolver(
         vendor=VENDOR,
         app=APP,
         slug=SLUG,
@@ -509,7 +521,7 @@ def test_deploy_strategy_profile_segment_returns_path_when_set(tmp_path: Path) -
     )
     strategy = deploy_module.LinuxDeployment(resolver)
 
-    segment = strategy._profile_segment()
+    segment = strategy._profile_segment()  # pyright: ignore[reportPrivateUsage] - pins the profile segment every layout path is built from
     assert segment == Path("profile/test")
 
 
@@ -527,7 +539,7 @@ def test_deploy_strategy_profile_segment_returns_empty_when_none(tmp_path: Path)
     )
     strategy = deploy_module.LinuxDeployment(resolver)
 
-    segment = strategy._profile_segment()
+    segment = strategy._profile_segment()  # pyright: ignore[reportPrivateUsage] - pins the profile segment every layout path is built from
     assert segment == Path()
 
 
@@ -591,7 +603,7 @@ def test_next_available_path_returns_simple_suffix_when_not_exists(tmp_path: Pat
     base = tmp_path / "config.toml"
     base.write_text("content", encoding="utf-8")
 
-    result = deploy_module._next_available_path(base, deploy_module._Sidecar.BACKUP)
+    result = _next_available_path(base, _Sidecar.BACKUP)
 
     assert result == tmp_path / "config.toml.bak"
 
@@ -603,7 +615,7 @@ def test_next_available_path_returns_numbered_suffix_when_exists(tmp_path: Path)
     bak = tmp_path / "config.toml.bak"
     bak.write_text("old backup", encoding="utf-8")
 
-    result = deploy_module._next_available_path(base, deploy_module._Sidecar.BACKUP)
+    result = _next_available_path(base, _Sidecar.BACKUP)
 
     assert result == tmp_path / "config.toml.bak.1"
 
@@ -616,7 +628,7 @@ def test_next_available_path_increments_suffix_number(tmp_path: Path) -> None:
     (tmp_path / "config.toml.bak.1").write_text("bak1", encoding="utf-8")
     (tmp_path / "config.toml.bak.2").write_text("bak2", encoding="utf-8")
 
-    result = deploy_module._next_available_path(base, deploy_module._Sidecar.BACKUP)
+    result = _next_available_path(base, _Sidecar.BACKUP)
 
     assert result == tmp_path / "config.toml.bak.3"
 
@@ -626,7 +638,7 @@ def test_backup_file_creates_bak_copy(tmp_path: Path) -> None:
     target = tmp_path / "config.toml"
     target.write_text("original content", encoding="utf-8")
 
-    backup_path = deploy_module._backup_file(target)
+    backup_path = _backup_file(target)
 
     assert backup_path == tmp_path / "config.toml.bak"
     assert backup_path.read_text(encoding="utf-8") == "original content"
@@ -640,7 +652,7 @@ def test_backup_file_uses_numbered_suffix_when_bak_exists(tmp_path: Path) -> Non
     existing_bak = tmp_path / "config.toml.bak"
     existing_bak.write_text("old backup", encoding="utf-8")
 
-    backup_path = deploy_module._backup_file(target)
+    backup_path = _backup_file(target)
 
     assert backup_path == tmp_path / "config.toml.bak.1"
     assert backup_path.read_text(encoding="utf-8") == "current content"
@@ -652,7 +664,7 @@ def test_write_ucf_creates_ucf_file(tmp_path: Path) -> None:
     destination.write_text("existing content", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = deploy_module._write_ucf(destination, payload, modes=None)
+    ucf_path = _write_ucf(destination, payload, modes=None)
 
     assert ucf_path == tmp_path / "config.toml.ucf"
     assert ucf_path.read_bytes() == payload
@@ -666,7 +678,7 @@ def test_write_ucf_uses_numbered_suffix_when_ucf_exists(tmp_path: Path) -> None:
     existing_ucf.write_text("old ucf", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = deploy_module._write_ucf(destination, payload, modes=None)
+    ucf_path = _write_ucf(destination, payload, modes=None)
 
     assert ucf_path == tmp_path / "config.toml.ucf.1"
     assert ucf_path.read_bytes() == payload
@@ -678,7 +690,7 @@ def test_write_ucf_applies_user_layer_permissions(tmp_path: Path) -> None:
     destination = tmp_path / "config.toml"
     payload = b"secret_token = 'abc'"
 
-    ucf_path = deploy_module._write_ucf(destination, payload, modes=DeployPermissions.defaults().for_layer("user"))
+    ucf_path = _write_ucf(destination, payload, modes=DeployPermissions.defaults().for_layer(Layer.USER))
 
     assert (ucf_path.stat().st_mode & 0o777) == 0o600
 
@@ -873,10 +885,14 @@ def test_deploy_multiple_overwrites_create_multiple_backups(
         force=True,
     )
 
-    assert results1[0].backup_path.name == "config.toml.bak"
-    assert results2[0].backup_path.name == "config.toml.bak.1"
-    assert results1[0].backup_path.read_text(encoding="utf-8") == "v1"
-    assert results2[0].backup_path.read_text(encoding="utf-8") == "[v2]"
+    first_backup = results1[0].backup_path
+    second_backup = results2[0].backup_path
+    assert first_backup is not None
+    assert second_backup is not None
+    assert first_backup.name == "config.toml.bak"
+    assert second_backup.name == "config.toml.bak.1"
+    assert first_backup.read_text(encoding="utf-8") == "v1"
+    assert second_backup.read_text(encoding="utf-8") == "[v2]"
     assert target.read_text(encoding="utf-8") == "[v3]"
 
 
