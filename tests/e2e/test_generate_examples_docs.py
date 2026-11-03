@@ -18,7 +18,10 @@ from tests.support.os_markers import os_agnostic
 
 _DOCS = Path(__file__).resolve().parents[2] / "docs"
 _FENCE = re.compile(r"^```(\w*)\n(.*?)^```", re.MULTILINE | re.DOTALL)
-_IDENTITY = {"slug": "myapp", "vendor": "Acme", "app": "MyApp"}
+
+
+def _generate(tmp_path: Path, platform: str) -> list[Path]:
+    return generate_examples(tmp_path, slug="myapp", vendor="Acme", app="MyApp", platform=platform)
 
 
 def _section(document: str, heading: str) -> str:
@@ -37,14 +40,12 @@ def _example(section: str, number: int) -> list[tuple[str, str]]:
 @pytest.fixture(params=["posix", "windows"])
 def written(request: pytest.FixtureRequest, tmp_path: Path) -> tuple[str, list[str]]:
     platform = str(request.param)
-    paths = generate_examples(tmp_path, platform=platform, **_IDENTITY)
+    paths = _generate(tmp_path, platform)
     return platform, [path.relative_to(tmp_path).as_posix() for path in paths]
 
 
 def _posix(tmp_path: Path) -> list[str]:
-    return [
-        path.relative_to(tmp_path).as_posix() for path in generate_examples(tmp_path, platform="posix", **_IDENTITY)
-    ]
+    return [path.relative_to(tmp_path).as_posix() for path in _generate(tmp_path, "posix")]
 
 
 @os_agnostic

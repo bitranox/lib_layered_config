@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import stat
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -25,8 +26,16 @@ if TYPE_CHECKING:
 
 _VENDOR, _APP, _SLUG = "Acme", "ConfigKit", "config-kit"
 
+
+def _runs_as_root() -> bool:
+    # Windows has no effective uid; the sys.platform test is what lets the checker see that.
+    if sys.platform == "win32":
+        return False
+    return os.geteuid() == 0
+
+
 # Root bypasses file permissions, so no unreadable file can be built while running as root.
-_RUNS_AS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+_RUNS_AS_ROOT = _runs_as_root()
 
 
 @pytest.fixture
@@ -84,6 +93,7 @@ def test_a_directory_named_as_the_dotenv_file_is_logged_at_debug(
 def test_a_fifo_named_as_the_default_file_is_logged_at_debug(
     caplog: pytest.LogCaptureFixture, tmp_path: Path, sandbox: LayeredSandbox
 ) -> None:
+    assert sys.platform != "win32"  # posix_only; tells the checker os.mkfifo exists here
     fifo = tmp_path / "defaults.toml"
     os.mkfifo(fifo)
     records = _refused_records(caplog, lambda: _read(default_file=fifo))

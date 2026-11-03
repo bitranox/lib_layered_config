@@ -264,7 +264,7 @@ def test_deploy_multiple_force_creates_numbered_backups(
     runner.invoke(cli.cli, make_deploy_command(sources[0]), env=sandbox.env)
 
     # Three force deploys
-    backup_names = []
+    backup_names: list[str] = []
     for src in sources[1:]:
         result = runner.invoke(
             cli.cli,
@@ -440,7 +440,7 @@ def test_deploy_skips_when_source_equals_destination(
 
     assert result.exit_code == 0
     # Should have no results (empty JSON or only empty keys filtered out)
-    output = json.loads(result.output) if result.output.strip() else {}
+    output: dict[str, list[str]] = json.loads(result.output) if result.output.strip() else {}
     # The file should not appear in any action category
     all_paths = output.get("created", []) + output.get("overwritten", []) + output.get("skipped", [])
     assert str(target) not in all_paths or len(all_paths) == 0

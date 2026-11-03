@@ -19,7 +19,9 @@ import click
 import click.termui
 import pytest
 
-from lib_layered_config.cli.deploy import _prompt_for_action
+from lib_layered_config.cli.deploy import (
+    _prompt_for_action,  # pyright: ignore[reportPrivateUsage] - Ctrl-C at the prompt needs a terminal, so the subprocess route cannot reach it
+)
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 

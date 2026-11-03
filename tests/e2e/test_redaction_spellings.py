@@ -38,18 +38,18 @@ def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LayeredSandbox:
     return created
 
 
-def _query(sandbox: LayeredSandbox) -> dict[str, str]:
-    return {
-        "vendor": "Acme",
-        "app": "ConfigKit",
-        "slug": "config-kit",
-        "start_dir": str(sandbox.start_dir),
-        "dotenv_path": str(sandbox.start_dir / "absent.env"),
-    }
+def _absent_dotenv(sandbox: LayeredSandbox) -> str:
+    return str(sandbox.start_dir / "absent.env")
 
 
 def _read(sandbox: LayeredSandbox) -> Config:
-    return read_config(**_query(sandbox))
+    return read_config(
+        vendor="Acme",
+        app="ConfigKit",
+        slug="config-kit",
+        start_dir=str(sandbox.start_dir),
+        dotenv_path=_absent_dotenv(sandbox),
+    )
 
 
 @os_agnostic
@@ -69,7 +69,14 @@ def test_to_json_masks_camel_and_kebab_case_secrets(sandbox: LayeredSandbox) -> 
 
 @os_agnostic
 def test_read_config_json_masks_camel_and_kebab_case_secrets(sandbox: LayeredSandbox) -> None:
-    payload = read_config_json(**_query(sandbox), redact=True)
+    payload = read_config_json(
+        vendor="Acme",
+        app="ConfigKit",
+        slug="config-kit",
+        start_dir=str(sandbox.start_dir),
+        dotenv_path=_absent_dotenv(sandbox),
+        redact=True,
+    )
 
     assert not [secret for secret in _SECRETS if secret in payload]
     assert "shown" in payload

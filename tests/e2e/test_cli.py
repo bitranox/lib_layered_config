@@ -10,6 +10,7 @@ import lib_cli_exit_tools
 import pytest
 from click.testing import CliRunner
 
+from lib_layered_config import __init__conf__ as package_conf
 from lib_layered_config import cli
 from lib_layered_config.cli import common as cli_common
 from tests.support import LayeredSandbox, create_layered_sandbox
@@ -345,8 +346,11 @@ def test_cli_env_prefix_echoes_uppercase_slug() -> None:
 
 @os_agnostic
 def test_cli_info_recites_real_metadata() -> None:
-    metadata = importlib.reload(cli_common.package_metadata)
-    expected_lines = _expected_info_lines(metadata)
+    # The CLI reads the generated metadata module itself; reloading that module refreshes what
+    # both the CLI and the expectation below read.
+    assert cli_common.package_metadata is package_conf
+    importlib.reload(package_conf)
+    expected_lines = _expected_info_lines()
 
     result = make_runner().invoke(cli.cli, ["info"])
 
@@ -381,17 +385,17 @@ def test_cli_fail_command_surfaces_runtime_error() -> None:
     assert result.exit_code != 0 and isinstance(result.exception, RuntimeError)
 
 
-def _expected_info_lines(metadata: object) -> tuple[str, ...]:
+def _expected_info_lines() -> tuple[str, ...]:
     fields = (
-        ("name", metadata.name),
-        ("title", metadata.title),
-        ("version", metadata.version),
-        ("homepage", metadata.homepage),
-        ("author", metadata.author),
-        ("author_email", metadata.author_email),
-        ("shell_command", metadata.shell_command),
+        ("name", package_conf.name),
+        ("title", package_conf.title),
+        ("version", package_conf.version),
+        ("homepage", package_conf.homepage),
+        ("author", package_conf.author),
+        ("author_email", package_conf.author_email),
+        ("shell_command", package_conf.shell_command),
     )
     pad = max(len(label) for label, _ in fields)
-    lines = [f"Info for {metadata.name}:", ""]
+    lines = [f"Info for {package_conf.name}:", ""]
     lines.extend(f"    {label.ljust(pad)} = {value}" for label, value in fields)
     return tuple(lines)

@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
 
@@ -42,6 +43,17 @@ def _codecs() -> list[JsonCodec]:
 
 def _codec_id(codec: JsonCodec) -> str:
     return type(codec).__name__
+
+
+def _is_table(value: object) -> TypeGuard[Mapping[str, object]]:
+    # A loaded table's keys are always strings, so a mapping is the whole check.
+    return isinstance(value, Mapping)
+
+
+def _table(value: object) -> Mapping[str, object]:
+    """Narrow a loaded value to the table it must be."""
+    assert _is_table(value)
+    return value
 
 
 def _write(tmp_path: Path, name: str, text: str) -> Path:
@@ -133,8 +145,8 @@ def test_yaml_merge_keys_are_not_repeated_keys(tmp_path: Path) -> None:
 
     loaded = YAMLFileLoader().load(str(path))
 
-    assert loaded["derived"]["x"] == 2
-    assert loaded["derived"]["y"] == 1
+    assert _table(loaded["derived"])["x"] == 2
+    assert _table(loaded["derived"])["y"] == 1
 
 
 @os_agnostic

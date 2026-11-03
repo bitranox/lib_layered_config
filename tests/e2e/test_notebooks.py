@@ -6,6 +6,7 @@ import json
 import os
 import textwrap
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
@@ -18,15 +19,27 @@ NOTEBOOK_PATH = PROJECT_ROOT / "notebooks" / "Quickstart.ipynb"
 """Path to the Quickstart tutorial notebook."""
 
 
-def _load_notebook() -> dict[str, object]:
-    return json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+class _Cell(TypedDict, total=False):
+    """The fields of an nbformat cell this module reads; ``source`` may be one string or lines."""
+
+    cell_type: str
+    source: str | list[str]
 
 
-def _is_code_cell(cell: dict[str, object]) -> bool:
+class _Notebook(TypedDict, total=False):
+    cells: list[_Cell]
+
+
+def _load_notebook() -> _Notebook:
+    notebook: _Notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+    return notebook
+
+
+def _is_code_cell(cell: _Cell) -> bool:
     return cell.get("cell_type") == "code"
 
 
-def _clean_source(cell: dict[str, object]) -> str:
+def _clean_source(cell: _Cell) -> str:
     lines = "".join(cell.get("source", [])).splitlines()
     kept: list[str] = []
     for line in lines:

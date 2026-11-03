@@ -35,11 +35,6 @@ def _nested(depth: int) -> str:
     return "[" * depth + "1" + "]" * depth
 
 
-def _read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **kwargs: object) -> object:
-    create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG).apply_env(monkeypatch)
-    return read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path), **kwargs)  # type: ignore[arg-type]
-
-
 @os_agnostic
 def test_an_env_value_at_the_limit_loads_as_a_list_and_every_json_view_writes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -72,7 +67,7 @@ def test_an_env_value_past_the_limit_stays_the_text_it_was_written_as(
 @os_agnostic
 @pytest.mark.parametrize(("depth", "expected_type"), [(250, list), (251, str)])
 def test_the_limit_counts_the_levels_the_key_itself_adds(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, depth: int, expected_type: type
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, depth: int, expected_type: type[object]
 ) -> None:
     """``A__B__DEEP`` puts the value three tables down, so it may nest two levels less."""
     monkeypatch.setenv(f"{PREFIX}A__B__DEEP", _nested(depth))

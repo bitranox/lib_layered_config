@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -21,18 +22,26 @@ from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator
     from pathlib import Path
 
+
+def _runs_as_root() -> bool:
+    # Windows has no effective uid; the sys.platform test is what lets the checker see that.
+    if sys.platform == "win32":
+        return False
+    return os.geteuid() == 0
+
+
 # Root bypasses directory permissions, so no wall can be built while running as root.
-_RUNS_AS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+_RUNS_AS_ROOT = _runs_as_root()
 needs_wall = pytest.mark.skipif(_RUNS_AS_ROOT, reason="root bypasses directory permissions")
 
 _VENDOR, _APP, _SLUG = "Acme", "ConfigKit", "config-kit"
 
 
 @contextmanager
-def walled(target: Path, mode: int = 0) -> Iterator[Path]:
+def walled(target: Path, mode: int = 0) -> Generator[Path, None, None]:
     """Hold *target* at *mode* (no access by default), restoring it so tmp cleanup works."""
     target.chmod(mode)
     try:
@@ -51,7 +60,7 @@ def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LayeredSandbox:
 
 def _read(
     *, start_dir: str | None = None, default_file: str | None = None, dotenv_path: str | None = None
-) -> dict[str, Any]:
+) -> dict[str, object]:
     config = read_config(
         vendor=_VENDOR,
         app=_APP,
