@@ -261,7 +261,7 @@ def read_config_raw(
             start_dir=start_dir,
             dotenv_path=_stringify_path(dotenv_path),
         )
-    except InvalidFormatError as exc:  # pragma: no cover - adapter tests exercise
+    except InvalidFormatError as exc:
         raise LayerLoadError(str(exc)) from exc
 
     return merge_or_empty(layers)

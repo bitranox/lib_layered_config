@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -73,18 +74,16 @@ def test_paths_in_preferred_order_honours_declared_priority(tmp_path: Path) -> N
 
 
 @os_agnostic
-def test_note_layer_error_emits_event_with_exception(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_log(event: str, **payload: object) -> None:
-        captured["event"] = event
-        captured["payload"] = payload
-
-    monkeypatch.setattr("lib_layered_config._layers.log_debug", fake_log)
+def test_note_layer_error_emits_event_with_exception(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="lib_layered_config")
 
     _note_layer_error(Layer.USER, "/tmp/config.toml", RuntimeError("boom"))
 
-    assert captured == {
-        "event": "layer_error",
-        "payload": {"layer": "user", "path": "/tmp/config.toml", "error": "boom"},
-    }
+    [record] = [record for record in caplog.records if record.name == "lib_layered_config"]
+    context = dict(record.__dict__["context"])
+    context.pop("trace_id")
+    assert (record.levelno, record.getMessage(), context) == (
+        logging.DEBUG,
+        "layer_error",
+        {"layer": "user", "path": "/tmp/config.toml", "error": "boom"},
+    )

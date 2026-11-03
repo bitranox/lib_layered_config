@@ -427,7 +427,7 @@ def _load_yaml_module() -> YAMLModule | None:
         return yaml
     try:
         yaml = as_yaml_module(import_module("yaml"))
-    except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    except ModuleNotFoundError:
         yaml = None
     return yaml
 

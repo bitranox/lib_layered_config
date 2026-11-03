@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -54,10 +55,12 @@ def test_json_loader_affirms_boolean_truth(tmp_path: Path) -> None:
 
 
 @os_agnostic
-def test_loader_rejects_file_over_size_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(structured_module, "MAX_CONFIG_FILE_BYTES", 10)
-    path = _write(tmp_path / "big.toml", "key = 'aaaaaaaaaaaaaaaaaaaaaaaa'\n")
-    with pytest.raises(InvalidFormatError):
+def test_loader_rejects_file_over_size_cap(tmp_path: Path) -> None:
+    cap = structured_module.MAX_CONFIG_FILE_BYTES
+    prefix = b"key = 1\n"
+    path = tmp_path / "big.toml"
+    path.write_bytes(prefix + b"#" * (cap + 1 - len(prefix)))
+    with pytest.raises(InvalidFormatError, match="-byte limit"):
         TOMLFileLoader().load(str(path))
 
 
@@ -77,11 +80,15 @@ def test_yaml_loader_whispers_only_silence_for_empty_files(tmp_path: Path) -> No
 
 
 @os_agnostic
-def test_yaml_guard_explains_when_dependency_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(structured_module, "_load_yaml_module", lambda: None)
+def test_yaml_loader_explains_when_dependency_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A None entry in sys.modules makes `import yaml` raise ModuleNotFoundError, as on a host
+    # without PyYAML. The module-level cache is cleared too, or an earlier test's import would answer.
+    monkeypatch.setitem(sys.modules, "yaml", None)
     monkeypatch.setattr(structured_module, "yaml", None)
-    with pytest.raises(NotFoundError):
-        structured_module._ensure_yaml_available()
+    path = _write(tmp_path / "config.yaml", "key: 1\n", encoding="utf-8")
+
+    with pytest.raises(NotFoundError, match="PyYAML is required"):
+        YAMLFileLoader().load(str(path))
 
 
 @os_agnostic

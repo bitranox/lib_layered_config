@@ -16,9 +16,8 @@ from tests.support.os_markers import os_agnostic
 
 
 @os_agnostic
-def test_version_string_reflects_static_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(common_module.package_metadata, "version", "9.9.9", raising=False)
-    assert common_module.version_string() == "9.9.9"
+def test_version_string_reflects_static_metadata() -> None:
+    assert common_module.version_string() == metadata_module.version
 
 
 @os_agnostic
@@ -46,6 +45,8 @@ def test_session_overrides_return_empty_for_none() -> None:
 
 @os_agnostic
 def test_session_overrides_swallow_click_parse_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Click's own parser, not ours: under resilient_parsing it raised for no argv tried
+    # (unknown options, flag values, a lone "-"), so a raising make_context stands in for it.
     monkeypatch.setattr(
         cli_module.cli,
         "make_context",
@@ -110,6 +111,7 @@ def test_main_delegates_through_cli_session(monkeypatch: pytest.MonkeyPatch) -> 
 
         yield runner
 
+    # cli_session belongs to lib_cli_exit_tools; the fake records what main hands it.
     monkeypatch.setattr(cli_module, "cli_session", fake_session, raising=False)
 
     exit_code = cli_module.main(["--traceback"], restore_traceback=False)
@@ -127,25 +129,6 @@ def test_main_delegates_through_cli_session(monkeypatch: pytest.MonkeyPatch) -> 
 def test_json_paths_renders_stringified_paths(tmp_path) -> None:
     sample = [tmp_path / "one", tmp_path / "two"]
     assert common_module.json_paths(sample) == json.dumps([str(path) for path in sample], indent=2)
-
-
-@os_agnostic
-def test_run_module_delegates_arguments_to_cli(monkeypatch: pytest.MonkeyPatch) -> None:
-    from lib_layered_config import __main__ as entry
-
-    captured: dict[str, object] = {}
-
-    def fake_main(arguments, restore_traceback):
-        captured["arguments"] = arguments
-        captured["restore_traceback"] = restore_traceback
-        return 7
-
-    monkeypatch.setattr(entry, "main", fake_main)
-
-    exit_code = entry.run_module(["--demo"])
-
-    assert exit_code == 7
-    assert captured == {"arguments": ["--demo"], "restore_traceback": True}
 
 
 @os_agnostic

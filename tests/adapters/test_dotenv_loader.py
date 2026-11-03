@@ -156,21 +156,21 @@ def test_dotenv_loader_explicit_path_missing_returns_empty(tmp_path: Path) -> No
 
 
 @os_agnostic
-def test_dotenv_loader_rejects_file_over_size_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(structured_module, "MAX_CONFIG_FILE_BYTES", 20)
+def test_dotenv_loader_rejects_file_over_size_cap(tmp_path: Path) -> None:
+    cap = structured_module.MAX_CONFIG_FILE_BYTES
+    prefix = b"A=1\n"
     env_file = tmp_path / ".env"
     # Bytes, not text: write_text turns "\n" into "\r\n" on Windows, which changes the size.
-    env_file.write_bytes(b"A=1\n" + b"#" * 17)
-    assert env_file.stat().st_size == 21
+    env_file.write_bytes(prefix + b"#" * (cap + 1 - len(prefix)))
+    assert env_file.stat().st_size == cap + 1
     loader = DefaultDotEnvLoader()
     with pytest.raises(InvalidFormatError):
         loader.load(str(tmp_path))
 
 
 @os_agnostic
-def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cap = 20
-    monkeypatch.setattr(structured_module, "MAX_CONFIG_FILE_BYTES", cap)
+def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path) -> None:
+    cap = structured_module.MAX_CONFIG_FILE_BYTES
     prefix = b"A=1\n"
     env_file = tmp_path / ".env"
     # Bytes, not text: write_text turns "\n" into "\r\n" on Windows, which changes the size.
