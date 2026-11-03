@@ -61,6 +61,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   became directory names unchecked, so `--slug ../../x` wrote the example files outside
   `--destination` and exited 0, an absolute slug aimed at the filesystem root, and a NUL character
   raised a bare `ValueError`.
+- The sdist holds only `src/`, `tests/`, `docs/`, `notebooks/`, the README, CHANGELOG, LICENSE,
+  CONTRIBUTING and DEVELOPMENT files, `pyproject.toml` and `.gitignore`. hatchling honours only the
+  root `.gitignore`, so an sdist built from a working checkout also shipped files kept out of git
+  through `.git/info/exclude` (local notes, session archives) and tooling files; the sdists on PyPI,
+  built by CI from a clean clone, were not affected. A test builds the sdist and checks its members,
+  and the unpacked sdist runs its own test suite.
 
 ### Added
 - `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what

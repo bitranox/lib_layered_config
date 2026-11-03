@@ -82,6 +82,7 @@ dev = [
   "twine>=7.0.0",
   "certifi>=2026.10.23",         # PYSEC-2026-4320
   "filelock>=4.2.4; python_version >= '3.11'", # CVE-2026-112906, -112940, -112914, via cachecontrol; 4.2.1 needs 3.11, so 3.10 keeps 4.1.x
+  "hatchling>=1.32.4",
 ]
 yaml = [
   "PyYAML>=6.0.3"
@@ -102,6 +103,21 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/lib_layered_config"]
 include = ["src/lib_layered_config/py.typed"]
+
+[tool.hatch.build.targets.sdist]
+# An allowlist, not a denylist: hatchling honours only the root .gitignore, so
+# a file hidden through .git/info/exclude would otherwise ship (tests/test_sdist_contents.py).
+only-include = [
+    "src",
+    "tests",
+    "docs",
+    "notebooks",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "DEVELOPMENT.md",
+]
 
 [tool.ruff]
 line-length = 120
