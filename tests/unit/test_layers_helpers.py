@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lib_layered_config._layers import (
-    _load_entry,
-    _note_layer_error,
-    _paths_in_preferred_order,
-    _snapshots_from_paths,
+    _load_entry,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
+    _note_layer_error,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
+    _paths_in_preferred_order,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
+    _snapshots_from_paths,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
     merge_or_empty,
 )
 from lib_layered_config.domain.identifiers import Layer

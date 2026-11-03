@@ -54,6 +54,7 @@ def _defined_public_names(tree: ast.Module, module: str) -> set[str]:
 def _declared_all(tree: ast.Module) -> list[str] | None:
     for node in tree.body:
         if "__all__" in _assigned_names(node):
+            assert isinstance(node, (ast.Assign, ast.AnnAssign)), "__all__ must be assigned"
             value = node.value
             assert isinstance(value, (ast.List, ast.Tuple)), "__all__ must be a literal list or tuple"
             return [ast.literal_eval(element) for element in value.elts]

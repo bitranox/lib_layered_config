@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 
 from lib_layered_config import bind_trace_id, get_logger
 from lib_layered_config.domain.identifiers import Layer
-from lib_layered_config.observability import TRACE_ID, _merge_payload, log_info, make_event
+from lib_layered_config.observability import (
+    TRACE_ID,
+    _merge_payload,  # pyright: ignore[reportPrivateUsage] - pins the payload merge's copy and identity semantics directly
+    log_info,
+    make_event,
+)
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -26,7 +31,9 @@ def test_log_info_carries_trace_context(caplog: pytest.LogCaptureFixture) -> Non
     bind_trace_id("trace-123")
     log_info("merge-complete", layer="env", path=None)
     record = caplog.records[-1]
-    assert record.context == {"trace_id": "trace-123", "layer": "env", "path": None}
+    # log_info attaches the context through logging's extra=, so LogRecord declares no such field.
+    context: object = record.__dict__.get("context")
+    assert context == {"trace_id": "trace-123", "layer": "env", "path": None}
 
 
 @os_agnostic

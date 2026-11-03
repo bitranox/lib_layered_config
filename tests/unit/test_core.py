@@ -37,7 +37,7 @@ def test_read_config_raw_wraps_invalid_format_in_layer_error(
 
 
 @os_agnostic
-def test_read_config_json_honours_indent_argument(tmp_path) -> None:
+def test_read_config_json_honours_indent_argument(tmp_path: Path) -> None:
     defaults = tmp_path / "defaults.json"
     defaults.write_text('{"service": {"port": 8080}}', encoding="utf-8")
 

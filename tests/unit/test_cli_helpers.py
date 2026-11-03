@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 from contextlib import contextmanager
+from typing import TYPE_CHECKING, NoReturn
 
 import pytest
 from click.testing import CliRunner
@@ -12,7 +13,14 @@ from click.testing import CliRunner
 from lib_layered_config import __init__conf__ as metadata_module
 from lib_layered_config import cli as cli_module
 from lib_layered_config.cli import common as common_module
+from lib_layered_config.domain.config import SourceInfo
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Sequence
+    from pathlib import Path
+
+    from lib_cli_exit_tools.application.runner import SessionOverrides
 
 
 @os_agnostic
@@ -22,39 +30,39 @@ def test_version_string_reflects_static_metadata() -> None:
 
 @os_agnostic
 def test_common_describe_distribution_returns_info_lines() -> None:
-    metadata = importlib.reload(metadata_module)
-    expected = list(_expected_info_lines(metadata))
+    # reload re-executes the module in place, so metadata_module holds the reloaded constants.
+    importlib.reload(metadata_module)
+    expected = list(_expected_info_lines())
     assert list(common_module.describe_distribution()) == expected
 
 
 @os_agnostic
 def test_session_overrides_detect_traceback_flag() -> None:
-    overrides = cli_module._session_overrides(["--traceback"])
+    overrides = cli_module._session_overrides(["--traceback"])  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
     assert overrides == {"traceback": True}
 
 
 @os_agnostic
 def test_session_overrides_default_to_empty_when_flag_absent() -> None:
-    assert cli_module._session_overrides(["read", "--vendor", "Acme"]) == {}
+    assert cli_module._session_overrides(["read", "--vendor", "Acme"]) == {}  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
 
 
 @os_agnostic
 def test_session_overrides_return_empty_for_none() -> None:
-    assert cli_module._session_overrides(None) == {}
+    assert cli_module._session_overrides(None) == {}  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
+
+
+def _raise_click_exception(*_args: object, **_kwargs: object) -> NoReturn:
+    raise cli_module.click.ClickException("boom")
 
 
 @os_agnostic
 def test_session_overrides_swallow_click_parse_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     # Click's own parser, not ours: under resilient_parsing it raised for no argv tried
     # (unknown options, flag values, a lone "-"), so a raising make_context stands in for it.
-    monkeypatch.setattr(
-        cli_module.cli,
-        "make_context",
-        lambda *args, **kwargs: (_ for _ in ()).throw(cli_module.click.ClickException("boom")),
-        raising=False,
-    )
+    monkeypatch.setattr(cli_module.cli, "make_context", _raise_click_exception, raising=False)
 
-    assert cli_module._session_overrides(["--traceback"]) == {}
+    assert cli_module._session_overrides(["--traceback"]) == {}  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
 
 
 @os_agnostic
@@ -96,13 +104,17 @@ def test_main_delegates_through_cli_session(monkeypatch: pytest.MonkeyPatch) -> 
     captured: dict[str, object] = {}
 
     @contextmanager
-    def fake_session(*, summary_limit, verbose_limit, overrides, restore):
+    def fake_session(
+        *, summary_limit: int, verbose_limit: int, overrides: SessionOverrides | None, restore: bool
+    ) -> Generator[Callable[..., int]]:
         captured["summary_limit"] = summary_limit
         captured["verbose_limit"] = verbose_limit
         captured["overrides"] = overrides
         captured["restore"] = restore
 
-        def runner(command, *, argv=None, prog_name=None, **kwargs):
+        def runner(
+            command: object, *, argv: Sequence[str] | None = None, prog_name: str | None = None, **kwargs: object
+        ) -> int:
             captured["command"] = command
             captured["argv"] = argv
             captured["prog_name"] = prog_name
@@ -126,7 +138,7 @@ def test_main_delegates_through_cli_session(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @os_agnostic
-def test_json_paths_renders_stringified_paths(tmp_path) -> None:
+def test_json_paths_renders_stringified_paths(tmp_path: Path) -> None:
     sample = [tmp_path / "one", tmp_path / "two"]
     assert common_module.json_paths(sample) == json.dumps([str(path) for path in sample], indent=2)
 
@@ -140,7 +152,7 @@ def test_render_human_declares_empty_configuration() -> None:
 @os_agnostic
 def test_render_human_includes_provenance_comment_before_value() -> None:
     data = {"service": {"port": 8080}}
-    provenance = {"service.port": {"layer": "app", "path": "/tmp/config.toml"}}
+    provenance = {"service.port": SourceInfo(layer="app", path="/tmp/config.toml", key="service.port")}
 
     message = common_module.render_human(data, provenance)
 
@@ -192,7 +204,7 @@ def test_render_human_strings_are_quoted() -> None:
 @os_agnostic
 def test_render_human_memory_provenance_shows_memory() -> None:
     data = {"feature": True}
-    provenance = {"feature": {"layer": "env", "path": None}}
+    provenance = {"feature": SourceInfo(layer="env", path=None, key="feature")}
     message = common_module.render_human(data, provenance)
     assert "# source: layer=env, path=(memory)" in message
 
@@ -201,8 +213,8 @@ def test_render_human_memory_provenance_shows_memory() -> None:
 def test_render_human_mixed_leaf_and_nested_in_same_section() -> None:
     data = {"service": {"port": 8080, "db": {"host": "localhost"}}}
     provenance = {
-        "service.port": {"layer": "app", "path": "/etc/app.toml"},
-        "service.db.host": {"layer": "host", "path": "/etc/host.toml"},
+        "service.port": SourceInfo(layer="app", path="/etc/app.toml", key="service.port"),
+        "service.db.host": SourceInfo(layer="host", path="/etc/host.toml", key="service.db.host"),
     }
     message = common_module.render_human(data, provenance)
     assert "[service]" in message
@@ -240,7 +252,7 @@ def test_normalise_prefer_lowercases_suffixes() -> None:
 
 
 @os_agnostic
-def test_cli_read_config_json_emits_combined_payload(tmp_path) -> None:
+def test_cli_read_config_json_emits_combined_payload(tmp_path: Path) -> None:
     defaults = tmp_path / "defaults.toml"
     defaults.write_text("[service]\nport = 8080\n", encoding="utf-8")
     runner = CliRunner()
@@ -263,19 +275,19 @@ def test_cli_read_config_json_emits_combined_payload(tmp_path) -> None:
     assert result.exit_code == 0 and '"config"' in result.stdout
 
 
-def _expected_info_lines(metadata: object) -> tuple[str, ...]:
+def _expected_info_lines() -> tuple[str, ...]:
     """Compose the info lines from metadata constants."""
 
     fields = (
-        ("name", metadata.name),
-        ("title", metadata.title),
-        ("version", metadata.version),
-        ("homepage", metadata.homepage),
-        ("author", metadata.author),
-        ("author_email", metadata.author_email),
-        ("shell_command", metadata.shell_command),
+        ("name", metadata_module.name),
+        ("title", metadata_module.title),
+        ("version", metadata_module.version),
+        ("homepage", metadata_module.homepage),
+        ("author", metadata_module.author),
+        ("author_email", metadata_module.author_email),
+        ("shell_command", metadata_module.shell_command),
     )
     pad = max(len(label) for label, _ in fields)
-    lines = [f"Info for {metadata.name}:", ""]
+    lines = [f"Info for {metadata_module.name}:", ""]
     lines.extend(f"    {label.ljust(pad)} = {value}" for label, value in fields)
     return tuple(lines)
