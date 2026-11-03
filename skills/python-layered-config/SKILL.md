@@ -184,15 +184,22 @@ The dotenv row is only the LAST place searched. The dotenv layer first looks for
 `start_dir` and in every parent up to the filesystem root (the current directory and its parents
 when `start_dir` is not given; a RELATIVE `start_dir` is not resolved, so its search covers
 `start_dir` and its relative parents and ends at the current directory, not above it), then at the
-per-user path above, and loads only the first file it finds. `dotenv_path=` (CLI `--env-file`)
-loads that one file with no search. It may be a regular file, a FIFO such as a shell process
-substitution (`--env-file <(printf 'KEY=value')`), or a device. Every config file has the same
-10 MiB cap: exactly 10 MiB (10485760 bytes) loads, one byte more is refused, and an endless
-source such as `/dev/zero` is refused after reading one byte past the cap. Like `cat`, a FIFO read
-waits for its writer and for it to close, with no timeout: a writer that never closes blocks the
-read forever. In Python a `dotenv_path=` that does not exist loads
-nothing (an empty dotenv layer, no error); the CLI's `--env-file` refuses a missing path as a usage
-error (exit 2). A directory is refused either way.
+per-user path above, and loads only the first file it finds. On Linux and macOS every searched
+`.env` (in `start_dir`, its parents and the per-user path) must be owned by the process's effective
+user or by root (for a symlink, both the link and the file it points to). Any other file does not
+count as found: it is passed over with a WARNING record `dotenv_skipped_foreign_owner` on the
+`lib_layered_config` logger (`record.context` holds its `path` and `owner_uid`), and the search goes
+on to the next candidate. So a `.env` another user put in `/tmp` is never loaded, and a process
+running as root (`sudo` in a project directory) passes over that user's own `.env`. Only the owner
+is checked, never the mode: a `.env` you own loads even when it is group- or world-writable. Windows
+has no such check. `dotenv_path=` (CLI `--env-file`) loads that one file with no search and no owner
+check. It may be a regular file, a FIFO such as a shell process substitution (`--env-file <(printf
+'KEY=value')`), or a device. Every config file has the same 10 MiB cap: exactly 10 MiB (10485760
+bytes) loads, one byte more is refused, and an endless source such as `/dev/zero` is refused after
+reading one byte past the cap. Like `cat`, a FIFO read waits for its writer and for it to close,
+with no timeout: a writer that never closes blocks the read forever. In Python a `dotenv_path=` that
+does not exist loads nothing (an empty dotenv layer, no error); the CLI's `--env-file` refuses a
+missing path as a usage error (exit 2). A directory is refused either way.
 
 ## Probing and testing an app built on it
 
