@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import rich_click as click
 
+from ..domain import json_codec
 from .common import (
     build_read_query,
     human_payload,
@@ -16,6 +17,7 @@ from .common import (
     wants_json,
 )
 from .constants import CLICK_CONTEXT_SETTINGS
+from .envelope import json_envelope_option, run_in_envelope
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -80,6 +82,7 @@ __all__ = [
     show_default=True,
     help="Mask sensitive values (passwords, tokens, keys) in the output",
 )
+@json_envelope_option
 def read_command(
     *,
     vendor: str,
@@ -94,6 +97,7 @@ def read_command(
     indent: bool,
     provenance: bool,
     redact: bool,
+    json_envelope: bool,
 ) -> None:
     """Read configuration and print either human prose or JSON."""
     query = build_read_query(
@@ -106,6 +110,12 @@ def read_command(
         default_file=default_file,
         dotenv_path=dotenv_path,
     )
+    if json_envelope:
+        run_in_envelope(
+            "read",
+            lambda: json_codec.loads(json_payload(query, None, include_provenance=provenance, redact=redact)),
+        )
+        return
     fmt = parse_output_format(output_format)
     if wants_json(fmt):
         click.echo(json_payload(query, resolve_indent(enabled=indent), include_provenance=provenance, redact=redact))
@@ -148,6 +158,7 @@ def read_command(
     show_default=True,
     help="Mask sensitive values (passwords, tokens, keys) in the output",
 )
+@json_envelope_option
 def read_json_command(
     *,
     vendor: str,
@@ -160,6 +171,7 @@ def read_json_command(
     dotenv_path: Path | None,
     indent: bool,
     redact: bool,
+    json_envelope: bool,
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
     query = build_read_query(
@@ -172,6 +184,12 @@ def read_json_command(
         default_file=default_file,
         dotenv_path=dotenv_path,
     )
+    if json_envelope:
+        run_in_envelope(
+            "read-json",
+            lambda: json_codec.loads(json_payload(query, None, include_provenance=True, redact=redact)),
+        )
+        return
     click.echo(json_payload(query, resolve_indent(enabled=indent), include_provenance=True, redact=redact))
 
 

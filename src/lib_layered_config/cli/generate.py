@@ -9,6 +9,7 @@ import rich_click as click
 from ..examples import generate_examples as generate_examples_impl
 from .common import json_paths, normalise_examples_platform_option
 from .constants import CLICK_CONTEXT_SETTINGS
+from .envelope import json_envelope_option, run_in_envelope
 from .typed_click import option
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     show_default=True,
     help="Overwrite existing example files",
 )
+@json_envelope_option
 def generate_examples_command(
     *,
     destination: Path,
@@ -46,17 +48,24 @@ def generate_examples_command(
     app: str,
     platform: str | None,
     force: bool,
+    json_envelope: bool,
 ) -> None:
     """Create reference example trees for documentation or onboarding."""
-    created = generate_examples_impl(
-        destination,
-        slug=slug,
-        vendor=vendor,
-        app=app,
-        force=force,
-        platform=normalise_examples_platform_option(platform),
-    )
-    click.echo(json_paths(created))
+
+    def generate() -> list[Path]:
+        return generate_examples_impl(
+            destination,
+            slug=slug,
+            vendor=vendor,
+            app=app,
+            force=force,
+            platform=normalise_examples_platform_option(platform),
+        )
+
+    if json_envelope:
+        run_in_envelope("generate-examples", lambda: {"created": [str(path) for path in generate()]})
+        return
+    click.echo(json_paths(generate()))
 
 
 def register(cli_group: click.Group) -> None:

@@ -14,6 +14,7 @@ from ..examples import DeployAction, DeployResult
 from ..examples import deploy_config as deploy_config_impl
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
+from .envelope import json_envelope_option, run_in_envelope
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -123,13 +124,23 @@ class _SectionReport(NamedTuple):
         )
 
 
-def _format_results(results: list[DeployResult]) -> str:
-    """Format deployment results as JSON, including .d directory results; an empty list is left out."""
+def _full_report(results: list[DeployResult]) -> dict[str, list[str]]:
+    """Every section of the deployment report, .d directory results included, empty ones too."""
     main = _SectionReport.of(results)
     dot_d = _SectionReport.of([dot_d_result for r in results for dot_d_result in r.dot_d_results])
-    envelope = {name: values for name, values in main.json_fields() if values}
-    envelope.update({_DOT_D_KEY_PREFIX + name: values for name, values in dot_d.json_fields() if values})
-    return json_codec.dumps(envelope, indent=True)
+    report = dict(main.json_fields())
+    report.update({_DOT_D_KEY_PREFIX + name: values for name, values in dot_d.json_fields()})
+    return report
+
+
+def _format_results(results: list[DeployResult]) -> str:
+    """Format deployment results as JSON, including .d directory results; an empty list is left out."""
+    return json_codec.dumps({name: values for name, values in _full_report(results).items() if values}, indent=True)
+
+
+def _skipped_in(report: dict[str, list[str]]) -> list[str]:
+    """The skipped destinations in a :func:`_full_report`, the .d directory's included."""
+    return report["skipped"] + report[_DOT_D_KEY_PREFIX + "skipped"]
 
 
 @click.command("deploy", context_settings=CLICK_CONTEXT_SETTINGS)
@@ -185,6 +196,7 @@ def _format_results(results: list[DeployResult]) -> str:
     callback=_mode_option(ModeKind.FILE),
     help="File mode for every target, octal (e.g. 640 or 0o640); overrides the configured one",
 )
+@json_envelope_option
 def deploy_command(
     *,
     source: Path,
@@ -199,6 +211,7 @@ def deploy_command(
     permissions: bool | None,
     dir_mode: int | None,
     file_mode: int | None,
+    json_envelope: bool,
 ) -> None:
     """Copy a source file into the requested layered directories.
 
@@ -215,32 +228,36 @@ def deploy_command(
     source, the target files this command does not write and the environment (never .env), then
     755/644 (app, host) and 700/600 (user). An unsafe mode is refused.
     """
-    if permissions is False and (dir_mode is not None or file_mode is not None):
-        raise click.UsageError("--no-permissions cannot be combined with --dir-mode or --file-mode")
 
-    # Determine conflict resolver
-    conflict_resolver = None if (force or batch) else _prompt_for_action
+    def deploy() -> list[DeployResult]:
+        if permissions is False and (dir_mode is not None or file_mode is not None):
+            raise click.UsageError("--no-permissions cannot be combined with --dir-mode or --file-mode")
+        # Prompt only when neither --force nor --batch decides the conflict.
+        conflict_resolver = None if (force or batch) else _prompt_for_action
+        try:
+            return deploy_config_impl(
+                source,
+                vendor=vendor,
+                app=app,
+                slug=slug,
+                profile=profile,
+                targets=normalise_targets(targets),
+                platform=normalise_platform_option(platform),
+                force=force,
+                batch=batch,
+                conflict_resolver=conflict_resolver,
+                set_permissions=permissions,
+                dir_mode=dir_mode,
+                file_mode=file_mode,
+            )
+        except DeployPermissionsError as exc:
+            # Same type and problems; only the way through is respelled for the command line.
+            raise DeployPermissionsError(exc.problems, hint=_CLI_DEPLOY_ANYWAY_HINT) from None
 
-    try:
-        results = deploy_config_impl(
-            source,
-            vendor=vendor,
-            app=app,
-            slug=slug,
-            profile=profile,
-            targets=normalise_targets(targets),
-            platform=normalise_platform_option(platform),
-            force=force,
-            batch=batch,
-            conflict_resolver=conflict_resolver,
-            set_permissions=permissions,
-            dir_mode=dir_mode,
-            file_mode=file_mode,
-        )
-    except DeployPermissionsError as exc:
-        # Same type and problems; only the way through is respelled for the command line.
-        raise DeployPermissionsError(exc.problems, hint=_CLI_DEPLOY_ANYWAY_HINT) from None
-    click.echo(_format_results(results))
+    if json_envelope:
+        run_in_envelope("deploy", lambda: _full_report(deploy()), skipped=_skipped_in)
+        return
+    click.echo(_format_results(deploy()))
 
 
 def register(cli_group: click.Group) -> None:

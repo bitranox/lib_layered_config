@@ -18,6 +18,47 @@ overview and installation see the [README](../README.md).
 | `lib_layered_config info`              | Print package metadata                                |
 | `lib_layered_config fail`              | Intentionally raise a `RuntimeError` (for testing)    |
 
+### Machine-readable output: `--json`
+
+Every command accepts `--json`. It replaces the command's normal output with one JSON document on
+stdout, on success and on failure alike. Without `--json` the output is unchanged.
+
+```bash
+lib_layered_config env-prefix config-kit --json
+# {"ok": true, "command": "env-prefix",
+#  "data": {"slug": "config-kit", "prefix": "CONFIG_KIT___"}, "skipped": []}
+
+lib_layered_config fail --json
+# {"ok": false, "command": "fail",
+#  "error": {"type": "RuntimeError", "message": "i should fail", "exit_code": 1}}
+```
+
+| Field             | Meaning                                                                      |
+|-------------------|------------------------------------------------------------------------------|
+| `ok`              | `true` when the command succeeded                                            |
+| `command`         | the command that ran                                                         |
+| `data`            | on success, the command's result (see the table below)                       |
+| `skipped`         | on success, what the command deliberately left alone; `[]` for most commands |
+| `error.type`      | on failure, the exception class (`LayerLoadError`, `UsageError`, ...)        |
+| `error.message`   | on failure, the message the command prints without `--json`                  |
+| `error.exit_code` | on failure, the process exit code, the same one the command returns          |
+
+| Command             | `data`                                                                |
+|---------------------|-----------------------------------------------------------------------|
+| `read`, `read-json` | `{"config": ..., "provenance": ...}`; `--provenance`/`--redact` apply |
+| `deploy`            | every result list, empty ones included, `.d` lists prefixed `dot_d_`  |
+| `generate-examples` | `{"created": [paths]}`                                                |
+| `info`              | the package metadata fields                                           |
+| `env-prefix`        | `{"slug": ..., "prefix": ...}`                                        |
+
+For `deploy`, `skipped` lists the destinations left alone because they already held the same
+content, the `.d` directory's included.
+
+The exit code is the one the command returns without `--json`, so a script can branch on either. A
+usage error that Click detects before the command starts (a missing required option, a `--source`
+that does not exist) still exits 2 with Click's usage text on stderr and nothing on stdout. An
+interrupt (Ctrl-C) exits with the signal's code and prints no envelope.
+
 ---
 
 ### `read`

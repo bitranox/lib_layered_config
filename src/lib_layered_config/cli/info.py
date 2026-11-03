@@ -5,8 +5,9 @@ from __future__ import annotations
 import rich_click as click
 
 from ..core import default_env_prefix
-from .common import describe_distribution
+from .common import describe_distribution, package_metadata
 from .constants import CLICK_CONTEXT_SETTINGS
+from .envelope import json_envelope_option, run_in_envelope
 from .typed_click import argument
 
 __all__ = [
@@ -17,17 +18,38 @@ __all__ = [
 
 
 @click.command("info", context_settings=CLICK_CONTEXT_SETTINGS)
-def info_command() -> None:
+@json_envelope_option
+def info_command(*, json_envelope: bool) -> None:
     """Print package metadata in friendly lines."""
+    if json_envelope:
+        run_in_envelope("info", _metadata_fields)
+        return
     for line in describe_distribution():
         click.echo(line)
 
 
 @click.command("env-prefix", context_settings=CLICK_CONTEXT_SETTINGS)
 @argument("slug")
-def env_prefix_command(slug: str) -> None:
+@json_envelope_option
+def env_prefix_command(slug: str, *, json_envelope: bool) -> None:
     """Echo the canonical environment variable prefix for a slug."""
+    if json_envelope:
+        run_in_envelope("env-prefix", lambda: {"slug": slug, "prefix": default_env_prefix(slug)})
+        return
     click.echo(default_env_prefix(slug))
+
+
+def _metadata_fields() -> dict[str, str]:
+    """The package metadata ``info`` prints, as a mapping."""
+    return {
+        "name": package_metadata.name,
+        "title": package_metadata.title,
+        "version": package_metadata.version,
+        "homepage": package_metadata.homepage,
+        "author": package_metadata.author,
+        "author_email": package_metadata.author_email,
+        "shell_command": package_metadata.shell_command,
+    }
 
 
 def register(cli_group: click.Group) -> None:

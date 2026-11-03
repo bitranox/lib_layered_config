@@ -6,6 +6,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal
+  output: `{"ok": true, "command", "data", "skipped"}` on success and
+  `{"ok": false, "command", "error": {"type", "message", "exit_code"}}` on failure, with the same exit
+  code the command returns without the flag. Before, a failure printed only a message on stderr, and
+  `info` and `env-prefix` had no machine-readable output. `deploy --json` lists every result section,
+  empty ones included. Output without `--json` is unchanged. A usage error Click detects before the
+  command starts still prints Click's usage text on stderr (exit 2) and no envelope.
+
 ### Fixed
 - A YAML file whose aliases form a cycle (`a: &x [*x]`) or expand to more than 1,000,000 values (an
   "alias bomb" of a few hundred bytes) is refused with `LayerLoadError`: `"<path> aliases a node into
