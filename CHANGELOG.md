@@ -64,6 +64,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   clear. The same rule now masks the camelCase form of every name it already masked, such as
   `primaryKey` or `cacheKey` (like `primary_key`); exempt such a path with `not_sensitive`.
   `key`, `keyBinding`, `hotkey` and `tokenizer` stay visible.
+- The `.env` search passes over a file that neither the current user nor root owns, logs the
+  warning `dotenv_skipped_foreign_owner` with its path and owner uid, and goes on searching. The
+  search climbs every parent directory up to `/`, so a `.env` another user put in a shared directory
+  such as `/tmp` was loaded by every program started below it, and as the dotenv layer it outranked
+  the app, host and user files. Only ownership is checked, not the mode, so a group- or
+  world-writable `.env` you own still loads. A process running as root now passes over a `.env`
+  owned by an ordinary user (under `sudo` in a project directory, say); pass it as `dotenv_path`
+  (CLI `--env-file`), which loads the named file whoever owns it. Windows is unchanged.
 
 ## [7.7.0] - 2026-11-01
 

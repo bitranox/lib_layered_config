@@ -153,7 +153,7 @@ lib_layered_config read \
   --format human
 ```
 
-**Explanation:** Use `--default-file` to provide application defaults that ship with your app, and `--start-dir` to specify where to start searching for `.env` files (useful when running from a different directory).
+**Explanation:** Use `--default-file` to provide application defaults that ship with your app, and `--start-dir` to specify where to start searching for `.env` files (useful when running from a different directory). On Linux and macOS the search passes over a `.env` that neither you nor root owns, so a `.env` another user left in a parent directory such as `/tmp` is not loaded; the warning `dotenv_skipped_foreign_owner` names it.
 
 **Example 6: Explicit .env file (skip directory search)**
 ```bash
@@ -163,7 +163,7 @@ lib_layered_config read \
   --env-file /opt/myapp/secrets/.env.production
 ```
 
-**Explanation:** Use `--env-file` to load a specific `.env` file directly. This bypasses the upward directory search entirely, which is useful in CI/CD pipelines or containers where the `.env` file lives in a known location.
+**Explanation:** Use `--env-file` to load a specific `.env` file directly. This bypasses the upward directory search entirely, and its owner check with it, which is useful in CI/CD pipelines or containers where the `.env` file lives in a known location.
 
 **Example 7: Debugging configuration issues**
 ```bash

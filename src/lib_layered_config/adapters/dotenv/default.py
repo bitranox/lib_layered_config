@@ -7,6 +7,7 @@ protocol by scanning for `.env` files using the search discipline captured in
 Contents:
     - ``DefaultDotEnvLoader``: public loader that composes the helpers.
     - ``_iter_candidates`` / ``_build_search_list``: gather candidate paths.
+    - ``_foreign_owner`` / ``_owner_is_trusted``: pass over a searched file another user owns.
     - ``_parse_dotenv``: strict parser converting dotenv files into nested dicts. An unquoted
       value is converted by ``.._value_coercion.coerce_value``, exactly as the environment layer
       converts it; a quoted value is always the literal text.
@@ -20,12 +21,14 @@ semantics as the environment adapter.
 from __future__ import annotations
 
 import io
+import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from ...domain.errors import InvalidFormatError
 from ...domain.redaction import NotSensitiveKeys
-from ...observability import log_debug
+from ...observability import log_debug, log_warn
 from .._nested_keys import NestedEntry, build_nested
 from .._path_probe import PathKind, checked_kind, config_path_unreadable, current_directory, probe_path
 from .._text_decoding import decode_utf8
@@ -100,6 +103,10 @@ class DefaultDotEnvLoader:
             # the same answer on every Python.
             if probe_path(candidate).kind is not PathKind.FILE:
                 continue
+            foreign_owner = _foreign_owner(candidate)
+            if foreign_owner is not None:
+                _log_dotenv_skipped(candidate, foreign_owner)
+                continue
             self.last_loaded_path = str(candidate)
             data = _parse_dotenv(candidate, not_sensitive=self._not_sensitive)
             _log_dotenv_loaded(candidate, data)
@@ -142,6 +149,47 @@ def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
         return
     for directory in [base, *base.parents]:
         yield directory / ".env"
+
+
+def _owner_is_trusted(owner_uid: int, *, euid: int) -> bool:
+    """Return True when a file owned by *owner_uid* may be loaded by a process running as *euid*.
+
+    Only the process's own user and root qualify: without root, nobody can create a file another
+    user owns, so a ``.env`` planted in a shared directory such as ``/tmp`` always fails this.
+
+    Examples:
+        >>> _owner_is_trusted(1000, euid=1000), _owner_is_trusted(0, euid=1000), _owner_is_trusted(1001, euid=1000)
+        (True, True, False)
+    """
+    return owner_uid in {euid, 0}
+
+
+def _foreign_owner(path: Path) -> int | None:
+    """Return the owner uid of a searched *path* when neither the current user nor root owns it.
+
+    The check is the trust boundary of the upward search: every parent directory up to ``/`` is
+    searched, and a ``.env`` another user put in one of them (``/tmp/.env``) would otherwise outrank
+    the app, host and user files. Only ownership is checked, not the mode: files created under the
+    usual ``umask 0002`` are group-writable and many working trees are world-writable, and a mode
+    rule skipped those legitimate files too (user decision 2026-11-03). Windows has no POSIX owner
+    to compare, so nothing is skipped there.
+
+    Returns:
+        The foreign owner's uid, or ``None`` when the file may be loaded. A file that cannot be
+        stat'ed here is ``None`` too: reading it then raises the usual unreadable-file error.
+    """
+    if sys.platform == "win32":
+        return None
+    try:
+        owner = path.stat().st_uid
+    except OSError:
+        return None
+    return None if _owner_is_trusted(owner, euid=os.geteuid()) else owner
+
+
+def _log_dotenv_skipped(path: Path, owner_uid: int) -> None:
+    """Warn that a searched dotenv file was passed over because another user owns it."""
+    log_warn("dotenv_skipped_foreign_owner", layer=DOTENV_LAYER, path=str(path), owner_uid=owner_uid)
 
 
 def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> Mapping[str, object]:
