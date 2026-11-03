@@ -10,6 +10,7 @@ so that dependency inversion remains enforceable through automated tests.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -24,7 +25,7 @@ from tests.support import create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Iterable
 
 
 @pytest.fixture()
@@ -33,10 +34,13 @@ def sandbox(tmp_path: Path):
 
 
 @pytest.fixture()
-def resolver_context(sandbox):
-    sandbox.write("app", "config.toml", content="[service]\nvalue=1\n")
-    sandbox.write("host", "contract-host.toml", content="[service]\nvalue=2\n")
-    sandbox.write("user", "config.toml", content="[service]\nvalue=3\n")
+def resolver_context(sandbox) -> tuple[DefaultPathResolver, dict[str, Path]]:
+    written = {
+        "app": sandbox.write("app", "config.toml", content="[service]\nvalue=1\n"),
+        "host": sandbox.write("host", "contract-host.toml", content="[service]\nvalue=2\n"),
+        "user": sandbox.write("user", "config.toml", content="[service]\nvalue=3\n"),
+        "dotenv": sandbox.write("user", ".env", content="SERVICE__VALUE=4\n"),
+    }
     resolver = DefaultPathResolver(
         vendor=sandbox.vendor,
         app=sandbox.app,
@@ -46,7 +50,11 @@ def resolver_context(sandbox):
         platform=sandbox.platform,
         hostname="contract-host",
     )
-    return resolver, sandbox
+    return resolver, written
+
+
+def _resolved(candidates: Iterable[str]) -> set[Path]:
+    return {Path(candidate).resolve() for candidate in candidates}
 
 
 @os_agnostic
@@ -56,28 +64,30 @@ def test_default_path_resolver_implements_protocol(resolver_context) -> None:
 
 
 @os_agnostic
-def test_default_path_resolver_app_paths_are_strings(resolver_context) -> None:
-    resolver, _ = resolver_context
-    assert all(isinstance(candidate, str) for candidate in resolver.app())
+@pytest.mark.parametrize("layer", ["app", "host", "user", "dotenv"])
+def test_default_path_resolver_finds_the_file_written_for_each_layer(resolver_context, layer: str) -> None:
+    resolver, written = resolver_context
+
+    candidates = list(getattr(resolver, layer)())
+
+    assert all(isinstance(candidate, str) for candidate in candidates)
+    assert written[layer].resolve() in _resolved(candidates)
 
 
 @os_agnostic
-def test_default_path_resolver_host_paths_include_hostname(resolver_context) -> None:
-    resolver, _ = resolver_context
-    assert all("contract-host" in candidate for candidate in resolver.host())
+def test_default_path_resolver_host_layer_ignores_another_hosts_file(sandbox) -> None:
+    sandbox.write("host", "other-host.toml", content="[service]\nvalue=2\n")
+    resolver = DefaultPathResolver(
+        vendor=sandbox.vendor,
+        app=sandbox.app,
+        slug=sandbox.slug,
+        cwd=sandbox.start_dir,
+        env=sandbox.env,
+        platform=sandbox.platform,
+        hostname="contract-host",
+    )
 
-
-@os_agnostic
-def test_default_path_resolver_user_paths_reference_slug_or_app(resolver_context) -> None:
-    resolver, sandbox = resolver_context
-    expectation = all(any(token in candidate for token in (sandbox.slug, sandbox.app)) for candidate in resolver.user())
-    assert expectation is True
-
-
-@os_agnostic
-def test_default_path_resolver_dotenv_iteration_is_listable(resolver_context) -> None:
-    resolver, _ = resolver_context
-    assert isinstance(list(resolver.dotenv()), list)
+    assert list(resolver.host()) == []
 
 
 def _env_loader_context() -> tuple[DefaultEnvLoader, str]:
