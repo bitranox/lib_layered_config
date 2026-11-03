@@ -174,17 +174,23 @@ def _foreign_owner(path: Path) -> int | None:
     rule skipped those legitimate files too (user decision 2026-11-03). Windows has no POSIX owner
     to compare, so nothing is skipped there.
 
+    A symlink is judged by its own owner AND its target's: judged by the target alone, another
+    user could plant a link in a directory they control pointing at any file the reader owns, and
+    the search would read that file as the ``.env``.
+
     Returns:
-        The foreign owner's uid, or ``None`` when the file may be loaded. A file that cannot be
-        stat'ed here is ``None`` too: reading it then raises the usual unreadable-file error.
+        The first untrusted owner's uid (the link's, then the target's), or ``None`` when the file
+        may be loaded. A path that cannot be stat'ed here is ``None`` too: reading it then raises
+        the usual unreadable-file error.
     """
     if sys.platform == "win32":
         return None
     try:
-        owner = path.stat().st_uid
+        owners = (path.lstat().st_uid, path.stat().st_uid)
     except OSError:
         return None
-    return None if _owner_is_trusted(owner, euid=os.geteuid()) else owner
+    euid = os.geteuid()
+    return next((owner for owner in owners if not _owner_is_trusted(owner, euid=euid)), None)
 
 
 def _log_dotenv_skipped(path: Path, owner_uid: int) -> None:

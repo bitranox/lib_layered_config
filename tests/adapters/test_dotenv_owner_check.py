@@ -12,15 +12,12 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from lib_layered_config.adapters.dotenv.default import DefaultDotEnvLoader, _owner_is_trusted
 from tests.support.os_markers import os_agnostic, posix_only
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _plant_dotenv(tmp_path: Path) -> tuple[Path, Path]:
@@ -75,6 +72,31 @@ def test_explicit_dotenv_path_loads_whoever_owns_it(tmp_path: Path, monkeypatch:
     _become_another_user(monkeypatch, planted.stat().st_uid)
 
     assert DefaultDotEnvLoader().load(dotenv_path=str(planted)) == {"key": "planted"}
+
+
+@posix_only
+def test_a_symlink_the_user_does_not_own_is_passed_over_even_when_its_target_is_trusted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The link is ours and its target, /etc/passwd, is root's. Seen as root (faked), the target is
+    # trusted and the link is not, so only a check of the LINK's owner skips it. Judged by the
+    # target alone, /etc/passwd would be parsed as a .env and refused as malformed.
+    target = Path("/etc/passwd")
+    if not target.is_file() or target.stat().st_uid != 0:
+        pytest.skip("needs a root-owned /etc/passwd")
+    link = tmp_path / ".env"
+    link.symlink_to(target)
+    link_owner = link.lstat().st_uid
+    if link_owner == 0:
+        pytest.skip("the test files are root-owned, and root-owned files are trusted")
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    start = tmp_path / "project"
+    start.mkdir()
+
+    loader = DefaultDotEnvLoader()
+
+    assert loader.load(str(start)) == {}
+    assert loader.last_loaded_path is None
 
 
 @posix_only
