@@ -4,11 +4,10 @@
 from __future__ import annotations
 
 import timeit
-from functools import lru_cache
 from pathlib import Path
 import tempfile
 
-from src.lib_layered_config import read_config, read_config_json
+from lib_layered_config import read_config
 
 
 def setup_test_config():

@@ -494,7 +494,7 @@ class TestLayerEnum:
         assert isinstance(Layer.APP, str)
 
     def test_layer_can_be_used_as_dict_key(self) -> None:
-        data = {Layer.APP: "value"}
+        data: dict[str, str] = {Layer.APP: "value"}
         assert data[Layer.APP] == "value"
         assert data["app"] == "value"
 

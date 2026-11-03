@@ -7,7 +7,7 @@ import io
 import tempfile
 from pathlib import Path
 
-from src.lib_layered_config import read_config
+from lib_layered_config import read_config
 
 
 def setup_test_config():
@@ -64,7 +64,7 @@ def profile_config_loading():
 
     profiler.enable()
     for _ in range(100):
-        config = read_config(
+        read_config(
             vendor="Test",
             app="App",
             slug="test-app",

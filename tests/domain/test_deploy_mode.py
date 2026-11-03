@@ -109,7 +109,7 @@ def test_unsafe_modes_are_refused_naming_every_bit(value: int, kind: ModeKind, f
 @pytest.mark.parametrize(("value", "type_name"), [(True, "bool"), (False, "bool"), (1.0, "float"), ("0o640", "str")])
 def test_a_mode_must_be_an_int(value: object, type_name: str) -> None:
     with pytest.raises(DeployModeError, match=f"a mode must be an int, got {type_name}$"):
-        DeployMode(value, F)  # pyright excludes tests/; the wrong type is the point
+        DeployMode(value, F)  # pyright: ignore[reportArgumentType] - the wrong type is what this test checks
 
 
 @os_agnostic

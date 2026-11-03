@@ -10,10 +10,18 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class EnvSetter(Protocol):
+    """What :meth:`LayeredSandbox.apply_env` needs: ``pytest.MonkeyPatch`` or a doctest stand-in."""
+
+    def setenv(self, name: str, value: str, /) -> None:
+        """Set environment variable *name* to *value*."""
+        ...
 
 
 @dataclass(slots=True)
@@ -88,7 +96,7 @@ class LayeredSandbox:
         target.write_text(content, encoding="utf-8")
         return target
 
-    def apply_env(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def apply_env(self, monkeypatch: EnvSetter) -> None:
         """Register the sandbox environment variables via *monkeypatch*.
 
         Examples

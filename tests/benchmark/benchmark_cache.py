@@ -5,16 +5,14 @@ from __future__ import annotations
 
 import timeit
 from functools import lru_cache
-from pathlib import Path
 
 # Import functions to test
-from src.lib_layered_config.adapters.env.default import default_env_prefix
-from src.lib_layered_config._platform import (
+from lib_layered_config._platform import (
+    _sanitize,  # pyright: ignore[reportPrivateUsage] - this script times the private helper itself
     normalise_resolver_platform,
-    normalise_examples_platform,
-    _sanitize,
 )
-from src.lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
+from lib_layered_config.adapters.env.default import default_env_prefix
+from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 
 
 # Cached versions for comparison
@@ -141,12 +139,8 @@ def benchmark_path_resolver():
         slug="demo-app",
     )
 
-    time_platform_checks = timeit.timeit(
-        lambda: (resolver._is_linux, resolver._is_macos, resolver._is_windows),
-        number=100000
-    )
-    print(f"Platform checks (100k times):  {time_platform_checks:.4f} seconds")
-    print("Note: Platform checks are already properties and very fast")
+    time_app_paths = timeit.timeit(lambda: list(resolver.app()), number=10000)
+    print(f"App path lookups (10k times): {time_app_paths:.4f} seconds")
 
 
 def benchmark_sanitize():
