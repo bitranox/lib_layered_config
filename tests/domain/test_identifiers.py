@@ -461,6 +461,7 @@ class TestValidateHostname:
             ("/etc/passwd", "hostname contains invalid characters"),
             (".local", "hostname must start with an alphanumeric"),
             ("-server", "hostname must start with an alphanumeric"),
+            ("!server", "hostname contains invalid characters"),
             ("sërvér", "hostname contains non-ASCII"),
             ("服务器", "hostname contains non-ASCII"),
             ("server🖥️", "hostname contains non-ASCII"),

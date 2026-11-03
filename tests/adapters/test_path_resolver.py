@@ -73,6 +73,55 @@ def test_linux_resolver_host_paths_include_hostname(tmp_path: Path) -> None:
     assert host_paths[0].endswith("hosts/test-host.toml")
 
 
+def _linux_host_resolver(sandbox) -> DefaultPathResolver:
+    return DefaultPathResolver(
+        vendor=sandbox.vendor,
+        app=sandbox.app,
+        slug=sandbox.slug,
+        env=sandbox.env,
+        platform="linux",
+        hostname="test-host",
+    )
+
+
+@os_agnostic
+def test_linux_resolver_host_falls_back_to_etc_slug_hosts(tmp_path: Path) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor="Acme", app="Demo", slug="demo", platform="linux")
+    etc_host = Path(sandbox.env["LIB_LAYERED_CONFIG_ETC"]) / "demo" / "hosts" / "test-host.toml"
+    etc_host.parent.mkdir(parents=True)
+    etc_host.write_text("[service]\nvalue = 1\n", encoding="utf-8")
+
+    assert [Path(path) for path in _linux_host_resolver(sandbox).host()] == [etc_host]
+
+
+@os_agnostic
+def test_linux_resolver_host_yields_xdg_before_etc_when_both_exist(tmp_path: Path) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor="Acme", app="Demo", slug="demo", platform="linux")
+    xdg_host = sandbox.write("host", "test-host.toml", content="[service]\nvalue = 1\n")
+    etc_host = Path(sandbox.env["LIB_LAYERED_CONFIG_ETC"]) / "demo" / "hosts" / "test-host.toml"
+    etc_host.parent.mkdir(parents=True)
+    etc_host.write_text("[service]\nvalue = 2\n", encoding="utf-8")
+
+    assert [Path(path) for path in _linux_host_resolver(sandbox).host()] == [xdg_host, etc_host]
+
+
+@os_agnostic
+def test_resolver_context_carries_the_validated_identity(tmp_path: Path) -> None:
+    resolver = DefaultPathResolver(
+        vendor="Acme", app="Demo", slug="demo", platform="darwin", hostname="mac-host", profile="staging"
+    )
+
+    context = resolver.context
+
+    assert (context.vendor, context.app, context.slug, context.hostname, context.profile) == (
+        "Acme",
+        "Demo",
+        "demo",
+        "mac-host",
+        "staging",
+    )
+
+
 @posix_only
 def test_linux_resolver_user_path_points_to_config(tmp_path: Path) -> None:
     resolver, _ = _linux_context(tmp_path)

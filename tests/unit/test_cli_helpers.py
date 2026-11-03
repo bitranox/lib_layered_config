@@ -22,17 +22,10 @@ def test_version_string_reflects_static_metadata(monkeypatch: pytest.MonkeyPatch
 
 
 @os_agnostic
-def test_common_describe_distribution_returns_info_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_common_describe_distribution_returns_info_lines() -> None:
     metadata = importlib.reload(metadata_module)
     expected = list(_expected_info_lines(metadata))
     assert list(common_module.describe_distribution()) == expected
-
-
-@os_agnostic
-def test_cli_describe_distribution_matches_common(monkeypatch: pytest.MonkeyPatch) -> None:
-    metadata = importlib.reload(metadata_module)
-    expected = _expected_info_lines(metadata)
-    assert tuple(common_module.describe_distribution()) == expected
 
 
 @os_agnostic

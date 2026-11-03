@@ -73,14 +73,6 @@ class _PackageMetadata(Protocol):
     author_email: str
     shell_command: str
 
-    def info_lines(self) -> tuple[str, ...]:
-        """Return human-readable info lines for CLI display."""
-        ...
-
-    def metadata_fields(self) -> tuple[tuple[str, str], ...]:
-        """Return key-value pairs of package metadata."""
-        ...
-
 
 package_metadata: _PackageMetadata = cast("_PackageMetadata", __init__conf__)
 
@@ -132,11 +124,20 @@ def describe_distribution() -> Iterable[str]:
     Returns:
         Sequence of descriptive lines suitable for printing with ``click.echo``.
     """
-    lines_provider = getattr(package_metadata, "info_lines", None)
-    if callable(lines_provider):
-        yield from cast("Iterable[str]", lines_provider())
-        return
-    yield from _fallback_info_lines()
+    fields: tuple[tuple[str, str], ...] = (
+        ("name", package_metadata.name),
+        ("title", package_metadata.title),
+        ("version", package_metadata.version),
+        ("homepage", package_metadata.homepage),
+        ("author", package_metadata.author),
+        ("author_email", package_metadata.author_email),
+        ("shell_command", package_metadata.shell_command),
+    )
+    pad = max(len(label) for label, _ in fields)
+    yield f"Info for {package_metadata.name}:"
+    yield ""
+    for label, value in fields:
+        yield f"    {label.ljust(pad)} = {value}"
 
 
 def build_read_query(
@@ -398,24 +399,3 @@ def human_payload(query: ReadQuery, *, redact: bool = False) -> str:
     )
     data = redact_mapping(result.data) if redact else result.data
     return render_human(data, result.provenance)
-
-
-def _fallback_info_lines() -> tuple[str, ...]:
-    """Construct info lines from metadata constants when helpers are absent."""
-    fields_provider = getattr(package_metadata, "metadata_fields", None)
-    if callable(fields_provider):
-        fields = cast("tuple[tuple[str, str], ...]", fields_provider())
-    else:
-        fields: tuple[tuple[str, str], ...] = (
-            ("name", package_metadata.name),
-            ("title", package_metadata.title),
-            ("version", package_metadata.version),
-            ("homepage", package_metadata.homepage),
-            ("author", package_metadata.author),
-            ("author_email", package_metadata.author_email),
-            ("shell_command", package_metadata.shell_command),
-        )
-    pad = max(len(label) for label, _ in fields)
-    lines = [f"Info for {package_metadata.name}:", ""]
-    lines.extend(f"    {label.ljust(pad)} = {value}" for label, value in fields)
-    return tuple(lines)
