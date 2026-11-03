@@ -20,7 +20,7 @@ System Role:
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, MutableMapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Final, TypeGuard, cast
@@ -132,17 +132,17 @@ def merge_layers(layers: Iterable[LayerSnapshot]) -> MergeResult:
         ('prod', 'env')
     """
     merged: dict[str, object] = {}
-    provenance: dict[str, SourceInfoPayload] = {}
+    provenance = _Provenance()
 
     for snapshot in layers:
         _weave_layer(merged, provenance, snapshot)
 
-    return MergeResult(data=merged, provenance=provenance)
+    return MergeResult(data=merged, provenance=provenance.as_dict())
 
 
 def _weave_layer(
     target: MutableMapping[str, object],
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     snapshot: LayerSnapshot,
 ) -> None:
     """Clone snapshot payload and fold it into accumulators.
@@ -159,7 +159,7 @@ def _weave_layer(
         Mutates *target* and *provenance* in place.
 
     Examples:
-        >>> merged, prov = {}, {}
+        >>> merged, prov = {}, _Provenance()
         >>> from lib_layered_config.domain.identifiers import Layer
         >>> snap = LayerSnapshot(Layer.ENV, {'flag': True}, None)
         >>> _weave_layer(merged, prov, snap)
@@ -171,7 +171,7 @@ def _weave_layer(
 
 def _descend(
     target: MutableMapping[str, object],
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     incoming: Mapping[str, object],
     snapshot: LayerSnapshot,
     segments: list[str],
@@ -209,7 +209,7 @@ def _descend(
 def _store_branch(
     target: MutableMapping[str, object],
     *,
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     key: str,
     value: Mapping[str, object],
     dotted: str,
@@ -231,7 +231,7 @@ def _store_branch(
         Mutates *target*, *provenance*, and *segments* while recursing.
 
     Examples:
-        >>> target, prov = {}, {}
+        >>> target, prov = {}, _Provenance()
         >>> from lib_layered_config.domain.identifiers import Layer
         >>> branch_snapshot = LayerSnapshot(Layer.ENV, {'child': {'enabled': True}}, None)
         >>> _store_branch(
@@ -303,7 +303,7 @@ def _list_index(key: str) -> int:
 
 def _merge_mapping_into_list(
     existing: list[object],
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     incoming: Mapping[str, object],
     snapshot: LayerSnapshot,
     segments: list[str],
@@ -357,7 +357,7 @@ def _merge_list_element(
     element: object,
     *,
     override: object,
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     dotted: str,
     snapshot: LayerSnapshot,
     segments: list[str],
@@ -402,7 +402,7 @@ def _merge_list_element(
 def _build_new_element(
     override: object,
     *,
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     dotted: str,
     snapshot: LayerSnapshot,
     segments: list[str],
@@ -450,7 +450,7 @@ def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfoPayload
 def _store_scalar(
     target: MutableMapping[str, object],
     *,
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     key: str,
     value: object,
     dotted: str,
@@ -549,7 +549,7 @@ def _ensure_branch(
 def _store_branch_provenance(
     branch: MutableMapping[str, object],
     dotted: str,
-    provenance: MutableMapping[str, SourceInfoPayload],
+    provenance: _Provenance,
     snapshot: LayerSnapshot,
 ) -> None:
     """Give a branch an entry of its own only while it is empty.
@@ -570,7 +570,7 @@ def _store_branch_provenance(
         Mutates *provenance*: sets the branch's entry when it is empty, else removes it.
 
     Examples:
-        >>> prov = {}
+        >>> prov = _Provenance()
         >>> from lib_layered_config.domain.identifiers import Layer
         >>> snap = LayerSnapshot(Layer.APP, {'styles': {}}, '/etc/app.toml')
         >>> _store_branch_provenance({}, 'styles', prov, snap)
@@ -586,21 +586,81 @@ def _store_branch_provenance(
     provenance[dotted] = _provenance_entry(dotted, snapshot)
 
 
-def _forget_below(provenance: MutableMapping[str, SourceInfoPayload], dotted: str) -> None:
+class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
+    """Provenance entries plus an index of the keys below each dotted prefix.
+
+    A container replaced by a later layer must take the entries of every key below it along.
+    Scanning all entries for that prefix made N replacements over N entries cost N*N (16,000 of
+    them took about 4 s), so each key is filed under every prefix that ends just before one of its
+    dots - exactly the prefixes ``key.startswith(prefix + ".")`` accepts - and
+    :meth:`forget_below` reads that set. Iteration keeps insertion order, like a dict.
+
+    Examples:
+        >>> prov = _Provenance()
+        >>> for key in ('a', 'a.b', 'a.b.c', 'ab'):
+        ...     prov[key] = {'layer': 'app', 'path': None, 'key': key}
+        >>> prov.forget_below('a')
+        >>> list(prov)
+        ['a', 'ab']
+    """
+
+    def __init__(self) -> None:
+        self._entries: dict[str, SourceInfoPayload] = {}
+        self._below: dict[str, set[str]] = {}
+
+    def __getitem__(self, key: str) -> SourceInfoPayload:
+        return self._entries[key]
+
+    def __setitem__(self, key: str, value: SourceInfoPayload) -> None:
+        if key not in self._entries:
+            for prefix in _dotted_prefixes(key):
+                self._below.setdefault(prefix, set()).add(key)
+        self._entries[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._entries[key]
+        for prefix in _dotted_prefixes(key):
+            below = self._below[prefix]
+            below.discard(key)
+            if not below:
+                del self._below[prefix]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._entries)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def forget_below(self, dotted: str) -> None:
+        """Remove the entries of every key nested under *dotted*."""
+        for stale in list(self._below.get(dotted, ())):
+            del self[stale]
+
+    def as_dict(self) -> dict[str, SourceInfoPayload]:
+        """Return the entries as the plain dict :class:`MergeResult` carries."""
+        return self._entries
+
+
+def _dotted_prefixes(key: str) -> Iterator[str]:
+    """Yield *key* cut before each of its dots: ``'a.b.c'`` gives ``'a'`` then ``'a.b'``.
+
+    Examples:
+        >>> list(_dotted_prefixes('a.b.c')), list(_dotted_prefixes('flat'))
+        (['a', 'a.b'], [])
+    """
+    dot = key.find(".")
+    while dot != -1:
+        yield key[:dot]
+        dot = key.find(".", dot + 1)
+
+
+def _forget_below(provenance: _Provenance, dotted: str) -> None:
     """Remove the entries of every key nested under *dotted*.
 
     Called when a container is replaced wholesale, so the keys it held no longer
     exist and must not keep reporting an origin.
-
-    Examples:
-        >>> prov = {'a': {}, 'a.b': {}, 'a.b.c': {}, 'ab': {}}
-        >>> _forget_below(prov, 'a')
-        >>> sorted(prov)
-        ['a', 'ab']
     """
-    prefix = dotted + "."
-    for stale in [key for key in provenance if key.startswith(prefix)]:
-        del provenance[stale]
+    provenance.forget_below(dotted)
 
 
 def _join_segments(segments: Sequence[str], key: str) -> str:

@@ -71,10 +71,11 @@ def build_nested(entries: Iterable[NestedEntry], *, error_cls: type[Exception], 
     ordered = sorted(entries, key=lambda entry: entry.key.count(NESTED_KEY_DELIMITER))
     target: dict[str, object] = {}
     origins: dict[tuple[str, ...], str] = {}
+    index = _CaseIndex()
     for entry in ordered:
         parts = entry.key.split(NESTED_KEY_DELIMITER)
         try:
-            assign_nested(target, entry.key, entry.value, error_cls=_ScalarBelowError)
+            _assign_parts(target, parts, entry.value, index=index, error_cls=_ScalarBelowError)
         except _ScalarBelowError:
             raise error_cls(where + _collision_message(target, parts, entry.label, origins)) from None
         origins[tuple(part.lower() for part in parts)] = entry.label
@@ -132,12 +133,65 @@ def assign_nested(
         >>> data
         {'service': {'token': 'secret'}}
     """
-    parts = key.split(NESTED_KEY_DELIMITER)
+    _assign_parts(target, key.split(NESTED_KEY_DELIMITER), value, index=_CaseIndex(), error_cls=error_cls)
+
+
+class _CaseIndex:
+    """Lowercase-to-stored key index per table, so a case-insensitive lookup is one dict probe.
+
+    Matching each new key against every key already in its table made N siblings cost N*N/2
+    comparisons (30,000 keys: about 10 s). A table's index is built on first use, so a table that
+    arrived as a JSON value is indexed too, and the first spelling of a key wins, as with
+    :func:`resolve_key`. Each entry holds its table, which keeps that table's ``id`` from being
+    reused by a later dict while the index is alive. Valid only while the tables change through
+    :meth:`store`.
+    """
+
+    def __init__(self) -> None:
+        self._tables: dict[int, tuple[dict[str, object], dict[str, str]]] = {}
+
+    def resolve(self, table: dict[str, object], key: str) -> str:
+        """Return the stored key matching *key* case-insensitively, or its lowercase form."""
+        lower = key.lower()
+        return self._index_of(table).get(lower, lower)
+
+    def store(self, table: dict[str, object], key: str, value: object) -> None:
+        """Set ``table[key]`` and record *key* under its lowercase form."""
+        table[key] = value
+        self._index_of(table).setdefault(key.lower(), key)
+
+    def _index_of(self, table: dict[str, object]) -> dict[str, str]:
+        entry = self._tables.get(id(table))
+        if entry is None:
+            index: dict[str, str] = {}
+            for existing in table:
+                index.setdefault(existing.lower(), existing)
+            entry = (table, index)
+            self._tables[id(table)] = entry
+        return entry[1]
+
+
+def _assign_parts(
+    target: dict[str, object], parts: list[str], value: object, *, index: _CaseIndex, error_cls: type[Exception]
+) -> None:
+    """Place *value* at the path *parts* names, creating tables on the way; see :func:`assign_nested`."""
     cursor = target
     for part in parts[:-1]:
-        cursor = ensure_child_mapping(cursor, part, error_cls=error_cls)
-    final_key = resolve_key(cursor, parts[-1])
-    cursor[final_key] = value
+        cursor = _child_table(cursor, part, index=index, error_cls=error_cls)
+    index.store(cursor, index.resolve(cursor, parts[-1]), value)
+
+
+def _child_table(
+    mapping: dict[str, object], key: str, *, index: _CaseIndex, error_cls: type[Exception]
+) -> dict[str, object]:
+    """Return the table at *key*, creating it when missing; see :func:`ensure_child_mapping`."""
+    resolved = index.resolve(mapping, key)
+    if resolved not in mapping:
+        index.store(mapping, resolved, dict[str, object]())
+    child = mapping[resolved]
+    if not isinstance(child, dict):
+        raise error_cls(f"Cannot override scalar with mapping for key {key}")
+    return cast("dict[str, object]", child)
 
 
 def resolve_key(mapping: dict[str, object], key: str) -> str:
@@ -194,15 +248,7 @@ def ensure_child_mapping(
         >>> target
         {'service': {}}
     """
-    resolved = resolve_key(mapping, key)
-    if resolved not in mapping:
-        mapping[resolved] = dict[str, object]()
-    child = mapping[resolved]
-    if not isinstance(child, dict):
-        raise error_cls(f"Cannot override scalar with mapping for key {key}")
-    typed_child = cast("dict[str, object]", child)
-    mapping[resolved] = typed_child
-    return typed_child
+    return _child_table(mapping, key, index=_CaseIndex(), error_cls=error_cls)
 
 
 __all__ = [

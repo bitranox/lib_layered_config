@@ -50,6 +50,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   loader's message. Before, the source was parsed only while reading the configured permission
   modes: that refusal suggested giving both modes, and explicit modes or `--no-permissions` then
   installed the broken file.
+- Many keys in one `.env` file or environment, and many tables or lists a later layer replaces, are
+  handled in time linear in their number. Each new key used to be compared with every key already in
+  its table, and each replaced container scanned every provenance entry, so the cost grew with the
+  square: a `.env` file of 20,000 lines took about 4 seconds to load (now 0.04 s), and 16,000 tables
+  replaced by a later layer took about 4 seconds to merge (now 0.13 s). Results are unchanged; a key
+  given in several cases still keeps its first spelling.
 
 ### Added
 - `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what
