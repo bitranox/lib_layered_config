@@ -4,6 +4,7 @@ import importlib.util
 import json
 import logging
 import sys
+import tracemalloc
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -255,3 +256,31 @@ def _write(path: Path, text: str, *, encoding: str = "utf-8") -> Path:
 
     path.write_text(text, encoding=encoding)
     return path
+
+
+@os_agnostic
+@pytest.mark.parametrize("size", [4, 256 * 1024], ids=["tiny", "256k"])
+def test_a_capped_read_allocates_about_what_the_file_holds(tmp_path: Path, size: int) -> None:
+    # Asking the stream for cap + 1 bytes made CPython allocate the whole 10 MiB cap for every
+    # file, a 4-byte .env included; the read must grow with the file, not with the cap.
+    target = tmp_path / "config.toml"
+    target.write_bytes(b"#" * size)
+
+    tracemalloc.start()
+    try:
+        content = structured_module.read_capped_bytes(target)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert len(content) == size
+    assert peak < 3 * size + 256 * 1024, peak
+
+
+@os_agnostic
+def test_a_capped_read_still_refuses_a_file_one_byte_over_the_cap(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_bytes(b"#" * (structured_module.MAX_CONFIG_FILE_BYTES + 1))
+
+    with pytest.raises(InvalidFormatError, match="-byte limit"):
+        structured_module.read_capped_bytes(target)

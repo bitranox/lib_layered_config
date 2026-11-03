@@ -50,6 +50,7 @@ from ._yaml_facade import as_yaml_module, compose_document
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
     from ._yaml_facade import YAMLModule, YAMLNode
 
@@ -75,6 +76,10 @@ __all__ = [
 #: generous 10 MiB ceiling bounds memory so an oversized or adversarial file (including
 #: one dropped into a ``.d`` directory) cannot exhaust memory during a read.
 MAX_CONFIG_FILE_BYTES: Final[int] = 10 * 1024 * 1024
+
+# How much a capped read asks for at a time past the first read. Asking for the whole cap at once
+# made CPython allocate all 10 MiB for every file, a 4-byte .env included.
+_READ_CHUNK_BYTES: Final[int] = 64 * 1024
 
 #: Most values a YAML document may expand to through its aliases. A configuration file holds
 #: hundreds of values; a million leaves room for heavy legitimate aliasing while stopping an alias
@@ -480,10 +485,29 @@ def read_capped_bytes(path: Path) -> bytes:
     """
     with path.open("rb") as stream:
         opened = os.fstat(stream.fileno())
-        ensure_within_size_cap(str(path), opened.st_size if stat.S_ISREG(opened.st_mode) else 0)
-        payload = stream.read(MAX_CONFIG_FILE_BYTES + 1)
+        regular = stat.S_ISREG(opened.st_mode)
+        ensure_within_size_cap(str(path), opened.st_size if regular else 0)
+        # A regular file is asked for its size plus one byte, which ends at EOF in one read; a file
+        # that grew since the fstat, and every stream, go on a chunk at a time up to the cap plus one.
+        first = opened.st_size + 1 if regular else _READ_CHUNK_BYTES
+        payload = _read_at_most(stream, MAX_CONFIG_FILE_BYTES + 1, first=first)
     ensure_within_size_cap(str(path), len(payload))
     return payload
+
+
+def _read_at_most(stream: BinaryIO, limit: int, *, first: int) -> bytes:
+    """Read until end of file or *limit* bytes, asking for *first* bytes and then a chunk at a time."""
+    parts: list[bytes] = []
+    total = 0
+    want = min(first, limit)
+    while total < limit:
+        chunk = stream.read(want)
+        if not chunk:
+            break
+        parts.append(chunk)
+        total += len(chunk)
+        want = min(_READ_CHUNK_BYTES, limit - total)
+    return b"".join(parts)
 
 
 class BaseFileLoader:
@@ -527,8 +551,9 @@ class BaseFileLoader:
         if checked_kind(file_path) is not PathKind.FILE:
             raise NotFoundError(f"Configuration file not found: {path}")
         try:
-            ensure_within_size_cap(path, file_path.stat().st_size)
-            payload = file_path.read_bytes()
+            # One read path for the cap: sized from the open file, then read at most one byte past it,
+            # so a file that grows after a stat() cannot slip a larger read through.
+            payload = read_capped_bytes(file_path)
         except OSError as error:
             raise config_path_unreadable(file_path, error) from error
         _log_file_read(path, len(payload))

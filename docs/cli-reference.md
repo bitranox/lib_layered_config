@@ -416,6 +416,12 @@ Writing through the link would change the file it points at, and replacing it wo
 on purpose. Remove the link, or deploy its target yourself. Every linked destination is named, one per
 line. A linked parent directory (`~/.config` itself a link) is followed as usual.
 
+A destination that exists but is not a regular file (a directory, FIFO, device or socket) is refused
+the same way, with `is not a regular file; deploy writes only regular files`.
+
+Deploy copies and compares files a chunk at a time, so a large file in the `.d` directory costs no more
+memory than a small one.
+
 ---
 
 ### Decision Flow Diagram

@@ -14,9 +14,9 @@ Contents:
     - Conflict handling (``_handle_conflict`` / ``_execute_action``): backup-and-overwrite
       (``force``), keep-and-write-``.ucf`` (``batch``), or an interactive resolver, with
       identical-content smart-skip.
-    - Permission helpers (``_copy_payload`` / ``_write_ucf`` / ``_write_bytes``): write via
-      an owner-only temp file then apply the layer's ``LayerModes``, so secrets are never
-      briefly world-readable.
+    - Write helpers (``_copy_file`` / ``_write_ucf`` / ``_write_from``): stream the source in
+      chunks, so memory does not grow with the file; with modes, write via an owner-only temp
+      file then apply the layer's ``LayerModes``, so secrets are never briefly world-readable.
 
 System Role:
     Invoked by ``cli/deploy.py`` (and re-exported from the package root as
@@ -87,6 +87,10 @@ _DEPLOY_ANYWAY_HINT = (
 
 #: Why a linked destination is refused; the path comes first.
 _LINK_REFUSAL = "is a symbolic link; deploy neither writes through nor replaces one"
+#: Why a FIFO, device, socket or directory at a destination is refused; reading a FIFO would block.
+_NOT_REGULAR_REFUSAL = "is not a regular file; deploy writes only regular files"
+#: How much of a file deploy holds at a time while copying or comparing it.
+_CHUNK_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,7 +254,7 @@ def _backup_file(path: Path) -> Path:
     return backup
 
 
-def _write_ucf(destination: Path, payload: bytes, *, modes: LayerModes | None) -> Path:
+def _write_ucf(destination: Path, source: Path, *, modes: LayerModes | None) -> Path:
     """Write new config as .ucf variant (numbered suffix if needed), hardened like the primary file.
 
     The .ucf sidecar can hold the same secrets as the primary file, so it gets the
@@ -259,7 +263,7 @@ def _write_ucf(destination: Path, payload: bytes, *, modes: LayerModes | None) -
 
     Args:
         destination: Original destination path.
-        payload: File content to write.
+        source: The file whose content is written.
         modes: The directory and file mode to set, or None to leave permissions to the umask.
 
     Returns:
@@ -269,18 +273,18 @@ def _write_ucf(destination: Path, payload: bytes, *, modes: LayerModes | None) -
     ucf_path.parent.mkdir(parents=True, exist_ok=True)
     if modes is not None:
         apply_mode(ucf_path.parent, modes.directory)
-    _write_bytes(ucf_path, payload, restrict=modes is not None)
+    _write_from(ucf_path, source, restrict=modes is not None)
     if modes is not None:
         apply_mode(ucf_path, modes.file)
     return ucf_path
 
 
-def _content_matches(destination: Path, payload: bytes) -> bool:
-    """Check if the destination file has the same content as the payload.
+def _content_matches(destination: Path, source: Path) -> bool:
+    """Check if the destination file has the same content as *source*, a chunk at a time.
 
     Args:
         destination: Path to the existing file.
-        payload: New content to compare against.
+        source: The file deploy would write there.
 
     Returns:
         True if the file exists and has identical content, False otherwise.
@@ -288,9 +292,22 @@ def _content_matches(destination: Path, payload: bytes) -> bool:
     if kind_or_raise(destination) is PathKind.MISSING:
         return False
     try:
-        return destination.read_bytes() == payload
+        return _same_content(source, destination)
     except OSError:
         return False
+
+
+def _same_content(first: Path, second: Path) -> bool:
+    """Whether two regular files hold the same bytes, read :data:`_CHUNK_BYTES` at a time."""
+    if first.stat().st_size != second.stat().st_size:
+        return False
+    with first.open("rb") as one, second.open("rb") as other:
+        while True:
+            chunk = one.read(_CHUNK_BYTES)
+            if chunk != other.read(_CHUNK_BYTES):
+                return False
+            if not chunk:
+                return True
 
 
 def _validate_target(target: str) -> Layer:
@@ -413,18 +430,29 @@ def _paths_written(destinations: Sequence[_Destination], *, dot_d_files: Sequenc
     return frozenset(path.resolve() for path in _destination_files(destinations, dot_d_files=dot_d_files))
 
 
-def _refuse_linked_destinations(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> None:
-    """Refuse every destination that is a symbolic link, before anything is written.
+def _refuse_unusable_destinations(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> None:
+    """Refuse every destination that is a symbolic link or not a regular file, before anything is written.
 
     Writing through a link changes the file it points at (with modes left to the umask the write
-    followed it), and replacing it breaks a link someone made on purpose; deploy does neither.
+    followed it), and replacing it breaks a link someone made on purpose; deploy does neither. A
+    FIFO would block the comparison forever, and a device, socket or directory cannot be a config.
 
     Raises:
-        DeployDestinationError: One line per linked destination, ``.d`` copies included.
+        DeployDestinationError: One line per refused destination, ``.d`` copies included.
     """
-    linked = [path for path in _destination_files(destinations, dot_d_files=dot_d_files) if is_symlink_or_raise(path)]
-    if linked:
-        raise DeployDestinationError("\n".join(f"{path} {_LINK_REFUSAL}" for path in linked))
+    files = _destination_files(destinations, dot_d_files=dot_d_files)
+    problems = [problem for problem in map(_destination_problem, files) if problem is not None]
+    if problems:
+        raise DeployDestinationError("\n".join(problems))
+
+
+def _destination_problem(path: Path) -> str | None:
+    """Why *path* cannot be deployed to, or ``None`` when it is missing or a regular file."""
+    if is_symlink_or_raise(path):
+        return f"{path} {_LINK_REFUSAL}"
+    if kind_or_raise(path) in (PathKind.MISSING, PathKind.FILE):
+        return None
+    return f"{path} {_NOT_REGULAR_REFUSAL}"
 
 
 def _describe_load_failure(exc: Exception) -> str:
@@ -618,7 +646,6 @@ def _deploy_to_destination(
     *,
     destination: Path,
     source_path: Path,
-    payload: bytes,
     dot_d_files: list[Path],
     source_dot_d: Path,
     force: bool,
@@ -630,8 +657,7 @@ def _deploy_to_destination(
 
     Args:
         destination: Target file path.
-        source_path: Original source file path (for skip detection).
-        payload: File content to write.
+        source_path: The source file, copied to *destination* (and compared for skip detection).
         dot_d_files: List of .d directory source files.
         source_dot_d: Source .d directory path.
         force: If True, backup and overwrite.
@@ -647,7 +673,7 @@ def _deploy_to_destination(
 
     result = _deploy_single(
         destination=destination,
-        payload=payload,
+        source=source_path,
         force=force,
         batch=batch,
         conflict_resolver=conflict_resolver,
@@ -756,9 +782,9 @@ def deploy_config(
         DeployPermissionsError: The configuration cannot be loaded, its permission section is
             invalid, a permission_overrides value is refused, or permission_overrides came with
             permissions; nothing has been written.
-        DeployDestinationError: A destination or one of its ``.d`` copies is a symbolic link,
-            dangling or not; deploy neither writes through it nor replaces it, and nothing has been
-            written.
+        DeployDestinationError: A destination or one of its ``.d`` copies is a symbolic link
+            (dangling or not) or not a regular file (a directory, FIFO, device or socket); nothing
+            has been written.
     """
     request = _mode_request(
         set_permissions=set_permissions,
@@ -785,7 +811,7 @@ def deploy_config(
     # Materialised up front: the self-read must know every path this call writes, and an invalid
     # target is now refused before anything is written.
     destinations = list(_destinations_for(resolver, targets))
-    _refuse_linked_destinations(destinations, dot_d_files=dot_d_files)
+    _refuse_unusable_destinations(destinations, dot_d_files=dot_d_files)
     settings = _permission_settings(
         request,
         load=lambda: _load_configured_permissions(
@@ -795,7 +821,9 @@ def deploy_config(
             overrides=request.overrides,
         ),
     )
-    payload = source_path.read_bytes()
+    # Opened, never read whole: an unreadable source is refused here, before anything is written.
+    with source_path.open("rb"):
+        pass
     results: list[DeployResult] = []
 
     for destination in destinations:
@@ -809,7 +837,6 @@ def deploy_config(
         result = _deploy_to_destination(
             destination=destination.path,
             source_path=source_path,
-            payload=payload,
             dot_d_files=dot_d_files,
             source_dot_d=source_dot_d,
             force=force,
@@ -970,10 +997,9 @@ def _deploy_dot_d_files(
         if dest_file.resolve() == source_file.resolve():
             continue
 
-        payload = source_file.read_bytes()
         result = _deploy_single(
             destination=dest_file,
-            payload=payload,
+            source=source_file,
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
@@ -986,7 +1012,7 @@ def _deploy_dot_d_files(
 
 def _handle_conflict(
     destination: Path,
-    payload: bytes,
+    source: Path,
     *,
     force: bool,
     batch: bool,
@@ -997,7 +1023,7 @@ def _handle_conflict(
 
     Args:
         destination: Target file path.
-        payload: File content to write.
+        source: The file whose content is written.
         force: If True, backup and overwrite.
         batch: If True, keep existing and write as .ucf.
         conflict_resolver: Callback for interactive conflict resolution.
@@ -1017,34 +1043,34 @@ def _handle_conflict(
     else:
         return DeployResult(destination=destination, action=DeployAction.SKIPPED)
 
-    return _execute_action(destination, payload, action, modes=modes)
+    return _execute_action(destination, source, action, modes=modes)
 
 
 def _deploy_single(
     *,
     destination: Path,
-    payload: bytes,
+    source: Path,
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
     modes: LayerModes | None,
 ) -> DeployResult:
-    """Deploy to a single destination with conflict handling."""
+    """Deploy *source* to a single destination with conflict handling."""
     if kind_or_raise(destination) is PathKind.MISSING:
-        _copy_payload(destination, payload, modes=modes)
+        _copy_file(destination, source, modes=modes)
         return DeployResult(destination=destination, action=DeployAction.CREATED)
 
-    if _content_matches(destination, payload):
+    if _content_matches(destination, source):
         return DeployResult(destination=destination, action=DeployAction.SKIPPED)
 
     return _handle_conflict(
-        destination, payload, force=force, batch=batch, conflict_resolver=conflict_resolver, modes=modes
+        destination, source, force=force, batch=batch, conflict_resolver=conflict_resolver, modes=modes
     )
 
 
 def _execute_action(
     destination: Path,
-    payload: bytes,
+    source: Path,
     action: DeployAction,
     *,
     modes: LayerModes | None,
@@ -1052,10 +1078,10 @@ def _execute_action(
     """Execute the chosen action for a conflict."""
     if action == DeployAction.OVERWRITTEN:
         # Smart skip if content is identical
-        if _content_matches(destination, payload):
+        if _content_matches(destination, source):
             return DeployResult(destination=destination, action=DeployAction.SKIPPED)
         backup_path = _backup_file(destination)
-        _copy_payload(destination, payload, modes=modes)
+        _copy_file(destination, source, modes=modes)
         return DeployResult(
             destination=destination,
             action=DeployAction.OVERWRITTEN,
@@ -1064,9 +1090,9 @@ def _execute_action(
 
     if action == DeployAction.KEPT:
         # Smart skip if content is identical (no need for UCF)
-        if _content_matches(destination, payload):
+        if _content_matches(destination, source):
             return DeployResult(destination=destination, action=DeployAction.SKIPPED)
-        ucf_path = _write_ucf(destination, payload, modes=modes)
+        ucf_path = _write_ucf(destination, source, modes=modes)
         return DeployResult(
             destination=destination,
             action=DeployAction.KEPT,
@@ -1139,33 +1165,36 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
         yield _Destination(_strategy_for(resolver).destination_for(layer), layer)
 
 
-def _copy_payload(destination: Path, payload: bytes, *, modes: LayerModes | None) -> None:
-    """Copy payload to destination; with *modes*, harden the directory and then the file."""
+def _copy_file(destination: Path, source: Path, *, modes: LayerModes | None) -> None:
+    """Copy *source* to destination; with *modes*, harden the directory and then the file."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     if modes is not None:
         apply_mode(destination.parent, modes.directory)
-    _write_bytes(destination, payload, restrict=modes is not None)
+    _write_from(destination, source, restrict=modes is not None)
     if modes is not None:
         apply_mode(destination, modes.file)
 
 
-def _write_bytes(path: Path, payload: bytes, *, restrict: bool = False) -> None:
-    """Write *payload* to *path*.
+def _write_from(path: Path, source: Path, *, restrict: bool = False) -> None:
+    """Write the content of *source* to *path*, :data:`_CHUNK_BYTES` at a time.
 
-    With ``restrict`` (used whenever permissions will be tightened), the payload is
+    With ``restrict`` (used whenever permissions will be tightened), the content is
     written to an owner-only temp file (``mkstemp`` creates it ``0o600``) in the same
     directory and then atomically renamed into place. This closes the TOCTOU window in
     which a secret could be world-readable between a plain create and the follow-up
     chmod - the destination is only ever the old file or the fully-written 0o600 file.
+    Without it the file is rewritten in place, so an existing one keeps its owner and mode;
+    *source* is opened first, so an unreadable one leaves *path* untouched.
     """
     if not restrict:
-        path.write_bytes(payload)
+        with source.open("rb") as reader, path.open("wb") as writer:
+            shutil.copyfileobj(reader, writer, _CHUNK_BYTES)
         return
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     tmp_path = Path(tmp_name)
     try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
+        with os.fdopen(fd, "wb") as handle, source.open("rb") as reader:
+            shutil.copyfileobj(reader, handle, _CHUNK_BYTES)
         tmp_path.replace(path)
     except BaseException:
         tmp_path.unlink(missing_ok=True)

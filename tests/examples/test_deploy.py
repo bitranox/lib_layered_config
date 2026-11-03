@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import os
 import socket
+import sys
+import threading
+import tracemalloc
 from pathlib import Path
 from textwrap import dedent
 
@@ -24,7 +29,7 @@ _validate_target = deploy_module._validate_target  # pyright: ignore[reportPriva
 _strategy_for = deploy_module._strategy_for  # pyright: ignore[reportPrivateUsage] - pins which layout each platform string selects
 _destinations_for = deploy_module._destinations_for  # pyright: ignore[reportPrivateUsage] - pins the layer carried by each destination
 _prepare_resolver = deploy_module._prepare_resolver  # pyright: ignore[reportPrivateUsage] - pins the resolver built from the platform and profile overrides
-_copy_payload = deploy_module._copy_payload  # pyright: ignore[reportPrivateUsage] - pins the payload write primitive on its own
+_copy_file = deploy_module._copy_file  # pyright: ignore[reportPrivateUsage] - pins the file write primitive on its own
 _next_available_path = deploy_module._next_available_path  # pyright: ignore[reportPrivateUsage] - pins the sidecar numbering on its own
 _Sidecar = deploy_module._Sidecar  # pyright: ignore[reportPrivateUsage] - the sidecar kind _next_available_path takes
 _backup_file = deploy_module._backup_file  # pyright: ignore[reportPrivateUsage] - pins the backup copy on its own
@@ -64,6 +69,13 @@ def _deploy(
         batch=batch,
         platform=platform,
     )
+
+
+def _source_holding(tmp_path: Path, payload: bytes) -> Path:
+    """A source file holding *payload*, for the write helpers that copy from a path."""
+    source = tmp_path / "payload.src"
+    source.write_bytes(payload)
+    return source
 
 
 def _created_paths(results: list[DeployResult]) -> list[Path]:
@@ -406,11 +418,11 @@ def test_deploy_windows_falls_back_to_localappdata_when_roaming_missing(
 
 
 @os_agnostic
-def test_copy_payload_creates_parent_directories(tmp_path: Path) -> None:
+def test_copy_file_creates_parent_directories(tmp_path: Path) -> None:
     payload = b"echo"
     destination = tmp_path / "nested" / "config.toml"
 
-    _copy_payload(destination, payload, modes=None)
+    _copy_file(destination, _source_holding(tmp_path, payload), modes=None)
 
     assert destination.read_bytes() == payload
 
@@ -665,7 +677,7 @@ def test_write_ucf_creates_ucf_file(tmp_path: Path) -> None:
     destination.write_text("existing content", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = _write_ucf(destination, payload, modes=None)
+    ucf_path = _write_ucf(destination, _source_holding(tmp_path, payload), modes=None)
 
     assert ucf_path == tmp_path / "config.toml.ucf"
     assert ucf_path.read_bytes() == payload
@@ -679,7 +691,7 @@ def test_write_ucf_uses_numbered_suffix_when_ucf_exists(tmp_path: Path) -> None:
     existing_ucf.write_text("old ucf", encoding="utf-8")
     payload = b"new content"
 
-    ucf_path = _write_ucf(destination, payload, modes=None)
+    ucf_path = _write_ucf(destination, _source_holding(tmp_path, payload), modes=None)
 
     assert ucf_path == tmp_path / "config.toml.ucf.1"
     assert ucf_path.read_bytes() == payload
@@ -691,7 +703,9 @@ def test_write_ucf_applies_user_layer_permissions(tmp_path: Path) -> None:
     destination = tmp_path / "config.toml"
     payload = b"secret_token = 'abc'"
 
-    ucf_path = _write_ucf(destination, payload, modes=DeployPermissions.defaults().for_layer(Layer.USER))
+    ucf_path = _write_ucf(
+        destination, _source_holding(tmp_path, payload), modes=DeployPermissions.defaults().for_layer(Layer.USER)
+    )
 
     assert (ucf_path.stat().st_mode & 0o777) == 0o600
 
@@ -1195,3 +1209,129 @@ def test_a_backup_never_writes_through_a_dangling_link(tmp_path: Path) -> None:
 
     assert (backup.name, target.exists()) == ("config.toml.bak.1", False)
     assert _read(backup) == "old = 1\n"
+
+
+def _peak_python_memory_of_deploying_a_dot_d_file(tmp_path: Path, size: int, *, set_permissions: bool) -> int:
+    """Deploy a source whose .d holds one *size*-byte file, then deploy it again unchanged.
+
+    The first deploy copies the file, the second compares it and skips it; the peak Python
+    allocation over both is returned.
+    """
+    root = tmp_path / f"size-{size}"
+    (root / "source.d").mkdir(parents=True)
+    source = root / "source.toml"
+    _write_payload(source)
+    asset = root / "source.d" / "asset.bin"
+    asset.write_bytes(os.urandom(1024) * (size // 1024))
+    deploy = functools.partial(
+        deploy_config, source, vendor=VENDOR, app=APP, targets=["user"], slug=SLUG, set_permissions=set_permissions
+    )
+    tracemalloc.start()
+    try:
+        deploy()
+        again = deploy(batch=True)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert [r.action for r in again[0].dot_d_results] == [DeployAction.SKIPPED]
+    copied = again[0].dot_d_results[0].destination
+    assert copied.read_bytes() == asset.read_bytes()
+    return peak
+
+
+@os_agnostic
+@pytest.mark.parametrize("set_permissions", [True, False], ids=["permissions", "no-permissions"])
+def test_deploy_copies_a_large_dot_d_file_without_holding_it_in_memory(
+    sandbox: LayeredSandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, set_permissions: bool
+) -> None:
+    del sandbox  # only its environment matters: every deploy below lands inside tmp_path
+    mib = 1024 * 1024
+    peaks: list[int] = []
+    for index, size in enumerate((4 * mib, 16 * mib)):
+        # A fresh user root per size, so each first deploy creates rather than compares.
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "home" / str(index)))
+        peaks.append(_peak_python_memory_of_deploying_a_dot_d_file(tmp_path, size, set_permissions=set_permissions))
+
+    # Held whole, the 16 MiB file alone would put the peak above 16 MiB; streamed, it stays flat.
+    assert max(peaks) < 2 * mib, peaks
+    assert peaks[1] - peaks[0] < mib, peaks
+
+
+@os_agnostic
+def test_deploy_compares_past_the_first_chunk(sandbox: LayeredSandbox, tmp_path: Path) -> None:
+    source = tmp_path / "source.toml"
+    body = "# " + "x" * (300 * 1024) + "\n"
+    source.write_text(body + "flag = 1\n", encoding="utf-8")
+    destination = _path_for(sandbox, "user")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(body + "flag = 2\n", encoding="utf-8")  # same size, differs at the end
+
+    results = _deploy(sandbox, source, targets=["user"], batch=True)
+
+    assert results[0].action == DeployAction.KEPT
+
+
+@os_agnostic
+def test_deploy_refuses_a_directory_at_the_destination(sandbox: LayeredSandbox, source_config: Path) -> None:
+    destination = _path_for(sandbox, "user")
+    destination.mkdir(parents=True)
+
+    with pytest.raises(DeployDestinationError) as caught:
+        _deploy(sandbox, source_config, targets=["user"], force=True)
+
+    assert str(caught.value) == f"{destination} is not a regular file; deploy writes only regular files"
+    assert sorted(p.name for p in destination.parent.iterdir()) == ["config.toml"]
+
+
+@posix_only
+def test_deploy_refuses_a_fifo_at_the_destination_instead_of_blocking(
+    sandbox: LayeredSandbox, source_config: Path
+) -> None:
+    if sys.platform == "win32":  # narrows os.mkfifo for the type checker; posix_only already skips here
+        return
+    destination = _path_for(sandbox, "user")
+    destination.parent.mkdir(parents=True)
+    os.mkfifo(destination)
+    # If deploy regresses to reading the FIFO, every read blocks until a writer comes and goes; this
+    # thread plays that writer once a second, so the test fails instead of hanging. With no reader
+    # waiting, its open just fails.
+    done = threading.Event()
+    unblocker = threading.Thread(target=_unblock_fifo_readers, args=(destination, done), daemon=True)
+    unblocker.start()
+    try:
+        with pytest.raises(DeployDestinationError, match="is not a regular file"):
+            _deploy(sandbox, source_config, targets=["user"], batch=True)
+    finally:
+        done.set()
+        unblocker.join()
+
+
+def _unblock_fifo_readers(fifo: Path, done: threading.Event) -> None:
+    """Open and close a FIFO's write end once a second until *done*, giving each waiting reader EOF."""
+    while not done.wait(1.0):
+        _open_and_close_writer(fifo)
+
+
+def _open_and_close_writer(fifo: Path) -> None:
+    """One writer visit; with no reader waiting the non-blocking open fails and nothing happens."""
+    if sys.platform == "win32":  # no FIFOs there; narrows os.O_NONBLOCK for the type checker
+        return
+    with contextlib.suppress(OSError):
+        os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+
+
+@posix_only
+def test_deploy_refuses_an_unreadable_source_before_creating_anything(
+    sandbox: LayeredSandbox, source_config: Path
+) -> None:
+    if sys.platform == "win32" or os.geteuid() == 0:  # narrows os.geteuid; root reads through the wall
+        pytest.skip("root reads a file whatever its mode")
+    source_config.chmod(0)
+    destination = _path_for(sandbox, "user")
+    try:
+        with pytest.raises(PermissionError):
+            deploy_config(source_config, vendor=VENDOR, app=APP, targets=["user"], slug=SLUG, set_permissions=False)
+    finally:
+        source_config.chmod(0o600)
+
+    assert not destination.parent.exists()

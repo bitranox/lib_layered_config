@@ -14,6 +14,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   overwrote the file it pointed at, while with permissions on the link was replaced by a regular file. A
   dangling link at `config.toml.bak` or `.ucf` counted as a free name, so the backup was written through
   it; any existing name now counts as taken.
+- `deploy` refuses a destination that is not a regular file (a directory, FIFO, device or socket) the
+  same way: `"<path> is not a regular file; deploy writes only regular files"`. A FIFO there made deploy
+  block forever while comparing contents.
+
+### Changed
+- `deploy` copies and compares every file a chunk at a time, so its memory no longer grows with file
+  size: a 200 MiB file in the source's `.d` directory deployed at 231 MB peak RSS and now at 28 MB, the
+  same as a small one (measured with the CLI). With permissions off a file is still rewritten in place,
+  keeping its owner and mode.
+- Reading a configuration or `.env` file no longer allocates the whole 10 MiB size cap: a 4-byte `.env`
+  took 10.6 MB transiently, now about its own size. The structured loaders read through the same capped
+  reader as `.env` files, so a file that grows after its size was checked cannot pass the cap.
 
 ### Added
 - Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal

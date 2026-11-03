@@ -8,7 +8,7 @@ Contents:
     - ``ConfigError``: base class for every library-specific exception.
     - ``InvalidFormatError``: raised when structured configuration cannot be parsed.
     - ``ValidationError``: an identifier, platform or deploy argument was refused.
-    - ``DeployDestinationError``: a deploy destination is a symbolic link.
+    - ``DeployDestinationError``: a deploy destination is a symbolic link or not a regular file.
     - ``NotFoundError``: indicates optional configuration sources were absent.
 
 System Role:
@@ -54,10 +54,11 @@ class ValidationError(ConfigError, ValueError):
 
 
 class DeployDestinationError(ValidationError):
-    """Raised when a file deploy would write is a symbolic link, dangling or not.
+    """Raised when a file deploy would write is a symbolic link (dangling or not) or not a regular file.
 
     Deploy neither writes through a link (which would change the file it points at) nor replaces
-    it, so every such destination is refused, one line each, before anything is written. A
+    it, and it writes only regular files (reading a FIFO there would block), so every such
+    destination is refused, one line each, before anything is written. A
     :class:`ValidationError`, so ``except ValidationError`` still catches every deploy refusal.
     """
 
