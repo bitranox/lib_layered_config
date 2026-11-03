@@ -6,6 +6,9 @@ prove the adapter continues to match the documented environment rules.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import TypeGuard
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -14,11 +17,25 @@ from lib_layered_config.adapters._nested_keys import assign_nested
 from lib_layered_config.adapters._value_coercion import coerce_value, parse_number
 from lib_layered_config.adapters.env.default import (
     DefaultEnvLoader,
-    _iter_namespace_entries,
-    _normalize_prefix,
+    _iter_namespace_entries,  # pyright: ignore[reportPrivateUsage] - unit test of the namespace iterator's empty-suffix rule
+    _normalize_prefix,  # pyright: ignore[reportPrivateUsage] - unit test of the prefix normaliser's idempotence
     default_env_prefix,
 )
 from tests.support.os_markers import os_agnostic
+
+
+def _is_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _section(payload: Mapping[str, object], key: str) -> Mapping[str, object]:
+    value = payload[key]
+    assert _is_mapping(value)
+    return value
 
 
 @os_agnostic
@@ -40,19 +57,19 @@ def _sample_payload() -> dict[str, object]:
 @os_agnostic
 def test_env_loader_preserves_host_strings() -> None:
     data = _sample_payload()
-    assert data["db"]["host"] == "db.example.com"
+    assert _section(data, "db")["host"] == "db.example.com"
 
 
 @os_agnostic
 def test_env_loader_coerces_numbers_into_ints() -> None:
     data = _sample_payload()
-    assert data["db"]["port"] == 5432
+    assert _section(data, "db")["port"] == 5432
 
 
 @os_agnostic
 def test_env_loader_turns_true_into_boolean() -> None:
     data = _sample_payload()
-    assert data["feature"]["enabled"] is True
+    assert _section(data, "feature")["enabled"] is True
 
 
 @os_agnostic
@@ -68,7 +85,7 @@ NAMESPACE_KEYS = st.sampled_from(["SERVICE__TIMEOUT", "SERVICE__ENDPOINT", "LOGG
 
 @os_agnostic
 @given(st.dictionaries(NAMESPACE_KEYS, SCALAR_VALUES, max_size=3))
-def test_env_loader_handles_random_namespace(entries) -> None:
+def test_env_loader_handles_random_namespace(entries: dict[str, str]) -> None:
     prefix = "DEMO"
     environ = {f"{prefix}___" + key: value for key, value in entries.items()}
     environ["IGNORED"] = "1"
@@ -85,10 +102,11 @@ def test_env_loader_handles_random_namespace(entries) -> None:
         number = parse_number(value)
         return value if number is None else number
 
-    def _lookup(root: dict[str, object], key: str) -> object:
+    def _lookup(root: Mapping[str, object], key: str) -> object:
         node: object = root
         for fragment in key.lower().split("__"):
-            node = node[fragment]  # type: ignore[index]
+            assert _is_mapping(node)
+            node = node[fragment]
         return node
 
     expectation = (
@@ -153,7 +171,7 @@ def test_coerce_leaves_plain_scalars_untouched() -> None:
 def test_env_loader_parses_json_array_value() -> None:
     environ = {"MYAPP___DATABASE__REPLICAS": '["replica1", "replica2"]'}
     payload = DefaultEnvLoader(environ=environ).load("MYAPP")
-    assert payload["database"]["replicas"] == ["replica1", "replica2"]
+    assert _section(payload, "database")["replicas"] == ["replica1", "replica2"]
 
 
 @os_agnostic
@@ -167,7 +185,7 @@ def test_coerce_parses_nested_json_containers() -> None:
 def test_env_loader_parses_nested_json_value() -> None:
     environ = {"MYAPP___SERVICE__ENDPOINTS": '[{"host": "a", "port": 1}, {"host": "b", "port": 2}]'}
     payload = DefaultEnvLoader(environ=environ).load("MYAPP")
-    assert payload["service"]["endpoints"] == [{"host": "a", "port": 1}, {"host": "b", "port": 2}]
+    assert _section(payload, "service")["endpoints"] == [{"host": "a", "port": 1}, {"host": "b", "port": 2}]
 
 
 @os_agnostic
@@ -175,7 +193,8 @@ def test_json_decoded_value_is_independent_between_loads() -> None:
     """The JSON codec allocates fresh objects, so mutating one load must not leak into the next."""
     environ = {"MYAPP___ITEMS": '["a", "b"]'}
     first = DefaultEnvLoader(environ=environ).load("MYAPP")
-    assert isinstance(first["items"], list)
-    first["items"].append("mutated")
+    items = first["items"]
+    assert _is_list(items)
+    items.append("mutated")
     second = DefaultEnvLoader(environ=environ).load("MYAPP")
     assert second["items"] == ["a", "b"]

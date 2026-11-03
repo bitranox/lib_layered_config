@@ -4,18 +4,21 @@ import importlib.util
 import json
 import logging
 import sys
-from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
 
 from lib_layered_config.adapters.file_loaders import structured as structured_module
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from lib_layered_config.domain.errors import InvalidFormatError, NotFoundError
-from tests.adapters.test_loader_errors import _chain
+from tests.adapters.test_loader_errors import (
+    _chain,  # pyright: ignore[reportPrivateUsage] - shared exception-chain walker, also imported by tests/e2e
+)
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 # Check installation with find_spec, not `structured_module.yaml`. That module global is
@@ -25,10 +28,34 @@ if TYPE_CHECKING:
 _YAML_INSTALLED = importlib.util.find_spec("yaml") is not None
 
 
+def _is_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(value, Mapping)
+
+
+def _section(payload: Mapping[str, object], key: str) -> Mapping[str, object]:
+    value = payload[key]
+    assert _is_mapping(value)
+    return value
+
+
+def _never_composed(*_args: object) -> object:
+    raise AssertionError("_parse_yaml_text never calls compose")
+
+
+class _FakeYAML:
+    """A ``YAMLModule`` double: ``_parse_yaml_text`` reads only ``safe_load`` and ``YAMLError``."""
+
+    def __init__(self, *, safe_load: Callable[[str], object], yaml_error: type[Exception]) -> None:
+        self.safe_load = safe_load
+        self.YAMLError = yaml_error
+        self.compose: Callable[..., object] = _never_composed
+        self.SafeLoader: type[object] = object
+
+
 @os_agnostic
 def test_toml_loader_recites_the_port_number(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.toml", "[db]\nport = 5432\n")
-    port = TOMLFileLoader().load(str(path))["db"]["port"]
+    port = _section(TOMLFileLoader().load(str(path)), "db")["port"]
     assert port == 5432
 
 
@@ -94,7 +121,7 @@ def test_yaml_loader_explains_when_dependency_is_missing(tmp_path: Path, monkeyp
 @os_agnostic
 def test_loader_mapping_guard_rejects_naked_scalars() -> None:
     with pytest.raises(InvalidFormatError):
-        structured_module.BaseFileLoader._ensure_mapping(7, path="demo.toml")
+        structured_module.BaseFileLoader._ensure_mapping(7, path="demo.toml")  # pyright: ignore[reportPrivateUsage] - unit test of the mapping guard on a bare scalar
 
 
 @pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML not available")
@@ -107,8 +134,11 @@ def test_yaml_loader_cries_out_on_illegal_syntax(tmp_path: Path) -> None:
 
 @os_agnostic
 def test_yaml_parser_returns_empty_dict_when_document_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_yaml = SimpleNamespace(safe_load=lambda _: None, YAMLError=Exception)
-    empty_mapping = structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")
+    def load_nothing(_: str) -> None:
+        return None
+
+    fake_yaml = _FakeYAML(safe_load=load_nothing, yaml_error=Exception)
+    empty_mapping = structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert empty_mapping == {}
 
 
@@ -117,12 +147,12 @@ def test_yaml_parser_wraps_yaml_errors_with_context(monkeypatch: pytest.MonkeyPa
     class BoomError(Exception):
         pass
 
-    def explode(_: bytes) -> None:
+    def explode(_: str) -> None:
         raise BoomError("boom")
 
-    fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=BoomError)
+    fake_yaml = _FakeYAML(safe_load=explode, yaml_error=BoomError)
     with pytest.raises(InvalidFormatError) as exc:
-        structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")
+        structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert "memory.yaml" in str(exc.value)
 
 
@@ -135,12 +165,12 @@ def test_yaml_parser_wraps_a_bare_value_error_as_invalid_format() -> None:
     class YAMLError(Exception):
         pass
 
-    def explode(_: bytes) -> None:
+    def explode(_: str) -> None:
         raise ValueError("month must be in 1..12, not 13")
 
-    fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=YAMLError)
+    fake_yaml = _FakeYAML(safe_load=explode, yaml_error=YAMLError)
     with pytest.raises(InvalidFormatError) as exc:
-        structured_module._parse_yaml_text("a: 2020-13-01", fake_yaml, "memory.yaml")
+        structured_module._parse_yaml_text("a: 2020-13-01", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     message = str(exc.value)
     assert message == "memory.yaml is not valid YAML"
     assert "13" not in message
@@ -154,12 +184,12 @@ def test_yaml_parser_reports_a_recursion_error_as_too_deep() -> None:
     class YAMLError(Exception):
         pass
 
-    def explode(_: bytes) -> None:
+    def explode(_: str) -> None:
         raise RecursionError("maximum recursion depth exceeded")
 
-    fake_yaml = SimpleNamespace(safe_load=explode, YAMLError=YAMLError)
+    fake_yaml = _FakeYAML(safe_load=explode, yaml_error=YAMLError)
     with pytest.raises(InvalidFormatError) as exc:
-        structured_module._parse_yaml_text("[[[[[[", fake_yaml, "memory.yaml")
+        structured_module._parse_yaml_text("[[[[[[", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert str(exc.value) == "memory.yaml nests deeper than the YAML parser allows"
 
 

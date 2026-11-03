@@ -83,13 +83,13 @@ def _isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _read(path: Path) -> None:
-    where = {"dotenv_path": path} if path.suffix == ".env" else {"default_file": path}
-    read_config(vendor="Probe", app="Probe", slug="decode-probe", **where)
+    _read_config(path)
 
 
 def _read_config(path: Path) -> Config:
-    where = {"dotenv_path": path} if path.suffix == ".env" else {"default_file": path}
-    return read_config(vendor="Probe", app="Probe", slug="decode-probe", **where)
+    if path.suffix == ".env":
+        return read_config(vendor="Probe", app="Probe", slug="decode-probe", dotenv_path=path)
+    return read_config(vendor="Probe", app="Probe", slug="decode-probe", default_file=path)
 
 
 @os_agnostic

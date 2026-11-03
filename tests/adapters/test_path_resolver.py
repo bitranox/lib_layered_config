@@ -21,7 +21,7 @@ from lib_layered_config.adapters.path_resolvers import (
     collect_layer,
 )
 from lib_layered_config.adapters.path_resolvers._dotenv import DotenvPathFinder
-from tests.support import create_layered_sandbox
+from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import mac_only, os_agnostic, posix_only, windows_only
 
 
@@ -73,7 +73,7 @@ def test_linux_resolver_host_paths_include_hostname(tmp_path: Path) -> None:
     assert host_paths[0].endswith("hosts/test-host.toml")
 
 
-def _linux_host_resolver(sandbox) -> DefaultPathResolver:
+def _linux_host_resolver(sandbox: LayeredSandbox) -> DefaultPathResolver:
     return DefaultPathResolver(
         vendor=sandbox.vendor,
         app=sandbox.app,
@@ -237,7 +237,7 @@ class _RepeatingDirectory:
         return self._path / child
 
     @property
-    def parents(self):  # type: ignore[override]
+    def parents(self) -> list[_RepeatingDirectory]:
         return [self]
 
 
@@ -349,7 +349,7 @@ def test_resolver_selects_the_strategy_of_the_platform_family(
 @os_agnostic
 def test_platform_dotenv_path_returns_none_for_unknown_platform(tmp_path: Path) -> None:
     resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, platform="plan9")
-    assert resolver._dotenv_finder._platform_path() is None
+    assert resolver._dotenv_finder._platform_path() is None  # pyright: ignore[reportPrivateUsage] - no public route reaches the finder's platform fallback alone
 
 
 @windows_only
@@ -495,7 +495,7 @@ def test_program_data_root_honours_environment_override(tmp_path: Path) -> None:
         env_override={"LIB_LAYERED_CONFIG_PROGRAMDATA": str(override)},
     )
     strategy = WindowsStrategy(ctx)
-    assert strategy._program_data_root() == override
+    assert strategy._program_data_root() == override  # pyright: ignore[reportPrivateUsage] - unit test of the ProgramData root override
 
 
 @os_agnostic
@@ -507,7 +507,7 @@ def test_appdata_root_prefers_explicit_override(tmp_path: Path) -> None:
         env_override={"LIB_LAYERED_CONFIG_APPDATA": str(override)},
     )
     strategy = WindowsStrategy(ctx)
-    assert strategy._appdata_root() == override
+    assert strategy._appdata_root() == override  # pyright: ignore[reportPrivateUsage] - unit test of the APPDATA root override
 
 
 @os_agnostic
@@ -519,7 +519,7 @@ def test_localappdata_root_prefers_explicit_override(tmp_path: Path) -> None:
         env_override={"LIB_LAYERED_CONFIG_LOCALAPPDATA": str(override)},
     )
     strategy = WindowsStrategy(ctx)
-    assert strategy._localappdata_root() == override
+    assert strategy._localappdata_root() == override  # pyright: ignore[reportPrivateUsage] - unit test of the LOCALAPPDATA root override
 
 
 @os_agnostic
@@ -535,6 +535,7 @@ def test_platform_dotenv_path_returns_mac_candidate(tmp_path: Path) -> None:
     ctx, _ = _make_context(tmp_path, platform="darwin")
     strategy = MacOSStrategy(ctx)
     expected = strategy.dotenv_path()
+    assert expected is not None
     assert expected.as_posix().endswith("Application Support/Acme/ConfigKit/.env")
 
 
@@ -543,6 +544,7 @@ def test_platform_dotenv_path_returns_windows_candidate(tmp_path: Path) -> None:
     ctx, _ = _make_context(tmp_path, platform="win32")
     strategy = WindowsStrategy(ctx)
     expected = strategy.dotenv_path()
+    assert expected is not None
     assert expected.as_posix().endswith("AppData/Roaming/Acme/ConfigKit/.env")
 
 
@@ -562,8 +564,8 @@ def test_project_dotenv_paths_skip_duplicate_candidates(tmp_path: Path) -> None:
     strategy = LinuxStrategy(ctx)
     finder = DotenvPathFinder(tmp_path, strategy)
     duplicate = _RepeatingDirectory(tmp_path)
-    finder.cwd = duplicate  # type: ignore[assignment]
-    paths = list(finder._project_paths())
+    finder.cwd = duplicate  # pyright: ignore[reportAttributeAccessIssue] - a Path stand-in whose parents repeat; no real Path does
+    paths = list(finder._project_paths())  # pyright: ignore[reportPrivateUsage] - unit test of the upward walk's duplicate guard
     assert paths == []
 
 
@@ -630,7 +632,7 @@ def test_windows_unc_app_paths_resolve_from_network_share(tmp_path: Path) -> Non
     )
     strategy = WindowsStrategy(ctx)
     # Verify the path construction includes the UNC root
-    program_data = strategy._program_data_root()
+    program_data = strategy._program_data_root()  # pyright: ignore[reportPrivateUsage] - unit test of the ProgramData root with a UNC override
     assert program_data == Path(unc_root)
     assert program_data.as_posix().startswith("//server/share")
     # No app_paths() call: on Windows it stats //server/share, a live SMB lookup of a host that does
@@ -648,7 +650,7 @@ def test_windows_unc_user_paths_resolve_from_network_share(tmp_path: Path) -> No
         env_override={"LIB_LAYERED_CONFIG_APPDATA": unc_root},
     )
     strategy = WindowsStrategy(ctx)
-    appdata = strategy._appdata_root()
+    appdata = strategy._appdata_root()  # pyright: ignore[reportPrivateUsage] - unit test of the APPDATA root with a UNC override
     assert appdata == Path(unc_root)
     assert appdata.as_posix().startswith("//fileserver/users")
 
@@ -663,7 +665,7 @@ def test_windows_unc_localappdata_resolves_from_network_share(tmp_path: Path) ->
         env_override={"LIB_LAYERED_CONFIG_LOCALAPPDATA": unc_root},
     )
     strategy = WindowsStrategy(ctx)
-    localappdata = strategy._localappdata_root()
+    localappdata = strategy._localappdata_root()  # pyright: ignore[reportPrivateUsage] - unit test of the LOCALAPPDATA root with a UNC override
     assert localappdata == Path(unc_root)
     assert localappdata.as_posix().startswith("//nas/local")
 
@@ -905,7 +907,7 @@ def test_resolver_with_profile_creates_correct_context(tmp_path: Path) -> None:
         platform="linux",
     )
     assert resolver.profile == "test"
-    assert resolver._ctx.profile == "test"
+    assert resolver.context.profile == "test"
 
 
 @os_agnostic
@@ -918,4 +920,4 @@ def test_resolver_without_profile_has_none_context(tmp_path: Path) -> None:
         platform="linux",
     )
     assert resolver.profile is None
-    assert resolver._ctx.profile is None
+    assert resolver.context.profile is None

@@ -16,7 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from lib_layered_config.adapters.dotenv.default import DefaultDotEnvLoader, _owner_is_trusted
+from lib_layered_config.adapters.dotenv.default import (
+    DefaultDotEnvLoader,
+    _owner_is_trusted,  # pyright: ignore[reportPrivateUsage] - unit test of the owner trust rule over a uid table
+)
 from tests.support.os_markers import os_agnostic, posix_only
 
 

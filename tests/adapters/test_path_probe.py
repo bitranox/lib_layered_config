@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import os
 import stat
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 # Root bypasses directory permissions, so no wall can be built while running as root.
-_RUNS_AS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+_RUNS_AS_ROOT = sys.platform != "win32" and os.geteuid() == 0
 needs_wall = pytest.mark.skipif(_RUNS_AS_ROOT, reason="root bypasses directory permissions")
 
 _SRC = Path(__file__).resolve().parents[2] / "src" / "lib_layered_config"

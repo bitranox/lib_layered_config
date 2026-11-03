@@ -38,6 +38,8 @@ _PAYLOAD = b"SSH__KEY=/opt/keys/id\n"
 @pytest.fixture()
 def fifo(tmp_path: Path) -> Iterator[Path]:
     """A FIFO with a writer thread that delivers ``_PAYLOAD`` once a reader opens it."""
+    if sys.platform == "win32":
+        pytest.skip("FIFOs are POSIX-only")
     path = tmp_path / "env.fifo"
     os.mkfifo(path)
     writer = threading.Thread(target=path.write_bytes, args=(_PAYLOAD,), daemon=True)
@@ -57,6 +59,8 @@ def _finish_writer(path: Path, writer: threading.Thread, *, grace: float = 5.0) 
     writer.join(timeout=grace)
     if not writer.is_alive():
         return
+    # Only a FIFO's writer can still be waiting here, and FIFOs exist only on POSIX.
+    assert sys.platform != "win32"
     descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     try:
         writer.join(timeout=5)
@@ -110,6 +114,7 @@ def test_the_fifo_teardown_waits_for_a_writer_that_already_delivered(tmp_path: P
     """The writer thread outlives its write by a moment: the FIFO was read, the thread has not
     exited yet. The teardown used to take that for "nobody opened it" and open the FIFO itself,
     which blocks for good with no writer left; it hung a CI job until the job timeout."""
+    assert sys.platform != "win32"
     path = tmp_path / "env.fifo"
     os.mkfifo(path)
 
@@ -131,6 +136,7 @@ def test_the_fifo_teardown_waits_for_a_writer_that_already_delivered(tmp_path: P
 def test_the_fifo_teardown_fails_when_nothing_opened_the_fifo(tmp_path: Path) -> None:
     """A writer still waiting in open() means the code under test never read the FIFO: the
     teardown releases it and fails the test rather than hang or pass."""
+    assert sys.platform != "win32"
     path = tmp_path / "env.fifo"
     os.mkfifo(path)
     writer = threading.Thread(target=path.write_bytes, args=(_PAYLOAD,), daemon=True)

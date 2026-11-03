@@ -12,6 +12,7 @@ wide margin.
 from __future__ import annotations
 
 import time
+from typing import TypeGuard
 
 import pytest
 
@@ -19,6 +20,10 @@ from lib_layered_config.adapters._nested_keys import NestedEntry, build_nested
 
 _SIBLINGS = 30_000
 _LIMIT_SECONDS = 2.5
+
+
+def _is_table(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict)
 
 
 @pytest.mark.os_agnostic
@@ -31,7 +36,7 @@ def test_many_sibling_keys_are_placed_in_linear_time(prefix: str) -> None:
     elapsed = time.perf_counter() - started
 
     table = built["db"] if prefix else built
-    assert isinstance(table, dict)
+    assert _is_table(table)
     assert len(table) == _SIBLINGS
     assert elapsed < _LIMIT_SECONDS, f"{_SIBLINGS} siblings took {elapsed:.2f}s"
 

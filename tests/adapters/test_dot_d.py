@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from lib_layered_config.adapters.file_loaders._dot_d import (
-    _collect_dot_d_files,
+    _collect_dot_d_files,  # pyright: ignore[reportPrivateUsage] - unit test of the .d directory listing and its sort/filter
     expand_dot_d,
 )
 from lib_layered_config.domain.errors import InvalidFormatError
