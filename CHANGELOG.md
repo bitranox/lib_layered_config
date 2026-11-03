@@ -38,6 +38,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   usage text. Output without `--json` is unchanged.
 
 ### Fixed
+- On Windows, `read_config` finds `%ProgramData%` again. The path resolver works on a copy of the
+  environment, and Windows stores the name there as `PROGRAMDATA` (measured: `"ProgramData" in
+  os.environ` is true, in `dict(os.environ)` false), so the app and host layers always fell back to
+  `C:\ProgramData`, while `deploy` found the real one: on a machine with a relocated ProgramData, deploy
+  wrote where read_config did not look. `ProgramData`, `APPDATA` and `LOCALAPPDATA` are now matched
+  case-insensitively (the exact spelling first), and deploy uses the same lookup.
 - A YAML file whose aliases form a cycle (`a: &x [*x]`) or expand to more than 1,000,000 values (an
   "alias bomb" of a few hundred bytes) is refused with `LayerLoadError`: `"<path> aliases a node into
   itself"` or `"<path> expands its aliases to more than 1,000,000 values"`. A cycle made `read_config`

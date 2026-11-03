@@ -17,12 +17,63 @@ from typing import TYPE_CHECKING
 from ._base import PlatformStrategy, collect_layer, config_path_present
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
 
 __all__ = [
     "WindowsStrategy",
+    "appdata_root",
+    "localappdata_root",
+    "program_data_root",
+    "windows_env_value",
 ]
+
+
+def windows_env_value(env: Mapping[str, str], name: str) -> str | None:
+    """Return the value of the Windows variable *name* in *env*, matching the name case-insensitively.
+
+    Windows ignores case in variable names, and a ``dict`` copy of ``os.environ`` holds them
+    uppercased (measured: ``"ProgramData"`` is in ``os.environ`` there but not in
+    ``dict(os.environ)``, which has ``"PROGRAMDATA"``). The exact spelling wins when a caller's
+    own mapping holds several.
+
+    Examples:
+        >>> windows_env_value({"PROGRAMDATA": "D:/Data"}, "ProgramData")
+        'D:/Data'
+        >>> windows_env_value({}, "APPDATA") is None
+        True
+    """
+    if name in env:
+        return env[name]
+    folded = name.casefold()
+    return next((value for key, value in env.items() if key.casefold() == folded), None)
+
+
+def _root(env: Mapping[str, str], *, override: str, name: str, default: Path) -> Path:
+    """The ``LIB_LAYERED_CONFIG_*`` *override* if set, else the Windows variable *name*, else *default*."""
+    if override in env:
+        return Path(env[override])
+    value = windows_env_value(env, name)
+    return default if value is None else Path(value)
+
+
+def program_data_root(env: Mapping[str, str]) -> Path:
+    """The ``%ProgramData%`` root: the override, else ``ProgramData`` in any case, else ``C:/ProgramData``."""
+    return _root(env, override="LIB_LAYERED_CONFIG_PROGRAMDATA", name="ProgramData", default=Path(r"C:\ProgramData"))
+
+
+def appdata_root(env: Mapping[str, str]) -> Path:
+    """The ``%APPDATA%`` root: the override, else ``APPDATA`` in any case, else ``~/AppData/Roaming``."""
+    return _root(
+        env, override="LIB_LAYERED_CONFIG_APPDATA", name="APPDATA", default=Path.home() / "AppData" / "Roaming"
+    )
+
+
+def localappdata_root(env: Mapping[str, str]) -> Path:
+    """The ``%LOCALAPPDATA%`` root: the override, else ``LOCALAPPDATA`` in any case, else ``~/AppData/Local``."""
+    return _root(
+        env, override="LIB_LAYERED_CONFIG_LOCALAPPDATA", name="LOCALAPPDATA", default=Path.home() / "AppData" / "Local"
+    )
 
 
 class WindowsStrategy(PlatformStrategy):
@@ -51,12 +102,7 @@ class WindowsStrategy(PlatformStrategy):
         Returns:
             Resolved ProgramData root directory.
         """
-        return Path(
-            self.ctx.env.get(
-                "LIB_LAYERED_CONFIG_PROGRAMDATA",
-                self.ctx.env.get("ProgramData", r"C:\ProgramData"),
-            )
-        )
+        return program_data_root(self.ctx.env)
 
     def _appdata_root(self) -> Path:
         """Return the user AppData root used for ``%APPDATA%`` lookups.
@@ -66,12 +112,7 @@ class WindowsStrategy(PlatformStrategy):
         Returns:
             Resolved AppData root directory.
         """
-        return Path(
-            self.ctx.env.get(
-                "LIB_LAYERED_CONFIG_APPDATA",
-                self.ctx.env.get("APPDATA", Path.home() / "AppData" / "Roaming"),
-            )
-        )
+        return appdata_root(self.ctx.env)
 
     def _localappdata_root(self) -> Path:
         """Return the fallback LocalAppData root.
@@ -81,12 +122,7 @@ class WindowsStrategy(PlatformStrategy):
         Returns:
             Resolved LocalAppData root directory.
         """
-        return Path(
-            self.ctx.env.get(
-                "LIB_LAYERED_CONFIG_LOCALAPPDATA",
-                self.ctx.env.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"),
-            )
-        )
+        return localappdata_root(self.ctx.env)
 
     def app_paths(self) -> Iterable[str]:
         """Yield Windows application-default configuration paths.

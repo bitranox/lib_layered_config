@@ -19,7 +19,7 @@ from lib_layered_config.domain.deploy_permissions import DeployPermissions
 from lib_layered_config.domain.errors import DeployDestinationError, ValidationError
 from lib_layered_config.domain.identifiers import Layer
 from lib_layered_config.examples import deploy as deploy_module
-from lib_layered_config.examples.deploy import DeployAction, DeployResult, deploy_config
+from lib_layered_config.examples.deploy import DeployAction, DeployResult, deploy_config, deploy_config_paths
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only, windows_only
 
@@ -1335,3 +1335,17 @@ def test_deploy_refuses_an_unreadable_source_before_creating_anything(
         source_config.chmod(0o600)
 
     assert not destination.parent.exists()
+
+
+@os_agnostic
+def test_a_windows_deploy_finds_programdata_whatever_its_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_config: Path
+) -> None:
+    # Deploy and read_config share one lookup; before, deploy had its own chain that knew only the
+    # exact "ProgramData" and an uppercase os.environ fallback, so a lowercase name was missed.
+    monkeypatch.delenv("LIB_LAYERED_CONFIG_PROGRAMDATA", raising=False)
+    monkeypatch.setenv("programdata", str(tmp_path / "Data"))
+
+    paths = deploy_config_paths(source_config, vendor=VENDOR, app=APP, targets=["app"], slug=SLUG, platform="win32")
+
+    assert paths == frozenset({(tmp_path / "Data" / VENDOR / APP / "config.toml").resolve()})

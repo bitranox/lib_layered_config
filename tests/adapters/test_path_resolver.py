@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -21,8 +22,12 @@ from lib_layered_config.adapters.path_resolvers import (
     collect_layer,
 )
 from lib_layered_config.adapters.path_resolvers._dotenv import DotenvPathFinder
+from lib_layered_config.adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import mac_only, os_agnostic, posix_only, windows_only
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
 
 
 def _linux_context(tmp_path: Path):
@@ -921,3 +926,45 @@ def test_resolver_without_profile_has_none_context(tmp_path: Path) -> None:
     )
     assert resolver.profile is None
     assert resolver.context.profile is None
+
+
+def _bare_windows_context(tmp_path: Path, env: dict[str, str]) -> PlatformContext:
+    """A Windows context whose environment holds only *env*: no LIB_LAYERED_CONFIG_* override."""
+    return PlatformContext(
+        vendor="Acme", app="ConfigKit", slug="config-kit", cwd=tmp_path, env=env, hostname="example-host"
+    )
+
+
+@os_agnostic
+@pytest.mark.parametrize("name", ["ProgramData", "PROGRAMDATA", "programdata"])
+def test_windows_app_paths_find_programdata_whatever_its_case(tmp_path: Path, name: str) -> None:
+    # On Windows a dict copy of os.environ holds the variable as PROGRAMDATA (measured), and the
+    # resolver works on such a copy, so a case-sensitive lookup for "ProgramData" never matched.
+    root = tmp_path / "Data"
+    target = root / "Acme" / "ConfigKit" / "config.toml"
+    target.parent.mkdir(parents=True)
+    target.write_text("[app]\nvalue=1\n", encoding="utf-8")
+
+    strategy = WindowsStrategy(_bare_windows_context(tmp_path, {name: str(root)}))
+
+    assert list(strategy.app_paths()) == [str(target)]
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    ("name", "root_of"),
+    [("appdata", appdata_root), ("localappdata", localappdata_root), ("Programdata", program_data_root)],
+)
+def test_each_windows_root_matches_its_variable_case_insensitively(
+    tmp_path: Path, name: str, root_of: Callable[[Mapping[str, str]], Path]
+) -> None:
+    assert root_of({name: str(tmp_path)}) == tmp_path
+
+
+@os_agnostic
+def test_a_windows_root_prefers_the_exact_spelling_and_the_override(tmp_path: Path) -> None:
+    exact, other, override = tmp_path / "exact", tmp_path / "other", tmp_path / "override"
+
+    assert program_data_root({"PROGRAMDATA": str(other), "ProgramData": str(exact)}) == exact
+    assert program_data_root({"ProgramData": str(exact), "LIB_LAYERED_CONFIG_PROGRAMDATA": str(override)}) == override
+    assert program_data_root({}) == Path(r"C:\ProgramData")

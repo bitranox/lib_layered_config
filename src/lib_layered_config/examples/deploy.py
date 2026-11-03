@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from .._platform import normalise_resolver_platform
 from ..adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
+from ..adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
 from ..adapters.path_resolvers.default import DefaultPathResolver
 from ..core import read_config_for_deploy, refuse_an_unparseable_deploy_source
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
@@ -592,35 +593,16 @@ class WindowsDeployment(DeploymentStrategy):
         }
         return mapping[target]()
 
+    # The resolver's own lookups, so a deploy writes exactly where read_config reads; resolver.env
+    # already holds os.environ.
     def _program_data_root(self) -> Path:
-        return Path(
-            self.resolver.env.get(
-                "LIB_LAYERED_CONFIG_PROGRAMDATA",
-                self.resolver.env.get("ProgramData", os.environ.get("PROGRAMDATA", r"C:\\ProgramData")),
-            )
-        )
+        return program_data_root(self.resolver.env)
 
     def _appdata_root(self) -> Path:
-        return Path(
-            self.resolver.env.get(
-                "LIB_LAYERED_CONFIG_APPDATA",
-                self.resolver.env.get(
-                    "APPDATA",
-                    os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"),
-                ),
-            )
-        )
+        return appdata_root(self.resolver.env)
 
     def _localappdata_root(self) -> Path:
-        return Path(
-            self.resolver.env.get(
-                "LIB_LAYERED_CONFIG_LOCALAPPDATA",
-                self.resolver.env.get(
-                    "LOCALAPPDATA",
-                    os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"),
-                ),
-            )
-        )
+        return localappdata_root(self.resolver.env)
 
     def _app_path(self) -> Path:
         profile_seg = self._profile_segment()
