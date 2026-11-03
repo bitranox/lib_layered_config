@@ -11,6 +11,7 @@ import pytest
 
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.domain.deploy_permissions import DeployPermissions
+from lib_layered_config.domain.errors import DeployDestinationError, ValidationError
 from lib_layered_config.domain.identifiers import Layer
 from lib_layered_config.examples import deploy as deploy_module
 from lib_layered_config.examples.deploy import DeployAction, DeployResult, deploy_config
@@ -1087,3 +1088,110 @@ def test_deploy_user_directory_permissions_are_700(
     destination = results[0].destination
     # Check parent directory has user-private permissions
     assert (destination.parent.stat().st_mode & 0o777) == 0o700
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    """Create *link* pointing at *target*, skipping where this account may not create symlinks.
+
+    Windows allows symlinks only with Developer Mode or the create-symlink privilege; the elevated
+    GitHub runner has it, so these tests run there and skip only where the OS really refuses.
+    """
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"this account cannot create symlinks: {exc}")
+
+
+_LINK_REFUSAL = "is a symbolic link; deploy neither writes through nor replaces one"
+
+
+@os_agnostic
+@pytest.mark.parametrize("set_permissions", [True, False], ids=["permissions", "no-permissions"])
+@pytest.mark.parametrize("dangling", [False, True], ids=["live-link", "dangling-link"])
+def test_deploy_refuses_a_symlinked_destination_and_writes_nothing(
+    sandbox: LayeredSandbox, source_config: Path, tmp_path: Path, *, set_permissions: bool, dangling: bool
+) -> None:
+    victim = tmp_path / "victim.toml"
+    if not dangling:
+        victim.write_text("victim = true\n", encoding="utf-8")
+    destination = _path_for(sandbox, "user")
+    _symlink_or_skip(destination, victim)
+
+    with pytest.raises(ValidationError, match="is a symbolic link") as caught:
+        deploy_config(
+            source_config,
+            vendor=VENDOR,
+            app=APP,
+            targets=["user"],
+            slug=SLUG,
+            force=True,
+            set_permissions=set_permissions,
+        )
+
+    assert str(caught.value) == f"{destination} {_LINK_REFUSAL}"
+    assert destination.is_symlink()
+    assert sorted(p.name for p in destination.parent.iterdir()) == ["config.toml"]
+    if dangling:
+        assert not victim.exists()
+    else:
+        assert _read(victim) == "victim = true\n"
+
+
+@os_agnostic
+def test_deploy_refuses_a_symlinked_dot_d_destination_before_writing_the_main_file(
+    sandbox: LayeredSandbox, source_config: Path, tmp_path: Path
+) -> None:
+    (source_config.parent / "source.d").mkdir()
+    (source_config.parent / "source.d" / "10-db.toml").write_text("[db]\nport = 1\n", encoding="utf-8")
+    destination = _path_for(sandbox, "user")
+    linked = destination.parent / "config.d" / "10-db.toml"
+    _symlink_or_skip(linked, tmp_path / "elsewhere.toml")
+
+    with pytest.raises(DeployDestinationError) as caught:
+        _deploy(sandbox, source_config, targets=["user"])
+
+    assert str(caught.value) == f"{linked} {_LINK_REFUSAL}"
+    assert not destination.exists()
+
+
+@os_agnostic
+def test_deploy_names_every_symlinked_destination(sandbox: LayeredSandbox, source_config: Path, tmp_path: Path) -> None:
+    app_destination = _path_for(sandbox, "app")
+    user_destination = _path_for(sandbox, "user")
+    _symlink_or_skip(app_destination, tmp_path / "a.toml")
+    _symlink_or_skip(user_destination, tmp_path / "u.toml")
+
+    with pytest.raises(DeployDestinationError) as caught:
+        _deploy(sandbox, source_config, targets=["app", "user"])
+
+    assert str(caught.value).splitlines() == [
+        f"{app_destination} {_LINK_REFUSAL}",
+        f"{user_destination} {_LINK_REFUSAL}",
+    ]
+
+
+@os_agnostic
+@pytest.mark.parametrize("sidecar", ["BACKUP", "UCF"])
+def test_a_dangling_link_takes_its_sidecar_name(tmp_path: Path, sidecar: str) -> None:
+    kind = _Sidecar[sidecar]
+    base = tmp_path / "config.toml"
+    target = tmp_path / "planted.txt"
+    # Both the plain name and the first numbered one hold a dangling link.
+    _symlink_or_skip(tmp_path / f"config.toml{kind.value}", target)
+    _symlink_or_skip(tmp_path / f"config.toml{kind.value}.1", target)
+
+    assert _next_available_path(base, kind).name == f"config.toml{kind.value}.2"
+
+
+@os_agnostic
+def test_a_backup_never_writes_through_a_dangling_link(tmp_path: Path) -> None:
+    existing = tmp_path / "config.toml"
+    existing.write_text("old = 1\n", encoding="utf-8")
+    target = tmp_path / "planted.txt"
+    _symlink_or_skip(tmp_path / "config.toml.bak", target)
+
+    backup = _backup_file(existing)
+
+    assert (backup.name, target.exists()) == ("config.toml.bak.1", False)
+    assert _read(backup) == "old = 1\n"

@@ -6,6 +6,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- `deploy` refuses a destination that is a symbolic link, dangling or not, with
+  `DeployDestinationError` (a `ValidationError`): `"<path> is a symbolic link; deploy neither writes
+  through nor replaces one"`, one line per link, `.d` copies included, before anything is written. Before,
+  `--no-permissions` (and every deploy on Windows, which sets no modes) wrote through the link and
+  overwrote the file it pointed at, while with permissions on the link was replaced by a regular file. A
+  dangling link at `config.toml.bak` or `.ucf` counted as a free name, so the backup was written through
+  it; any existing name now counts as taken.
+
 ### Added
 - Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal
   output: `{"ok": true, "command", "data", "skipped"}` on success and

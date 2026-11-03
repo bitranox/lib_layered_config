@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from .._platform import normalise_resolver_platform
-from ..adapters._path_probe import PathKind, kind_or_raise
+from ..adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
 from ..adapters.path_resolvers.default import DefaultPathResolver
 from ..core import read_config_for_deploy, refuse_an_unparseable_deploy_source
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
@@ -49,7 +49,7 @@ from ..domain.deploy_permissions import (
     deploy_permissions_from_config,
     parse_deploy_permissions,
 )
-from ..domain.errors import ConfigError, ValidationError
+from ..domain.errors import ConfigError, DeployDestinationError, ValidationError
 from ..domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer, PlatformFamily, platform_family
 from ..domain.permissions import apply_mode, modes_apply
 
@@ -78,12 +78,15 @@ _MODE_PARAMETERS: Mapping[ModeKind, str] = {ModeKind.DIRECTORY: "dir_mode", Mode
 
 #: How to deploy when the configured modes cannot be read. Both modes come first: turning permission
 #: setting off leaves every mode to the umask, which can make a user file that holds secrets readable
-#: by other accounts. The CLI replaces this with its own spelling (Task 7).
+#: by other accounts. The CLI replaces this with its own spelling.
 _DEPLOY_ANYWAY_HINT = (
     "to deploy anyway, give both modes (dir_mode and file_mode; the built-in ones are 0o700 and 0o600 for "
     "user, 0o755 and 0o644 for app and host); set_permissions=False also deploys, but leaves every mode to "
     "the umask, which can make a user file that holds secrets readable by other accounts"
 )
+
+#: Why a linked destination is refused; the path comes first.
+_LINK_REFUSAL = "is a symbolic link; deploy neither writes through nor replaces one"
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,13 +224,14 @@ def _next_available_path(base: Path, sidecar: _Sidecar) -> Path:
         ...     _next_available_path(p, _Sidecar.BACKUP).name
         'config.toml.bak'
     """
+    # A dangling link counts as taken: a name chosen past it would be written through the link.
     candidate = base.parent / (base.name + sidecar.value)
-    if kind_or_raise(candidate) is PathKind.MISSING:
+    if not lexists_or_raise(candidate):
         return candidate
     n = 1
     while True:
         candidate = base.parent / f"{base.name}{sidecar.value}.{n}"
-        if kind_or_raise(candidate) is PathKind.MISSING:
+        if not lexists_or_raise(candidate):
             return candidate
         n += 1
 
@@ -396,14 +400,31 @@ def _permission_settings(
     return settings
 
 
-def _paths_written(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> frozenset[Path]:
-    """Every file this call may write, resolved: each destination and each of its ``.d`` copies."""
-    written: set[Path] = set()
+def _destination_files(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> Iterator[Path]:
+    """Every file this call may write, as named: each destination and each of its ``.d`` copies."""
     for destination in destinations:
-        written.add(destination.path.resolve())
+        yield destination.path
         dest_dot_d = _get_dot_d_dir(destination.path)
-        written.update((dest_dot_d / source_file.name).resolve() for source_file in dot_d_files)
-    return frozenset(written)
+        yield from (dest_dot_d / source_file.name for source_file in dot_d_files)
+
+
+def _paths_written(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> frozenset[Path]:
+    """Every file this call may write, resolved."""
+    return frozenset(path.resolve() for path in _destination_files(destinations, dot_d_files=dot_d_files))
+
+
+def _refuse_linked_destinations(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> None:
+    """Refuse every destination that is a symbolic link, before anything is written.
+
+    Writing through a link changes the file it points at (with modes left to the umask the write
+    followed it), and replacing it breaks a link someone made on purpose; deploy does neither.
+
+    Raises:
+        DeployDestinationError: One line per linked destination, ``.d`` copies included.
+    """
+    linked = [path for path in _destination_files(destinations, dot_d_files=dot_d_files) if is_symlink_or_raise(path)]
+    if linked:
+        raise DeployDestinationError("\n".join(f"{path} {_LINK_REFUSAL}" for path in linked))
 
 
 def _describe_load_failure(exc: Exception) -> str:
@@ -735,6 +756,9 @@ def deploy_config(
         DeployPermissionsError: The configuration cannot be loaded, its permission section is
             invalid, a permission_overrides value is refused, or permission_overrides came with
             permissions; nothing has been written.
+        DeployDestinationError: A destination or one of its ``.d`` copies is a symbolic link,
+            dangling or not; deploy neither writes through it nor replaces it, and nothing has been
+            written.
     """
     request = _mode_request(
         set_permissions=set_permissions,
@@ -761,6 +785,7 @@ def deploy_config(
     # Materialised up front: the self-read must know every path this call writes, and an invalid
     # target is now refused before anything is written.
     destinations = list(_destinations_for(resolver, targets))
+    _refuse_linked_destinations(destinations, dot_d_files=dot_d_files)
     settings = _permission_settings(
         request,
         load=lambda: _load_configured_permissions(

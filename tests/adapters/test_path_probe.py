@@ -21,14 +21,16 @@ from lib_layered_config.adapters._path_probe import (
     PathKind,
     checked_kind,
     current_directory,
+    is_symlink_or_raise,
     kind_or_raise,
+    lexists_or_raise,
     probe_path,
 )
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import IS_WINDOWS, os_agnostic, posix_only
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 # Root bypasses directory permissions, so no wall can be built while running as root.
 _RUNS_AS_ROOT = sys.platform != "win32" and os.geteuid() == 0
@@ -95,6 +97,27 @@ def test_checked_kind_refuses_a_path_it_cannot_check_naming_it(walled_file: Path
 def test_kind_or_raise_raises_the_os_error_for_a_path_it_cannot_check(walled_file: Path) -> None:
     with pytest.raises(PermissionError):
         kind_or_raise(walled_file)
+
+
+@posix_only
+@needs_wall
+@pytest.mark.parametrize("probe", [is_symlink_or_raise, lexists_or_raise], ids=["is_symlink", "lexists"])
+def test_a_link_probe_raises_the_os_error_for_a_path_it_cannot_check(
+    walled_file: Path, probe: Callable[[Path], bool]
+) -> None:
+    # A wall is not "nothing there": reading it as absent would let deploy write a name it never saw.
+    with pytest.raises(PermissionError):
+        probe(walled_file)
+
+
+@posix_only
+def test_the_link_probes_see_a_dangling_link_that_kind_or_raise_reads_as_missing(tmp_path: Path) -> None:
+    link = tmp_path / "config.toml.bak"
+    link.symlink_to(tmp_path / "absent")
+
+    assert kind_or_raise(link) is PathKind.MISSING
+    assert (is_symlink_or_raise(link), lexists_or_raise(link)) == (True, True)
+    assert (is_symlink_or_raise(tmp_path), lexists_or_raise(tmp_path)) == (False, True)
 
 
 @os_agnostic

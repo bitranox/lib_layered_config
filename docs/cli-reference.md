@@ -400,6 +400,22 @@ If `.bak` or `.ucf` files already exist, numbered suffixes are used:
 - `config.toml.bak` → `config.toml.bak.1` → `config.toml.bak.2`
 - `config.toml.ucf` → `config.toml.ucf.1` → `config.toml.ucf.2`
 
+Any existing name counts as taken, a dangling symbolic link included, so a backup or `.ucf` file is
+never written through a link someone left at that name.
+
+#### **Symbolic Links**
+
+If a destination, or one of its `.d` copies, is a symbolic link (dangling or not), deploy refuses it
+before writing anything, in every mode, with or without `--force`/`--batch`:
+
+```
+~/.config/myapp/config.toml is a symbolic link; deploy neither writes through nor replaces one
+```
+
+Writing through the link would change the file it points at, and replacing it would break a link made
+on purpose. Remove the link, or deploy its target yourself. Every linked destination is named, one per
+line. A linked parent directory (`~/.config` itself a link) is followed as usual.
+
 ---
 
 ### Decision Flow Diagram

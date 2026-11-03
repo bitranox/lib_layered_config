@@ -11,6 +11,8 @@ Contents:
       the ``ValueError`` a NUL byte or an unencodable name raises).
     - ``probe_path``: never raises; a search uses it and skips what it cannot check.
     - ``checked_kind``: refuses a path it cannot check; a layer location or a named file uses it.
+    - ``is_symlink_or_raise`` / ``lexists_or_raise``: what is at a path ITSELF, a link not followed;
+      a deploy destination and its free sidecar name use them.
     - ``config_path_unreadable``: the refusal, shared with the file readers.
     - ``current_directory``: the working directory, or ``None`` when the OS cannot name it.
 """
@@ -33,7 +35,9 @@ __all__ = [
     "checked_kind",
     "config_path_unreadable",
     "current_directory",
+    "is_symlink_or_raise",
     "kind_or_raise",
+    "lexists_or_raise",
     "probe_path",
 ]
 
@@ -154,6 +158,62 @@ def kind_or_raise(path: Path) -> PathKind:
     if probe.error is not None:
         raise probe.error
     return probe.kind
+
+
+def is_symlink_or_raise(path: Path) -> bool:
+    """Return whether *path* itself is a symbolic link, dangling or not, raising what stopped the check.
+
+    Args:
+        path: The path to look at; a link there is not followed.
+
+    Returns:
+        ``True`` for a link; ``False`` for anything else, nothing included.
+
+    Raises:
+        OSError: The ``lstat`` error, when it does not mean "absent" (a permission wall).
+        ValueError: *path* holds a NUL byte or a name the OS cannot take.
+
+    Examples:
+        >>> from pathlib import Path
+        >>> is_symlink_or_raise(Path("/nonexistent-lib-layered-config-probe/config.toml"))
+        False
+    """
+    mode = _lstat_mode(path)
+    return mode is not None and stat.S_ISLNK(mode)
+
+
+def lexists_or_raise(path: Path) -> bool:
+    """Return whether anything sits at *path*, a dangling link included, raising what stopped the check.
+
+    ``kind_or_raise`` follows a link, so it reads a dangling one as missing; a name chosen by it
+    would be written through the link. This looks at the name itself.
+
+    Args:
+        path: The path to look at; a link there is not followed.
+
+    Returns:
+        ``True`` when a file, directory, link or anything else is there.
+
+    Raises:
+        OSError: The ``lstat`` error, when it does not mean "absent" (a permission wall).
+        ValueError: *path* holds a NUL byte or a name the OS cannot take.
+
+    Examples:
+        >>> from pathlib import Path
+        >>> lexists_or_raise(Path("/nonexistent-lib-layered-config-probe/config.toml"))
+        False
+    """
+    return _lstat_mode(path) is not None
+
+
+def _lstat_mode(path: Path) -> int | None:
+    """Return the mode of *path* itself, or ``None`` when nothing is there."""
+    try:
+        return path.lstat().st_mode
+    except OSError as error:
+        if _means_absent(error):
+            return None
+        raise
 
 
 def config_path_unreadable(path: Path, error: OSError | ValueError) -> InvalidFormatError:

@@ -7,8 +7,8 @@ concrete implementations.
 Contents:
     - ``ConfigError``: base class for every library-specific exception.
     - ``InvalidFormatError``: raised when structured configuration cannot be parsed.
-    - ``ValidationError``: reserved for semantic validation of configuration
-      payloads once implemented.
+    - ``ValidationError``: an identifier, platform or deploy argument was refused.
+    - ``DeployDestinationError``: a deploy destination is a symbolic link.
     - ``NotFoundError``: indicates optional configuration sources were absent.
 
 System Role:
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 __all__ = [
     "ConfigError",
+    "DeployDestinationError",
     "InvalidFormatError",
     "NotFoundError",
     "ValidationError",
@@ -49,6 +50,15 @@ class ValidationError(ConfigError, ValueError):
     with a single ``except ConfigError``) and the stdlib :class:`ValueError` (so the
     long-standing ``except ValueError`` contract documented for the validation helpers
     keeps working). Raising this instead of a bare ``ValueError`` is backward compatible.
+    """
+
+
+class DeployDestinationError(ValidationError):
+    """Raised when a file deploy would write is a symbolic link, dangling or not.
+
+    Deploy neither writes through a link (which would change the file it points at) nor replaces
+    it, so every such destination is refused, one line each, before anything is written. A
+    :class:`ValidationError`, so ``except ValidationError`` still catches every deploy refusal.
     """
 
 

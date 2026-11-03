@@ -34,6 +34,7 @@ from lib_layered_config import (
     DeployMode,
     ModeKind,
     DeployModeError,
+    DeployDestinationError,
     LayerModes,
     DeployPermissions,
     DeployPermissionsError,
@@ -917,7 +918,9 @@ directory, or a destination sits behind a permission wall; the same on every Pyt
 `ValidationError` (an unknown target, before anything is written), `DeployModeError` (a refused `dir_mode` /
 `file_mode`, or one given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
 not readable, the section is invalid, a refused `permission_overrides` value, or `permission_overrides`
-combined with `permissions`; nothing is written).
+combined with `permissions`; nothing is written), `DeployDestinationError` (a destination or one of its `.d`
+copies is a symbolic link, dangling or not; deploy neither writes through it nor replaces it, and nothing is
+written).
 
 **Examples:**
 
@@ -1657,6 +1660,7 @@ Exported from the package root, used to configure or override `deploy_config`'s 
   pass runtime overrides through its own `permission_overrides=` parameter instead - see the `deploy_config`
   section above.
 - `DeployModeError`: A permission setting was refused; the message names the reason or every offending bit.
+- `DeployDestinationError`: A file deploy would write is a symbolic link; one line per link, nothing written.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
   per bad value, and `.hint` (optional) suggests a way to deploy anyway.
 - `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.

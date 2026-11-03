@@ -359,8 +359,9 @@ Everything below is importable from `lib_layered_config`.
 - `NotFoundError` - an optional source is unavailable, e.g. a `.yaml` file without the `yaml` extra.
 - `ValidationError` (also a `ValueError`) - an identifier or profile name is refused. Its subclasses
   `DeployModeError` (an unsafe or malformed mode, or `dir_mode`/`file_mode` given together with
-  `set_permissions=False`) and `DeployPermissionsError` (unusable permission settings, one line per
-  problem) come from deploy.
+  `set_permissions=False`), `DeployPermissionsError` (unusable permission settings, one line per
+  problem) and `DeployDestinationError` (a file deploy would write is a symbolic link, dangling or
+  not, one line per link; nothing is written) come from deploy.
 
 **Redaction helpers.** `is_sensitive("smtp_password")` -> `True` checks one key NAME against the
 built-in patterns (a field named just `key` is not sensitive). `is_sensitive_at(("performance",

@@ -50,6 +50,7 @@ from .domain.deploy_permissions import (
     PermissionProblem,
     deploy_permissions_from_config,
 )
+from .domain.errors import DeployDestinationError
 from .domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
@@ -85,6 +86,7 @@ __all__ = [
     "Config",
     "ConfigError",
     "DeployAction",
+    "DeployDestinationError",
     "DeployMode",
     "DeployModeError",
     "DeployPermissions",
