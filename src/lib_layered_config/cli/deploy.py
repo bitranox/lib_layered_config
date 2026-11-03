@@ -14,7 +14,7 @@ from ..examples import DeployAction, DeployResult
 from ..examples import deploy_config as deploy_config_impl
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
-from .envelope import json_envelope_option, run_in_envelope
+from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -143,7 +143,7 @@ def _skipped_in(report: dict[str, list[str]]) -> list[str]:
     return report["skipped"] + report[_DOT_D_KEY_PREFIX + "skipped"]
 
 
-@click.command("deploy", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.command("deploy", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
 @option(
     "--source",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),

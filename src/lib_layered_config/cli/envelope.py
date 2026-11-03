@@ -9,7 +9,9 @@ The exit code is the one the command would return without ``--json``, so a scrip
 whichever output it asked for.
 
 Contents:
-    * :func:`json_envelope_option` - the ``--json`` flag.
+    * :data:`json_envelope_option` - the ``--json`` flag.
+    * :class:`EnvelopeCommand` - the command class that prints the failure envelope for a usage error
+      Click raises while parsing, before the command body runs.
     * :func:`run_in_envelope` - run a command body and print its envelope.
 """
 
@@ -27,15 +29,18 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
 __all__ = [
+    "EnvelopeCommand",
     "json_envelope_option",
     "run_in_envelope",
 ]
 
 _T = TypeVar("_T")
 
+_JSON_FLAG = "--json"
+
 #: The ``--json`` flag, passed to the command as ``json_envelope``.
 json_envelope_option = option(
-    "--json",
+    _JSON_FLAG,
     "json_envelope",
     is_flag=True,
     default=False,
@@ -81,12 +86,40 @@ def run_in_envelope(
         # An interrupt is not a command result: lib_cli_exit_tools maps it to the signal's exit code.
         raise
     except Exception as exc:
-        code = _exit_code(exc)
-        error = {"type": type(exc).__name__, "message": _message(exc), "exit_code": code}
-        click.echo(json_codec.dumps({"ok": False, "command": command, "error": error}, indent=True))
-        raise SystemExit(code) from exc
+        raise SystemExit(_print_failure(command, exc)) from exc
     left_out = list(skipped(data)) if skipped is not None else []
     click.echo(json_codec.dumps({"ok": True, "command": command, "data": data, "skipped": left_out}, indent=True))
+
+
+class EnvelopeCommand(click.RichCommand):
+    """A command whose parse errors print the ``--json`` failure envelope.
+
+    A missing required option, a bad value or an unknown option is raised while Click parses the
+    arguments, before the command body (and :func:`run_in_envelope`) runs. When ``--json`` is among
+    the command's own arguments, this prints the failure envelope for it and exits with Click's
+    code (2); without ``--json`` Click's usage text is unchanged. ``--json`` is found by text before
+    parsing, so an option value spelled ``--json`` counts too. An unknown subcommand fails in the
+    group and never reaches a command, so it keeps Click's text.
+    """
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        """Parse *args*, printing the failure envelope on a usage error when ``--json`` was given."""
+        # Read before parsing: Click consumes the list it is handed.
+        wants_envelope = _JSON_FLAG in args
+        try:
+            return super().parse_args(ctx, args)
+        except click.ClickException as exc:
+            if not wants_envelope:
+                raise
+            raise SystemExit(_print_failure(self.name or ctx.info_name or "", exc)) from exc
+
+
+def _print_failure(command: str, exc: Exception) -> int:
+    """Print the failure envelope for *exc* and return the exit code it reports."""
+    code = _exit_code(exc)
+    error = {"type": type(exc).__name__, "message": _message(exc), "exit_code": code}
+    click.echo(json_codec.dumps({"ok": False, "command": command, "error": error}, indent=True))
+    return code
 
 
 def _exit_code(exc: Exception) -> int:

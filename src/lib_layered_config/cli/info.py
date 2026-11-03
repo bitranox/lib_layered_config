@@ -7,7 +7,7 @@ import rich_click as click
 from ..core import default_env_prefix
 from .common import describe_distribution, package_metadata
 from .constants import CLICK_CONTEXT_SETTINGS
-from .envelope import json_envelope_option, run_in_envelope
+from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
 from .typed_click import argument
 
 __all__ = [
@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 
-@click.command("info", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.command("info", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
 @json_envelope_option
 def info_command(*, json_envelope: bool) -> None:
     """Print package metadata in friendly lines."""
@@ -28,7 +28,7 @@ def info_command(*, json_envelope: bool) -> None:
         click.echo(line)
 
 
-@click.command("env-prefix", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.command("env-prefix", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
 @argument("slug")
 @json_envelope_option
 def env_prefix_command(slug: str, *, json_envelope: bool) -> None:

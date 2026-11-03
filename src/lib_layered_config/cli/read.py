@@ -17,7 +17,7 @@ from .common import (
     wants_json,
 )
 from .constants import CLICK_CONTEXT_SETTINGS
-from .envelope import json_envelope_option, run_in_envelope
+from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ __all__ = [
 ]
 
 
-@click.command("read", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.command("read", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
 @option("--vendor", required=True, help="Vendor namespace")
 @option("--app", required=True, help="Application name")
 @option("--slug", required=True, help="Slug identifying the configuration set")
@@ -123,7 +123,7 @@ def read_command(
     click.echo(human_payload(query, redact=redact))
 
 
-@click.command("read-json", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.command("read-json", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
 @option("--vendor", required=True)
 @option("--app", required=True)
 @option("--slug", required=True)

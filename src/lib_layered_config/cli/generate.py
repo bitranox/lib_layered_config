@@ -9,7 +9,7 @@ import rich_click as click
 from ..examples import generate_examples as generate_examples_impl
 from .common import json_paths, normalise_examples_platform_option
 from .constants import CLICK_CONTEXT_SETTINGS
-from .envelope import json_envelope_option, run_in_envelope
+from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
 from .typed_click import option
 
 __all__ = [
@@ -18,7 +18,7 @@ __all__ = [
 ]
 
 
-@click.command("generate-examples", context_settings=CLICK_CONTEXT_SETTINGS)
+@click.command("generate-examples", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
 @option(
     "--destination",
     type=click.Path(path_type=Path, file_okay=False, dir_okay=True, resolve_path=True),

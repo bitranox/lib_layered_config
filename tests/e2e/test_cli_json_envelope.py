@@ -140,6 +140,57 @@ def test_a_usage_error_inside_a_command_keeps_click_exit_code(
     assert (document["ok"], error["type"], error["exit_code"]) == (False, "UsageError", 2)
 
 
+def _usage_error_argv(kind: str, tmp_path: Path) -> list[str]:
+    # One argv per error kind Click raises while parsing, before the command runs.
+    if kind == "MissingParameter":
+        return ["read", "--app", APP, "--slug", SLUG]
+    if kind == "BadParameter":
+        return ["deploy", "--source", str(tmp_path / "missing.toml"), *IDENTITY, "--target", "user"]
+    return ["env-prefix", SLUG, "--bogus"]
+
+
+@os_agnostic
+@pytest.mark.parametrize("kind", ["MissingParameter", "BadParameter", "NoSuchOption"])
+def test_a_usage_error_before_the_command_runs_prints_the_envelope(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, kind: str
+) -> None:
+    argv = _usage_error_argv(kind, tmp_path)
+
+    code = cli.main([*argv, "--json"], restore_traceback=True)
+    captured = capsys.readouterr()
+
+    document = _mapping(json.loads(captured.out))
+    error = _mapping(document["error"])
+    assert (code, document["ok"], document["command"]) == (2, False, argv[0])
+    assert (error["type"], error["exit_code"]) == (kind, 2)
+    assert str(error["message"])
+    assert "Usage:" not in captured.err
+
+
+@os_agnostic
+@pytest.mark.parametrize("command", ["read", "read-json", "deploy", "generate-examples", "info", "env-prefix", "fail"])
+def test_every_command_prints_the_envelope_for_an_unknown_option(
+    capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    # Click rejects an unknown option before it checks required ones, so no other argument is needed.
+    code, document = _run(capsys, command, "--bogus", "--json")
+
+    error = _mapping(document["error"])
+    assert (code, document["command"], error["type"]) == (2, command, "NoSuchOption")
+
+
+@os_agnostic
+@pytest.mark.parametrize("kind", ["MissingParameter", "BadParameter", "NoSuchOption"])
+def test_a_usage_error_without_json_keeps_click_usage_text(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, kind: str
+) -> None:
+    code = cli.main(_usage_error_argv(kind, tmp_path), restore_traceback=True)
+    captured = capsys.readouterr()
+
+    assert (code, captured.out) == (2, "")
+    assert "Usage:" in captured.err
+
+
 @os_agnostic
 def test_generate_examples_lists_what_it_created(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     destination = tmp_path / "examples"

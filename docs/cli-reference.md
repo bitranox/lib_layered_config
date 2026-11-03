@@ -55,9 +55,13 @@ For `deploy`, `skipped` lists the destinations left alone because they already h
 content, the `.d` directory's included.
 
 The exit code is the one the command returns without `--json`, so a script can branch on either. A
-usage error that Click detects before the command starts (a missing required option, a `--source`
-that does not exist) still exits 2 with Click's usage text on stderr and nothing on stdout. An
-interrupt (Ctrl-C) exits with the signal's code and prints no envelope.
+usage error Click finds while reading the arguments (a missing required option, a `--source` that
+does not exist, an unknown option) prints the envelope too, with `error.type` set to Click's
+exception (`MissingParameter`, `BadParameter`, `NoSuchOption`) and exit code 2. `--json` is
+recognised as written among the command's arguments, so an option value spelled `--json` counts as
+well. Two cases keep Click's usage text on stderr: an unknown command
+(`lib_layered_config nosuch --json`), which fails before any command is chosen, and the same errors
+without `--json`. An interrupt (Ctrl-C) exits with the signal's code and prints no envelope.
 
 ---
 
