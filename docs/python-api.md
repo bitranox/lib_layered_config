@@ -408,7 +408,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `app` (str, required): Application name used to compute filesystem paths (e.g., `"ConfigKit"`).
 - `slug` (str, required): Configuration slug used for file paths and environment variable prefix (e.g., `"config-kit"`).
 - `profile` (str | None, optional): Configuration profile name (e.g., `"test"`, `"production"`). When specified, adds a `profile/<name>/` segment to all configuration paths. Default: `None` (no profile).
-- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes (e.g., `["toml", "json", "yaml"]`). Files matching earlier suffixes take precedence. Default: `None` (accepts all supported formats with default ordering).
+- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes (e.g., `["toml", "json", "yaml"]`). Files matching earlier suffixes take precedence. A single `str` is refused with `TypeError` (write `["toml"]`): it would be read as its letters. Default: `None` (accepts all supported formats with default ordering).
 - `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search; a directory the search cannot enter is skipped, and so is a `.env` that neither the current user nor root owns (POSIX; logged as the warning `dotenv_skipped_foreign_owner`). Default: `None` (uses current working directory; when the operating system cannot name it - a removed directory, or on macOS one the user cannot enter - no project `.env` is searched).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
 - `dotenv_path` (str | Path | None, optional): Explicit path to a `.env` file. When set, this file is loaded directly instead of searching upward from `start_dir`. A FIFO (a shell's `<(...)`) or a device is read like a file, up to the same 10 MiB cap; like `cat`, the read waits for a FIFO's writer and for it to close. A path that does not exist loads nothing; a socket raises the unreadable-file error. Default: `None` (use directory search).
@@ -564,7 +564,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
-- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes. Default: `None`.
+- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes; a single `str` is refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
@@ -655,7 +655,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
-- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes. Default: `None`.
+- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes; a single `str` is refused with `TypeError`. Default: `None`.
 - `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
@@ -1536,7 +1536,7 @@ except ValueError as e:
 Check if a profile name is valid without raising an exception.
 
 **Parameters:**
-- `value` (str | None, required): The profile name to check. `None` is considered valid (no profile).
+- `value` (object, required): The profile name to check. `None` is considered valid (no profile); any other value that is not a `str` is not a valid name.
 - `max_length` (int, optional): Maximum allowed length. Default: `64` characters. Set to `0` or negative to use the absolute maximum (256 chars).
 
 **Returns:** `True` if the profile name is valid or `None`, `False` otherwise.

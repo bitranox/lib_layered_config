@@ -99,6 +99,7 @@ def read_config(
     Raises:
         ValueError: When profile name is invalid (too long, path traversal, etc.).
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
+        TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
 
     Examples:
@@ -182,6 +183,7 @@ def read_config_json(
     Raises:
         ValueError: When profile name is invalid (too long, path traversal, etc.).
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
+        TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
     """
     declared = NotSensitiveKeys.of(not_sensitive)
@@ -233,8 +235,10 @@ def read_config_raw(
     Raises:
         ValueError: When profile name is invalid (too long, path traversal, etc.).
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
+        TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
     """
+    _refuse_a_single_str_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)
     resolver = _build_resolver(
         vendor=vendor,
@@ -265,6 +269,16 @@ def read_config_raw(
         raise LayerLoadError(str(exc)) from exc
 
     return merge_or_empty(layers)
+
+
+def _refuse_a_single_str_prefer(prefer: Sequence[str] | None) -> None:
+    """Refuse *prefer* given as one ``str``.
+
+    A ``str`` is itself a sequence of strings, so the type checker accepts ``prefer="toml"``; the
+    ranking then read its letters as suffixes and preferred nothing.
+    """
+    if isinstance(prefer, str):
+        raise TypeError(f"prefer takes a sequence of suffixes, not a single str: write [{prefer!r}]")
 
 
 def read_config_for_deploy(

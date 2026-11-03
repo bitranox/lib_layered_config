@@ -229,6 +229,17 @@ def test_env_prefix_prints_the_slug_and_its_prefix(capsys: pytest.CaptureFixture
 
 
 @os_agnostic
+def test_env_prefix_reports_an_empty_slug_as_a_usage_error_in_the_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, document = _run(capsys, "env-prefix", "", "--json")
+
+    error = _mapping(document["error"])
+    assert (code, document["ok"], error["type"], error["exit_code"]) == (2, False, "BadParameter", 2)
+    assert "slug cannot be empty" in str(error["message"])
+
+
+@os_agnostic
 def test_fail_prints_its_error_inside_the_envelope(capsys: pytest.CaptureFixture[str]) -> None:
     code, document = _run(capsys, "fail", "--json")
 

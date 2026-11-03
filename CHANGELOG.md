@@ -38,6 +38,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   usage text. Output without `--json` is unchanged.
 
 ### Fixed
+- Arguments that used to give a silently wrong answer are refused. `display_config` with an
+  `output_format` that names no format (`"xml"`, `"JSON"`) printed the human view and now raises
+  `ValueError`. `read_config`, `read_config_json` and `read_config_raw` read `prefer="toml"` as the
+  suffixes t, o, m, l, so it preferred nothing; a single `str` now raises `TypeError` (a type checker
+  accepts it, since a `str` is a sequence of strings). `default_env_prefix("")` returned `___` and now
+  raises `ValidationError` like `read_config(slug="")`; `lib_layered_config env-prefix ""` is a usage
+  error (exit code 2) instead of printing `___`.
+- `is_valid_profile_name` answers `False` for a value that is not a `str` instead of raising
+  `TypeError`, as its "without raising an exception" promise says; its parameter is typed `object`.
 - On Windows, `read_config` finds `%ProgramData%` again. The path resolver works on a copy of the
   environment, and Windows stores the name there as `PROGRAMDATA` (measured: `"ProgramData" in
   os.environ` is true, in `dict(os.environ)` false), so the app and host layers always fell back to

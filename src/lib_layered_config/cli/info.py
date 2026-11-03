@@ -5,6 +5,7 @@ from __future__ import annotations
 import rich_click as click
 
 from ..core import default_env_prefix
+from ..domain.errors import ValidationError
 from .common import describe_distribution, package_metadata
 from .constants import CLICK_CONTEXT_SETTINGS
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
@@ -28,8 +29,17 @@ def info_command(*, json_envelope: bool) -> None:
         click.echo(line)
 
 
+def _slug_argument(_ctx: click.Context, param: click.Parameter, value: str) -> str:
+    """Refuse a slug ``default_env_prefix`` refuses, as a usage error rather than a crash."""
+    try:
+        default_env_prefix(value)
+    except ValidationError as exc:
+        raise click.BadParameter(str(exc), param=param) from exc
+    return value
+
+
 @click.command("env-prefix", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
-@argument("slug")
+@argument("slug", callback=_slug_argument)
 @json_envelope_option
 def env_prefix_command(slug: str, *, json_envelope: bool) -> None:
     """Echo the canonical environment variable prefix for a slug."""

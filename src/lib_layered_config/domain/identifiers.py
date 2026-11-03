@@ -480,7 +480,7 @@ def validate_profile_name(
 
 
 def is_valid_profile_name(
-    value: str | None,
+    value: object,
     *,
     max_length: int = DEFAULT_MAX_PROFILE_LENGTH,
 ) -> bool:
@@ -496,7 +496,8 @@ def is_valid_profile_name(
         the 256 character absolute maximum.
 
     Args:
-        value: The profile name to check. None is considered valid (no profile).
+        value: The profile name to check. None is considered valid (no profile); any other
+            non-str value is not a valid name.
         max_length: Maximum allowed length (default: 64 characters).
             Set to 0 or negative to disable length checking (still capped at 256).
 
@@ -523,6 +524,9 @@ def is_valid_profile_name(
     """
     if value is None:
         return True
+    if not isinstance(value, str):
+        # The validator's regex raises TypeError on a non-str, and this check promises not to raise.
+        return False
     try:
         validate_profile_name(value, max_length=max_length)
         return True

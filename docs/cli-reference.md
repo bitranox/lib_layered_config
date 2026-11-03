@@ -1250,7 +1250,8 @@ lib_layered_config env-prefix <slug>
 |-----------|--------|------------------|---------|-----------------------------------------------------|
 | `slug`    | string | Yes (positional) | -       | Configuration slug to convert to environment prefix |
 
-**Returns:** Uppercase environment prefix with dashes converted to underscores.
+**Returns:** Uppercase environment prefix with dashes converted to underscores. An empty slug is a usage
+error (exit code 2, `slug cannot be empty`), as `read` refuses it too.
 
 **Examples:**
 

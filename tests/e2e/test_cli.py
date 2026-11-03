@@ -345,6 +345,14 @@ def test_cli_env_prefix_echoes_uppercase_slug() -> None:
 
 
 @os_agnostic
+def test_cli_env_prefix_refuses_an_empty_slug_as_a_usage_error() -> None:
+    result = make_runner().invoke(cli.cli, ["env-prefix", ""])
+    assert result.exit_code == 2
+    assert "slug cannot be empty" in result.output
+    assert "___" not in result.output
+
+
+@os_agnostic
 def test_cli_info_recites_real_metadata() -> None:
     # The CLI reads the generated metadata module itself; reloading that module refreshes what
     # both the CLI and the expectation below read.

@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Final
 
-from ...domain.errors import InvalidFormatError
+from ...domain.errors import InvalidFormatError, ValidationError
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
 from .._nested_keys import NestedEntry, build_nested
@@ -49,10 +49,15 @@ def default_env_prefix(slug: str) -> str:
         Upper-case prefix with dashes converted to underscores, ending with
         triple underscore separator.
 
+    Raises:
+        ValidationError: *slug* is empty, which ``read_config`` refuses too.
+
     Examples:
         >>> default_env_prefix('lib-layered-config')
         'LIB_LAYERED_CONFIG___'
     """
+    if not slug:
+        raise ValidationError("slug cannot be empty")
     return slug.replace("-", "_").upper() + "___"
 
 

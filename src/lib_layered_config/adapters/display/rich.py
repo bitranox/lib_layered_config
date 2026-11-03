@@ -214,7 +214,8 @@ def display_config(
         Writes formatted configuration to stdout via click.echo().
 
     Raises:
-        ValueError: If a section was requested that doesn't exist.
+        ValueError: If a section was requested that doesn't exist, or *output_format* is not one
+            of the :class:`OutputFormat` values.
 
     Note:
         The human-readable format mimics TOML syntax for consistency with the
@@ -223,10 +224,23 @@ def display_config(
         secrets, tokens, credentials, API keys) are automatically redacted
         using ``lib_layered_config``'s redaction API.
     """
-    if output_format == OutputFormat.JSON:
+    if _known_format(output_format) is OutputFormat.JSON:
         _display_json(config, section)
     else:
         _display_human(config, section, console=console, profile=profile)
+
+
+def _known_format(output_format: OutputFormat) -> OutputFormat:
+    """Return *output_format* as an :class:`OutputFormat`, refusing any other value.
+
+    An untyped caller can pass the format's text; a value that names no format used to fall
+    through to the human view, so a typo printed the wrong format instead of failing.
+    """
+    try:
+        return OutputFormat(output_format)
+    except ValueError:
+        choices = ", ".join(repr(member.value) for member in OutputFormat)
+        raise ValueError(f"output_format must be one of {choices}, not {output_format!r}") from None
 
 
 def _display_json(config: Config, section: str | None) -> None:
