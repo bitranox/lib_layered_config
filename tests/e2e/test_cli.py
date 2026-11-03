@@ -92,6 +92,22 @@ def test_cli_read_redacts_secrets_when_requested(sandbox: LayeredSandbox) -> Non
 
 
 @os_agnostic
+def test_cli_read_in_human_format_redacts_secrets_when_requested(sandbox: LayeredSandbox) -> None:
+    layer(sandbox, "app", "config.toml", """[db]\npassword = "s3cret"\nhost = "localhost"\n""")
+    base_args = ["read", "--vendor", VENDOR, "--app", APP, "--slug", SLUG, "--format", "human"]
+
+    redacted = make_runner().invoke(cli.cli, [*base_args, "--redact"], env=sandbox.env)
+    plain = make_runner().invoke(cli.cli, [*base_args, "--no-redact"], env=sandbox.env)
+
+    assert redacted.exit_code == 0
+    assert "***REDACTED***" in redacted.output
+    assert "s3cret" not in redacted.output
+    assert "localhost" in redacted.output
+    assert plain.exit_code == 0
+    assert "s3cret" in plain.output
+
+
+@os_agnostic
 def test_cli_read_json_with_provenance_includes_layer_metadata(sandbox: LayeredSandbox) -> None:
     layer(
         sandbox,
