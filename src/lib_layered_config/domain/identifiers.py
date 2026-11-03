@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from functools import lru_cache
 
 from .errors import ValidationError
 
@@ -294,7 +293,6 @@ def _check_strict_pattern(value: str, name: str, *, allow_dots: bool) -> None:
     _raise_pattern_error(value, name, check_space_start=False)
 
 
-@lru_cache(maxsize=64)
 def validate_identifier(value: str, name: str) -> str:
     """Validate a strict identifier (slug, profile) for filesystem safety.
 
@@ -304,7 +302,6 @@ def validate_identifier(value: str, name: str) -> str:
     Note:
         This is for strict identifiers (slug, profile) that should not contain spaces.
         For vendor/app which allow spaces, use ``validate_vendor_app()``.
-        Results are cached for performance when validating the same identifiers repeatedly.
 
     Args:
         value: The identifier value to validate.
@@ -329,14 +326,12 @@ def validate_identifier(value: str, name: str) -> str:
     return validate_path_segment(value, name, allow_dots=False)
 
 
-@lru_cache(maxsize=64)
 def validate_vendor_app(value: str, name: str) -> str:
     """Validate vendor or app identifier for filesystem safety (allows spaces).
 
     Vendor and app names are used in macOS and Windows paths which support spaces
     (e.g., ``/Library/Application Support/Acme Corp/My App/``).
     This function allows spaces while still preventing path traversal attacks.
-    Results are cached for performance when validating the same values repeatedly.
 
     Args:
         value: The vendor or app value to validate.
@@ -535,14 +530,12 @@ def is_valid_profile_name(
         return False
 
 
-@lru_cache(maxsize=16)
 def validate_hostname(value: str) -> str:
     """Ensure hostname is safe for use in filesystem paths.
 
     Hostnames are used to construct file paths like ``hosts/{hostname}.toml``.
     While hostnames from ``socket.gethostname()`` are typically safe, defensive
     validation prevents path traversal and ensures cross-platform safety.
-    Results are cached for performance since hostname rarely changes.
 
     Validation Rules:
         1. Must not be empty

@@ -61,6 +61,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what
   `deploy_config` returns) are importable from `lib_layered_config`.
 
+### Changed
+- `validate_identifier`, `validate_vendor_app` and `validate_hostname` in
+  `lib_layered_config.domain.identifiers` are no longer wrapped in `functools.lru_cache`, so they
+  have no `cache_info()` / `cache_clear()`. Measured, the cache saved under 1% of a `read_config`
+  call (about 1.6 us of 190 us). Results are unchanged.
+
 ### Security
 - Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,
   whitespace and a change of case before the name rule runs, so `dbPassword`, `DBPassword`,
