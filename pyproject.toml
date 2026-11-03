@@ -180,10 +180,10 @@ convention = "google"
 typeCheckingMode = "strict"
 include = [
   "src/lib_layered_config",
+  "tests",
 ]
 exclude = [
   "scripts/menu.py",
-  "tests",
   "notebooks",
   "docs",
   "dist",
