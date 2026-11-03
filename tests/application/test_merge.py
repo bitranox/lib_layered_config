@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import cast
+import logging
+from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
 from hypothesis import given
@@ -11,6 +12,9 @@ from lib_layered_config.application.merge import LayerSnapshot, MergeResult, mer
 from lib_layered_config.domain.errors import InvalidFormatError
 from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 def _deeply_nested(depth: int) -> dict[str, object]:
@@ -29,9 +33,33 @@ def test_when_nesting_is_pathologically_deep_merge_raises_invalid_format() -> No
         merge_story(snapshot(Layer.APP, _deeply_nested(150)))
 
 
+def _is_table(value: object) -> TypeGuard[dict[object, object]]:
+    """Narrow a merged value to a table; the merge returns its data as plain ``object``."""
+    return isinstance(value, dict)
+
+
+def _is_str_table(value: object) -> TypeGuard[dict[str, object]]:
+    """Narrow a table whose keys are strings, as every layer payload built here has."""
+    return isinstance(value, dict)
+
+
+def _table(value: object) -> dict[object, object]:
+    assert _is_table(value)
+    return value
+
+
+def _is_array(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _array(value: object) -> list[object]:
+    assert _is_array(value)
+    return value
+
+
 def _nested_contains(actual: object | None, expected: object) -> bool:
-    if isinstance(expected, dict):
-        if not isinstance(actual, dict):
+    if _is_table(expected):
+        if not _is_table(actual):
             return False
         return all(_nested_contains(actual.get(key), value) for key, value in expected.items())
     return actual == expected
@@ -46,7 +74,7 @@ VALUE = st.recursive(
 MAPPING = st.dictionaries(st.text(min_size=1, max_size=5), VALUE, max_size=4)
 
 
-def snapshot(name: Layer, payload: dict[str, object], origin: str | None = None) -> LayerSnapshot:
+def snapshot(name: Layer, payload: Mapping[str, object], origin: str | None = None) -> LayerSnapshot:
     return LayerSnapshot(name, payload, origin)
 
 
@@ -60,7 +88,7 @@ def test_when_user_layer_sings_last_word_the_scalar_agrees() -> None:
         snapshot(Layer.APP, {"feature": {"enabled": False}}, "app.toml"),
         snapshot(Layer.USER, {"feature": {"enabled": True}}, "user.toml"),
     )
-    assert result.data["feature"]["enabled"] is True
+    assert _table(result.data["feature"])["enabled"] is True
 
 
 @os_agnostic
@@ -69,7 +97,7 @@ def test_when_env_layer_whispers_new_key_the_story_remembers() -> None:
         snapshot(Layer.APP, {"feature": {}}, "app.toml"),
         snapshot(Layer.ENV, {"feature": {"level": "debug"}}),
     )
-    assert result.data["feature"]["level"] == "debug"
+    assert _table(result.data["feature"])["level"] == "debug"
 
 
 @os_agnostic
@@ -107,7 +135,7 @@ def test_when_dotenv_supplies_password_the_payload_keeps_it() -> None:
         snapshot(Layer.APP, {"db": {"host": "localhost"}}, "app.toml"),
         snapshot(Layer.DOTENV, {"db": {"password": "secret"}}, ".env"),
     )
-    assert result.data["db"]["password"] == "secret"
+    assert _table(result.data["db"])["password"] == "secret"
 
 
 @os_agnostic
@@ -160,7 +188,7 @@ def test_when_merging_twice_the_metadata_sings_the_same_tune() -> None:
 
 @os_agnostic
 def test_when_original_list_changes_the_merged_copy_stays_still() -> None:
-    payload = {"numbers": [1, 2]}
+    payload: dict[str, list[int]] = {"numbers": [1, 2]}
     result = merge_story(snapshot(Layer.ENV, payload))
     payload["numbers"].append(3)
     assert result.data["numbers"] == [1, 2]
@@ -168,15 +196,15 @@ def test_when_original_list_changes_the_merged_copy_stays_still() -> None:
 
 @os_agnostic
 def test_when_original_dict_changes_the_merged_copy_stays_still() -> None:
-    payload = {"nested": {"child": "value"}}
+    payload: dict[str, dict[str, str]] = {"nested": {"child": "value"}}
     result = merge_story(snapshot(Layer.ENV, payload))
     payload["nested"]["child"] = "changed"
-    assert result.data["nested"]["child"] == "value"
+    assert _table(result.data["nested"])["child"] == "value"
 
 
 @os_agnostic
 def test_when_original_set_changes_the_merged_copy_stays_still() -> None:
-    payload = {"choices": {1, 2}}
+    payload: dict[str, set[int]] = {"choices": {1, 2}}
     result = merge_story(snapshot(Layer.ENV, payload))
     payload["choices"].add(3)
     assert result.data["choices"] == {1, 2}
@@ -184,22 +212,24 @@ def test_when_original_set_changes_the_merged_copy_stays_still() -> None:
 
 @os_agnostic
 def test_when_original_dict_with_nonstring_keys_changes_the_copy_stays_still() -> None:
-    payload = {"strange": {1: "value"}}
+    payload: dict[str, dict[int, str]] = {"strange": {1: "value"}}
     result = merge_story(snapshot(Layer.ENV, payload))
     payload["strange"][1] = "changed"
-    assert result.data["strange"][1] == "value"
+    assert _table(result.data["strange"])[1] == "value"
 
 
 @os_agnostic
 def test_when_original_tuple_travels_through_merge_it_returns_intact() -> None:
-    payload = {"paths": ("one", "two")}
+    payload: dict[str, tuple[str, str]] = {"paths": ("one", "two")}
     result = merge_story(snapshot(Layer.ENV, payload))
     assert result.data["paths"] == ("one", "two")
 
 
 @os_agnostic
 @given(MAPPING, MAPPING, MAPPING)
-def test_associativity_holds_like_a_round_song(lhs, mid, rhs) -> None:
+def test_associativity_holds_like_a_round_song(
+    lhs: dict[str, object], mid: dict[str, object], rhs: dict[str, object]
+) -> None:
     left = merge_story(snapshot(Layer.APP, lhs), snapshot(Layer.HOST, mid), snapshot(Layer.USER, rhs))
     step_one = merge_story(snapshot(Layer.HOST, left.data), snapshot(Layer.USER, rhs))
     mid_then_right = merge_story(snapshot(Layer.HOST, mid), snapshot(Layer.USER, rhs))
@@ -209,12 +239,12 @@ def test_associativity_holds_like_a_round_song(lhs, mid, rhs) -> None:
 
 @os_agnostic
 @given(MAPPING, MAPPING)
-def test_latest_non_empty_layer_wins_like_a_final_verse(first, second) -> None:
+def test_latest_non_empty_layer_wins_like_a_final_verse(first: dict[str, object], second: dict[str, object]) -> None:
     result = merge_story(snapshot(Layer.APP, first), snapshot(Layer.USER, second))
     chorus = all(
         _nested_contains(result.data.get(key), value)
         for key, value in second.items()
-        if not (isinstance(value, dict) and not value)
+        if not (_is_table(value) and not value)
     )
     assert chorus is True
 
@@ -241,9 +271,7 @@ def test_when_env_indexes_past_the_end_it_appends_the_new_verse() -> None:
 
 
 @os_agnostic
-def test_when_env_index_leaps_beyond_the_next_slot_it_warns_and_skips(caplog) -> None:
-    import logging
-
+def test_when_env_index_leaps_beyond_the_next_slot_it_warns_and_skips(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.WARNING)
     result = merge_story(
         snapshot(Layer.APP, {"hosts": [{"name": "a"}]}, "app.toml"),
@@ -278,7 +306,7 @@ def test_when_env_overrides_element_provenance_points_to_env() -> None:
         snapshot(Layer.APP, {"dataset": [{"dsn": "old"}]}, "app.toml"),
         snapshot(Layer.ENV, {"dataset": {"0": {"dsn": "new"}}}),
     )
-    assert result.data["dataset"][0]["dsn"] == "new"
+    assert _table(_array(result.data["dataset"])[0])["dsn"] == "new"
     assert result.provenance["dataset.0.dsn"]["layer"] == "env"
 
 
@@ -302,9 +330,7 @@ def test_when_env_replaces_element_with_scalar_it_swaps_the_slot() -> None:
 
 
 @os_agnostic
-def test_when_scalar_overwrites_mapping_a_warning_is_emitted(caplog) -> None:
-    import logging
-
+def test_when_scalar_overwrites_mapping_a_warning_is_emitted(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.WARNING)
     merge_story(
         snapshot(Layer.APP, {"service": {"timeout": 30}}, "app.toml"),
@@ -314,9 +340,7 @@ def test_when_scalar_overwrites_mapping_a_warning_is_emitted(caplog) -> None:
 
 
 @os_agnostic
-def test_when_mapping_overwrites_scalar_a_warning_is_emitted(caplog) -> None:
-    import logging
-
+def test_when_mapping_overwrites_scalar_a_warning_is_emitted(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.WARNING)
     merge_story(
         snapshot(Layer.APP, {"service": "enabled"}, "app.toml"),
@@ -384,7 +408,7 @@ def _values_and_empty_tables(data: dict[str, object], prefix: str = "") -> set[s
     found: set[str] = set()
     for key, value in data.items():
         dotted = prefix + key
-        if isinstance(value, dict) and value:
+        if _is_str_table(value) and value:
             found |= _values_and_empty_tables(value, dotted + ".")
         else:
             found.add(dotted)
@@ -393,7 +417,9 @@ def _values_and_empty_tables(data: dict[str, object], prefix: str = "") -> set[s
 
 @os_agnostic
 @given(st.lists(_TRANSITION_LAYER, min_size=1, max_size=4))
-def test_provenance_names_exactly_the_values_and_empty_tables_of_the_merged_data(layers) -> None:
+def test_provenance_names_exactly_the_values_and_empty_tables_of_the_merged_data(
+    layers: list[dict[str, object]],
+) -> None:
     """Keys from a three-letter alphabet make layers collide, so tables, values and empty tables
     replace each other in every order; keys hold no dot, so a dotted path names one place."""
     result = merge_story(*(snapshot(name, layer) for name, layer in zip(Layer, layers, strict=False)))
@@ -402,7 +428,7 @@ def test_provenance_names_exactly_the_values_and_empty_tables_of_the_merged_data
 
 @os_agnostic
 @pytest.mark.parametrize("replacement", [{"name": "x"}, "none"], ids=["table", "value"])
-def test_a_list_replaced_wholesale_forgets_the_entries_of_its_overridden_elements(replacement) -> None:
+def test_a_list_replaced_wholesale_forgets_the_entries_of_its_overridden_elements(replacement: object) -> None:
     """An env override by index records an entry per element value (`ports.0.n`); once a later
     layer replaces the whole list, that element is gone and so must be its entry."""
     result = merge_story(
@@ -418,7 +444,11 @@ def test_a_list_replaced_wholesale_forgets_the_entries_of_its_overridden_element
 @pytest.mark.parametrize("name", [layer.value for layer in Layer])
 def test_a_snapshot_named_by_the_plain_layer_string_merges_like_the_member(name: str) -> None:
     """A caller rebuilding snapshots from ``Config.origin(...)["layer"]`` holds the plain string."""
-    snapshot = LayerSnapshot(cast("Layer", name), {"a": 1}, None)
+    snapshot = LayerSnapshot(
+        name,  # pyright: ignore[reportArgumentType] - the plain string the field annotation excludes is what this test checks
+        {"a": 1},
+        None,
+    )
 
     result = merge_layers([snapshot])
 
@@ -429,4 +459,8 @@ def test_a_snapshot_named_by_the_plain_layer_string_merges_like_the_member(name:
 @os_agnostic
 def test_a_snapshot_named_by_an_unknown_layer_string_is_refused_at_construction() -> None:
     with pytest.raises(ValueError, match="'nosuchlayer' is not a valid Layer"):
-        LayerSnapshot(cast("Layer", "nosuchlayer"), {"a": 1}, None)
+        LayerSnapshot(
+            "nosuchlayer",  # pyright: ignore[reportArgumentType] - the wrong type is what this test checks
+            {"a": 1},
+            None,
+        )
