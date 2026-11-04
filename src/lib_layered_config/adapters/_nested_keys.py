@@ -7,7 +7,6 @@ structures. This module centralises that logic to eliminate duplication.
 Contents:
     - ``NestedEntry``: one variable to place, with the label a refusal names it by.
     - ``build_nested``: place every entry, the same way whatever order they arrive in.
-    - ``assign_nested``: public function to assign a value at a nested key path.
     - ``resolve_key``: case-insensitive key resolution.
     - ``ensure_child_mapping``: ensure intermediate mappings exist.
     - ``NESTED_KEY_DELIMITER``: constant for the ``__`` separator.
@@ -118,33 +117,6 @@ def _as_table(value: object) -> dict[str, object] | None:
     return cast("dict[str, object]", value) if isinstance(value, dict) else None
 
 
-def assign_nested(
-    target: dict[str, object],
-    key: str,
-    value: object,
-    *,
-    error_cls: type[Exception],
-) -> None:
-    """Assign ``value`` in ``target`` using case-insensitive ``__`` delimited syntax.
-
-    Args:
-        target: Mapping being mutated.
-        key: Key using ``__`` separators (e.g., ``SERVICE__TIMEOUT``).
-        value: Value to assign at the nested location.
-        error_cls: Exception type raised on scalar collisions.
-
-    Side Effects:
-        Mutates ``target`` in place.
-
-    Examples:
-        >>> data: dict[str, object] = {}
-        >>> assign_nested(data, 'SERVICE__TOKEN', 'secret', error_cls=ValueError)
-        >>> data
-        {'service': {'token': 'secret'}}
-    """
-    _assign_parts(target, key.split(NESTED_KEY_DELIMITER), value, index=_CaseIndex(), error_cls=error_cls)
-
-
 class _CaseIndex:
     """Lowercase-to-stored key index per table, so a case-insensitive lookup is one dict probe.
 
@@ -183,7 +155,7 @@ class _CaseIndex:
 def _assign_parts(
     target: dict[str, object], parts: list[str], value: object, *, index: _CaseIndex, error_cls: type[Exception]
 ) -> None:
-    """Place *value* at the path *parts* names, creating tables on the way; see :func:`assign_nested`."""
+    """Place *value* at the path *parts* names, creating tables on the way; see :func:`build_nested`."""
     cursor = target
     for part in parts[:-1]:
         cursor = _child_table(cursor, part, index=index, error_cls=error_cls)
@@ -263,7 +235,6 @@ def ensure_child_mapping(
 __all__ = [
     "NESTED_KEY_DELIMITER",
     "NestedEntry",
-    "assign_nested",
     "build_nested",
     "ensure_child_mapping",
     "resolve_key",

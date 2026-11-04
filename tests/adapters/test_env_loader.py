@@ -9,11 +9,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TypeGuard
 
-import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from lib_layered_config.adapters._nested_keys import assign_nested
 from lib_layered_config.adapters._value_coercion import coerce_value, parse_number
 from lib_layered_config.adapters.env.default import (
     DefaultEnvLoader,
@@ -70,13 +68,6 @@ def test_env_loader_coerces_numbers_into_ints() -> None:
 def test_env_loader_turns_true_into_boolean() -> None:
     data = _sample_payload()
     assert _section(data, "feature")["enabled"] is True
-
-
-@os_agnostic
-def test_assign_nested_overwrites_scalar_raises_value_error() -> None:
-    container: dict[str, object] = {"a": "value"}
-    with pytest.raises(ValueError):
-        assign_nested(container, "A__B", 1, error_cls=ValueError)
 
 
 SCALAR_VALUES = st.sampled_from(["0", "1", "true", "false", "3.5", "none", "debug"])

@@ -8,7 +8,6 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from lib_layered_config.adapters._nested_keys import assign_nested as assign
 from lib_layered_config.adapters._value_coercion import coerce_value
 from lib_layered_config.adapters.dotenv.default import (
     DefaultDotEnvLoader,
@@ -220,10 +219,3 @@ def test_dotenv_upward_search_skips_a_directory_named_dot_env(tmp_path: Path) ->
     loader.load(start_dir=str(start))
 
     assert loader.last_loaded_path not in {str(start / ".env"), str(tmp_path / ".env")}
-
-
-@os_agnostic
-def test_assign_nested_raises_invalid_format_on_scalar_collision() -> None:
-    target: dict[str, object] = {"service": "scalar"}
-    with pytest.raises(InvalidFormatError):
-        assign(target, "SERVICE__TOKEN", "value", error_cls=InvalidFormatError)

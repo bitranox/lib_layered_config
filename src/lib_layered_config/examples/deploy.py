@@ -629,7 +629,6 @@ def _deploy_to_destination(
     destination: Path,
     source_path: Path,
     dot_d_files: list[Path],
-    source_dot_d: Path,
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
@@ -641,7 +640,6 @@ def _deploy_to_destination(
         destination: Target file path.
         source_path: The source file, copied to *destination* (and compared for skip detection).
         dot_d_files: List of .d directory source files.
-        source_dot_d: Source .d directory path.
         force: If True, backup and overwrite.
         batch: If True, keep existing and write as .ucf.
         conflict_resolver: Callback for interactive conflict resolution.
@@ -667,7 +665,6 @@ def _deploy_to_destination(
         result.dot_d_results = _deploy_dot_d_files(
             dot_d_files=dot_d_files,
             dest_dot_d=dest_dot_d,
-            source_dot_d=source_dot_d,
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
@@ -823,7 +820,6 @@ def deploy_config(
             destination=destination.path,
             source_path=source_path,
             dot_d_files=dot_d_files,
-            source_dot_d=source_dot_d,
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
@@ -953,7 +949,6 @@ def _deploy_dot_d_files(
     *,
     dot_d_files: list[Path],
     dest_dot_d: Path,
-    source_dot_d: Path,
     force: bool,
     batch: bool,
     conflict_resolver: ConflictResolver | None,
@@ -964,7 +959,6 @@ def _deploy_dot_d_files(
     Args:
         dot_d_files: List of source files to deploy.
         dest_dot_d: Destination .d directory path.
-        source_dot_d: Source .d directory (for skipping same-file deploys).
         force: If True, backup existing files and overwrite.
         batch: If True, keep existing files and write new as .ucf.
         conflict_resolver: Callback to resolve conflicts interactively.
@@ -1103,21 +1097,12 @@ def _prepare_resolver(
         ValidationError: *platform* names no known layout; an unknown name would otherwise get the
             Linux layout without a word.
     """
-    canonical = normalise_resolver_platform(platform)
-    if canonical is None:
-        return DefaultPathResolver(
-            vendor=vendor,
-            app=app,
-            slug=slug,
-            profile=profile,
-            max_profile_length=max_profile_length,
-        )
     return DefaultPathResolver(
         vendor=vendor,
         app=app,
         slug=slug,
         profile=profile,
-        platform=canonical,
+        platform=normalise_resolver_platform(platform),
         max_profile_length=max_profile_length,
     )
 
