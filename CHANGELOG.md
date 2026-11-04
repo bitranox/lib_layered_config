@@ -54,6 +54,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   usage text. Output without `--json` is unchanged.
 
 ### Fixed
+- `deploy` refuses a source that is not a `.toml` file, in every mode and before anything is written:
+  `"<source> is not a .toml file, but deploy writes it as config.toml or <hostname>.toml, which are read
+  only as TOML"` (a `LayerLoadError`, exit code 1). Every destination is read only as TOML, yet a valid
+  `config.json` or `config.yaml` deployed with exit 0 and then broke every read with "is not valid
+  TOML"; an invalid `app.conf` did the same under `--no-permissions`. A TOML file named `.conf`, which
+  deployed under `--no-permissions` only, must be renamed to `.toml`. Files in the source's `.d`
+  directory keep their TOML, YAML or JSON format.
 - Arguments that used to give a silently wrong answer are refused. `display_config` with an
   `output_format` that names no format (`"xml"`, `"JSON"`) printed the human view and now raises
   `ValueError`. `read_config`, `read_config_json` and `read_config_raw` read `prefer="toml"` as the

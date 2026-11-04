@@ -81,6 +81,51 @@ def test_an_unparseable_source_is_refused_in_every_mode(
     assert _written(source) == []
 
 
+_NOT_TOML_SOURCES = {
+    "json": ("config.json", '{"service": {"port": 1}}\n'),
+    "yaml": ("config.yaml", "service:\n  port: 1\n"),
+    "toml-named-conf": ("app.conf", "[service]\nport = 1\n"),
+    "no-suffix": ("config", "[service]\nport = 1\n"),
+}
+
+
+@os_agnostic
+@pytest.mark.parametrize("named", list(_NOT_TOML_SOURCES.values()), ids=list(_NOT_TOML_SOURCES))
+@pytest.mark.parametrize(
+    "mode",
+    [{}, {"dir_mode": 0o700, "file_mode": 0o600}, {"set_permissions": False}],
+    ids=["configured-modes", "explicit-modes", "no-permissions"],
+)
+def test_a_source_that_is_not_a_toml_file_is_refused_in_every_mode(
+    sandbox: LayeredSandbox, tmp_path: Path, named: tuple[str, str], mode: _DeployMode
+) -> None:
+    # Every destination is config.toml or <hostname>.toml and is read only as TOML, so a valid
+    # JSON or YAML source used to deploy with exit 0 and break every read after it.
+    name, body = named
+    source = tmp_path / "src" / name
+    source.parent.mkdir()
+    source.write_text(body, encoding="utf-8")
+
+    with pytest.raises(
+        LayerLoadError, match=r"is not a \.toml file, but deploy writes it as config\.toml or <hostname>\.toml"
+    ) as caught:
+        deploy_config(source, targets=_TARGETS, **_IDENTITY, **mode)
+
+    assert name in str(caught.value) and "deploy anyway" not in str(caught.value)
+    assert _written(source) == []
+
+
+@os_agnostic
+def test_a_toml_source_whose_suffix_is_upper_case_is_deployed(sandbox: LayeredSandbox, tmp_path: Path) -> None:
+    source = tmp_path / "src" / "CONFIG.TOML"
+    source.parent.mkdir()
+    source.write_text("[service]\nport = 1\n", encoding="utf-8")
+
+    deploy_config(source, targets=["user"], set_permissions=False, **_IDENTITY)
+
+    assert sandbox.roots["user"].joinpath("config.toml").read_text(encoding="utf-8") == "[service]\nport = 1\n"
+
+
 @os_agnostic
 def test_an_unparseable_file_in_the_source_dot_d_is_refused(sandbox: LayeredSandbox, tmp_path: Path) -> None:
     source = _source(tmp_path, "[service]\nport = 1\n")

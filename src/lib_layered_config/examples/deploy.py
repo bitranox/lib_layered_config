@@ -750,8 +750,9 @@ def deploy_config(
 
     Raises:
         FileNotFoundError: If the source file does not exist.
-        LayerLoadError: The source, or a configuration file in its ``.d`` directory, does not
-            parse; refused in every mode, before anything is written.
+        LayerLoadError: The source is not a ``.toml`` file (every destination is read only as
+            TOML), or it or a configuration file in its ``.d`` directory does not parse; refused
+            in every mode, before anything is written.
         PermissionError: The source, a file in its ``.d`` directory, or a destination sits behind
             a permission wall (an ``OSError`` in general); the same on every Python.
         ValueError: When profile name is invalid (too long, path traversal, etc.).

@@ -285,7 +285,7 @@ lib_layered_config deploy --source ./config/app.toml \
 
 | Parameter                            | Type   | Required | Default                       | Description                                                                                                                                                                                     |
 |--------------------------------------|--------|----------|-------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--source`                           | path   | Yes      | -                             | Path to the configuration file to copy. Must be an existing file                                                                                                                                |
+| `--source`                           | path   | Yes      | -                             | Path to the configuration file to copy. Must be an existing `.toml` file                                                                                                                        |
 | `--vendor`                           | string | Yes      | -                             | Vendor namespace                                                                                                                                                                                |
 | `--app`                              | string | Yes      | -                             | Application name                                                                                                                                                                                |
 | `--slug`                             | string | Yes      | -                             | Configuration slug                                                                                                                                                                              |
@@ -337,6 +337,12 @@ directory with the same loaders the application uses. A file that does not parse
 loader's message (`config.toml is not valid TOML (line 1, column 9)`), whatever `--force`, `--batch`,
 `--dir-mode`/`--file-mode` or `--no-permissions` say. Other files in the `.d` directory (a README) are
 copied as they are.
+
+The source itself must be a `.toml` file (any case): every destination is `config.toml` or
+`hosts/<hostname>.toml`, which the application reads only as TOML. A `config.json`, `config.yaml` or
+`app.conf` source is refused the same way, before anything is written: `<source> is not a .toml file, but
+deploy writes it as config.toml or <hostname>.toml, which are read only as TOML`. Files in its `.d`
+directory keep their own TOML, YAML or JSON format.
 
 #### **Smart Skipping (Content-Aware)**
 

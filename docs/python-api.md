@@ -879,7 +879,7 @@ else:
 Copy a source configuration file into one or more layer directories with conflict handling.
 
 **Parameters:**
-- `source` (str | Path, required): Path to the configuration file to copy.
+- `source` (str | Path, required): Path to the configuration file to copy. It must be a `.toml` file (any case), since every destination is read only as TOML; any other suffix raises `LayerLoadError` before anything is written.
 - `vendor` (str, required): Vendor namespace.
 - `app` (str, required): Application name.
 - `targets` (Sequence[str], required): Layer targets to deploy to. Valid values: `"app"`, `"host"`, `"user"`.

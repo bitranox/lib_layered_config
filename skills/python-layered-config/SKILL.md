@@ -403,6 +403,8 @@ an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"
 `ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
 `force=True` backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`;
 both at once raise `ValidationError` (`--force --batch` is a usage error), before anything is written.
+The source must be a `.toml` file (destinations are `config.toml` / `<hostname>.toml`, read only as
+TOML): a `.json`, `.yaml` or `.conf` source raises `LayerLoadError` before anything is written.
 A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
 permission wall raises `PermissionError` on every Python, before anything is written.
 

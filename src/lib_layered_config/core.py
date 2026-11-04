@@ -313,8 +313,17 @@ def refuse_an_unparseable_deploy_source(source: Path) -> None:
     contract names, when it reads the file to copy it.
 
     Raises:
-        LayerLoadError: A file does not parse (the loader's content-free message, naming the file).
+        LayerLoadError: The source is not a ``.toml`` file, or a file does not parse (the loader's
+            content-free message, naming the file).
     """
+    if source.suffix.lower() != ".toml":
+        # Every deploy destination is config.toml or <hostname>.toml, read only as TOML: a valid
+        # JSON or YAML source deployed fine and then broke every read. ``.d`` files keep their
+        # own format, since the ``.d`` reader takes TOML, YAML and JSON.
+        raise LayerLoadError(
+            f"{source} is not a .toml file, but deploy writes it as config.toml or <hostname>.toml, "
+            "which are read only as TOML"
+        )
     try:
         parse_with_dot_d(source)
     except InvalidFormatError as exc:
