@@ -95,7 +95,7 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 | `__init__.py`    | The Click command group and `main()` entry; wires `lib_cli_exit_tools.cli_session` and derives `SessionOverrides`.      |
 | `common.py`      | Shared CLI helpers: `ReadQuery`, `build_read_query`, `json_payload` / `human_payload` (with redaction), `render_human`. |
 | `constants.py`   | CLI constants: `TARGET_CHOICES` (from the `Layer` enum) and the Click context settings.                                 |
-| `read.py`        | The `read` and `read-json` commands (including `--redact`).                                                             |
+| `read.py`        | The `read` and `read-json` commands (secrets masked unless `--no-redact`).                                              |
 | `deploy.py`      | The `deploy` command.                                                                                                   |
 | `generate.py`    | The `generate-examples` command.                                                                                        |
 | `info.py`        | The `info` and `env-prefix` commands.                                                                                   |

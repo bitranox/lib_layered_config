@@ -19,6 +19,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   block forever while comparing contents.
 
 ### Changed
+- **Breaking:** `lib_layered_config read` (both formats, `--json` included) and `read-json` mask
+  sensitive values (`password`, `token`, `secret`, `*_key` and the other redaction patterns) as
+  `***REDACTED***` by default; `--no-redact` prints them. Before, they printed in clear unless
+  `--redact` was given, so a `read` pasted into a ticket or run in a CI log showed every password, while
+  the Python `display_config` already masked them. A script that reads a secret through `read-json`
+  must add `--no-redact`; without it the value reads `***REDACTED***` and the command still exits 0.
 - An environment or `.env` key with an empty segment - a leading, trailing or doubled `__` - fails the
   load with `LayerLoadError` naming the variable (never its value), and so does a `.env` line whose key
   or value holds a NUL. Before, such a key was placed under an empty name: the typo `APP___A__=1`

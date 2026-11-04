@@ -78,7 +78,8 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
   [--env-file /path/to/.env] \
   [--format human|json] \
   [--indent | --no-indent] \
-  [--provenance | --no-provenance]
+  [--provenance | --no-provenance] \
+  [--redact | --no-redact]
 ```
 
 **Parameters:**
@@ -95,6 +96,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 | `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (annotated prose), `json` (structured JSON)                                                                      |
 | `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                          |
 | `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                         |
+| `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask sensitive values (passwords, tokens, `*_key`) as `***REDACTED***` in every format; `--no-redact` prints them                                     |
 
 **Examples:**
 
@@ -239,21 +241,23 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
   [--start-dir /path/to/project] \
   [--default-file ./config.defaults.toml] \
   [--env-file /path/to/.env] \
-  [--indent | --no-indent]
+  [--indent | --no-indent] \
+  [--redact | --no-redact]
 ```
 
 **Parameters:**
 
-| Parameter                  | Type   | Required | Default     | Description                          |
-|----------------------------|--------|----------|-------------|--------------------------------------|
-| `--vendor`                 | string | Yes      | -           | Vendor namespace                     |
-| `--app`                    | string | Yes      | -           | Application name                     |
-| `--slug`                   | string | Yes      | -           | Configuration slug                   |
-| `--prefer`                 | string | No       | None        | Preferred file suffix (repeatable)   |
-| `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search |
-| `--default-file`           | path   | No       | None        | Path to defaults file                |
-| `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)  |
-| `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output             |
+| Parameter                  | Type   | Required | Default     | Description                                                          |
+|----------------------------|--------|----------|-------------|----------------------------------------------------------------------|
+| `--vendor`                 | string | Yes      | -           | Vendor namespace                                                     |
+| `--app`                    | string | Yes      | -           | Application name                                                     |
+| `--slug`                   | string | Yes      | -           | Configuration slug                                                   |
+| `--prefer`                 | string | No       | None        | Preferred file suffix (repeatable)                                   |
+| `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search                                 |
+| `--default-file`           | path   | No       | None        | Path to defaults file                                                |
+| `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)                                  |
+| `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output                                             |
+| `--redact` / `--no-redact` | flag   | No       | `--redact`  | Mask sensitive values as `***REDACTED***`; `--no-redact` prints them |
 
 **Example:**
 ```bash

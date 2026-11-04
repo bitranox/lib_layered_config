@@ -78,9 +78,9 @@ __all__ = [
 )
 @option(
     "--redact/--no-redact",
-    default=False,
+    default=True,
     show_default=True,
-    help="Mask sensitive values (passwords, tokens, keys) in the output",
+    help="Mask sensitive values (passwords, tokens, keys) in the output; --no-redact prints them",
 )
 @json_envelope_option
 def read_command(
@@ -154,9 +154,9 @@ def read_command(
 )
 @option(
     "--redact/--no-redact",
-    default=False,
+    default=True,
     show_default=True,
-    help="Mask sensitive values (passwords, tokens, keys) in the output",
+    help="Mask sensitive values (passwords, tokens, keys) in the output; --no-redact prints them",
 )
 @json_envelope_option
 def read_json_command(

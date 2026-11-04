@@ -283,7 +283,7 @@ Same engine as the library. Run any command with `-h` for full flags.
 
 | Command             | Purpose                                                                                                                                                                         |
 |---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `read`              | Load and print config (human by default; `--format json`, `--redact`).                                                                                                          |
+| `read`              | Load and print config (human by default; `--format json`; secrets masked unless `--no-redact`).                                                                                 |
 | `read-json`         | Print merged config + provenance as JSON.                                                                                                                                       |
 | `deploy`            | Copy a config file into app/host/user layers (`--target`, `--profile`, `--force`/`--batch`, `--dir-mode`/`--file-mode`, `.bak`/`.ucf` conflict handling, permission hardening). |
 | `generate-examples` | Scaffold an example config tree to bootstrap a project.                                                                                                                         |
@@ -293,15 +293,16 @@ Same engine as the library. Run any command with `-h` for full flags.
 
 Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
 
-| Flag                                          | read | read-json | deploy | generate-examples | env-prefix | info |
-|-----------------------------------------------|------|-----------|--------|-------------------|------------|------|
-| `--vendor` / `--app` / `--slug`               | yes  | yes       | yes    | yes               | no         | no   |
-| `--profile`                                   | yes  | yes       | yes    | no                | no         | no   |
-| `--env-file <path>` (load an explicit `.env`) | yes  | yes       | no     | no                | no         | no   |
-| `--redact` (mask secrets in output)           | yes  | yes       | no     | no                | no         | no   |
+| Flag                                                   | read | read-json | deploy | generate-examples | env-prefix | info |
+|--------------------------------------------------------|------|-----------|--------|-------------------|------------|------|
+| `--vendor` / `--app` / `--slug`                        | yes  | yes       | yes    | yes               | no         | no   |
+| `--profile`                                            | yes  | yes       | yes    | no                | no         | no   |
+| `--env-file <path>` (load an explicit `.env`)          | yes  | yes       | no     | no                | no         | no   |
+| `--redact` / `--no-redact` (secrets masked by default) | yes  | yes       | no     | no                | no         | no   |
+| `--json` (one JSON envelope `{ok, command, data}`)     | yes  | yes       | yes    | yes               | yes        | yes  |
 
-`env-prefix`, `info` and `fail` accept no options at all beyond `--help` (`env-prefix` takes a
-positional SLUG). Passing one of the others raises `NoSuchOption`.
+`env-prefix`, `info` and `fail` accept only `--json` and `--help` (`env-prefix` takes a positional
+SLUG). Passing one of the others raises `NoSuchOption`.
 
 ## Designing config files
 
@@ -309,8 +310,8 @@ positional SLUG). Passing one of the others raises `NoSuchOption`.
   is read as `config.get("database.host")` and overridden by `MY_APP___DATABASE__HOST`. A
   `[database.pool]` subtable's `size` is `database.pool.size` / `MY_APP___DATABASE__POOL__SIZE`.
 - **Keep secrets OUT of committed files.** Put passwords/tokens in the `env` layer or a
-  `.env` file (both outrank the committed config); use `--redact` / `Config.to_json(redact=True)`
-  when printing or logging. A key whose name only LOOKS secret (`max_token_bytes`) is declared with
+  `.env` file (both outrank the committed config); the CLI masks secrets unless given `--no-redact`; use
+  `Config.to_json(redact=True)` when printing or logging from code. A key whose name only LOOKS secret (`max_token_bytes`) is declared with
   `read_config(..., not_sensitive=["performance.max_token_bytes"])`; the returned Config shows it
   under `redact=True` and in `display_config`.
 - **Split large config with `.d/`.** `config.toml` may have a companion `config.d/` whose

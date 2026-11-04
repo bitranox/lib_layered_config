@@ -36,7 +36,7 @@ What that buys you:
 - **Every value carries its origin.** `config.origin("service.timeout")` reports the layer and the path it came from. Debugging stops being a seance.
 - **The paths are already sorted.** Linux (XDG), macOS, and Windows locations are resolved for you, so you never bake someone else's `/etc` into your code.
 - **One name switches the whole environment.** Profiles keep test, staging, and production in separate trees; ask for `profile="production"` and you get production's config, not a hand-merged guess at it.
-- **Secrets sit above the file, not inside it.** Environment variables and `.env` outrank the committed config, which therefore holds shape rather than passwords - and the CLI can redact on the way out.
+- **Secrets sit above the file, not inside it.** Environment variables and `.env` outrank the committed config, which therefore holds shape rather than passwords - and the CLI masks them on the way out unless asked not to (`--no-redact`).
 
 Same engine from either side: `from lib_layered_config import read_config` as a library, or a `lib_layered_config` command that reads, deploys, and scaffolds configuration without a line of Python.
 
