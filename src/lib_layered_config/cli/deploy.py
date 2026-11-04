@@ -220,6 +220,7 @@ def deploy_command(
     \b
     - With --force: backs up to .bak and overwrites
     - With --batch: keeps existing and writes new as .ucf (for CI/scripts)
+    - With both: a usage error, since one overwrites and the other keeps
     - Otherwise: prompts on stderr to keep (save as .ucf) or overwrite (backup to .bak);
       with no answer to read, a usage error names --batch and --force
 
@@ -232,6 +233,8 @@ def deploy_command(
     def deploy() -> list[DeployResult]:
         if permissions is False and (dir_mode is not None or file_mode is not None):
             raise click.UsageError("--no-permissions cannot be combined with --dir-mode or --file-mode")
+        if force and batch:
+            raise click.UsageError("--force overwrites an existing file and --batch keeps it; pass one")
         # Prompt only when neither --force nor --batch decides the conflict.
         conflict_resolver = None if (force or batch) else _prompt_for_action
         try:

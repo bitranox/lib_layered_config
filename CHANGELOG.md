@@ -19,6 +19,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   block forever while comparing contents.
 
 ### Changed
+- `deploy --force --batch` is a usage error (exit code 2): "--force overwrites an existing file and
+  --batch keeps it; pass one", and `deploy_config(force=True, batch=True)` raises `ValidationError`, both
+  before anything is written. Before, `--force` won silently, so a script that added `--batch` to stay
+  non-destructive still overwrote (measured with the CLI and the Python API).
 - **Breaking:** `lib_layered_config read` (both formats, `--json` included) and `read-json` mask
   sensitive values (`password`, `token`, `secret`, `*_key` and the other redaction patterns) as
   `***REDACTED***` by default; `--no-redact` prints them. Before, they printed in clear unless

@@ -887,7 +887,7 @@ Copy a source configuration file into one or more layer directories with conflic
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to deployment paths. Default: `None`.
 - `platform` (str | None, optional): Override the auto-detected platform. Takes the CLI's `--platform` names: `"linux"`/`"posix"`, `"darwin"`/`"macos"`/`"mac"`, `"win32"`/`"windows"`/`"win"`/`"wine"`, in any case. Any other name raises `ValidationError` listing them. Default: `None` (auto-detects from current platform).
 - `force` (bool, optional): When True and file exists with different content, backup to `.bak` and overwrite. Default: `False`.
-- `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`.
+- `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`. Together with `force=True` it raises `ValidationError` before anything is written: one overwrites an existing file, the other keeps it.
 - `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Custom callback for conflict resolution. Default: `None`.
 - `set_permissions` (bool | None, optional): `True` sets modes, `False` leaves them to the umask, `None` follows the configured `[lib_layered_config.default_permissions].enabled` (true when unset). An explicit `dir_mode` or `file_mode` means modes are set; one given with `False` is refused. Skipped on Windows. Default: `None`.
 - `dir_mode` (int | None, optional): Directory mode for every target, overriding the configured and built-in ones. Default: `None`.

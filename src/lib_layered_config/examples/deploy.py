@@ -758,7 +758,8 @@ def deploy_config(
         PermissionError: The source, a file in its ``.d`` directory, or a destination sits behind
             a permission wall (an ``OSError`` in general); the same on every Python.
         ValueError: When profile name is invalid (too long, path traversal, etc.).
-        ValidationError: An unknown target, refused before anything is written.
+        ValidationError: An unknown target, or force and batch both set (one overwrites an
+            existing file, the other keeps it), refused before anything is written.
         DeployModeError: dir_mode or file_mode is out of range or unsafe, or a mode was given
             with set_permissions=False.
         DeployPermissionsError: The configuration cannot be loaded, its permission section is
@@ -768,6 +769,8 @@ def deploy_config(
             (dangling or not) or not a regular file (a directory, FIFO, device or socket); nothing
             has been written.
     """
+    if force and batch:
+        raise ValidationError("force=True overwrites an existing file and batch=True keeps it; pass one")
     request = _mode_request(
         set_permissions=set_permissions,
         dir_mode=dir_mode,

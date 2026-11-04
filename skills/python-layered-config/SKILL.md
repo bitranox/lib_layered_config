@@ -401,7 +401,8 @@ an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"
 `file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
 `ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
-`force=True` backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`.
+`force=True` backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`;
+both at once raise `ValidationError` (`--force --batch` is a usage error), before anything is written.
 A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
 permission wall raises `PermissionError` on every Python, before anything is written.
 

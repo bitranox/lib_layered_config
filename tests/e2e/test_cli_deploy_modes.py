@@ -124,6 +124,30 @@ def test_no_permissions_with_a_mode_is_a_usage_error(
 
 
 @os_agnostic
+def test_force_with_batch_is_a_usage_error_and_writes_nothing(sandbox: LayeredSandbox, source: Path) -> None:
+    env = {**sandbox.env, "COLUMNS": "400"}
+    assert CliRunner().invoke(cli.cli, _args(source), env=env).exit_code == 0
+    deployed = sandbox.roots["user"] / "config.toml"
+    source.write_text("[service]\nflag = false\n", encoding="utf-8")
+
+    result = CliRunner().invoke(cli.cli, _args(source, "--force", "--batch"), env=env)
+
+    assert result.exit_code == 2
+    assert "--force overwrites an existing file and --batch keeps it; pass one" in " ".join(result.output.split())
+    assert deployed.read_text(encoding="utf-8") == "[service]\nflag = true\n"
+    assert sorted(path.name for path in deployed.parent.iterdir()) == ["config.toml"]
+
+
+@os_agnostic
+def test_force_with_batch_is_a_usage_error_inside_the_envelope(sandbox: LayeredSandbox, source: Path) -> None:
+    result = CliRunner().invoke(cli.cli, _args(source, "--force", "--batch", "--json"), env=sandbox.env)
+
+    assert result.exit_code == 2
+    assert '"ok": false' in result.output and "pass one" in result.output
+    assert not (sandbox.roots["user"] / "config.toml").exists()
+
+
+@os_agnostic
 def test_no_permissions_deploys_past_a_broken_configuration(sandbox: LayeredSandbox, source: Path) -> None:
     sandbox.write("app", "config.toml", content="[broken\n")
     result = CliRunner().invoke(cli.cli, _args(source, "--no-permissions"), env=sandbox.env)

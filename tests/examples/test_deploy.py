@@ -822,26 +822,23 @@ def test_deploy_batch_mode_creates_ucf_for_different_content(
 
 
 @os_agnostic
-def test_deploy_force_mode_ignores_batch(
+def test_deploy_refuses_force_with_batch_before_writing(
     sandbox: LayeredSandbox,
     source_config: Path,
 ) -> None:
     target = sandbox.roots["app"] / "config.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("existing", encoding="utf-8")
+    fresh = sandbox.roots["user"] / "config.toml"
 
-    results = deploy_config(
-        source_config,
-        vendor=VENDOR,
-        app=APP,
-        targets=["app"],
-        slug=SLUG,
-        force=True,
-        batch=True,  # Should be ignored when force=True
-    )
+    with pytest.raises(
+        ValidationError, match=r"^force=True overwrites an existing file and batch=True keeps it; pass one$"
+    ):
+        _deploy(sandbox, source_config, targets=["app", "user"], force=True, batch=True)
 
-    assert results[0].action == DeployAction.OVERWRITTEN
-    assert results[0].backup_path is not None
+    assert target.read_text(encoding="utf-8") == "existing"
+    assert sorted(path.name for path in target.parent.iterdir()) == ["config.toml"]
+    assert not fresh.exists()
 
 
 @os_agnostic

@@ -386,36 +386,6 @@ def test_deploy_json_output_structure_on_batch_keep(
 
 
 # ---------------------------------------------------------------------------
-# Behavior: Force takes precedence over batch
-# ---------------------------------------------------------------------------
-
-
-@os_agnostic
-def test_deploy_force_overrides_batch_flag(
-    tmp_path: Path,
-    sandbox: LayeredSandbox,
-) -> None:
-    """When both --force and --batch are specified, force takes precedence."""
-    source1 = tmp_path / "v1.toml"
-    source2 = tmp_path / "v2.toml"
-    source1.write_text("[test]\nv = 1\n", encoding="utf-8")
-    source2.write_text("[test]\nv = 2\n", encoding="utf-8")
-
-    runner = make_runner()
-    runner.invoke(cli.cli, make_deploy_command(source1), env=sandbox.env)
-    result = runner.invoke(
-        cli.cli,
-        make_deploy_command(source2, force=True, batch=True),
-        env=sandbox.env,
-    )
-
-    output = json.loads(result.output)
-    # Force should win - file should be overwritten, not skipped
-    assert "overwritten" in output
-    assert "skipped" not in output
-
-
-# ---------------------------------------------------------------------------
 # Behavior: Empty output when source equals destination
 # ---------------------------------------------------------------------------
 
