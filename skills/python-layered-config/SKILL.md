@@ -129,7 +129,9 @@ An env var overriding a config key is built as:
 ```
 
 - Prefix ends in a **TRIPLE** underscore `___` (separates the app prefix from the key path).
-- Key-path segments are joined by a **DOUBLE** underscore `__`.
+- Key-path segments are joined by a **DOUBLE** underscore `__`. A leading, trailing or doubled `__`
+  (`MY_APP___DATABASE__`, `MY_APP___DATABASE____HOST`) leaves an empty segment and fails the load with
+  `LayerLoadError` naming the variable, in the environment and `.env` alike.
 
 So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__HOST`**
 (not `MY_APP_DATABASE__HOST`, not `MYAPP___...`). Compute the prefix with

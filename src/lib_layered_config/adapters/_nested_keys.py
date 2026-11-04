@@ -57,7 +57,8 @@ def build_nested(entries: Iterable[NestedEntry], *, error_cls: type[Exception], 
         where: Prefix for the refusal message, such as the file the entries came from.
 
     Raises:
-        error_cls: Naming both variables and the dotted path, never a value.
+        error_cls: Naming both variables and the dotted path, never a value; or naming the one
+            variable whose key has an empty segment (a leading, trailing or doubled ``__``).
 
     Examples:
         >>> rows = [NestedEntry("DB__PORT", 2, "DB__PORT"), NestedEntry("DB", {"host": "h"}, "DB")]
@@ -67,6 +68,10 @@ def build_nested(entries: Iterable[NestedEntry], *, error_cls: type[Exception], 
         Traceback (most recent call last):
         ...
         ValueError: A sets db to a value, so B cannot set a key below it
+        >>> build_nested([NestedEntry("DB____PORT", 2, "APP___DB____PORT")], error_cls=ValueError)
+        Traceback (most recent call last):
+        ...
+        ValueError: APP___DB____PORT has an empty key segment (a leading, trailing or doubled '__')
     """
     ordered = sorted(entries, key=lambda entry: entry.key.count(NESTED_KEY_DELIMITER))
     target: dict[str, object] = {}
@@ -74,6 +79,10 @@ def build_nested(entries: Iterable[NestedEntry], *, error_cls: type[Exception], 
     index = _CaseIndex()
     for entry in ordered:
         parts = entry.key.split(NESTED_KEY_DELIMITER)
+        if "" in parts:
+            # An empty name is a typo, never a table: placed, it replaced a configured value with
+            # {"": ...} or set a key nobody reads, and the override looked applied.
+            raise error_cls(f"{where}{entry.label} has an empty key segment (a leading, trailing or doubled '__')")
         try:
             _assign_parts(target, parts, entry.value, index=index, error_cls=_ScalarBelowError)
         except _ScalarBelowError:

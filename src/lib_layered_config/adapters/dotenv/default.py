@@ -245,7 +245,7 @@ def _split_line(raw_line: str, line_number: int, path: Path) -> _DotenvEntry | N
     """Return a dotenv line's key and raw value, or None for a blank or comment line.
 
     Raises:
-        InvalidFormatError: The line has no ``=``.
+        InvalidFormatError: The line has no ``=``, or its key or value holds a NUL.
     """
     line = raw_line.strip()
     if _is_ignorable(line):
@@ -254,6 +254,10 @@ def _split_line(raw_line: str, line_number: int, path: Path) -> _DotenvEntry | N
         _log_dotenv_error(path, line_number)
         raise InvalidFormatError(f"Malformed line {line_number} in {path}")
     key, value = line.split(_KEY_VALUE_DELIMITER, 1)
+    if "\x00" in line:
+        # tomllib refuses a raw NUL in a string too; the message leaves the value out.
+        _log_dotenv_error(path, line_number)
+        raise InvalidFormatError(f"NUL character in the key or value of line {line_number} in {path}")
     return _DotenvEntry(key=key.strip(), raw_value=value.strip())
 
 

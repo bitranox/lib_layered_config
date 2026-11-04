@@ -463,6 +463,10 @@ does a JSON array or object that would nest the config more than 253 levels deep
 table, the levels the key itself adds included: `A__B__DEEP` puts its value three tables down). A quoted
 `.env` value is always the literal text. A value or name that is not valid UTF-8 is refused, in the environment
 (naming the variable and byte offset, never the value) as in `.env` (naming the file, line and byte offset).
+A key with an empty segment - a leading, trailing or doubled `__`, such as `MYAPP___DATABASE__` or
+`MYAPP___DATABASE____PORT` - is refused in both, naming the variable and never its value: placed, it would
+replace a configured value with a table keyed `""` or set a key nothing reads. A `.env` line whose key or
+value holds a NUL is refused the same way (naming the file and line); other control characters are kept.
 
 A sensitive key keeps an unquoted `null` or `none` as text, in the environment and in `.env` alike, so a
 secret spelled that way is never read as "no credential". A key is sensitive when the last segment of its

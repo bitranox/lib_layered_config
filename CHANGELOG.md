@@ -19,6 +19,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   block forever while comparing contents.
 
 ### Changed
+- An environment or `.env` key with an empty segment - a leading, trailing or doubled `__` - fails the
+  load with `LayerLoadError` naming the variable (never its value), and so does a `.env` line whose key
+  or value holds a NUL. Before, such a key was placed under an empty name: the typo `APP___A__=1`
+  replaced a configured `a = 5` with `{"a": {"": 1}}`, and `APP___DB____PORT=1` left `db.port`
+  unchanged while adding `db[""].port`. A `.env` line `=1` (an empty key) is refused too. A variable
+  named only the prefix (`APP___`) is still skipped, and control characters other than NUL are kept.
 - `deploy` copies and compares every file a chunk at a time, so its memory no longer grows with file
   size: a 200 MiB file in the source's `.d` directory deployed at 231 MB peak RSS and now at 28 MB, the
   same as a small one (measured with the CLI). With permissions off a file is still rewritten in place,

@@ -93,7 +93,7 @@ class DefaultEnvLoader:
         same nesting semantics as `.env` files.
 
         Normalises the prefix, filters matching entries, coerces values, nests
-        keys via :func:`assign_nested`, and logs the summarised result.
+        keys via :func:`build_nested` (refusing an empty key segment), and logs the summarised result.
 
         Args:
             prefix: Prefix filter (upper-case). The loader appends ``___`` if missing.
