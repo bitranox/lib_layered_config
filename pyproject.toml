@@ -82,7 +82,7 @@ dev = [
   "twine>=7.0.0",
   "certifi>=2026.10.23",         # PYSEC-2026-4320
   "filelock>=4.2.4; python_version >= '3.11'", # CVE-2026-112906, -112940, -112914, via cachecontrol; 4.2.1 needs 3.11, so 3.10 keeps 4.1.x
-  "hatchling>=1.32.4",
+  "hatchling>=1.33.0",
 ]
 yaml = [
   "PyYAML>=6.0.3"
@@ -95,7 +95,7 @@ lib_layered_config = "lib_layered_config.cli:main"
 lib-layered-config = "lib_layered_config.cli:main"
 
 [build-system]
-requires = ["hatchling>=1.32.4"]
+requires = ["hatchling>=1.33.0"]
 build-backend = "hatchling.build"
 
 
