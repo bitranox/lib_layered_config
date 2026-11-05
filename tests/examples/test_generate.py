@@ -59,6 +59,17 @@ def test_when_posix_tree_is_written_the_user_config_arrives(tmp_path: Path) -> N
 
 
 @os_agnostic
+def test_the_user_config_names_vendor_then_app_on_each_platform(tmp_path: Path) -> None:
+    posix, _ = _write_tree(tmp_path, "posix")
+    windows, _ = _write_tree(tmp_path, "windows")
+    expected = f"# User-specific preferences for {VENDOR} {APP}\n"
+
+    assert (posix / "home" / SLUG / "config.toml").read_text(encoding="utf-8").startswith(expected)
+    roaming = windows / "AppData" / "Roaming" / VENDOR / APP / "config.toml"
+    assert roaming.read_text(encoding="utf-8").startswith(expected)
+
+
+@os_agnostic
 def test_when_posix_tree_is_written_the_split_override_waits(tmp_path: Path) -> None:
     destination, _ = _write_tree(tmp_path, "posix")
     assert (destination / "home" / SLUG / "config.d" / "10-override.toml").exists()

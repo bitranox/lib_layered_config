@@ -105,7 +105,7 @@ def generate_examples(
         force=force,
         platform=platform,
     )
-    specs = _build_specs(plan.destination, slug=plan.slug, vendor=plan.vendor, app=plan.app, platform=plan.platform)
+    specs = _build_specs(plan)
     return _write_examples(plan.destination, specs, force=plan.force)
 
 
@@ -227,88 +227,77 @@ def _ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _build_specs(
-    destination: Path, *, slug: str, vendor: str, app: str, platform: ExamplePlatform
-) -> Iterator[ExampleSpec]:
+def _build_specs(plan: ExamplePlan) -> Iterator[ExampleSpec]:
     """Yield :class:`ExampleSpec` instances for each canonical layer.
 
     Keep file templates in one place so they stay aligned with documentation.
 
     Args:
-        destination: Destination root (currently unused; reserved for future dynamic templates).
-        slug: Metadata interpolated into template content.
-        vendor: Metadata interpolated into template content.
-        app: Metadata interpolated into template content.
-        platform: Normalised directory layout to write.
+        plan: The validated identifiers and the layout to write.
 
     Yields:
         ExampleSpec: Specification describing one file to render.
 
     Examples:
-        >>> posix = ExamplePlatform.POSIX
-        >>> specs = list(_build_specs(Path('.'), slug='demo', vendor='Acme', app='ConfigKit', platform=posix))
+        >>> plan = _build_example_plan(
+        ...     destination='.', slug='demo', vendor='Acme', app='ConfigKit', force=False, platform='posix'
+        ... )
+        >>> specs = list(_build_specs(plan))
         >>> specs[0].relative_path.as_posix()
         'xdg/demo/config.toml'
     """
-    yield from _platform_specs(slug=slug, vendor=vendor, app=app, platform=platform)
-    yield _env_example(slug)
+    yield from _platform_specs(plan)
+    yield _env_example(plan.slug)
 
 
-def _platform_specs(*, slug: str, vendor: str, app: str, platform: ExamplePlatform) -> Iterator[ExampleSpec]:
+def _platform_specs(plan: ExamplePlan) -> Iterator[ExampleSpec]:
     """Dispatch to platform-specific example specifications.
 
     Args:
-        slug: Metadata interpolated into generated content.
-        vendor: Metadata interpolated into generated content.
-        app: Metadata interpolated into generated content.
-        platform: Normalised directory layout to write.
+        plan: The validated identifiers and the layout to write.
 
     Yields:
         ExampleSpec: Specifications describing files to create.
     """
-    if platform == ExamplePlatform.WINDOWS:
-        yield from _windows_specs(slug=slug, vendor=vendor, app=app)
+    if plan.platform == ExamplePlatform.WINDOWS:
+        yield from _windows_specs(plan)
         return
-    yield from _posix_specs(slug=slug, vendor=vendor, app=app)
+    yield from _posix_specs(plan)
 
 
-def _windows_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
+def _windows_specs(plan: ExamplePlan) -> Iterator[ExampleSpec]:
     """Yield Windows layout examples.
 
     Args:
-        slug: Metadata interpolated into template content.
-        vendor: Metadata interpolated into template content.
-        app: Metadata interpolated into template content.
+        plan: The validated identifiers interpolated into paths and template content.
 
     Yields:
         ExampleSpec: Specification for each Windows example file.
     """
-    root = Path("ProgramData") / vendor / app
-    yield ExampleSpec(root / "config.toml", _app_defaults_body(slug))
+    root = Path("ProgramData") / plan.vendor / plan.app
+    yield ExampleSpec(root / "config.toml", _app_defaults_body(plan.slug))
     yield ExampleSpec(root / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml", _host_override_body())
-    user_root = Path("AppData") / "Roaming" / vendor / app
-    yield ExampleSpec(user_root / "config.toml", _user_preferences_body(vendor, app))
+    user_root = Path("AppData") / "Roaming" / plan.vendor / plan.app
+    yield ExampleSpec(user_root / "config.toml", _user_preferences_body(plan.vendor, plan.app))
     yield ExampleSpec(user_root / "config.d" / "10-override.toml", _split_override_body())
 
 
-def _posix_specs(*, slug: str, vendor: str, app: str) -> Iterator[ExampleSpec]:
+def _posix_specs(plan: ExamplePlan) -> Iterator[ExampleSpec]:
     """Yield POSIX layout examples following XDG Base Directory specification.
 
     Args:
-        slug: Metadata interpolated into template content.
-        vendor: Metadata interpolated into template content.
-        app: Metadata interpolated into template content.
+        plan: The validated identifiers interpolated into paths and template content.
 
     Yields:
         ExampleSpec: Specification for each POSIX example file.
     """
     # System-wide app configuration (XDG-compliant)
-    app_root = Path("xdg") / slug
-    yield ExampleSpec(app_root / "config.toml", _app_defaults_body(slug))
+    app_root = Path("xdg") / plan.slug
+    yield ExampleSpec(app_root / "config.toml", _app_defaults_body(plan.slug))
     yield ExampleSpec(app_root / "hosts" / f"{DEFAULT_HOST_PLACEHOLDER}.toml", _host_override_body())
     # User-level configuration
-    user_root = Path("home") / slug
-    yield ExampleSpec(user_root / "config.toml", _user_preferences_body(vendor, app))
+    user_root = Path("home") / plan.slug
+    yield ExampleSpec(user_root / "config.toml", _user_preferences_body(plan.vendor, plan.app))
     yield ExampleSpec(user_root / "config.d" / "10-override.toml", _split_override_body())
 
 
