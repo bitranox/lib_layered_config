@@ -363,7 +363,8 @@ Everything below is importable from `lib_layered_config`.
 - `ValidationError` (also a `ValueError`) - an identifier or profile name is refused. Its subclasses
   `DeployModeError` (an unsafe or malformed mode, or `dir_mode`/`file_mode` given together with
   `set_permissions=False`), `DeployPermissionsError` (unusable permission settings, one line per
-  problem) and `DeployDestinationError` (a file deploy would write is a symbolic link, dangling or
+  problem; `.problems` holds one `PermissionProblem` each, with `.key`, `.reason` and `.source`) and
+  `DeployDestinationError` (a file deploy would write is a symbolic link, dangling or
   not, or not a regular file; one line each, nothing is written) come from deploy.
 
 **Redaction helpers.** `is_sensitive("smtp_password")` -> `True` checks one key NAME against the
@@ -372,7 +373,8 @@ built-in patterns (a field named just `key` is not sensitive). `is_sensitive_at(
 declaration; pass a tuple of segments, never a dotted `str` (refused with `TypeError`).
 `redact_mapping(data, not_sensitive=["performance.max_token_bytes"])` returns a masked deep copy
 of a plain dict; `not_sensitive` takes dotted paths or a `NotSensitiveKeys`. Use it on
-`read_config_raw(...).data`, which does not carry the declaration.
+`read_config_raw(...).data`, which does not carry the declaration. A masked value reads
+`REDACTED_PLACEHOLDER` (`"***REDACTED***"`); compare against the constant, not the literal.
 
 **A mask keyed on the value's type leaks.** A value starting with `[` or `{` in the environment or
 unquoted in `.env` is parsed as JSON, so a setting documented as text can arrive as a list, a
@@ -391,7 +393,7 @@ secret-bearing setting with one arm per shape (string, JSON array, JSON object, 
 in every output mode, with and without redaction.
 
 **Profiles.** `validate_profile_name("production")` returns the name or raises `ValidationError`;
-`is_valid_profile_name(name)` answers `True`/`False` instead. Both take `max_length=` (default 64).
+`is_valid_profile_name(name)` answers `True`/`False` instead. Both take `max_length=` (default `DEFAULT_MAX_PROFILE_LENGTH`, 64).
 
 **Deploying and scaffolding.** `deploy_config("app.toml", vendor=..., app=..., slug=..., targets=["user"])`
 is the `deploy` command in Python (`source` is the path of the file to copy). It returns a list
@@ -425,7 +427,9 @@ overrides=<what you pass as permission_overrides>)`: `perms.enabled` says whethe
 and `perms.for_layer(Layer.APP)` (the `Layer` enum from `lib_layered_config`; `Layer.HOST`,
 `Layer.USER` likewise) gives a `LayerModes` whose `.directory` and `.file` (each a `DeployMode` that
 prints in octal, such as `0o600`, the user layer's default file mode, and whose `.value` is the `int`
-mode) are that layer's modes, unless you pass an explicit `dir_mode`/`file_mode`, which wins. Modes
+mode) are that layer's modes, unless you pass an explicit `dir_mode`/`file_mode`, which wins. The
+built-in modes are exported as `DEFAULT_APP_DIR_MODE`/`DEFAULT_APP_FILE_MODE` (`0o755`/`0o644`, app
+and host) and `DEFAULT_USER_DIR_MODE`/`DEFAULT_USER_FILE_MODE` (`0o700`/`0o600`, user). Modes
 are never applied on Windows, and a deploy there never reads the configured ones (see "Probing and
 testing an app built on it"). Use these instead of importing anything from `lib_layered_config.core`
 or `lib_layered_config.deploy`.
@@ -446,16 +450,16 @@ purpose, for testing failure paths.
 
 ## Common mistakes
 
-| Mistake                                                                              | Fix                                                                                                                                                    |
-|--------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Env prefix with a single/double underscore (`MY_APP_...`)                            | The prefix ends in a **triple** underscore: `MY_APP___`. Run `env-prefix`.                                                                             |
-| Forgetting the `defaults` layer or the `env`-wins ordering                           | Precedence is `defaults -> app -> host -> user -> dotenv -> env`.                                                                                      |
-| Slugifying vendor/app for macOS/Windows paths                                        | `vendor`/`app` are used verbatim (spaces kept); only `slug` is normalized.                                                                             |
-| Hunting for "why is this value X" by hand                                            | Use `config.origin(key)` or `read-json` - provenance is built in.                                                                                      |
-| Committing a `.env` with secrets                                                     | `.env` is for local secrets only; never commit it; keep mode `0o600`.                                                                                  |
-| Writing `user_file = 640` (a TOML int is decimal)                                    | Quote it: `user_file = "0o640"`; deploy refuses a bare integer and any group-writable, world-writable mode, or an execute bit on a file.               |
-| Reaching for `--no-permissions` when deploy refuses a broken config                  | Give both `--dir-mode` and `--file-mode`; `--no-permissions` leaves a secrets file to the umask.                                                       |
-| Building `permissions=` from the application's `read_config(...)` to carry a `--set` | Pass `permission_overrides={"user_file": "0o640"}`: the application's read includes `.env` and the deployed files, which deploy leaves out on purpose. |
+| Mistake                                                                              | Fix                                                                                                                                                                                                                               |
+|--------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Env prefix with a single/double underscore (`MY_APP_...`)                            | The prefix ends in a **triple** underscore: `MY_APP___`. Run `env-prefix`.                                                                                                                                                        |
+| Forgetting the `defaults` layer or the `env`-wins ordering                           | Precedence is `defaults -> app -> host -> user -> dotenv -> env`.                                                                                                                                                                 |
+| Slugifying vendor/app for macOS/Windows paths                                        | `vendor`/`app` are used verbatim (spaces kept). `slug` is never rewritten either: one with a space or other unsafe character is refused (`ValidationError`). Only the env prefix reshapes it (upper case, dashes to underscores). |
+| Hunting for "why is this value X" by hand                                            | Use `config.origin(key)` or `read-json` - provenance is built in.                                                                                                                                                                 |
+| Committing a `.env` with secrets                                                     | `.env` is for local secrets only; never commit it; keep mode `0o600`.                                                                                                                                                             |
+| Writing `user_file = 640` (a TOML int is decimal)                                    | Quote it: `user_file = "0o640"`; deploy refuses a bare integer and any group-writable, world-writable mode, or an execute bit on a file.                                                                                          |
+| Reaching for `--no-permissions` when deploy refuses a broken config                  | Give both `--dir-mode` and `--file-mode`; `--no-permissions` leaves a secrets file to the umask.                                                                                                                                  |
+| Building `permissions=` from the application's `read_config(...)` to carry a `--set` | Pass `permission_overrides={"user_file": "0o640"}`: the application's read includes `.env` and the deployed files, which deploy leaves out on purpose.                                                                            |
 
 ## Full detail
 
