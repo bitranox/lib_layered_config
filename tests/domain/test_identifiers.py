@@ -166,6 +166,12 @@ class TestValidatePathSegment:
         with pytest.raises(ValueError, match="test contains invalid characters"):
             validate_path_segment("app\x00name", "test")
 
+    @pytest.mark.parametrize("value", ["app+name", "app!name", "app@name", "app name"])
+    def test_rejects_characters_outside_the_strict_pattern(self, value: str) -> None:
+        """Only letters, digits, dot, hyphen and underscore pass; no switch turns the check off."""
+        with pytest.raises(ValidationError, match="test contains invalid characters"):
+            validate_path_segment(value, "test")
+
     # ========== PREFIX RESTRICTIONS ==========
 
     @pytest.mark.parametrize(

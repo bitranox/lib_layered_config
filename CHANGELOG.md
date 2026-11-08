@@ -67,6 +67,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `lib_layered_config.observability.log_error`: nothing in the library called it, and it was never
   exported from the package root. The remaining helpers (`log_debug`, `log_info`, `log_warn`) and
   `make_event` type their structured fields as `object` instead of `Any`; callers pass the same values.
+- The `allow_dots` keyword of `lib_layered_config.domain.identifiers.validate_path_segment`. Despite
+  its name it skipped the whole character check (`allow_dots=True` accepted `a+b`, `a@b`, `a b`), while
+  dots pass without it. Nothing passed it; the function now always applies the strict pattern.
 
 ### Fixed
 - `deploy` refuses a source that is not a `.toml` file, in every mode and before anything is written:

@@ -251,7 +251,7 @@ class ExamplePlatform(str, Enum):
     WINDOWS = "windows"
 
 
-def validate_path_segment(value: str, name: str, *, allow_dots: bool = False) -> str:
+def validate_path_segment(value: str, name: str) -> str:
     """Validate a string for safe use as a filesystem path segment.
 
     Ensures identifiers (vendor, app, slug, profile) are safe on Windows and Linux,
@@ -260,7 +260,6 @@ def validate_path_segment(value: str, name: str, *, allow_dots: bool = False) ->
     Args:
         value: The string to validate.
         name: Parameter name for error messages (e.g., "vendor", "slug").
-        allow_dots: If True, allow dots within the value (for hostnames).
 
     Returns:
         The validated string (unchanged if valid).
@@ -278,16 +277,14 @@ def validate_path_segment(value: str, name: str, *, allow_dots: bool = False) ->
     _check_not_empty(value, name)
     _check_ascii_only(value, name)
     _check_no_invalid_chars(value, name)
-    _check_strict_pattern(value, name, allow_dots=allow_dots)
+    _check_strict_pattern(value, name)
     _check_not_windows_reserved(value, name)
     _check_no_trailing_dot_or_space(value, name)
     return value
 
 
-def _check_strict_pattern(value: str, name: str, *, allow_dots: bool) -> None:
+def _check_strict_pattern(value: str, name: str) -> None:
     """Check value matches strict identifier pattern (no spaces)."""
-    if allow_dots:
-        return
     if _VALID_IDENTIFIER_PATTERN.match(value):
         return
     _raise_pattern_error(value, name, check_space_start=False)
@@ -323,7 +320,7 @@ def validate_identifier(value: str, name: str) -> str:
             ...
         ValidationError: slug contains invalid characters: ../etc
     """
-    return validate_path_segment(value, name, allow_dots=False)
+    return validate_path_segment(value, name)
 
 
 def validate_vendor_app(value: str, name: str) -> str:
