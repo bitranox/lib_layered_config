@@ -428,7 +428,7 @@ prints in octal, such as `0o600`, the user layer's default file mode, and whose 
 mode) are that layer's modes, unless you pass an explicit `dir_mode`/`file_mode`, which wins. Modes
 are never applied on Windows, and a deploy there never reads the configured ones (see "Probing and
 testing an app built on it"). Use these instead of importing anything from `lib_layered_config.core`
-or `lib_layered_config.examples.deploy`.
+or `lib_layered_config.deploy`.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
 the list of written paths.
 

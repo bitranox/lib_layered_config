@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lib_layered_config.examples import generate_examples
+from lib_layered_config.generate import generate_examples
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:

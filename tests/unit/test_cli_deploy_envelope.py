@@ -8,7 +8,7 @@ from pathlib import Path
 from lib_layered_config.cli.deploy import (
     _format_results,  # pyright: ignore[reportPrivateUsage] - envelope key and list order for result mixes a real deploy cannot produce on demand
 )
-from lib_layered_config.examples.deploy import DeployAction, DeployResult
+from lib_layered_config.deploy import DeployAction, DeployResult
 from tests.support.os_markers import os_agnostic
 
 _ROOT = Path("/opt/acme")

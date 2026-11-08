@@ -23,7 +23,7 @@ from tests.support.os_markers import os_agnostic
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from lib_layered_config.examples.deploy import DeployResult
+    from lib_layered_config.deploy import DeployResult
 
 VENDOR = "Acme"
 APP = "Demo"

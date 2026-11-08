@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, TypedDict
 
 import pytest
 
+from lib_layered_config.deploy import deploy_config
 from lib_layered_config.domain.deploy_mode import DeployModeError
-from lib_layered_config.examples.deploy import deploy_config
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only
 

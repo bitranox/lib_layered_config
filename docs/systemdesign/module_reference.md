@@ -102,7 +102,11 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 | `fail.py`        | The `fail` diagnostic command.                                                                                          |
 | `typed_click.py` | Thin typed wrappers over rich-click decorators, isolating the one partially-untyped boundary.                           |
 
-### examples/ - deployment and scaffolding (its own layer between cli and adapters)
+### deploy.py and generate.py - deployment and scaffolding (one layer between cli and adapters)
+
+`examples/` above them is a deprecated shim: importing `lib_layered_config.examples`,
+`.examples.deploy` or `.examples.generate` warns (`DeprecationWarning`) and re-exports the same
+objects from these two modules. It is removed in the next major release.
 
 | Module        | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 |---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

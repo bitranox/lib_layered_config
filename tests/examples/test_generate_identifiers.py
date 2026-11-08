@@ -14,7 +14,7 @@ from click.testing import CliRunner
 
 from lib_layered_config import cli
 from lib_layered_config.domain.errors import ValidationError
-from lib_layered_config.examples import generate_examples
+from lib_layered_config.generate import generate_examples
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:

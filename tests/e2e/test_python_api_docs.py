@@ -16,7 +16,7 @@ import pytest
 
 import lib_layered_config
 from lib_layered_config.application.merge import MergeResult
-from lib_layered_config.examples.deploy import DeployAction, DeployResult
+from lib_layered_config.deploy import DeployAction, DeployResult
 from tests.support import create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 

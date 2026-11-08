@@ -100,7 +100,7 @@ Keep runtime code side-effect free at import time. Only adapters and the composi
 
 ## Examples & Docs
 
-- `lib_layered_config.examples.generate.generate_examples` scaffolds commented example files for each layer (`app/`, `hosts/`, `user/`, `.env.example`).
+- `lib_layered_config.generate.generate_examples` scaffolds commented example files for each layer (`app/`, `hosts/`, `user/`, `.env.example`).
 - README snippets double as doctests; keep them short and deterministic.
 
 Happy building!

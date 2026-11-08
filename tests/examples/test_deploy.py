@@ -14,12 +14,12 @@ from textwrap import dedent
 
 import pytest
 
+from lib_layered_config import deploy as deploy_module
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
+from lib_layered_config.deploy import DeployAction, DeployResult, deploy_config, deploy_config_paths
 from lib_layered_config.domain.deploy_permissions import DeployPermissions
 from lib_layered_config.domain.errors import DeployDestinationError, ValidationError
 from lib_layered_config.domain.identifiers import Layer
-from lib_layered_config.examples import deploy as deploy_module
-from lib_layered_config.examples.deploy import DeployAction, DeployResult, deploy_config, deploy_config_paths
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only, windows_only
 

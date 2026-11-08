@@ -53,6 +53,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   an unknown option) prints the envelope too, with exit code 2; only an unknown command keeps Click's
   usage text. Output without `--json` is unchanged.
 
+### Deprecated
+- `lib_layered_config.examples` moved: `deploy_config`, `deploy_config_paths`, `read_deploy_config`,
+  `DeployAction`, `DeployResult` and the deployment strategies now live in `lib_layered_config.deploy`,
+  and `generate_examples` with its plan and spec types in `lib_layered_config.generate`. The root package
+  still exports `deploy_config`, `deploy_config_paths`, `read_deploy_config`, `DeployAction`,
+  `DeployResult` and `generate_examples`, as before. The old paths
+  (`lib_layered_config.examples`, `.examples.deploy`, `.examples.generate`) still work and re-export the
+  same objects, but importing them raises a `DeprecationWarning`; they are removed in the next major
+  release.
+
 ### Fixed
 - `deploy` refuses a source that is not a `.toml` file, in every mode and before anything is written:
   `"<source> is not a .toml file, but deploy writes it as config.toml or <hostname>.toml, which are read

@@ -429,7 +429,7 @@ Use the Python helpers or CLI equivalents:
 
 ```python
 from pathlib import Path
-from lib_layered_config.examples import deploy_config, generate_examples
+from lib_layered_config import deploy_config, generate_examples
 
 # copy one file into the system/user layers
 # If ./myapp/config.d/ exists, those files are also deployed to each destination's config.d/

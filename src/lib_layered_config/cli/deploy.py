@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import rich_click as click
 
+from ..deploy import DeployAction, DeployResult
+from ..deploy import deploy_config as deploy_config_impl
 from ..domain import json_codec
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from ..domain.deploy_permissions import DeployPermissionsError
-from ..examples import DeployAction, DeployResult
-from ..examples import deploy_config as deploy_config_impl
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope

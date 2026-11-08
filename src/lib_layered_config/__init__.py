@@ -8,11 +8,11 @@ Contents:
     * :func:`lib_layered_config.core.read_config`
     * :func:`lib_layered_config.core.read_config_raw`, returning a
       :class:`~lib_layered_config.application.merge.MergeResult`
-    * :func:`lib_layered_config.examples.deploy.deploy_config`, with
-      :func:`~lib_layered_config.examples.deploy.deploy_config_paths` and
-      :func:`~lib_layered_config.examples.deploy.read_deploy_config`; ``deploy_config`` returns
-      :class:`~lib_layered_config.examples.deploy.DeployResult` items naming a
-      :class:`~lib_layered_config.examples.deploy.DeployAction`
+    * :func:`lib_layered_config.deploy.deploy_config`, with
+      :func:`~lib_layered_config.deploy.deploy_config_paths` and
+      :func:`~lib_layered_config.deploy.read_deploy_config`; ``deploy_config`` returns
+      :class:`~lib_layered_config.deploy.DeployResult` items naming a
+      :class:`~lib_layered_config.deploy.DeployAction`
     * :class:`lib_layered_config.domain.config.Config`
     * Error hierarchy (:class:`ConfigError`, :class:`InvalidFormatError`, etc.)
     * Diagnostics helpers (:func:`lib_layered_config.testing.i_should_fail`)
@@ -41,6 +41,13 @@ from .core import (
     read_config_json,
     read_config_raw,
 )
+from .deploy import (
+    DeployAction,
+    DeployResult,
+    deploy_config,
+    deploy_config_paths,
+    read_deploy_config,
+)
 from .domain.config import OVERRIDE_LAYER
 from .domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from .domain.deploy_permissions import (
@@ -64,14 +71,7 @@ from .domain.permissions import (
     DEFAULT_USER_FILE_MODE,
 )
 from .domain.redaction import REDACTED_PLACEHOLDER, NotSensitiveKeys, is_sensitive, is_sensitive_at, redact_mapping
-from .examples import (
-    DeployAction,
-    DeployResult,
-    deploy_config,
-    deploy_config_paths,
-    generate_examples,
-    read_deploy_config,
-)
+from .generate import generate_examples
 from .observability import bind_trace_id, get_logger
 from .testing import i_should_fail
 

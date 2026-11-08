@@ -6,7 +6,7 @@ from pathlib import Path
 
 import rich_click as click
 
-from ..examples import generate_examples as generate_examples_impl
+from ..generate import generate_examples as generate_examples_impl
 from .common import json_paths, normalise_examples_platform_option
 from .constants import CLICK_CONTEXT_SETTINGS
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope

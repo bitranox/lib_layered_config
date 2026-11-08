@@ -174,7 +174,8 @@ convention = "google"
 "src/lib_layered_config/application/merge.py" = ["PLR0913"]
 "src/lib_layered_config/adapters/path_resolvers/default.py" = ["PLR0913"]
 "src/lib_layered_config/cli/*.py" = ["PLR0913"]
-"src/lib_layered_config/examples/*.py" = ["PLR0913"]
+"src/lib_layered_config/deploy.py" = ["PLR0913"]
+"src/lib_layered_config/generate.py" = ["PLR0913"]
 
 [tool.pyright]
 typeCheckingMode = "strict"
@@ -261,7 +262,9 @@ type = "layers"
 containers = ["lib_layered_config"]
 layers = [
   "cli",
+  # Deprecated shim re-exporting deploy and generate; removed in the next major release.
   "examples",
+  "deploy | generate",
   "adapters",
   "application",
   "domain",

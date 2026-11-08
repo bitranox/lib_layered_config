@@ -27,10 +27,10 @@ Use this checklist as a living reference; extend it as the solution grows.
 * [x] Deterministic precedence order `defaults → app → host → user → dotenv → env` implemented in `_layers.collect_layers` and enforced by tests.
 * [x] Structured file loaders (TOML/JSON core via `rtoml`/`orjson` below Python 3.14 and stdlib `tomllib`/`json` on 3.14+ and on free-threaded builds, with the same results; YAML behind optional extra).
 * [x] Immutable `Config` value object exposing `get`, `origin`, `as_dict`, `to_json`, `with_overrides`.
-* [x] Clean Architecture boundaries reflected in module layout and enforced by import-linter contracts (layer order `cli` -> `examples` -> `adapters` -> `application` -> `domain`; the composition root sits outside the hierarchy).
+* [x] Clean Architecture boundaries reflected in module layout and enforced by import-linter contracts (layer order `cli` -> `examples` (deprecated shim) -> `deploy` / `generate` -> `adapters` -> `application` -> `domain`; the composition root sits outside the hierarchy).
 * [x] Trace-aware structured logging provided by `observability` helpers, consumed by adapters/composition.
 * [x] Rich Click CLI (`lib_layered_config`) with commands for read/read-json, deploy, generate-examples, env-prefix, info, fail.
-* [x] Example tree generator and deployment helpers for docs/onboarding (`examples/generate`, `examples/deploy`).
+* [x] Example tree generator and deployment helpers for docs/onboarding (`generate`, `deploy`).
 * [x] Interactive conflict handling for `deploy` command with backup (`.bak`) and UCF (`.ucf`) file support.
 * [x] Smart skipping for `deploy` when destination content is identical (avoids unnecessary backups).
 * [x] `.d` directory expansion for configuration files (e.g., `config.toml` → `config.d/`) with lexicographic ordering and provenance tracking per file.

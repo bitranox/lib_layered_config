@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lib_layered_config.examples.generate import generate_examples
+from lib_layered_config.generate import generate_examples
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -63,6 +63,6 @@ def test_generate_examples_emits_windows_layout(tmp_path: Path) -> None:
 @os_agnostic
 def test_deploy_config_is_reexported_from_public_namespace() -> None:
     from lib_layered_config import deploy_config
-    from lib_layered_config.examples import deploy_config as helper
+    from lib_layered_config.deploy import deploy_config as helper
 
     assert deploy_config is helper

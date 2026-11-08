@@ -1,28 +1,16 @@
-"""Expose example-generation and deployment helpers as a tidy façade.
+"""Deprecated: the old home of :mod:`lib_layered_config.deploy` and :mod:`lib_layered_config.generate`.
 
-Purpose
-    Provide a single import point for notebooks and docs that showcase layered
-    configuration scenarios. Keeps consumers away from internal module layout.
-
-Contents
-    - :func:`deploy_config`: copy template files into etc/xdg directories.
-    - :func:`deploy_config_paths`: the files a deploy writes.
-    - :func:`read_deploy_config`: the configuration a deploy reads for its modes.
-    - :class:`DeployAction`: enum of actions taken during deployment.
-    - :class:`DeployResult`: result of a single file deployment.
-    - :class:`ExampleSpec`: describes example assets to generate.
-    - :data:`DEFAULT_HOST_PLACEHOLDER`: default hostname marker for templates.
-    - :func:`generate_examples`: materialise example configs on disk.
-
-System Integration
-    Re-exports live in the ``examples`` namespace so tutorials can call
-    ``lib_layered_config.examples.generate_examples`` without traversing the
-    package internals.
+Every name here is re-exported from those modules, and importing this package warns. Import from
+the package root (``from lib_layered_config import deploy_config, DeployAction``) or from
+``lib_layered_config.deploy`` / ``lib_layered_config.generate`` instead. This shim is removed in the
+next major release.
 """
 
 from __future__ import annotations
 
-from .deploy import (
+import warnings
+
+from ..deploy import (
     ConflictResolver,
     DeployAction,
     DeployResult,
@@ -30,7 +18,14 @@ from .deploy import (
     deploy_config_paths,
     read_deploy_config,
 )
-from .generate import DEFAULT_HOST_PLACEHOLDER, ExampleSpec, generate_examples
+from ..generate import DEFAULT_HOST_PLACEHOLDER, ExampleSpec, generate_examples
+
+warnings.warn(
+    "lib_layered_config.examples is deprecated and will be removed in the next major release; import from "
+    "lib_layered_config, lib_layered_config.deploy or lib_layered_config.generate instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 __all__ = (
     "DEFAULT_HOST_PLACEHOLDER",

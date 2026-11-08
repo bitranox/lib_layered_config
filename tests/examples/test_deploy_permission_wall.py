@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from lib_layered_config.examples.deploy import deploy_config
+from lib_layered_config.deploy import deploy_config
 from tests.support.os_markers import posix_only, windows_only
 from tests.support.windows_acl import stat_wall
 
