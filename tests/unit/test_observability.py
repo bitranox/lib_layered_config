@@ -60,14 +60,14 @@ def test_make_event_records_the_layer_as_its_plain_name() -> None:
 
 @os_agnostic
 def test_merge_payload_returns_original_when_payload_missing() -> None:
-    event = {"layer": "env"}
+    event: dict[str, object] = {"layer": "env"}
     result = _merge_payload(event, None)
     assert result == {"layer": "env"}
 
 
 @os_agnostic
 def test_merge_payload_merges_copy_of_payload() -> None:
-    event = {"layer": "env"}
+    event: dict[str, object] = {"layer": "env"}
     payload = {"keys": 2}
     result = _merge_payload(event, payload)
     assert result == {"layer": "env", "keys": 2}

@@ -8,7 +8,7 @@ Contents:
     - ``TRACE_ID``: context variable storing the active trace identifier.
     - ``get_logger``: returns the shared package logger (quiet by default).
     - ``bind_trace_id``: binds or clears the active trace identifier.
-    - ``log_debug`` / ``log_info`` / ``log_warn`` / ``log_error``: emit structured
+    - ``log_debug`` / ``log_info`` / ``log_warn``: emit structured
       entries via a single private emitter.
     - ``make_event``: convenience builder for structured event payloads.
 
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,7 +34,6 @@ __all__ = [
     "bind_trace_id",
     "get_logger",
     "log_debug",
-    "log_error",
     "log_info",
     "log_warn",
     "make_event",
@@ -86,7 +85,7 @@ def bind_trace_id(trace_id: str | None) -> None:
     TRACE_ID.set(trace_id)
 
 
-def log_debug(message: str, **fields: Any) -> None:
+def log_debug(message: str, **fields: object) -> None:
     """Emit a structured debug log entry that includes the trace context.
 
     Provide consistent debug telemetry across adapters while threading trace metadata.
@@ -101,7 +100,7 @@ def log_debug(message: str, **fields: Any) -> None:
     _emit(logging.DEBUG, message, fields)
 
 
-def log_info(message: str, **fields: Any) -> None:
+def log_info(message: str, **fields: object) -> None:
     """Emit a structured info log entry that includes the trace context.
 
     Capture high-level lifecycle events (layer loaded, merge complete) with trace IDs attached.
@@ -116,7 +115,7 @@ def log_info(message: str, **fields: Any) -> None:
     _emit(logging.INFO, message, fields)
 
 
-def log_warn(message: str, **fields: Any) -> None:
+def log_warn(message: str, **fields: object) -> None:
     """Emit a structured warning log entry that includes the trace context.
 
     Surface potential configuration issues (e.g., type conflicts) that don't prevent
@@ -125,19 +124,11 @@ def log_warn(message: str, **fields: Any) -> None:
     _emit(logging.WARNING, message, fields)
 
 
-def log_error(message: str, **fields: Any) -> None:
-    """Emit a structured error log entry that includes the trace context.
-
-    Surface recoverable adapter failures (e.g., invalid files) with enough context for diagnosis.
-    """
-    _emit(logging.ERROR, message, fields)
-
-
 def make_event(
     layer: Layer,
     path: str | None,
-    payload: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
+    payload: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     """Build a structured logging payload for configuration lifecycle events.
 
     Keep event construction consistent so downstream log processors can rely on stable keys.
@@ -148,8 +139,8 @@ def make_event(
         payload: Optional mapping with extra diagnostic detail.
 
     Returns:
-        dict[str, Any]: Data safe to unpack into :func:`log_debug`, :func:`log_info`, :func:`log_warn`,
-        or :func:`log_error`.
+        dict[str, object]: Data safe to unpack into :func:`log_debug`, :func:`log_info` or
+        :func:`log_warn`.
 
     Examples:
         >>> from lib_layered_config.domain.identifiers import Layer
@@ -160,7 +151,7 @@ def make_event(
     return _merge_payload(event, payload)
 
 
-def _emit(level: int, message: str, fields: Mapping[str, Any]) -> None:
+def _emit(level: int, message: str, fields: Mapping[str, object]) -> None:
     """Send a log entry through the shared logger with contextual metadata.
 
     Centralise the call to ``logging.Logger.log`` so trace injection and field handling stay consistent.
@@ -176,7 +167,7 @@ def _emit(level: int, message: str, fields: Mapping[str, Any]) -> None:
     _LOGGER.log(level, message, extra={"context": _with_trace(fields)})
 
 
-def _with_trace(fields: Mapping[str, Any]) -> dict[str, Any]:
+def _with_trace(fields: Mapping[str, object]) -> dict[str, object]:
     """Attach the current trace identifier to the provided structured fields.
 
     Guarantee that every log entry includes the active trace (when present).
@@ -185,14 +176,14 @@ def _with_trace(fields: Mapping[str, Any]) -> dict[str, Any]:
         fields: Mapping of additional structured context.
 
     Returns:
-        dict[str, Any]: Copy of ``fields`` with ``trace_id`` added.
+        dict[str, object]: Copy of ``fields`` with ``trace_id`` added.
     """
-    context = {"trace_id": TRACE_ID.get()}
+    context: dict[str, object] = {"trace_id": TRACE_ID.get()}
     context.update(fields)
     return context
 
 
-def _base_event(layer: Layer, path: str | None) -> dict[str, Any]:
+def _base_event(layer: Layer, path: str | None) -> dict[str, object]:
     """Create the minimal event payload containing layer and path information.
 
     Provide a consistent foundation for layer-related logging events.
@@ -203,12 +194,12 @@ def _base_event(layer: Layer, path: str | None) -> dict[str, Any]:
         path: Optional filesystem path associated with the event.
 
     Returns:
-        dict[str, Any]: Base payload ready for augmentation.
+        dict[str, object]: Base payload ready for augmentation.
     """
     return {"layer": layer.value, "path": path}
 
 
-def _merge_payload(event: dict[str, Any], payload: Mapping[str, Any] | None) -> dict[str, Any]:
+def _merge_payload(event: dict[str, object], payload: Mapping[str, object] | None) -> dict[str, object]:
     """Merge optional diagnostic data into the event payload when provided.
 
     Allow callers to enrich events without mutating the original dictionary outside this helper.
@@ -218,7 +209,7 @@ def _merge_payload(event: dict[str, Any], payload: Mapping[str, Any] | None) -> 
         payload: Optional mapping of diagnostic data.
 
     Returns:
-        dict[str, Any]: Updated payload containing merged data.
+        dict[str, object]: Updated payload containing merged data.
 
     Side Effects:
         Mutates ``event`` when ``payload`` is provided.
