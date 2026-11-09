@@ -19,6 +19,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   block forever while comparing contents.
 
 ### Changed
+- `lib_layered_config.application.merge.LayerSnapshot` takes a `Layer` member and raises `TypeError` for
+  anything else, naming the new `LayerSnapshot.of(name, payload, origin)`, which accepts a member or its
+  plain name (the form `Config.origin(...)["layer"]` returns). Before, the constructor converted a string
+  although its field was declared `Layer`.
 - `deploy --force --batch` is a usage error (exit code 2): "--force overwrites an existing file and
   --batch keeps it; pass one", and `deploy_config(force=True, batch=True)` raises `ValidationError`, both
   before anything is written. Before, `--force` won silently, so a script that added `--batch` to stay

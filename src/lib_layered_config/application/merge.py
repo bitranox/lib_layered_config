@@ -96,17 +96,42 @@ class LayerSnapshot:
     origin: str | None
 
     def __post_init__(self) -> None:
-        """Parse a plain layer string into its :class:`Layer` member.
+        """Refuse a name that is not a :class:`Layer`, here rather than deep in the merge.
+
+        Raises:
+            TypeError: *name* is not a member, for instance a plain layer string.
+        """
+        _refuse_a_non_layer(self.name)
+
+    @classmethod
+    def of(cls, name: Layer | str, payload: Mapping[str, object], origin: str | None) -> LayerSnapshot:
+        """Build a snapshot from a layer member or its plain name.
 
         ``Config.origin(...)["layer"]`` hands callers the plain string, so a caller rebuilding
-        snapshots from provenance passes ``"user"`` back in; the merge reads ``.value``, so it must
-        hold the member. An unknown name raises ``ValueError`` here rather than deep in the merge.
+        snapshots from provenance holds ``"user"``, not the member.
+
+        Args:
+            name: The layer, as a member or its plain name.
+            payload: Mapping produced by adapters.
+            origin: Optional filesystem path (or ``None`` for in-memory sources).
+
+        Returns:
+            The snapshot, holding the :class:`Layer` member.
+
+        Raises:
+            ValueError: *name* names no layer.
 
         Examples:
-            >>> LayerSnapshot("user", {}, None).name is Layer.USER
+            >>> LayerSnapshot.of("user", {}, None).name is Layer.USER
             True
         """
-        object.__setattr__(self, "name", Layer(self.name))
+        return cls(Layer(name), payload, origin)
+
+
+def _refuse_a_non_layer(name: object) -> None:
+    """Raise when *name* is not a :class:`Layer`; takes ``object`` because that is the case it exists for."""
+    if not isinstance(name, Layer):
+        raise TypeError(f"LayerSnapshot takes a Layer, not {name!r}: use LayerSnapshot.of to pass its plain name")
 
 
 def merge_layers(layers: Iterable[LayerSnapshot]) -> MergeResult:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, TypeGuard, cast
 
 import pytest
 from hypothesis import given
@@ -444,11 +444,7 @@ def test_a_list_replaced_wholesale_forgets_the_entries_of_its_overridden_element
 @pytest.mark.parametrize("name", [layer.value for layer in Layer])
 def test_a_snapshot_named_by_the_plain_layer_string_merges_like_the_member(name: str) -> None:
     """A caller rebuilding snapshots from ``Config.origin(...)["layer"]`` holds the plain string."""
-    snapshot = LayerSnapshot(
-        name,  # pyright: ignore[reportArgumentType] - the plain string the field annotation excludes is what this test checks
-        {"a": 1},
-        None,
-    )
+    snapshot = LayerSnapshot.of(name, {"a": 1}, None)
 
     result = merge_layers([snapshot])
 
@@ -459,8 +455,19 @@ def test_a_snapshot_named_by_the_plain_layer_string_merges_like_the_member(name:
 @os_agnostic
 def test_a_snapshot_named_by_an_unknown_layer_string_is_refused_at_construction() -> None:
     with pytest.raises(ValueError, match="'nosuchlayer' is not a valid Layer"):
-        LayerSnapshot(
-            "nosuchlayer",  # pyright: ignore[reportArgumentType] - the wrong type is what this test checks
-            {"a": 1},
-            None,
-        )
+        LayerSnapshot.of("nosuchlayer", {"a": 1}, None)
+
+
+@os_agnostic
+def test_the_factory_keeps_a_layer_member() -> None:
+    snapshot = LayerSnapshot.of(Layer.HOST, {"a": 1}, "host.toml")
+
+    assert snapshot.name is Layer.HOST
+    assert (snapshot.payload, snapshot.origin) == ({"a": 1}, "host.toml")
+
+
+@os_agnostic
+def test_a_plain_string_given_to_the_constructor_is_refused_and_names_the_factory() -> None:
+    # cast, because this is the wrong value a caller without a type checker can still pass.
+    with pytest.raises(TypeError, match=r"LayerSnapshot\.of"):
+        LayerSnapshot(cast("Layer", "user"), {"a": 1}, None)
