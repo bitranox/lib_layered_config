@@ -34,6 +34,8 @@ _TARGETS = ["app", "user"]
 def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LayeredSandbox:
     created = create_layered_sandbox(tmp_path, vendor="Acme", app="Kit", slug="kit")
     created.apply_env(monkeypatch)
+    # The sandbox sets only this OS's roots; a Windows layout needs an absolute ProgramData here.
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_PROGRAMDATA", str(tmp_path / "ProgramData"))
     return created
 
 

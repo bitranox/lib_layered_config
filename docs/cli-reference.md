@@ -1047,6 +1047,10 @@ lib_layered_config deploy \
 ```
 
 **Explanation:** Use `--platform` to override platform detection. Useful for testing deployment paths on different platforms without actually being on that platform.
+The `app` and `host` targets need an absolute ProgramData root there: set
+`LIB_LAYERED_CONFIG_PROGRAMDATA` (or `ProgramData`). Off Windows the built-in `C:\ProgramData` is a
+relative path, so the deploy is refused (exit 22) and nothing is written. A relative value in any of
+the Windows root variables is refused the same way, on every platform.
 
 **Example 5: Deploy host-specific configuration**
 ```bash

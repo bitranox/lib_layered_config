@@ -967,4 +967,9 @@ def test_a_windows_root_prefers_the_exact_spelling_and_the_override(tmp_path: Pa
 
     assert program_data_root({"PROGRAMDATA": str(other), "ProgramData": str(exact)}) == exact
     assert program_data_root({"ProgramData": str(exact), "LIB_LAYERED_CONFIG_PROGRAMDATA": str(override)}) == override
+
+
+@windows_only
+def test_the_programdata_fallback_is_c_programdata_on_windows() -> None:
+    # Off Windows the same fallback is relative and refused (test_windows_roots_absolute.py).
     assert program_data_root({}) == Path(r"C:\ProgramData")
