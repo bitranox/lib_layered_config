@@ -13,9 +13,7 @@ import pytest
 from lib_layered_config.adapters.file_loaders import structured as structured_module
 from lib_layered_config.adapters.file_loaders.structured import JSONFileLoader, TOMLFileLoader, YAMLFileLoader
 from lib_layered_config.domain.errors import InvalidFormatError, NotFoundError
-from tests.adapters.test_loader_errors import (
-    _chain,  # pyright: ignore[reportPrivateUsage] - shared exception-chain walker, also imported by tests/e2e
-)
+from tests.support.exception_chain import chain
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -211,7 +209,7 @@ def test_yaml_loader_refuses_an_out_of_range_calendar_date_without_leaking_the_c
     without_path = message.replace(str(path), "")
     assert "month" not in without_path
     assert "13" not in without_path
-    for link in _chain(exc.value):
+    for link in chain(exc.value):
         link_text = str(link).replace(str(path), "")
         assert "month" not in link_text
         assert "13" not in link_text

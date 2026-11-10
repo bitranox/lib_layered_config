@@ -17,10 +17,8 @@ import pytest
 from lib_layered_config import ConfigError, read_config, read_config_json, read_config_raw
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.core import LayerLoadError
-from tests.adapters.test_loader_errors import (
-    _chain,  # pyright: ignore[reportPrivateUsage] - the shared cause/context chain walker lives in that test module
-)
 from tests.support import LayeredSandbox, create_layered_sandbox
+from tests.support.exception_chain import chain
 from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
@@ -174,7 +172,7 @@ def test_read_config_reports_a_yaml_construction_error_as_layer_load_error(
     without_path = message.replace(str(written), "")
     assert "month" not in without_path
     assert "13" not in without_path
-    for link in _chain(captured.value):
+    for link in chain(captured.value):
         link_text = str(link).replace(str(written), "")
         assert "month" not in link_text
         assert "13" not in link_text

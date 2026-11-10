@@ -22,6 +22,7 @@ from lib_layered_config.domain.deploy_permissions import SECTION_KEY
 from lib_layered_config.domain.permissions import modes_apply
 from lib_layered_config.observability import TRACE_ID, bind_trace_id
 from tests.support import LayeredSandbox, create_layered_sandbox
+from tests.support.exception_chain import chain
 from tests.support.os_markers import os_agnostic, posix_only, windows_only
 
 if TYPE_CHECKING:
@@ -101,15 +102,6 @@ def _deploy(
 
 def _break_app_layer(sandbox: LayeredSandbox) -> None:
     sandbox.write("app", "config.toml", content="[broken\n")
-
-
-def _chain(exc: BaseException) -> list[BaseException]:
-    seen: list[BaseException] = []
-    current: BaseException | None = exc
-    while current is not None and current not in seen:
-        seen.append(current)
-        current = current.__cause__ or current.__context__
-    return seen
 
 
 @posix_only
@@ -267,7 +259,7 @@ def test_a_broken_layer_file_is_named_without_its_content(
     message = str(caught.value)
     assert name.rsplit("/", 1)[-1] in message
     assert "(line 2, column" in message
-    assert all(MARK not in str(link) for link in _chain(caught.value))
+    assert all(MARK not in str(link) for link in chain(caught.value))
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
 

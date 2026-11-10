@@ -12,6 +12,7 @@ from lib_layered_config import Config, ConfigError, read_config
 from lib_layered_config.adapters.dotenv.default import DefaultDotEnvLoader
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support import create_layered_sandbox
+from tests.support.exception_chain import chain
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
@@ -47,29 +48,8 @@ YAML_BOM_BODIES = {
 }
 
 
-def _chain(exc: BaseException) -> list[BaseException]:
-    """Return every exception reachable from *exc* via ``__cause__`` OR ``__context__``.
-
-    A breadth-first walk over both links: a loader that sets ``__cause__`` (``raise ... from
-    exc``) still leaves the original in ``__context__`` too, so following only ``__cause__ or
-    __context__`` misses whichever link a raise site did not choose.
-    """
-    seen: list[BaseException] = []
-    queue: list[BaseException] = [exc]
-    while queue:
-        current = queue.pop(0)
-        if current in seen:
-            continue
-        seen.append(current)
-        if current.__cause__ is not None:
-            queue.append(current.__cause__)
-        if current.__context__ is not None:
-            queue.append(current.__context__)
-    return seen
-
-
 def _assert_no_content(exc: BaseException) -> None:
-    for link in _chain(exc):
+    for link in chain(exc):
         assert MARK.decode() not in str(link)
         assert not isinstance(link, UnicodeDecodeError)
         assert not any(cls.__name__ in PARSER_ERRORS for cls in type(link).__mro__)
