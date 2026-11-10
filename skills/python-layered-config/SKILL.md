@@ -219,10 +219,12 @@ missing path as a usage error (exit 2). A directory is refused either way.
   roots are the ones a partial setup misses, `LIB_LAYERED_CONFIG_ETC`,
   `LIB_LAYERED_CONFIG_MAC_APP_ROOT` and `LIB_LAYERED_CONFIG_PROGRAMDATA`: each platform reads only
   its own, so a test that sets one is isolated on one OS and reads the deployed config on the
-  others. Setting the OS variable
-  `PROGRAMDATA` instead does nothing: without `LIB_LAYERED_CONFIG_PROGRAMDATA` the Windows
-  resolver looks up `ProgramData` in a plain-dict copy of `os.environ`, whose keys Windows
-  upper-cases, so the lookup misses and it reads the real `C:\ProgramData`.
+  others. The OS variable `ProgramData` (in any case, `PROGRAMDATA` too) also moves the Windows
+  app root, but `LIB_LAYERED_CONFIG_PROGRAMDATA` wins over it, so set the override. Every Windows
+  root must be an absolute path: a relative value raises `lib_layered_config.ValidationError`
+  before anything is read or written, and so does a test on Linux or macOS that forces the Windows
+  layout (`deploy_config(..., platform="win32")`, `deploy --platform windows`) with neither
+  variable set, because the built-in `C:\ProgramData` is relative there.
 - **A Windows user-layer deploy whose `%APPDATA%` directory does not exist writes under
   `%LOCALAPPDATA%` instead.** `deploy --target user` (and `deploy_config(..., targets=["user"])`)
   on Windows writes `%LOCALAPPDATA%\<Vendor>\<App>\config.toml` whenever the `%APPDATA%`
