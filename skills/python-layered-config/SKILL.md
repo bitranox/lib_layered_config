@@ -1,6 +1,6 @@
 ---
 name: python-layered-config
-description: Use when building or designing configuration for a Python app or CLI with lib_layered_config - deciding where config files live on Linux, macOS, or Windows, choosing the environment-variable override names, adding environment profiles (test/staging/production), loading config in code or from the shell, redacting secrets, or working out which layer and file a setting actually came from (provenance).
+description: Use when building or designing configuration for a Python app or CLI with lib_layered_config - deciding where config files live on Linux, macOS, or Windows, choosing the environment-variable override names, writing a .env file or dotenv keys for a config section (SECTION__KEY), adding environment profiles (test/staging/production), loading config in code or from the shell, redacting secrets, or working out which layer and file a setting actually came from (provenance).
 ---
 
 # lib_layered_config
@@ -64,8 +64,9 @@ config.origin("service.timeout")  # -> which layer + file set it (provenance)
 
 - `vendor` and `app` are used **verbatim** (spaces and case preserved) in the macOS and
   Windows paths.
-- `slug` (lowercase-with-hyphens) is the Linux directory name AND the environment-variable
-  prefix.
+- `slug` (lowercase-with-hyphens by convention) is the Linux directory name AND the
+  environment-variable prefix. It may hold ASCII letters of either case, digits, `.`, `-` and `_`
+  and must start with a letter or digit; anything else is refused (`ValidationError`).
 - `default_file` seeds the `defaults` layer. It is the ONLY way to supply that layer - omit it
   and there are no defaults at all, whatever the precedence chain says.
 - `read_config` returns a frozen `Config`; `read_config_raw(...)` returns `.data` plus
@@ -95,11 +96,7 @@ cfg.with_overrides({"db": {"host": "b"}}).origin("db.host")
 # {'layer': 'override', 'path': None, 'key': 'db.host'}
 ```
 
-Before 5.7.0 it returned the ORIGINAL provenance map, so a `--set` value was shown beside the file
-it replaced: the value right, the answer to "where did this come from" wrong, and no test of the
-value catches it. Check the floor in `pyproject.toml` before relying on the new behaviour.
-
-To label the layer `cli` instead, or to support a floor below 5.7.0, rebuild provenance for exactly
+To label the layer `cli` instead, rebuild provenance for exactly
 the keys the override supplied - layer `cli`, path `None` - and leave every other key's source
 alone. Three details decide whether that lands:
 
@@ -156,7 +153,8 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
   line, and the next digit-only value breaks startup again. Pin it with a test that writes a real
   `.env` through the real loader and asserts the raw value is an `int` before the model parses it.
 - A `.env` key is the key path WITHOUT the prefix: `DATABASE__HOST=db1`. A `MY_APP___DATABASE__HOST` line in
-  `.env` does not override `database.host`; it creates a separate `my_app` section.
+  `.env` does not override `database.host`; it creates a separate `my_app` section. Case does not
+  matter, and a single `_` stays inside a name: `CAL_STORE__HOST=h1` sets `cal_store.host`.
 - An unquoted `.env` value converts exactly like an environment value; a quoted one stays literal text.
 - A numeric segment overrides one element of a file-defined array:
   `MY_APP___DATASET__0__DSN=...` overrides element 0's `dsn`, leaving the rest of the array.
@@ -273,23 +271,23 @@ holding a single override loses every other setting the base files carried (a ba
 known_hosts_file` reads, under `--profile site-b`, with no `node.host` at all). Make each profile
 file the site's whole configuration, and name the section of every key in an example.
 Profile names are validated (no path traversal, control chars, reserved names, non-ASCII;
-max 64 chars). `--profile` is an OPTION on `deploy`, not a command on its own - the required
-flags come too: `deploy --source cfg.toml --vendor acme --app my-app --slug my-app --target user
---profile production`.
+max 64 chars). `--profile` is an OPTION (on `read`, `read-json` and `deploy`), not a command -
+the required flags come too: `deploy --source cfg.toml --vendor acme --app my-app --slug my-app
+--target user --profile production`.
 
 ## CLI commands
 
 Same engine as the library. Run any command with `-h` for full flags.
 
-| Command             | Purpose                                                                                                                                                                         |
-|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `read`              | Load and print config (human by default; `--format json`; secrets masked unless `--no-redact`).                                                                                 |
-| `read-json`         | Print merged config + provenance as JSON.                                                                                                                                       |
-| `deploy`            | Copy a config file into app/host/user layers (`--target`, `--profile`, `--force`/`--batch`, `--dir-mode`/`--file-mode`, `.bak`/`.ucf` conflict handling, permission hardening). |
-| `generate-examples` | Scaffold an example config tree to bootstrap a project.                                                                                                                         |
-| `env-prefix`        | Print the `<SLUG>___` env-var prefix for a slug.                                                                                                                                |
-| `info`              | Print resolved package metadata.                                                                                                                                                |
-| `fail`              | Raise a deliberate `RuntimeError`, to test how a harness reports a failing command.                                                                                             |
+| Command             | Purpose                                                                                                                                                                                 |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `read`              | Load and print config (human by default; `--format json`; secrets masked unless `--no-redact`).                                                                                         |
+| `read-json`         | Print merged config + provenance as JSON.                                                                                                                                               |
+| `deploy`            | Copy a `.toml` config file into app/host/user layers (`--target`, `--profile`, `--force`/`--batch`, `--dir-mode`/`--file-mode`, `.bak`/`.ucf` conflict handling, permission hardening). |
+| `generate-examples` | Scaffold an example config tree to bootstrap a project.                                                                                                                                 |
+| `env-prefix`        | Print the `<SLUG>___` env-var prefix for a slug.                                                                                                                                        |
+| `info`              | Print resolved package metadata.                                                                                                                                                        |
+| `fail`              | Raise a deliberate `RuntimeError`, to test how a harness reports a failing command.                                                                                                     |
 
 Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
 
@@ -310,8 +308,10 @@ SLUG). Passing one of the others raises `NoSuchOption`.
   is read as `config.get("database.host")` and overridden by `MY_APP___DATABASE__HOST`. A
   `[database.pool]` subtable's `size` is `database.pool.size` / `MY_APP___DATABASE__POOL__SIZE`.
 - **Keep secrets OUT of committed files.** Put passwords/tokens in the `env` layer or a
-  `.env` file (both outrank the committed config); the CLI masks secrets unless given `--no-redact`; use
-  `Config.to_json(redact=True)` when printing or logging from code. A key whose name only LOOKS secret (`max_token_bytes`) is declared with
+  `.env` file (both outrank the committed config); the CLI masks secrets unless given
+  `--no-redact`; use `Config.to_json(redact=True)` when printing or logging from code (the Python
+  calls, `read_config_json` included, mask only when given `redact=True`). A key whose name only
+  LOOKS secret (`max_token_bytes`) is declared with
   `read_config(..., not_sensitive=["performance.max_token_bytes"])`; the returned Config shows it
   under `redact=True` and in `display_config`.
 - **Split large config with `.d/`.** `config.toml` may have a companion `config.d/` whose
@@ -350,12 +350,18 @@ command, a setup wizard):
 
 ## Python API beyond read_config
 
-Everything below is importable from `lib_layered_config`.
+Everything below is importable from `lib_layered_config`, unless a line names another module.
 
-**Errors.** Catch `ConfigError`, the base of every library error. Its subclasses:
+**Errors.** Catch `ConfigError`, the base of every error the library defines. `read_config*`
+wraps a layer file it cannot read in `LayerLoadError` (see "Running as a systemd service"): follow
+`__cause__` until you reach an `OSError` (the `PermissionError`, two links down, past an
+`InvalidFormatError`); a file that does not parse has no `OSError` in that chain. `deploy_config`
+lets `FileNotFoundError` and `PermissionError` through as themselves. Wrong-argument errors
+(`TypeError`, `KeyError`) reach you as themselves. The subclasses of `ConfigError`:
 
-- `LayerLoadError` - `read_config*` could not decode or parse a layer file (broken TOML, invalid
-  UTF-8, a malformed `.env` line), or the loader refused one (a rule under "Designing config files").
+- `LayerLoadError` - `read_config*` could not read, decode or parse a layer file (broken TOML,
+  invalid UTF-8, a malformed `.env` line), or the loader refused one (a rule under "Designing
+  config files"); from `deploy_config`, a source or `.d` file that is not TOML or does not parse.
 - `InvalidFormatError` - a source cannot be parsed. `read_config*` re-raises it as `LayerLoadError`,
   so you meet it directly only from lower-level calls (nesting deeper than the limit in
   `redact_mapping`, for example).
@@ -363,7 +369,9 @@ Everything below is importable from `lib_layered_config`.
 - `ValidationError` (also a `ValueError`) - an identifier or profile name is refused. Its subclasses
   `DeployModeError` (an unsafe or malformed mode, or `dir_mode`/`file_mode` given together with
   `set_permissions=False`), `DeployPermissionsError` (unusable permission settings, one line per
-  problem; `.problems` holds one `PermissionProblem` each, with `.key`, `.reason` and `.source`) and
+  problem; `.problems` holds one `PermissionProblem` each, with `.key`, `.reason` and `.source`, a
+  `str`: the path of the file that set the key, else its layer name, `"override"` for a
+  `permission_overrides` value, or `None`) and
   `DeployDestinationError` (a file deploy would write is a symbolic link, dangling or
   not, or not a regular file; one line each, nothing is written) come from deploy.
 
@@ -404,9 +412,13 @@ an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
 `ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
 `force=True` backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`;
-both at once raise `ValidationError` (`--force --batch` is a usage error), before anything is written.
+both at once raise `ValidationError` (`--force --batch` is a usage error, exit 2), before anything
+is written.
 The source must be a `.toml` file (destinations are `config.toml` / `<hostname>.toml`, read only as
 TOML): a `.json`, `.yaml` or `.conf` source raises `LayerLoadError` before anything is written.
+A file in the source's `.d` may be any supported format; one that does not parse raises
+`LayerLoadError` too, so no file of the deploy is written, and a non-config file (a `README.md`)
+is copied unparsed.
 A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
 permission wall raises `PermissionError` on every Python, before anything is written.
 
@@ -431,8 +443,15 @@ mode) are that layer's modes, unless you pass an explicit `dir_mode`/`file_mode`
 built-in modes are exported as `DEFAULT_APP_DIR_MODE`/`DEFAULT_APP_FILE_MODE` (`0o755`/`0o644`, app
 and host) and `DEFAULT_USER_DIR_MODE`/`DEFAULT_USER_FILE_MODE` (`0o700`/`0o600`, user). Modes
 are never applied on Windows, and a deploy there never reads the configured ones (see "Probing and
-testing an app built on it"). Use these instead of importing anything from `lib_layered_config.core`
-or `lib_layered_config.deploy`.
+testing an app built on it"). Use these instead of importing anything from
+`lib_layered_config.core`; import from `lib_layered_config.deploy` only for one layer's
+destination without a deploy: `LinuxDeployment(resolver)` (also `MacDeployment`,
+`WindowsDeployment`; `resolver` is `DefaultPathResolver(vendor=..., app=..., slug=...)` from
+`lib_layered_config.adapters.path_resolvers.default`, with optional `profile=`, `platform=`,
+`hostname=` and `env=`) has `.destination_for(Layer.APP)`. It takes the `Layer` enum (`Layer.APP`,
+`Layer.HOST`, `Layer.USER`; the string `"app"` works at runtime but fails pyright strict, and
+`Layer.ENV` raises `KeyError`) and returns a `Path`, never `None`, so an `is None` guard fails
+pyright strict too.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
 the list of written paths.
 
