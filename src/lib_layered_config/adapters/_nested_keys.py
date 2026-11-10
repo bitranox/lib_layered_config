@@ -8,7 +8,6 @@ Contents:
     - ``NestedEntry``: one variable to place, with the label a refusal names it by.
     - ``build_nested``: place every entry, the same way whatever order they arrive in.
     - ``resolve_key``: case-insensitive key resolution.
-    - ``ensure_child_mapping``: ensure intermediate mappings exist.
     - ``NESTED_KEY_DELIMITER``: constant for the ``__`` separator.
 
 Used by ``adapters.dotenv.default`` and ``adapters.env.default`` to share
@@ -39,7 +38,7 @@ class NestedEntry(NamedTuple):
 
 
 class _ScalarBelowError(Exception):
-    """Internal signal from :func:`ensure_child_mapping`: a value sits where a table is needed."""
+    """Internal signal from :func:`_child_table`: a value sits where a table is needed."""
 
 
 def build_nested(entries: Iterable[NestedEntry], *, error_cls: type[Exception], where: str = "") -> dict[str, object]:
@@ -165,7 +164,7 @@ def _assign_parts(
 def _child_table(
     mapping: dict[str, object], key: str, *, index: _CaseIndex, error_cls: type[Exception]
 ) -> dict[str, object]:
-    """Return the table at *key*, creating it when missing; see :func:`ensure_child_mapping`."""
+    """Return the table at *key*, creating it when missing; refuse a plain value already there."""
     resolved = index.resolve(mapping, key)
     if resolved not in mapping:
         index.store(mapping, resolved, dict[str, object]())
@@ -200,42 +199,9 @@ def resolve_key(mapping: dict[str, object], key: str) -> str:
     return lower
 
 
-def ensure_child_mapping(
-    mapping: dict[str, object],
-    key: str,
-    *,
-    error_cls: type[Exception],
-) -> dict[str, object]:
-    """Ensure ``mapping[key]`` is a ``dict``, creating or validating as necessary.
-
-    Prevent accidental overwrites of scalar values when nested keys are introduced.
-
-    Args:
-        mapping: Mutable mapping being mutated.
-        key: Candidate key to ensure.
-        error_cls: Exception type raised when a scalar collision occurs.
-
-    Returns:
-        Child mapping stored at the resolved key.
-
-    Side Effects:
-        Mutates ``mapping`` by inserting a new child mapping when missing.
-
-    Examples:
-        >>> target: dict[str, object] = {}
-        >>> child = ensure_child_mapping(target, 'SERVICE', error_cls=ValueError)
-        >>> child == {}
-        True
-        >>> target
-        {'service': {}}
-    """
-    return _child_table(mapping, key, index=_CaseIndex(), error_cls=error_cls)
-
-
 __all__ = [
     "NESTED_KEY_DELIMITER",
     "NestedEntry",
     "build_nested",
-    "ensure_child_mapping",
     "resolve_key",
 ]

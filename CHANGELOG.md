@@ -74,6 +74,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The `allow_dots` keyword of `lib_layered_config.domain.identifiers.validate_path_segment`. Despite
   its name it skipped the whole character check (`allow_dots=True` accepted `a+b`, `a@b`, `a b`), while
   dots pass without it. Nothing passed it; the function now always applies the strict pattern.
+- `lib_layered_config.adapters._nested_keys.ensure_child_mapping`, a private helper nothing called
+  since nested-key placement moved to its case index.
 
 ### Fixed
 - `deploy` refuses a source that is not a `.toml` file, in every mode and before anything is written:
