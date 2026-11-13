@@ -78,6 +78,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- The CLI no longer fails when stdout cannot encode a value. On a stream such as a piped Windows
+  stdout (the ANSI code page, cp1252 on a German or English install), a CJK character or an emoji
+  in the configuration made `read`, `read-json` and their `--json` envelopes exit 22 with nothing on
+  stdout. JSON output now writes such a character as a `\uXXXX` escape (valid JSON, the same value
+  once parsed) and human output as a backslash escape; every character the stream can encode,
+  umlauts on cp1252 included, is written as before. The same holds for `deploy`,
+  `generate-examples`, `info` and `env-prefix`.
 - A Windows layer root must be an absolute path. `deploy --platform windows` (or
   `deploy_config(..., platform="win32")`) on Linux or macOS without `LIB_LAYERED_CONFIG_PROGRAMDATA`
   used the built-in `C:\ProgramData`, which is relative there, so it wrote

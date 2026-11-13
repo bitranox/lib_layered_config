@@ -10,6 +10,7 @@ from ..generate import generate_examples as generate_examples_impl
 from .common import json_paths, normalise_examples_platform_option
 from .constants import CLICK_CONTEXT_SETTINGS
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
+from .output import emit_json
 from .typed_click import option
 
 __all__ = [
@@ -65,7 +66,7 @@ def generate_examples_command(
     if json_envelope:
         run_in_envelope("generate-examples", lambda: {"created": [str(path) for path in generate()]})
         return
-    click.echo(json_paths(generate()))
+    emit_json(json_paths(generate()))
 
 
 def register(cli_group: click.Group) -> None:

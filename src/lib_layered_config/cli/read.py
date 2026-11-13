@@ -18,6 +18,7 @@ from .common import (
 )
 from .constants import CLICK_CONTEXT_SETTINGS
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
+from .output import emit_json, emit_text
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -118,9 +119,9 @@ def read_command(
         return
     fmt = parse_output_format(output_format)
     if wants_json(fmt):
-        click.echo(json_payload(query, resolve_indent(enabled=indent), include_provenance=provenance, redact=redact))
+        emit_json(json_payload(query, resolve_indent(enabled=indent), include_provenance=provenance, redact=redact))
         return
-    click.echo(human_payload(query, redact=redact))
+    emit_text(human_payload(query, redact=redact))
 
 
 @click.command("read-json", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
@@ -190,7 +191,7 @@ def read_json_command(
             lambda: json_codec.loads(json_payload(query, None, include_provenance=True, redact=redact)),
         )
         return
-    click.echo(json_payload(query, resolve_indent(enabled=indent), include_provenance=True, redact=redact))
+    emit_json(json_payload(query, resolve_indent(enabled=indent), include_provenance=True, redact=redact))
 
 
 def register(cli_group: click.Group) -> None:

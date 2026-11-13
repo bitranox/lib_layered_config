@@ -15,6 +15,7 @@ from ..domain.deploy_permissions import DeployPermissionsError
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
+from .output import emit_json, emit_text
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ def _prompt_for_action(destination: Path) -> DeployAction:
     Raises:
         click.UsageError: stdin reached end of file before an answer.
     """
-    click.echo(f"\nFile exists: {destination}", err=True)
+    emit_text(f"\nFile exists: {destination}", err=True)
     try:
         choice = click.prompt(
             "  [K]eep existing (save new as .ucf)\n  [O]verwrite (backup existing to .bak)\nChoose",
@@ -260,7 +261,7 @@ def deploy_command(
     if json_envelope:
         run_in_envelope("deploy", lambda: _full_report(deploy()), skipped=_skipped_in)
         return
-    click.echo(_format_results(deploy()))
+    emit_json(_format_results(deploy()))
 
 
 def register(cli_group: click.Group) -> None:

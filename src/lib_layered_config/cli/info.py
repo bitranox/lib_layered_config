@@ -9,6 +9,7 @@ from ..domain.errors import ValidationError
 from .common import describe_distribution, package_metadata
 from .constants import CLICK_CONTEXT_SETTINGS
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
+from .output import emit_text
 from .typed_click import argument
 
 __all__ = [
@@ -26,7 +27,7 @@ def info_command(*, json_envelope: bool) -> None:
         run_in_envelope("info", _metadata_fields)
         return
     for line in describe_distribution():
-        click.echo(line)
+        emit_text(line)
 
 
 def _slug_argument(_ctx: click.Context, param: click.Parameter, value: str) -> str:
@@ -46,7 +47,7 @@ def env_prefix_command(slug: str, *, json_envelope: bool) -> None:
     if json_envelope:
         run_in_envelope("env-prefix", lambda: {"slug": slug, "prefix": default_env_prefix(slug)})
         return
-    click.echo(default_env_prefix(slug))
+    emit_text(default_env_prefix(slug))
 
 
 def _metadata_fields() -> dict[str, str]:

@@ -23,6 +23,7 @@ import rich_click as click
 from lib_cli_exit_tools import CliSignalError, get_system_exit_code
 
 from ..domain import json_codec
+from .output import emit_json
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -88,7 +89,7 @@ def run_in_envelope(
     except Exception as exc:
         raise SystemExit(_print_failure(command, exc)) from exc
     left_out = list(skipped(data)) if skipped is not None else []
-    click.echo(json_codec.dumps({"ok": True, "command": command, "data": data, "skipped": left_out}, indent=True))
+    emit_json(json_codec.dumps({"ok": True, "command": command, "data": data, "skipped": left_out}, indent=True))
 
 
 class EnvelopeCommand(click.RichCommand):
@@ -118,7 +119,7 @@ def _print_failure(command: str, exc: Exception) -> int:
     """Print the failure envelope for *exc* and return the exit code it reports."""
     code = _exit_code(exc)
     error = {"type": type(exc).__name__, "message": _message(exc), "exit_code": code}
-    click.echo(json_codec.dumps({"ok": False, "command": command, "error": error}, indent=True))
+    emit_json(json_codec.dumps({"ok": False, "command": command, "error": error}, indent=True))
     return code
 
 
