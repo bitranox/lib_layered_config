@@ -19,6 +19,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   block forever while comparing contents.
 
 ### Changed
+- `deploy_config` called with neither `force`, `batch` nor a `conflict_resolver` now reports a file
+  whose content differs as `DeployAction.CONFLICT` (new member, value `"conflict"`) and leaves it
+  unchanged, as before. It was reported as `SKIPPED`, which the documentation reserves for a file that is
+  already byte-identical to the source, so a caller reading the results could not tell a missed update
+  from one that was not needed. A `conflict_resolver` that returns anything other than
+  `DeployAction.OVERWRITTEN` or `DeployAction.KEPT` now raises `ValidationError` naming the two, and
+  nothing is written for that destination; before, such an answer was also reported as `SKIPPED`. The
+  `deploy` command is unaffected: it always resolves a conflict by `--force`, `--batch` or its prompt.
 - `lib_layered_config.application.merge.LayerSnapshot` takes a `Layer` member and raises `TypeError` for
   anything else, naming the new `LayerSnapshot.of(name, payload, origin)`, which accepts a member or its
   plain name (the form `Config.origin(...)["layer"]` returns). Before, the constructor converted a string

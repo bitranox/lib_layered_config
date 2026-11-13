@@ -723,7 +723,7 @@ def test_deploy_with_conflict_resolver_calls_callback(
 
     def resolver(destination: Path) -> DeployAction:
         calls.append(destination)
-        return DeployAction.SKIPPED
+        return DeployAction.KEPT
 
     results = deploy_config(
         source_config,
@@ -736,7 +736,7 @@ def test_deploy_with_conflict_resolver_calls_callback(
 
     assert len(calls) == 1
     assert calls[0] == target
-    assert results[0].action == DeployAction.SKIPPED
+    assert results[0].action == DeployAction.KEPT
 
 
 @os_agnostic
@@ -842,15 +842,15 @@ def test_deploy_refuses_force_with_batch_before_writing(
 
 
 @os_agnostic
-def test_deploy_without_conflict_resolver_defaults_to_skip(
+def test_deploy_without_a_policy_reports_a_conflict_and_leaves_the_file(
     sandbox: LayeredSandbox,
     source_config: Path,
 ) -> None:
+    """SKIPPED means byte-identical; a differing file left alone for want of a policy is a CONFLICT."""
     target = sandbox.roots["app"] / "config.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("existing", encoding="utf-8")
 
-    # No force, no batch, no conflict_resolver - defaults to skip
     results = deploy_config(
         source_config,
         vendor=VENDOR,
@@ -859,8 +859,38 @@ def test_deploy_without_conflict_resolver_defaults_to_skip(
         slug=SLUG,
     )
 
-    assert len(results) == 1
-    assert results[0].action == DeployAction.SKIPPED
+    assert [result.action for result in results] == [DeployAction.CONFLICT]
+    assert target.read_text(encoding="utf-8") == "existing"
+    assert sorted(path.name for path in target.parent.iterdir()) == ["config.toml"]
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    "answer",
+    [DeployAction.SKIPPED, DeployAction.CREATED, DeployAction.CONFLICT, "overwritten", None],
+    ids=["skipped", "created", "conflict", "plain-string", "none"],
+)
+def test_a_resolver_answer_other_than_overwritten_or_kept_is_refused(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+    answer: object,
+) -> None:
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing", encoding="utf-8")
+
+    with pytest.raises(ValidationError, match=r"OVERWRITTEN or DeployAction\.KEPT"):
+        deploy_config(
+            source_config,
+            vendor=VENDOR,
+            app=APP,
+            targets=["app"],
+            slug=SLUG,
+            conflict_resolver=lambda _destination: answer,  # pyright: ignore[reportArgumentType, reportReturnType] - a resolver breaking its contract is the case under test
+        )
+
+    assert target.read_text(encoding="utf-8") == "existing"
+    assert sorted(path.name for path in target.parent.iterdir()) == ["config.toml"]
 
 
 @os_agnostic

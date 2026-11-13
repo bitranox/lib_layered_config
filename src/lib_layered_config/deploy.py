@@ -135,7 +135,8 @@ class DeployAction(Enum):
     CREATED = "created"  # New file, no conflict
     OVERWRITTEN = "overwritten"  # Backed up and replaced
     KEPT = "kept"  # Existing kept, new saved as .ucf
-    SKIPPED = "skipped"  # No action taken
+    SKIPPED = "skipped"  # Byte-identical to the source; nothing written
+    CONFLICT = "conflict"  # Differs from the source, left unchanged: no force, batch or resolver
 
 
 class _Sidecar(str, Enum):
@@ -713,8 +714,10 @@ def deploy_config(
             name raises :class:`~lib_layered_config.ValidationError`.
         force: If True, backup existing files and overwrite (no prompt).
         batch: If True, keep existing files and write new as .ucf for review (CI/scripts).
-        conflict_resolver: Callback to resolve conflicts interactively.
-            Called with destination Path, should return DeployAction.
+        conflict_resolver: Called with the destination of each file whose content differs;
+            returns ``DeployAction.OVERWRITTEN`` or ``DeployAction.KEPT``. Any other answer
+            raises :class:`~lib_layered_config.ValidationError`. With neither force, batch
+            nor a resolver, a differing file is left unchanged and reported as ``CONFLICT``.
         max_profile_length: Maximum allowed profile name length (default: 64).
             Set to 0 or negative to disable length checking.
         set_permissions: True sets modes, False leaves them to the umask, None (default) follows
@@ -1010,7 +1013,12 @@ def _handle_conflict(
         modes: The directory and file mode to set, or None to leave permissions to the umask.
 
     Returns:
-        DeployResult describing the action taken.
+        DeployResult describing the action taken: ``CONFLICT`` when no policy decides, leaving the
+        file unchanged (``SKIPPED`` is kept for a byte-identical file).
+
+    Raises:
+        ValidationError: *conflict_resolver* answered anything but ``DeployAction.OVERWRITTEN`` or
+            ``DeployAction.KEPT``; nothing is written for that destination.
     """
     # force -> OVERWRITTEN, batch -> KEPT, resolver -> its chosen action. All three route
     # through _execute_action so the backup/overwrite and .ucf logic lives in one place.
@@ -1019,11 +1027,39 @@ def _handle_conflict(
     elif batch:
         action = DeployAction.KEPT
     elif conflict_resolver is not None:
-        action = conflict_resolver(destination)
+        action = _resolver_choice(conflict_resolver, destination)
     else:
-        return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+        return DeployResult(destination=destination, action=DeployAction.CONFLICT)
 
     return _execute_action(destination, source, action, modes=modes)
+
+
+_RESOLVER_CHOICES = (DeployAction.OVERWRITTEN, DeployAction.KEPT)
+
+
+def _resolver_choice(conflict_resolver: ConflictResolver, destination: Path) -> DeployAction:
+    """Return *conflict_resolver*'s answer for *destination*, refusing any but OVERWRITTEN or KEPT.
+
+    The answer is checked rather than trusted: the callback is caller code, and any other value
+    has no write behind it, so passing it on would report a result nothing produced.
+
+    Raises:
+        ValidationError: The resolver answered anything else, a string or ``None`` included.
+    """
+    return _checked_resolver_answer(conflict_resolver(destination), destination)
+
+
+def _checked_resolver_answer(answer: object, destination: Path) -> DeployAction:
+    """Narrow *answer* to OVERWRITTEN or KEPT, or raise.
+
+    *answer* is typed ``object`` because the resolver's annotation is no guarantee at runtime.
+    """
+    if isinstance(answer, DeployAction) and answer in _RESOLVER_CHOICES:
+        return answer
+    raise ValidationError(
+        f"conflict_resolver returned {answer!r} for {destination}; it must return "
+        "DeployAction.OVERWRITTEN or DeployAction.KEPT"
+    )
 
 
 def _deploy_single(
@@ -1055,7 +1091,7 @@ def _execute_action(
     *,
     modes: LayerModes | None,
 ) -> DeployResult:
-    """Execute the chosen action for a conflict."""
+    """Execute *action*, ``OVERWRITTEN`` or ``KEPT`` (``_handle_conflict`` refuses every other)."""
     if action == DeployAction.OVERWRITTEN:
         # Smart skip if content is identical
         if _content_matches(destination, source):
@@ -1068,19 +1104,16 @@ def _execute_action(
             backup_path=backup_path,
         )
 
-    if action == DeployAction.KEPT:
-        # Smart skip if content is identical (no need for UCF)
-        if _content_matches(destination, source):
-            return DeployResult(destination=destination, action=DeployAction.SKIPPED)
-        ucf_path = _write_ucf(destination, source, modes=modes)
-        return DeployResult(
-            destination=destination,
-            action=DeployAction.KEPT,
-            ucf_path=ucf_path,
-        )
-
-    # SKIPPED or CREATED (shouldn't happen here, but handle gracefully)
-    return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+    # KEPT: the only other action _handle_conflict passes on.
+    # Smart skip if content is identical (no need for UCF)
+    if _content_matches(destination, source):
+        return DeployResult(destination=destination, action=DeployAction.SKIPPED)
+    ucf_path = _write_ucf(destination, source, modes=modes)
+    return DeployResult(
+        destination=destination,
+        action=DeployAction.KEPT,
+        ucf_path=ucf_path,
+    )
 
 
 def _prepare_resolver(

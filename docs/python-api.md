@@ -888,7 +888,7 @@ Copy a source configuration file into one or more layer directories with conflic
 - `platform` (str | None, optional): Override the auto-detected platform. Takes the CLI's `--platform` names: `"linux"`/`"posix"`, `"darwin"`/`"macos"`/`"mac"`, `"win32"`/`"windows"`/`"win"`/`"wine"`, in any case. Any other name raises `ValidationError` listing them. A Windows layout off Windows needs an absolute `LIB_LAYERED_CONFIG_PROGRAMDATA` (or `ProgramData`) for the `app` and `host` targets: the built-in `C:\ProgramData` is relative there and raises `ValidationError` before anything is written, as does a relative value in any Windows root variable on every platform. Default: `None` (auto-detects from current platform).
 - `force` (bool, optional): When True and file exists with different content, backup to `.bak` and overwrite. Default: `False`.
 - `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`. Together with `force=True` it raises `ValidationError` before anything is written: one overwrites an existing file, the other keeps it.
-- `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Custom callback for conflict resolution. Default: `None`.
+- `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Called with the destination of each file whose content differs; returns `DeployAction.OVERWRITTEN` or `DeployAction.KEPT`. Any other answer raises `ValidationError` naming the two, and nothing is written for that destination. Default: `None` (with neither `force` nor `batch`, a differing file is left unchanged and reported as `CONFLICT`).
 - `set_permissions` (bool | None, optional): `True` sets modes, `False` leaves them to the umask, `None` follows the configured `[lib_layered_config.default_permissions].enabled` (true when unset). An explicit `dir_mode` or `file_mode` means modes are set; one given with `False` is refused. Skipped on Windows. Default: `None`.
 - `dir_mode` (int | None, optional): Directory mode for every target, overriding the configured and built-in ones. Default: `None`.
 - `file_mode` (int | None, optional): File mode for every target, overriding the configured and built-in ones. Default: `None`.
@@ -897,7 +897,7 @@ Copy a source configuration file into one or more layer directories with conflic
 
 **Returns:** `list[DeployResult]` - Each result contains:
 - `destination`: Path to the target file
-- `action`: `DeployAction` enum (`CREATED`, `OVERWRITTEN`, `KEPT`, `SKIPPED`)
+- `action`: `DeployAction` enum: `CREATED`, `OVERWRITTEN`, `KEPT`, `SKIPPED` (byte-identical, nothing written) or `CONFLICT` (content differs and no `force`, `batch` or `conflict_resolver` decided; the file is left unchanged and nothing else is written for it)
 - `backup_path`: Path to `.bak` file (if action was `OVERWRITTEN`)
 - `ucf_path`: Path to `.ucf` file (if action was `KEPT`)
 - `dot_d_results`: List of `DeployResult` for companion `.d` directory files (if any)
