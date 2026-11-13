@@ -86,6 +86,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- An environment variable or `.env` key overrides a file key whatever the file's spelling:
+  `MYAPP___A__DBPASSWORD` now overrides `[a] dbPassword` and keeps that spelling, with the env (or
+  dotenv) layer in its provenance. Before, variable names arrived in lowercase and the merge compared
+  keys case-sensitively, so the override landed beside the file key as `dbpassword` and
+  `config.get("a.dbPassword")` kept the file's value, silently. File layers still compare keys exactly.
+  Where one table holds two spellings that differ only by case, the value lands under its own
+  lowercase key as before and the new warning `case_folded_key_ambiguous` names both.
 - A `.env` file that starts with a UTF-8 byte-order mark (Notepad's "UTF-8 with BOM", PowerShell 5
   `Out-File -Encoding utf8`) loads its first key. The mark used to become part of that key's name, so
   `DB__HOST=...` on the first line produced an unreachable key and the value silently never applied.

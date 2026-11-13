@@ -46,6 +46,11 @@ _LIST_INDEX_KEY: Final[re.Pattern[str]] = re.compile(r"[0-9]+")
 _MAX_INDEX_DIGITS: Final[int] = 18
 _INDEX_BEYOND_ANY_LIST: Final[int] = 10**_MAX_INDEX_DIGITS
 
+#: Layers whose key names lost their case on the way in: an environment variable name and a
+#: ``.env`` key are read case-insensitively and arrive in lowercase, so their keys are matched
+#: case-insensitively against what the lower layers stored. File layers keep exact keys.
+_CASE_FOLDED_LAYERS: Final[frozenset[Layer]] = frozenset({Layer.ENV, Layer.DOTENV})
+
 
 class ValueKind(str, Enum):
     """Categorical value shape reported in a merge ``type_conflict`` warning.
@@ -221,7 +226,9 @@ def _descend(
     """
     if len(segments) > _MAX_MERGE_DEPTH:
         raise InvalidFormatError(f"Configuration nesting exceeds the maximum depth of {_MAX_MERGE_DEPTH}")
-    for key, value in incoming.items():
+    spellings = _StoredSpellings(target) if snapshot.name in _CASE_FOLDED_LAYERS else None
+    for incoming_key, value in incoming.items():
+        key = incoming_key if spellings is None else spellings.resolve(incoming_key, segments, snapshot)
         dotted = _join_segments(segments, key)
         if _looks_like_mapping(value):
             _store_branch(
@@ -229,6 +236,42 @@ def _descend(
             )
         else:
             _store_scalar(target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot)
+
+
+class _StoredSpellings:
+    """The keys one table already holds, grouped by lowercase form, for a case-folded layer.
+
+    Built once per table visit, so matching each incoming key is one dict probe rather than a scan
+    of the table: a large ``.env`` adds thousands of keys to one table.
+
+    Examples:
+        >>> snap = LayerSnapshot(Layer.ENV, {}, None)
+        >>> _StoredSpellings({"dbPassword": "x"}).resolve("dbpassword", [], snap)
+        'dbPassword'
+        >>> _StoredSpellings({"host": "x"}).resolve("port", [], snap)
+        'port'
+    """
+
+    __slots__ = ("_by_lowercase",)
+
+    def __init__(self, target: Mapping[str, object]) -> None:
+        """Index *target*'s keys by their lowercase form."""
+        self._by_lowercase: dict[str, list[str]] = {}
+        for stored in target:
+            self._by_lowercase.setdefault(stored.lower(), []).append(stored)
+
+    def resolve(self, key: str, segments: Sequence[str], snapshot: LayerSnapshot) -> str:
+        """Return the stored spelling of *key*, or *key* itself when none or several match.
+
+        Two stored spellings (``dbPassword`` and ``DBPASSWORD``) leave the choice open: the key is
+        placed as it came, and a ``case_folded_key_ambiguous`` warning names both.
+        """
+        matches = self._by_lowercase.get(key.lower(), [])
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            _warn_case_folded_key_ambiguous(_join_segments(segments, key), snapshot, matches)
+        return key
 
 
 def _store_branch(
@@ -746,6 +789,20 @@ def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: ValueKin
         path=snapshot.origin,
         old_type=old_type,
         new_type=new_type,
+    )
+
+
+def _warn_case_folded_key_ambiguous(dotted: str, snapshot: LayerSnapshot, stored: Sequence[str]) -> None:
+    """Emit a warning when an env or ``.env`` key matches several stored spellings.
+
+    The override is placed under the key as it came rather than guessing which spelling it meant.
+    """
+    log_warn(
+        "case_folded_key_ambiguous",
+        key=dotted,
+        layer=snapshot.name,
+        path=snapshot.origin,
+        stored=list(stored),
     )
 
 

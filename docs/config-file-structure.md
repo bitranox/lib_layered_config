@@ -405,6 +405,11 @@ MYAPP___DATABASE__POOL='{"size": 20, "timeout": 5}'
 - Separator: Triple underscore (`___`) after prefix to distinguish from nesting
 - Nesting: Double underscores (`__`) for each level
 - Format: `PREFIX___SECTION__SUBSECTION__KEY=value`
+- Case: a variable's key is matched case-insensitively against the keys the lower layers stored,
+  and takes their spelling: `MYAPP___A__DBPASSWORD` overrides `[a] dbPassword`. The same holds for
+  `.env` keys. Where one table holds two keys that differ only by case (`dbPassword` and
+  `DBPASSWORD`), the value lands under its own lowercase key instead, and the warning
+  `case_folded_key_ambiguous` names both stored spellings.
 
 **Overriding one element of an array:**
 
@@ -471,7 +476,9 @@ value holds a NUL is refused the same way (naming the file and line); other cont
 A sensitive key keeps an unquoted `null` or `none` as text, in the environment and in `.env` alike, so a
 secret spelled that way is never read as "no credential". A key is sensitive when the last segment of its
 path is one `redact=True` masks, such as `password`, `token`, `secret` or a name ending in `_key`. Every other
-key reads `null`/`none` as None. A key the application declared with
+key reads `null`/`none` as None. The variable's or `.env` key's own name decides, and it arrives in lowercase:
+`MYAPP___A__DBPASSWORD` names `dbpassword`, one word that is not sensitive, even where the file spells the
+key `dbPassword`; spelled `db_password` in the file and `MYAPP___A__DB_PASSWORD` in the environment, it is. A key the application declared with
 `read_config(not_sensitive=[...])` is not sensitive, so it reads them as None too.
 
 ### Deploy permission settings
