@@ -410,8 +410,12 @@ in every output mode, with and without redaction.
 **Deploying and scaffolding.** `deploy_config("app.toml", vendor=..., app=..., slug=..., targets=["user"])`
 is the `deploy` command in Python (`source` is the path of the file to copy). It returns a list
 with one `DeployResult` per destination: `.destination`, `.backup_path`, `.ucf_path`, and `.action`,
-an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"skipped"`), since
-`.action == "created"` is always `False`. Permission keywords: `set_permissions`, `dir_mode`,
+an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"skipped"`,
+`"conflict"`), since `.action == "created"` is always `False`. `"skipped"` means the file was
+already byte-identical; `"conflict"` means it differs and was left unchanged because no
+`force`, `batch` or `conflict_resolver=` decided, so key a missed update on `"conflict"`. A
+`conflict_resolver(destination)` must return `DeployAction.OVERWRITTEN` or `DeployAction.KEPT`;
+any other answer raises `ValidationError`. Permission keywords: `set_permissions`, `dir_mode`,
 `file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
 `ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
