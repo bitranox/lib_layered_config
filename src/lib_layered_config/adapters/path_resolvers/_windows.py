@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...domain.errors import ValidationError
+from ...domain.errors import LayerRootNotAbsoluteError
 from ._base import PlatformStrategy, collect_layer, config_path_present
 
 if TYPE_CHECKING:
@@ -54,10 +54,10 @@ def _root(env: Mapping[str, str], *, override: str, name: str, default: Path) ->
     """The ``LIB_LAYERED_CONFIG_*`` *override* if set, else the Windows variable *name*, else *default*.
 
     Raises:
-        ValidationError: The chosen root is not absolute on this system. ``C:\\ProgramData`` is
-            relative off Windows, and a relative value from the environment is relative
-            everywhere; either would make every layer path, and every deploy, land under the
-            current working directory.
+        LayerRootNotAbsoluteError: The chosen root is not absolute on this system (a
+            ``ValidationError``). ``C:\\ProgramData`` is relative off Windows, and a relative value
+            from the environment is relative everywhere; either would make every layer path, and
+            every deploy, land under the current working directory.
     """
     if override in env:
         root = Path(env[override])
@@ -65,7 +65,7 @@ def _root(env: Mapping[str, str], *, override: str, name: str, default: Path) ->
         value = windows_env_value(env, name)
         root = default if value is None else Path(value)
     if not root.is_absolute():
-        raise ValidationError(
+        raise LayerRootNotAbsoluteError(
             f"The %{name}% root {str(root)!r} is not an absolute path on this system; set {override} "
             f"(or {name}) to an absolute path"
         )

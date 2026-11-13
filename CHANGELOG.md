@@ -84,7 +84,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `./C:\ProgramData/<Vendor>/<App>/config.toml` into the current directory and exited 0. A relative
   `ProgramData`, `APPDATA` or `LOCALAPPDATA` value (or its `LIB_LAYERED_CONFIG_*` override) did the
   same on any platform, and the resolver read from there. Each now raises `ValidationError` naming
-  the root and the variable to set (exit code 22 from the CLI), before anything is written.
+  the root and the variable to set (exit code 22 from the CLI), before anything is written. A
+  deploy that writes only the user layer still needs no ProgramData root: reading the configured
+  modes skips an app or host layer whose root is not absolute, since no file can sit there.
 - `deploy` refuses a source that is not a `.toml` file, in every mode and before anything is written:
   `"<source> is not a .toml file, but deploy writes it as config.toml or <hostname>.toml, which are read
   only as TOML"` (a `LayerLoadError`, exit code 1). Every destination is read only as TOML, yet a valid

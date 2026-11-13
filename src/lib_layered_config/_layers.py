@@ -34,12 +34,12 @@ from .adapters.file_loaders.structured import (
 )
 from .application.merge import LayerSnapshot, MergeResult, merge_layers
 from .domain.deploy_permissions import drop_app_and_host_modes
-from .domain.errors import InvalidFormatError, NotFoundError
+from .domain.errors import InvalidFormatError, LayerRootNotAbsoluteError, NotFoundError
 from .domain.identifiers import Layer
 from .observability import log_debug, log_info, log_warn, make_event
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 
     from .adapters.dotenv.default import DefaultDotEnvLoader
     from .adapters.path_resolvers.default import DefaultPathResolver
@@ -106,9 +106,29 @@ def collect_deploy_layers(
     """
     return [
         *_default_snapshots(default_file),
-        *_without_user_layer_system_modes(_filesystem_snapshots(resolver, None, skip=skip)),
+        *_without_user_layer_system_modes(_deploy_filesystem_snapshots(resolver, skip=skip)),
         *_env_snapshots(env_loader, resolver.slug),
     ]
+
+
+def _deploy_filesystem_snapshots(resolver: DefaultPathResolver, *, skip: frozenset[Path]) -> Iterator[LayerSnapshot]:
+    """Yield the app/host/user snapshots a deploy reads its modes from; an unrootable layer is absent.
+
+    A deploy for Windows run elsewhere may have no ProgramData root (``C:\\ProgramData`` is relative
+    off Windows). A user-only deploy needs none, and no file can sit under a root with no absolute
+    path here, so that layer has no modes to give: it is skipped, never read relative to the cwd.
+    A deploy that WRITES under such a root still refuses, in the resolver call that picks its
+    destination.
+    """
+    for layer, paths in _filesystem_layer_paths(resolver):
+        try:
+            snapshots = list(_snapshots_from_paths(layer, paths(), None, skip=skip))
+        except LayerRootNotAbsoluteError as exc:
+            log_debug("layer_root_not_absolute", **make_event(layer, None, {"reason": str(exc)}))
+            continue
+        if snapshots:
+            _note_layer_loaded(layer, None, {"files": len(snapshots)})
+            yield from snapshots
 
 
 def _without_user_layer_system_modes(snapshots: Iterable[LayerSnapshot]) -> Iterator[LayerSnapshot]:
@@ -248,15 +268,19 @@ def _filesystem_snapshots(
     Yields:
         LayerSnapshot: Snapshots for ``app``/``host``/``user`` layers.
     """
-    for layer, paths in (
-        (Layer.APP, resolver.app()),
-        (Layer.HOST, resolver.host()),
-        (Layer.USER, resolver.user()),
-    ):
-        snapshots = list(_snapshots_from_paths(layer, paths, prefer, skip=skip))
+    for layer, paths in _filesystem_layer_paths(resolver):
+        snapshots = list(_snapshots_from_paths(layer, paths(), prefer, skip=skip))
         if snapshots:
             _note_layer_loaded(layer, None, {"files": len(snapshots)})
             yield from snapshots
+
+
+def _filesystem_layer_paths(resolver: DefaultPathResolver) -> tuple[tuple[Layer, Callable[[], Iterable[str]]], ...]:
+    """Pair each filesystem layer, in precedence order, with the resolver call listing its candidate paths.
+
+    The calls are returned unmade, so a caller decides where a resolver refusal lands.
+    """
+    return ((Layer.APP, resolver.app), (Layer.HOST, resolver.host), (Layer.USER, resolver.user))
 
 
 def _dotenv_snapshots(

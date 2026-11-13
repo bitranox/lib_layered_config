@@ -22,6 +22,7 @@ __all__ = [
     "ConfigError",
     "DeployDestinationError",
     "InvalidFormatError",
+    "LayerRootNotAbsoluteError",
     "NotFoundError",
     "ValidationError",
 ]
@@ -50,6 +51,16 @@ class ValidationError(ConfigError, ValueError):
     with a single ``except ConfigError``) and the stdlib :class:`ValueError` (so the
     long-standing ``except ValueError`` contract documented for the validation helpers
     keeps working). Raising this instead of a bare ``ValueError`` is backward compatible.
+    """
+
+
+class LayerRootNotAbsoluteError(ValidationError):
+    """Raised when a Windows layer root (ProgramData, APPDATA, LOCALAPPDATA) is not absolute here.
+
+    Its own type because a deploy's permission read treats exactly this case as an absent layer:
+    no file can sit under a root that has no absolute path on this machine, so there are no modes
+    to read from it. Every write keeps the refusal. A :class:`ValidationError`, so existing
+    ``except ValidationError`` / ``except ValueError`` handlers still catch it.
     """
 
 

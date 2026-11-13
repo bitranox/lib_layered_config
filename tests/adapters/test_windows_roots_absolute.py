@@ -100,3 +100,53 @@ def test_the_cli_refuses_a_windows_deploy_off_windows(
     assert code == get_system_exit_code(ValueError())
     assert "not an absolute path" in capsys.readouterr().err
     assert list(work.iterdir()) == []
+
+
+def _user_only_windows_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Clear every Windows root, then set only the APPDATA override, as a user-only deploy needs."""
+    source = tmp_path / "source.toml"
+    source.write_text("a = 1\n", encoding="utf-8")
+    work = tmp_path / "work"
+    work.mkdir()
+    appdata = tmp_path / "appdata"
+    _clear_windows_roots(monkeypatch, work)
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_APPDATA", str(appdata))
+    return source, work, appdata
+
+
+@posix_only
+def test_a_user_only_windows_deploy_needs_no_programdata_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source, work, appdata = _user_only_windows_env(monkeypatch, tmp_path)
+
+    results = deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], platform="win32")
+
+    assert [result.destination for result in results] == [appdata / "Acme" / "Demo" / "config.toml"]
+    assert list(work.iterdir()) == []
+
+
+@posix_only
+def test_the_cli_deploys_a_user_only_windows_target_without_programdata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, work, appdata = _user_only_windows_env(monkeypatch, tmp_path)
+    argv = ["deploy", "--source", str(source), "--vendor", "Acme", "--app", "Demo", "--slug", "demo"]
+
+    code = main([*argv, "--target", "user", "--platform", "windows", "--batch"], restore_traceback=False)
+
+    assert code == 0
+    assert (appdata / "Acme" / "Demo" / "config.toml").read_text(encoding="utf-8") == "a = 1\n"
+    assert list(work.iterdir()) == []
+
+
+@posix_only
+def test_a_planted_relative_programdata_tree_does_not_decide_the_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, work, appdata = _user_only_windows_env(monkeypatch, tmp_path)
+    planted = work / "C:\\ProgramData" / "Acme" / "Demo" / "config.toml"
+    planted.parent.mkdir(parents=True)
+    planted.write_text('[lib_layered_config.default_permissions]\nuser_file = "0o640"\n', encoding="utf-8")
+
+    deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], platform="win32")
+
+    assert ((appdata / "Acme" / "Demo" / "config.toml").stat().st_mode & 0o777) == 0o600
