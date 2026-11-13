@@ -223,8 +223,10 @@ missing path as a usage error (exit 2). A directory is refused either way.
   app root, but `LIB_LAYERED_CONFIG_PROGRAMDATA` wins over it, so set the override. Every Windows
   root must be an absolute path: a relative value raises `lib_layered_config.ValidationError`
   before anything is read or written, and so does a test on Linux or macOS that forces the Windows
-  layout (`deploy_config(..., platform="win32")`, `deploy --platform windows`) with neither
-  variable set, because the built-in `C:\ProgramData` is relative there.
+  layout (`deploy_config(..., platform="win32")`, `deploy --platform windows`) for the `app` or
+  `host` target with neither variable set, because the built-in `C:\ProgramData` is relative
+  there. A `user`-only deploy needs no ProgramData root and no variable at all: the `APPDATA` and
+  `LOCALAPPDATA` defaults sit under the home directory, which is absolute everywhere.
 - **A Windows user-layer deploy whose `%APPDATA%` directory does not exist writes under
   `%LOCALAPPDATA%` instead.** `deploy --target user` (and `deploy_config(..., targets=["user"])`)
   on Windows writes `%LOCALAPPDATA%\<Vendor>\<App>\config.toml` whenever the `%APPDATA%`
