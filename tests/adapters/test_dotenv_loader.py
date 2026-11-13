@@ -219,3 +219,26 @@ def test_dotenv_upward_search_skips_a_directory_named_dot_env(tmp_path: Path) ->
     loader.load(start_dir=str(start))
 
     assert loader.last_loaded_path not in {str(start / ".env"), str(tmp_path / ".env")}
+
+
+#: What Notepad's "UTF-8 with BOM" and PowerShell 5 ``Out-File -Encoding utf8`` write before the text.
+_UTF8_BOM_BYTES = b"\xef\xbb\xbf"
+
+
+@os_agnostic
+def test_a_dotenv_saved_with_a_utf8_bom_keeps_its_first_key(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_bytes(_UTF8_BOM_BYTES + b"DB__HOST=db.example\nMODE=prod\n")
+
+    data = DefaultDotEnvLoader().load(str(tmp_path))
+
+    assert data == {"db": {"host": "db.example"}, "mode": "prod"}
+
+
+@os_agnostic
+def test_an_explicit_dotenv_path_with_a_utf8_bom_keeps_its_first_key(tmp_path: Path) -> None:
+    custom_env = tmp_path / "custom.env"
+    custom_env.write_bytes(_UTF8_BOM_BYTES + b"MODE=prod\n")
+
+    data = DefaultDotEnvLoader().load(dotenv_path=str(custom_env))
+
+    assert data == {"mode": "prod"}

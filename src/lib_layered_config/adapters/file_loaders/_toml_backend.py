@@ -47,6 +47,7 @@ import sysconfig
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from ...domain.source_position import SourcePosition
+from .._text_decoding import UTF8_BOM_CHAR
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -71,9 +72,6 @@ TOML_MAX_TABLE_DEPTH: Final[int] = 101
 
 #: The most arrays nested directly in one another the tomli parser accepts: rtoml's limit for a value.
 TOML_MAX_ARRAY_DEPTH: Final[int] = 80
-
-#: A UTF-8 byte order mark as the decoder leaves it at the start of the text.
-_BYTE_ORDER_MARK: Final[str] = chr(0xFEFF)
 
 #: rtoml's message is read only for the numbers in it; "line 1 column 4" (toml 0.5) and
 #: "line 1, column 4" (newer renderers, which also print a source snippet) both match.
@@ -190,7 +188,7 @@ class TomliParser:
     def loads(self, text: str) -> dict[str, object]:
         """Return the table *text* holds (see :class:`TomlParser`)."""
         try:
-            table = self._tomli.loads(text.removeprefix(_BYTE_ORDER_MARK), parse_float=_finite_float)
+            table = self._tomli.loads(text.removeprefix(UTF8_BOM_CHAR), parse_float=_finite_float)
         except self._tomli.TOMLDecodeError as error:
             raise TomlLoadError(str(error), position=_tomllib_position(error)) from error
         except RecursionError as error:

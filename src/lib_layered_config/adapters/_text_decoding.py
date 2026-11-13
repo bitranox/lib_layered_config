@@ -15,7 +15,12 @@ from ..domain.errors import InvalidFormatError
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["decode_utf8", "decode_yaml_text"]
+__all__ = ["UTF8_BOM_CHAR", "decode_utf8", "decode_yaml_text"]
+
+#: A UTF-8 byte order mark as :func:`decode_utf8` leaves it at the start of the text. It carries no
+#: meaning in a config file, so a reader whose parser would take it as content (the TOML and
+#: ``.env`` readers) drops one leading copy; JSON keeps refusing it through its own parser.
+UTF8_BOM_CHAR: Final[str] = chr(0xFEFF)
 
 #: Checked before the UTF-16 BOMs: the UTF-32 LE BOM starts with the UTF-16 LE BOM, so
 #: checking UTF-16 first would misdetect a UTF-32 LE file as UTF-16.

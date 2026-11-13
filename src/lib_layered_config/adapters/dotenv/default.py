@@ -31,7 +31,7 @@ from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug, log_warn
 from .._nested_keys import NestedEntry, build_nested
 from .._path_probe import PathKind, checked_kind, config_path_unreadable, current_directory, probe_path
-from .._text_decoding import decode_utf8
+from .._text_decoding import UTF8_BOM_CHAR, decode_utf8
 from .._value_coercion import coerce_value
 from ..file_loaders.structured import directory_not_config_file, read_capped_bytes
 
@@ -218,7 +218,9 @@ def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveK
         raw = read_capped_bytes(path)
     except OSError as error:
         raise config_path_unreadable(path, error) from error
-    text = decode_utf8(raw, path=path)
+    # A leading BOM (Notepad's "UTF-8 with BOM", PowerShell 5 Out-File) would otherwise become part
+    # of the first key's name, which no lookup can reach.
+    text = decode_utf8(raw, path=path).removeprefix(UTF8_BOM_CHAR)
     # StringIO with newline=None keeps the universal-newline line splitting the text-mode open() had.
     for line_number, raw_line in enumerate(io.StringIO(text, newline=None), start=1):
         entry = _split_line(raw_line, line_number, path)

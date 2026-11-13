@@ -86,6 +86,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A `.env` file that starts with a UTF-8 byte-order mark (Notepad's "UTF-8 with BOM", PowerShell 5
+  `Out-File -Encoding utf8`) loads its first key. The mark used to become part of that key's name, so
+  `DB__HOST=...` on the first line produced an unreachable key and the value silently never applied.
+  One leading mark is dropped, as the TOML reader already did.
 - The CLI no longer fails when stdout cannot encode a value. On a stream such as a piped Windows
   stdout (the ANSI code page, cp1252 on a German or English install), a CJK character or an emoji
   in the configuration made `read`, `read-json` and their `--json` envelopes exit 22 with nothing on
