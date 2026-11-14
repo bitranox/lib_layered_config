@@ -75,6 +75,30 @@ def test_a_read_prints_the_config_inside_the_envelope(
 
 
 @os_agnostic
+def test_a_read_without_provenance_keeps_the_envelope_shape_with_null_provenance(
+    sandbox: LayeredSandbox, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A top-level table named "config" is where a bare config in data would read as the wrapper.
+    sandbox.write("app", "config.toml", content="[config]\nx = 1\n")
+
+    code, document = _run(capsys, "read", *IDENTITY, *_start(sandbox), "--no-provenance", "--json")
+
+    assert code == 0
+    assert document["data"] == {"config": {"config": {"x": 1}}, "provenance": None}
+
+
+@os_agnostic
+def test_a_read_without_provenance_still_masks_secrets_inside_the_envelope(
+    sandbox: LayeredSandbox, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sandbox.write("app", "config.toml", content='[db]\npassword = "hunter2"\n')
+
+    _, document = _run(capsys, "read", *IDENTITY, *_start(sandbox), "--no-provenance", "--json")
+
+    assert document["data"] == {"config": {"db": {"password": "***REDACTED***"}}, "provenance": None}
+
+
+@os_agnostic
 def test_a_redacted_read_masks_the_secret_inside_the_envelope(
     sandbox: LayeredSandbox, capsys: pytest.CaptureFixture[str]
 ) -> None:

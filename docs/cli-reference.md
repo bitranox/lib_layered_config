@@ -43,13 +43,13 @@ lib_layered_config fail --json
 | `error.message`   | on failure, the message the command prints without `--json`                  |
 | `error.exit_code` | on failure, the process exit code, the same one the command returns          |
 
-| Command             | `data`                                                                |
-|---------------------|-----------------------------------------------------------------------|
-| `read`, `read-json` | `{"config": ..., "provenance": ...}`; `--provenance`/`--redact` apply |
-| `deploy`            | every result list, empty ones included, `.d` lists prefixed `dot_d_`  |
-| `generate-examples` | `{"created": [paths]}`                                                |
-| `info`              | the package metadata fields                                           |
-| `env-prefix`        | `{"slug": ..., "prefix": ...}`                                        |
+| Command             | `data`                                                                                                   |
+|---------------------|----------------------------------------------------------------------------------------------------------|
+| `read`, `read-json` | `{"config": ..., "provenance": ...}`; `provenance` is `null` under `--no-provenance`, `--redact` applies |
+| `deploy`            | every result list, empty ones included, `.d` lists prefixed `dot_d_`                                     |
+| `generate-examples` | `{"created": [paths]}`                                                                                   |
+| `info`              | the package metadata fields                                                                              |
+| `env-prefix`        | `{"slug": ..., "prefix": ...}`                                                                           |
 
 For `deploy`, `skipped` lists the destinations left alone because they already held the same
 content, the `.d` directory's included.

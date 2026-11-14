@@ -61,7 +61,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `{"ok": false, "command", "error": {"type", "message", "exit_code"}}` on failure, with the same exit
   code the command returns without the flag. Before, a failure printed only a message on stderr, and
   `info` and `env-prefix` had no machine-readable output. `deploy --json` lists every result section,
-  empty ones included. A usage error in the arguments (a missing option, a path that does not exist,
+  empty ones included, and `read --json` / `read-json --json` always put `{"config", "provenance"}` in
+  `data`, with `provenance` set to `null` under `--no-provenance`. A usage error in the arguments (a missing option, a path that does not exist,
   an unknown option) prints the envelope too, with exit code 2; only an unknown command keeps Click's
   usage text. Output without `--json` is unchanged.
 

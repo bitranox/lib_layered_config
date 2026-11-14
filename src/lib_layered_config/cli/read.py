@@ -24,6 +24,8 @@ from .typed_click import option
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from .common import ReadQuery
+
 
 __all__ = [
     "read_command",
@@ -47,6 +49,19 @@ def _drop_deprecated_prefer(prefer: Sequence[str]) -> tuple[str, ...]:
     if prefer:
         emit_text(_PREFER_WARNING, err=True)
     return ()
+
+
+def _envelope_data(query: ReadQuery, *, include_provenance: bool, redact: bool) -> object:
+    """Return a read's envelope ``data``: always ``{"config": ..., "provenance": ...}``.
+
+    Without provenance the key stays and holds ``None``. A bare config in ``data`` would make a
+    top-level table named ``config`` indistinguishable from the wrapper, and a consumer would have
+    to know which flag was passed before it could read the result.
+    """
+    if include_provenance:
+        return json_codec.loads(json_payload(query, None, include_provenance=True, redact=redact))
+    config = json_codec.loads(json_payload(query, None, include_provenance=False, redact=redact))
+    return {"config": config, "provenance": None}
 
 
 @click.command("read", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
@@ -131,7 +146,7 @@ def read_command(
     if json_envelope:
         run_in_envelope(
             "read",
-            lambda: json_codec.loads(json_payload(query, None, include_provenance=provenance, redact=redact)),
+            lambda: _envelope_data(query, include_provenance=provenance, redact=redact),
         )
         return
     fmt = parse_output_format(output_format)
@@ -205,7 +220,7 @@ def read_json_command(
     if json_envelope:
         run_in_envelope(
             "read-json",
-            lambda: json_codec.loads(json_payload(query, None, include_provenance=True, redact=redact)),
+            lambda: _envelope_data(query, include_provenance=True, redact=redact),
         )
         return
     emit_json(json_payload(query, resolve_indent(enabled=indent), include_provenance=True, redact=redact))
