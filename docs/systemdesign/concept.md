@@ -59,7 +59,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 
 4. **Composition Root**
    - `read_config`, `read_config_json`, and `read_config_raw` wire adapters, gather layers, merge payloads, and return `Config`/raw/JSON views.
-   - Supports optional `default_file` seeding, suffix preference ordering, configurable `.env` start directory, and wraps adapter errors in `LayerLoadError`.
+   - Supports optional `default_file` seeding, a configurable `.env` start directory, and wraps adapter errors in `LayerLoadError`.
 
 5. **Presentation & Tooling**
    - Rich Click CLI with commands: `info`, `env-prefix`, `read`, `read-json`, `deploy`, `generate-examples`, `fail`.

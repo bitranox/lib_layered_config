@@ -72,7 +72,6 @@ Load configuration and print either human-readable prose or JSON.
 **Usage:**
 ```bash
 lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
-  [--prefer toml] [--prefer json] \
   [--start-dir /path/to/project] \
   [--default-file ./config.defaults.toml] \
   [--env-file /path/to/.env] \
@@ -89,7 +88,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 | `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                     |
 | `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                     |
 | `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                              |
-| `--prefer`                         | string | No       | None           | Preferred file suffix (repeatable flag: `--prefer toml --prefer json`). Earlier values take precedence. Valid values: `toml`, `json`, `yaml`, `yml`   |
+| `--prefer`                         | string | No       | None           | Deprecated, no effect: each layer reads `config.toml` and `config.d/`. Prints a warning on stderr; removed in a future major release                  |
 | `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                       |
 | `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file ending in `.toml`, `.json`, `.yaml` or `.yml`                                       |
 | `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat` |
@@ -180,15 +179,15 @@ cat config-audit.json
 
 **Explanation:** This gives you complete audit information - both the final configuration values and where each one came from.
 
-**Example 4: Using file format preferences**
+**Example 4: Settings split across TOML, JSON and YAML**
 ```bash
-# Prefer TOML files, then JSON, then YAML
-lib_layered_config read \
-  --vendor Acme --app MyApp --slug myapp \
-  --prefer toml --prefer json --prefer yaml
+# ~/.config/myapp/config.toml           main file of the user layer
+# ~/.config/myapp/config.d/10-db.json   merged after config.toml
+# ~/.config/myapp/config.d/20-log.yaml  merged after 10-db.json
+lib_layered_config read --vendor Acme --app MyApp --slug myapp
 ```
 
-**Explanation:** When multiple configuration file formats exist in the same directory (e.g., `config.toml` and `config.json`), the `--prefer` flag controls which one takes precedence. Earlier values win.
+**Explanation:** Each layer's main file is `config.toml`; JSON and YAML files go in its `config.d/` directory, merged after `config.toml` in file-name order. The `--prefer` flag is deprecated and has no effect.
 
 **Example 5: Load with defaults and specific .env location**
 ```bash
@@ -237,7 +236,6 @@ Always emit combined JSON output (config + provenance). This is a convenience al
 **Usage:**
 ```bash
 lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
-  [--prefer toml] [--prefer json] \
   [--start-dir /path/to/project] \
   [--default-file ./config.defaults.toml] \
   [--env-file /path/to/.env] \
@@ -252,7 +250,7 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
 | `--vendor`                 | string | Yes      | -           | Vendor namespace                                                     |
 | `--app`                    | string | Yes      | -           | Application name                                                     |
 | `--slug`                   | string | Yes      | -           | Configuration slug                                                   |
-| `--prefer`                 | string | No       | None        | Preferred file suffix (repeatable)                                   |
+| `--prefer`                 | string | No       | None        | Deprecated, no effect; prints a warning on stderr                    |
 | `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search                                 |
 | `--default-file`           | path   | No       | None        | Path to defaults file                                                |
 | `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)                                  |

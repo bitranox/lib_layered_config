@@ -31,13 +31,30 @@ __all__ = [
     "register",
 ]
 
+_PREFER_HELP = "Deprecated, no effect: each layer reads config.toml and config.d/ (repeatable)"
+_PREFER_WARNING = (
+    "warning: --prefer has no effect and will be removed in a future major release: each layer "
+    "reads only config.toml and its config.d/ directory, which is where JSON and YAML files go"
+)
+
+
+def _drop_deprecated_prefer(prefer: Sequence[str]) -> tuple[str, ...]:
+    """Tell the user on stderr that ``--prefer`` does nothing, and return no suffixes.
+
+    stderr keeps the notice out of a JSON envelope on stdout, and the empty result keeps the Python
+    API from warning a second time about the same flag.
+    """
+    if prefer:
+        emit_text(_PREFER_WARNING, err=True)
+    return ()
+
 
 @click.command("read", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
 @option("--vendor", required=True, help="Vendor namespace")
 @option("--app", required=True, help="Application name")
 @option("--slug", required=True, help="Slug identifying the configuration set")
 @option("--profile", default=None, help="Configuration profile name (e.g., 'test', 'production')")
-@option("--prefer", multiple=True, help="Preferred file suffix ordering (repeatable)")
+@option("--prefer", multiple=True, help=_PREFER_HELP)
 @option(
     "--start-dir",
     type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True, readable=True),
@@ -106,7 +123,7 @@ def read_command(
         app=app,
         slug=slug,
         profile=profile,
-        prefer=prefer,
+        prefer=_drop_deprecated_prefer(prefer),
         start_dir=start_dir,
         default_file=default_file,
         dotenv_path=dotenv_path,
@@ -129,7 +146,7 @@ def read_command(
 @option("--app", required=True)
 @option("--slug", required=True)
 @option("--profile", default=None, help="Configuration profile name")
-@option("--prefer", multiple=True)
+@option("--prefer", multiple=True, help=_PREFER_HELP)
 @option(
     "--start-dir",
     type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True, readable=True),
@@ -180,7 +197,7 @@ def read_json_command(
         app=app,
         slug=slug,
         profile=profile,
-        prefer=prefer,
+        prefer=_drop_deprecated_prefer(prefer),
         start_dir=start_dir,
         default_file=default_file,
         dotenv_path=dotenv_path,

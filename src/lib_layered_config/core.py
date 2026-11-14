@@ -23,6 +23,7 @@ System Role:
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -80,7 +81,9 @@ def read_config(
         profile: Optional profile name for environment-specific configurations
             (e.g., "test", "production"). When set, paths include a
             ``profile/<name>/`` subdirectory.
-        prefer: Optional sequence of preferred file suffixes (``["toml", "json"]``).
+        prefer: Deprecated, no effect: each layer reads only ``config.toml`` and its ``config.d/``
+            directory, which is where JSON and YAML files go. Passing it emits a
+            ``DeprecationWarning``; it will be removed in a future major release.
         start_dir: Optional directory that seeds `.env` discovery.
         default_file: Optional lowest-precedence file injected before filesystem layers.
         max_profile_length: Maximum allowed profile name length (default: 64).
@@ -130,13 +133,14 @@ def read_config(
         >>> isinstance(config, Config)
         True
     """
+    # Warned here and not passed on, so the caller gets one warning at its own line.
+    _take_deprecated_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)
     result = read_config_raw(
         vendor=vendor,
         app=app,
         slug=slug,
         profile=profile,
-        prefer=prefer,
         start_dir=start_dir,
         default_file=_stringify_path(default_file),
         max_profile_length=max_profile_length,
@@ -186,13 +190,13 @@ def read_config_json(
         TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
     """
+    _take_deprecated_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)
     result = read_config_raw(
         vendor=vendor,
         app=app,
         slug=slug,
         profile=profile,
-        prefer=prefer,
         start_dir=_stringify_path(start_dir),
         default_file=_stringify_path(default_file),
         max_profile_length=max_profile_length,
@@ -238,7 +242,7 @@ def read_config_raw(
         TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
     """
-    _refuse_a_single_str_prefer(prefer)
+    _take_deprecated_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)
     resolver = _build_resolver(
         vendor=vendor,
@@ -271,14 +275,28 @@ def read_config_raw(
     return merge_or_empty(layers)
 
 
-def _refuse_a_single_str_prefer(prefer: Sequence[str] | None) -> None:
-    """Refuse *prefer* given as one ``str``.
+#: What a caller passing ``prefer`` is told. A layer has one main file, ``config.toml``, so a suffix
+#: ranking never had a second candidate to choose between.
+_PREFER_DEPRECATION = (
+    "prefer has no effect and will be removed in a future major release: each layer reads only "
+    "config.toml and its config.d/ directory, which is where JSON and YAML files go"
+)
 
-    A ``str`` is itself a sequence of strings, so the type checker accepts ``prefer="toml"``; the
-    ranking then read its letters as suffixes and preferred nothing.
+
+def _take_deprecated_prefer(prefer: Sequence[str] | None) -> None:
+    """Refuse *prefer* given as one ``str``, and warn that any other *prefer* has no effect.
+
+    A ``str`` is itself a sequence of strings, so the type checker accepts ``prefer="toml"``; it
+    stays refused so a caller's mistake does not turn silent while the parameter is deprecated.
+
+    Raises:
+        TypeError: *prefer* is a single str.
     """
     if isinstance(prefer, str):
         raise TypeError(f"prefer takes a sequence of suffixes, not a single str: write [{prefer!r}]")
+    if prefer is not None:
+        # stacklevel 3: this helper, the public read function, then the caller's own line.
+        warnings.warn(_PREFER_DEPRECATION, DeprecationWarning, stacklevel=3)
 
 
 def read_config_for_deploy(

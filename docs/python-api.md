@@ -408,7 +408,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `app` (str, required): Application name used to compute filesystem paths (e.g., `"ConfigKit"`).
 - `slug` (str, required): Configuration slug used for file paths and environment variable prefix (e.g., `"config-kit"`).
 - `profile` (str | None, optional): Configuration profile name (e.g., `"test"`, `"production"`). When specified, adds a `profile/<name>/` segment to all configuration paths. Default: `None` (no profile).
-- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes (e.g., `["toml", "json", "yaml"]`). Files matching earlier suffixes take precedence. A single `str` is refused with `TypeError` (write `["toml"]`): it would be read as its letters. Default: `None` (accepts all supported formats with default ordering).
+- `prefer` (Sequence[str] | None, optional): Deprecated, no effect: each layer reads only `config.toml` and its `config.d/` directory, so there is no second main file for a suffix ranking to choose; put JSON or YAML files in `config.d/`. Passing it emits a `DeprecationWarning`; it will be removed in a future major release. A single `str` is still refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search; a directory the search cannot enter is skipped, and so is a `.env` that neither the current user nor root owns (POSIX; logged as the warning `dotenv_skipped_foreign_owner`). Default: `None` (uses current working directory; when the operating system cannot name it - a removed directory, or on macOS one the user cannot enter - no project `.env` is searched).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
 - `dotenv_path` (str | Path | None, optional): Explicit path to a `.env` file. When set, this file is loaded directly instead of searching upward from `start_dir`. A FIFO (a shell's `<(...)`) or a device is read like a file, up to the same 10 MiB cap; like `cat`, the read waits for a FIFO's writer and for it to close. A path that does not exist loads nothing; a socket raises the unreadable-file error. Default: `None` (use directory search).
@@ -466,17 +466,16 @@ print(f"Service will connect to {endpoint} with {timeout}s timeout")
 ```
 **Explanation:** This is the minimal setup. The library will automatically look for configuration files in standard locations (`/etc/myapp/`, `~/.config/myapp/`, etc.) and merge them with environment variables.
 
-**Example 2: Using file format preferences**
+**Example 2: Keeping JSON or YAML settings beside the TOML**
 ```python
 from lib_layered_config import read_config
 
-# Prefer TOML files over JSON when both exist
-config = read_config(vendor="Acme", app="MyApp", slug="myapp", prefer=["toml", "json", "yaml"])
-
-# If both config.toml and config.json exist in the same directory,
-# config.toml will be loaded because it appears first in the prefer list
+# ~/.config/myapp/config.toml          main file of the user layer
+# ~/.config/myapp/config.d/10-db.json  merged after config.toml
+# ~/.config/myapp/config.d/20-log.yaml merged after 10-db.json
+config = read_config(vendor="Acme", app="MyApp", slug="myapp")
 ```
-**Explanation:** The `prefer` parameter controls which file format takes precedence when multiple formats exist in the same directory. This is useful when migrating from one format to another.
+**Explanation:** Each layer's main file is `config.toml`. JSON and YAML files go in its `config.d/` directory, which is merged after `config.toml` in lexicographic file-name order, so a later file overrides an earlier one. YAML needs the `yaml` extra.
 
 **Example 3: Using a defaults file**
 ```python
@@ -533,7 +532,6 @@ config = read_config(
     vendor="Acme",
     app="MyApp",
     slug="myapp",
-    prefer=["toml", "json"],  # TOML preferred
     start_dir=Path.cwd(),  # Search .env from current directory
     default_file=Path(__file__).parent / "defaults.toml",  # Ship defaults
 )
@@ -551,7 +549,7 @@ for key in ["database.host", "database.port", "database.name"]:
     if origin:
         print(f"  {key}: from {origin['layer']} layer")
 ```
-**Explanation:** This complete example shows production-ready configuration loading with defaults, format preferences, and provenance tracking for debugging.
+**Explanation:** This complete example shows production-ready configuration loading with defaults and provenance tracking for debugging.
 
 ---
 
@@ -564,7 +562,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
-- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes; a single `str` is refused with `TypeError`. Default: `None`.
+- `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is still refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
@@ -655,7 +653,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
-- `prefer` (Sequence[str] | None, optional): Ordered sequence of preferred file suffixes; a single `str` is refused with `TypeError`. Default: `None`.
+- `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is still refused with `TypeError`. Default: `None`.
 - `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.

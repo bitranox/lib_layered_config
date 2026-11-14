@@ -74,6 +74,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   (`lib_layered_config.examples`, `.examples.deploy`, `.examples.generate`) still work and re-export the
   same objects, but importing them raises a `DeprecationWarning`; they are removed in the next major
   release.
+- `prefer` on `read_config`, `read_config_json` and `read_config_raw`, and `--prefer` on `read` and
+  `read-json`, never changed what was loaded: each layer reads only `config.toml` and its `config.d/`
+  directory, so there was no second main file for the suffix ranking to choose. Passing `prefer` now
+  raises a `DeprecationWarning`, and `--prefer` prints a warning on stderr; JSON and YAML files go in
+  `config.d/`. Both are removed in a future major release. The docs no longer describe a format
+  preference.
 
 ### Removed
 - `lib_layered_config.observability.log_error`: nothing in the library called it, and it was never
