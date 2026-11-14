@@ -95,7 +95,7 @@ def _envelope_data(query: ReadQuery, *, include_provenance: bool, redact: bool) 
     type=click.Choice(["human", "json"], case_sensitive=False),
     default="human",
     show_default=True,
-    help="Choose between human prose or JSON",
+    help="Choose between TOML annotated with each value's source (human) or JSON",
 )
 @option(
     "--indent/--no-indent",
@@ -132,7 +132,7 @@ def read_command(
     redact: bool,
     json_envelope: bool,
 ) -> None:
-    """Read configuration and print either human prose or JSON."""
+    """Read configuration and print it as source-annotated TOML or as JSON."""
     query = build_read_query(
         vendor=vendor,
         app=app,

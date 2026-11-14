@@ -379,7 +379,7 @@ def json_paths(paths: Iterable[Path]) -> str:
 
 
 def human_payload(query: ReadQuery, *, redact: bool = False) -> str:
-    """Return prose describing config values and provenance.
+    """Return the config as TOML with a ``# source:`` comment above each value.
 
     Offer a human-first view that mirrors the JSON content yet remains readable.
 

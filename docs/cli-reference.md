@@ -83,7 +83,7 @@ logger, which prints nothing until the application configures logging.
 
 ### `read`
 
-Load configuration and print either human-readable prose or JSON.
+Load configuration and print it either as TOML annotated with each value's source, or as JSON.
 
 **Usage:**
 ```bash
@@ -108,7 +108,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 | `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                       |
 | `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file ending in `.toml`, `.json`, `.yaml` or `.yml`                                       |
 | `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat` |
-| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (annotated prose), `json` (structured JSON)                                                                      |
+| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (TOML with `# source:` comments), `json` (structured JSON)                                                       |
 | `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                          |
 | `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                         |
 | `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask sensitive values (passwords, tokens, `*_key`) as `***REDACTED***` in every format; `--no-redact` prints them                                     |
@@ -123,17 +123,20 @@ lib_layered_config read --vendor Acme --app MyApp --slug myapp
 
 **Output:**
 ```
-service.timeout: 30
-  provenance: layer=app, path=/etc/xdg/myapp/config.toml
-service.endpoint: https://api.example.com
-  provenance: layer=user, path=/home/alice/.config/myapp/config.toml
-database.host: localhost
-  provenance: layer=env, path=None
-database.port: 5432
-  provenance: layer=app, path=/etc/xdg/myapp/config.toml
+[service]
+  # source: layer=app, path=/etc/xdg/myapp/config.toml
+  timeout = 30
+  # source: layer=user, path=/home/alice/.config/myapp/config.toml
+  endpoint = "https://api.example.com"
+
+[database]
+  # source: layer=app, path=/etc/xdg/myapp/config.toml
+  port = 5432
+  # source: layer=env, path=(memory)
+  host = "localhost"
 ```
 
-**Explanation:** The default format shows each configuration value with its source layer and file path (or "None" for environment variables). Perfect for quick debugging.
+**Explanation:** The default format prints the merged configuration as TOML, one table per section, with a `# source:` comment above each value naming the layer and file it came from (`(memory)` for a value from the environment). Here `MYAPP___DATABASE__HOST=localhost` was set in the environment. The output reads back as the TOML it shows, which makes it handy for quick debugging.
 
 **Example 2: JSON output for automation scripts**
 ```bash
@@ -232,16 +235,16 @@ lib_layered_config read \
 # Check if environment variables are overriding your config
 MYAPP___SERVICE__TIMEOUT=5 lib_layered_config read \
   --vendor Acme --app MyApp --slug myapp \
-  --format human | grep -A1 "service.timeout"
+  --format human | grep -B1 "timeout ="
 ```
 
 **Output:**
 ```
-service.timeout: 5
-  provenance: layer=env, path=None
+  # source: layer=env, path=(memory)
+  timeout = 5
 ```
 
-**Explanation:** Set environment variables before the command to test how they override file-based configuration. The provenance shows which layer won.
+**Explanation:** Set environment variables before the command to test how they override file-based configuration. The `# source:` comment sits on the line above its value, hence `grep -B1`, and shows which layer won.
 
 ---
 

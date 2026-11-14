@@ -102,6 +102,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   configures logging. A warning's `layer` field is now the layer's name (`app`) for every event; the
   merge warnings used to carry the enum member, which a text formatter printed as `Layer.APP` on
   Python 3.11+.
+- `docs/cli-reference.md` and `read --help` describe the human output as it is: TOML with a
+  `# source:` comment above each value (`path=(memory)` for the environment). The examples showed an
+  older `key: value` / `provenance:` form, and Example 7's `grep -A1 "service.timeout"` matched
+  nothing; it is now `grep -B1 "timeout ="`.
 - The `.env` search checks each file once. The resolver's search list, which `read_config` hands the
   loader, repeats the loader's own upward walk and holds the per-user `.env` that is already the
   walk's first candidate when `start_dir` is the user config directory, so a passed-over `.env` was
