@@ -54,4 +54,19 @@ def version_option(*param_decls: str, **attrs: Any) -> _CommandDecorator:
     return _click.version_option(*param_decls, **attrs)
 
 
-__all__ = ["argument", "option", "version_option"]
+def current_context() -> click.Context:
+    """Return the running command's context.
+
+    rich_click annotates :func:`rich_click.get_current_context` as ``Context | None`` without click's
+    overload for the default ``silent=False``, which raises instead of returning ``None``.
+
+    Raises:
+        RuntimeError: Called outside a running command.
+    """
+    ctx = click.get_current_context()
+    if ctx is None:
+        raise RuntimeError("no click command is running")
+    return ctx
+
+
+__all__ = ["argument", "current_context", "option", "version_option"]

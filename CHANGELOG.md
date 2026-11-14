@@ -93,6 +93,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- The CLI shows the library's warnings: each one is printed on stderr as one
+  `warning: <event> key=value ...` line while a command runs, in every output mode, so stdout and the
+  `--json` envelope are unchanged. Before, the warnings went to a logger with only a `NullHandler`, so
+  a CLI user never saw a passed-over `.env` another user owns (`dotenv_skipped_foreign_owner`), an
+  ignored `app_*` setting in a user file (`deploy_setting_ignored`) or a `type_conflict`, although the
+  docs said these were reported. The Python API is unchanged and stays silent until the application
+  configures logging. A warning's `layer` field is now the layer's name (`app`) for every event; the
+  merge warnings used to carry the enum member, which a text formatter printed as `Layer.APP` on
+  Python 3.11+.
 - An environment variable or `.env` key overrides a file key whatever the file's spelling:
   `MYAPP___A__DBPASSWORD` now overrides `[a] dbPassword` and keeps that spelling, with the env (or
   dotenv) layer in its provenance. Before, variable names arrived in lowercase and the merge compared

@@ -63,6 +63,22 @@ well. Two cases keep Click's usage text on stderr: an unknown command
 (`lib_layered_config nosuch --json`), which fails before any command is chosen, and the same errors
 without `--json`. An interrupt (Ctrl-C) exits with the signal's code and prints no envelope.
 
+### Warnings on stderr
+
+While a command runs, each warning the library logs is printed on stderr as one line, in every output
+mode, `--json` included, so stdout and the envelope stay unchanged:
+
+```text
+warning: dotenv_skipped_foreign_owner layer=dotenv path=/tmp/.env owner_uid=1001
+warning: type_conflict key=database layer=app path=/etc/xdg/myapp/config.toml old_type=scalar new_type=mapping
+```
+
+The events are `dotenv_skipped_foreign_owner`, `deploy_setting_ignored`, `type_conflict`,
+`list_index_out_of_range` and `case_folded_key_ambiguous`. Their fields are key names, paths, layers,
+types and owners, never configuration values, so a warning line cannot print a secret. A program that
+calls the Python API instead gets the same events as WARNING records on the `lib_layered_config`
+logger, which prints nothing until the application configures logging.
+
 ---
 
 ### `read`

@@ -13,7 +13,8 @@ from .common import version_string
 from .constants import CLICK_CONTEXT_SETTINGS, TRACEBACK_SUMMARY, TRACEBACK_VERBOSE
 from .read import read_command as cli_read_config
 from .read import read_json_command as cli_read_config_json
-from .typed_click import option, version_option
+from .stderr_warnings import attach_stderr_warnings
+from .typed_click import current_context, option, version_option
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -36,7 +37,8 @@ if TYPE_CHECKING:
     help="Show full Python traceback on errors",
 )
 def cli(*, traceback: bool) -> None:
-    """Root command for the CLI group."""
+    """Root command for the CLI group: library warnings go to stderr until the command ends."""
+    current_context().call_on_close(attach_stderr_warnings())
 
 
 def main(argv: Sequence[str] | None = None, *, restore_traceback: bool = True) -> int:

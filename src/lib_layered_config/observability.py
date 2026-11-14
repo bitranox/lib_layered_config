@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from contextvars import ContextVar
+from enum import Enum
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
@@ -175,11 +176,20 @@ def _with_trace(fields: Mapping[str, object]) -> dict[str, object]:
     Args:
         fields: Mapping of additional structured context.
 
+    An enum member is stored as its value: a text formatter renders the context with ``str()`` or an
+    f-string, which reads ``Layer.APP`` rather than ``app`` on Python 3.11+. Doing it here means no
+    call site can forget it.
+
     Returns:
-        dict[str, object]: Copy of ``fields`` with ``trace_id`` added.
+        dict[str, object]: Copy of ``fields`` with ``trace_id`` added and enum members as values.
+
+    Examples:
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> _with_trace({"layer": Layer.APP, "key": "a"})
+        {'trace_id': None, 'layer': 'app', 'key': 'a'}
     """
     context: dict[str, object] = {"trace_id": TRACE_ID.get()}
-    context.update(fields)
+    context.update({name: value.value if isinstance(value, Enum) else value for name, value in fields.items()})
     return context
 
 
