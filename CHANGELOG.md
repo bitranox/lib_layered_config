@@ -102,6 +102,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   configures logging. A warning's `layer` field is now the layer's name (`app`) for every event; the
   merge warnings used to carry the enum member, which a text formatter printed as `Layer.APP` on
   Python 3.11+.
+- The `.env` search checks each file once. The resolver's search list, which `read_config` hands the
+  loader, repeats the loader's own upward walk and holds the per-user `.env` that is already the
+  walk's first candidate when `start_dir` is the user config directory, so a passed-over `.env` was
+  owner-checked and reported two or three times. Which file loads is unchanged: the first hit still
+  wins.
 - An environment variable or `.env` key overrides a file key whatever the file's spelling:
   `MYAPP___A__DBPASSWORD` now overrides `[a] dbPassword` and keeps that spelling, with the env (or
   dotenv) layer in its provenance. Before, variable names arrived in lowercase and the merge compared

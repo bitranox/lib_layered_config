@@ -134,8 +134,22 @@ class DefaultDotEnvLoader:
 
 
 def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Path]:
-    """Combine upward-search candidates with platform-specific extras."""
-    return [*list(_iter_candidates(start_dir)), *extras]
+    """Combine upward-search candidates with the extras, each path once, in first-seen order.
+
+    The extras repeat the walk: the resolver's search list walks upward from the same start
+    directory, and its per-user ``.env`` is the walk's own first candidate when ``start_dir`` is the
+    user config directory. Without the dedupe a skipped file is owner-checked and reported once per
+    copy. Paths are compared as absolute, normalised text, never resolved: resolving would follow a
+    symlink, and the owner check judges the link and its target separately.
+
+    Examples:
+        >>> [p.as_posix() for p in _build_search_list("/opt/app", [Path("/opt/app/.env"), Path("/srv/.env")])]
+        ['/opt/app/.env', '/opt/.env', '/.env', '/srv/.env']
+    """
+    unique: dict[str, Path] = {}
+    for candidate in [*_iter_candidates(start_dir), *extras]:
+        unique.setdefault(os.path.normpath(candidate.absolute()), candidate)
+    return list(unique.values())
 
 
 def _iter_candidates(start_dir: str | None) -> Iterable[Path]:

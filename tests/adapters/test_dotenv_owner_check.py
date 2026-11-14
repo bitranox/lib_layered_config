@@ -70,6 +70,22 @@ def test_skipped_dotenv_is_logged_as_a_warning_naming_file_and_owner(
 
 
 @posix_only
+def test_a_dotenv_in_both_the_walk_and_the_extras_is_checked_and_reported_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The resolver's search list walks upward from start_dir too, so read_config hands the loader
+    # extras that repeat its own walk; each file must still be judged once.
+    planted, start = _plant_dotenv(tmp_path)
+    _become_another_user(monkeypatch, planted.stat().st_uid)
+
+    with caplog.at_level(logging.WARNING, logger="lib_layered_config"):
+        DefaultDotEnvLoader(extras=[str(planted)]).load(str(start))
+
+    skipped = [record for record in caplog.records if record.message == "dotenv_skipped_foreign_owner"]
+    assert len(skipped) == 1
+
+
+@posix_only
 def test_explicit_dotenv_path_loads_whoever_owns_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     planted, _start = _plant_dotenv(tmp_path)
     _become_another_user(monkeypatch, planted.stat().st_uid)

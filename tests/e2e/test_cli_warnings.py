@@ -154,5 +154,6 @@ def test_a_dotenv_another_user_owns_is_named_on_stderr(
 
     lines = _warning_lines(capsys.readouterr().err)
     assert code == 0
-    assert [line for line in lines if line.startswith("warning: dotenv_skipped_foreign_owner ")] != []
-    assert all(f"path={planted}" in line for line in lines if "dotenv_skipped_foreign_owner" in line)
+    # Exactly one line: the resolver's search list and the loader's own walk both hold this file.
+    (skipped,) = [line for line in lines if line.startswith("warning: dotenv_skipped_foreign_owner ")]
+    assert f"path={planted}" in skipped
