@@ -15,8 +15,9 @@ Contents:
       (``force``), keep-and-write-``.ucf`` (``batch``), or an interactive resolver, with
       identical-content smart-skip.
     - Write helpers (``_copy_file`` / ``_write_ucf`` / ``_write_from``): stream the source in
-      chunks, so memory does not grow with the file; with modes, write via an owner-only temp
-      file then apply the layer's ``LayerModes``, so secrets are never briefly world-readable.
+      chunks, so memory does not grow with the file, into a temp file renamed into place, so a
+      failed write leaves the old file; with modes the temp file is owner-only and the layer's
+      ``LayerModes`` follow, so secrets are never briefly world-readable.
 
 System Role:
     Invoked by ``cli/deploy.py`` (and re-exported from the package root as
@@ -25,9 +26,7 @@ System Role:
 
 from __future__ import annotations
 
-import os
 import shutil
-import tempfile
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -35,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from ._platform import normalise_resolver_platform
+from .adapters._file_write import write_file
 from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
 from .adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
 from .adapters.path_resolvers.default import DefaultPathResolver
@@ -252,7 +252,12 @@ def _backup_file(path: Path) -> Path:
         Path to the created backup file.
     """
     backup = _next_available_path(path, _Sidecar.BACKUP)
-    shutil.copy2(path, backup)
+    try:
+        shutil.copy2(path, backup)
+    except BaseException:
+        # A half-written backup would read as a whole one later; the deploy stops here, path untouched.
+        backup.unlink(missing_ok=True)
+        raise
     return backup
 
 
@@ -1180,26 +1185,12 @@ def _copy_file(destination: Path, source: Path, *, modes: LayerModes | None) -> 
 
 
 def _write_from(path: Path, source: Path, *, restrict: bool = False) -> None:
-    """Write the content of *source* to *path*, :data:`_CHUNK_BYTES` at a time.
+    """Write the content of *source* to *path*, :data:`_CHUNK_BYTES` at a time, never leaving it torn.
 
-    With ``restrict`` (used whenever permissions will be tightened), the content is
-    written to an owner-only temp file (``mkstemp`` creates it ``0o600``) in the same
-    directory and then atomically renamed into place. This closes the TOCTOU window in
-    which a secret could be world-readable between a plain create and the follow-up
-    chmod - the destination is only ever the old file or the fully-written 0o600 file.
-    Without it the file is rewritten in place, so an existing one keeps its owner and mode;
-    *source* is opened first, so an unreadable one leaves *path* untouched.
+    The content goes to a temp file beside *path* that is renamed into place, so a failed write
+    leaves the old file (see ``adapters._file_write``). With ``restrict`` (permissions will be
+    tightened) the temp file is owner-only, so a secret is never readable before the chmod. Without
+    it the new file keeps the old one's mode, and a destination a rename would change - hard links,
+    another owner, its own extended attributes - is rewritten in place.
     """
-    if not restrict:
-        with source.open("rb") as reader, path.open("wb") as writer:
-            shutil.copyfileobj(reader, writer, _CHUNK_BYTES)
-        return
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as handle, source.open("rb") as reader:
-            shutil.copyfileobj(reader, handle, _CHUNK_BYTES)
-        tmp_path.replace(path)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
+    write_file(path, source, restrict=restrict, chunk_bytes=_CHUNK_BYTES)

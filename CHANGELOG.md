@@ -67,8 +67,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   named only the prefix (`APP___`) is still skipped, and control characters other than NUL are kept.
 - `deploy` copies and compares every file a chunk at a time, so its memory no longer grows with file
   size: a 200 MiB file in the source's `.d` directory deployed at 231 MB peak RSS and now at 28 MB, the
-  same as a small one (measured with the CLI). With permissions off a file is still rewritten in place,
-  keeping its owner and mode.
+  same as a small one (measured with the CLI).
 - Reading a configuration or `.env` file no longer allocates the whole 10 MiB size cap: a 4-byte `.env`
   took 10.6 MB transiently, now about its own size. The structured loaders read through the same capped
   reader as `.env` files, so a file that grows after its size was checked cannot pass the cap.
@@ -120,6 +119,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A deploy with permission setting off (`--no-permissions`, `set_permissions=False`, or a configured
+  `enabled = false`) no longer leaves a torn file when a write fails half-way (a full disk, a size
+  limit): it writes a temp file beside the destination and renames it into place, as the default path
+  already did, so the destination is the old file or the whole new one. Before, the file was rewritten
+  through its own inode, and a failed overwrite cut the live config short. The new file keeps the old
+  one's mode; a destination a rename would change - other hard links, another owner or group than a
+  new file gets, not writable, or extended attributes (a POSIX ACL, an SELinux label) that differ from
+  a new file's - is still rewritten in place. A backup whose copy fails is removed instead of being
+  left half-written beside the destination.
 - The CLI shows the library's warnings: each one is printed on stderr as one
   `warning: <event> key=value ...` line while a command runs, in every output mode, so stdout and the
   `--json` envelope are unchanged. Before, the warnings went to a logger with only a `NullHandler`, so
