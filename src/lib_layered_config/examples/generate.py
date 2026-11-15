@@ -2,6 +2,20 @@
 
 from __future__ import annotations
 
-from ..generate import DEFAULT_HOST_PLACEHOLDER, ExamplePlan, ExampleSpec, generate_examples
+from ..generate import (
+    DEFAULT_HOST_PLACEHOLDER,
+    ExamplePlan,
+    ExampleSpec,
+    ExamplesReport,
+    generate_examples,
+    generate_examples_report,
+)
 
-__all__ = ["DEFAULT_HOST_PLACEHOLDER", "ExamplePlan", "ExampleSpec", "generate_examples"]
+__all__ = [
+    "DEFAULT_HOST_PLACEHOLDER",
+    "ExamplePlan",
+    "ExampleSpec",
+    "ExamplesReport",
+    "generate_examples",
+    "generate_examples_report",
+]

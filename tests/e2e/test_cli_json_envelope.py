@@ -231,6 +231,25 @@ def test_generate_examples_lists_what_it_created(capsys: pytest.CaptureFixture[s
 
 
 @os_agnostic
+def test_generate_examples_lists_the_files_it_kept_as_skipped(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    # Without --force an existing example file is left alone; like deploy, the envelope names it in
+    # ``skipped`` and in data["skipped"], rather than reporting an empty list.
+    destination = str(tmp_path / "examples")
+    argv = ["generate-examples", "--destination", destination, *IDENTITY, "--platform", "posix", "--json"]
+    _, first = _run(capsys, *argv)
+    first_created = cast("list[str]", _mapping(first["data"])["created"])
+
+    code, second = _run(capsys, *argv)
+
+    assert code == 0
+    assert first_created
+    assert second["data"] == {"created": [], "skipped": first_created}
+    assert second["skipped"] == first_created
+
+
+@os_agnostic
 def test_info_prints_the_package_metadata(capsys: pytest.CaptureFixture[str]) -> None:
     metadata = cli_common.package_metadata
 

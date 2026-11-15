@@ -9,6 +9,8 @@ Contents:
     - ``ExampleSpec``: dataclass capturing a relative path and text content.
     - ``generate_examples``: public orchestration expressed through helper
       verbs.
+    - ``generate_examples_report`` / ``ExamplesReport``: the same run, also naming the files it
+      kept, for the CLI's ``--json`` envelope.
     - ``_build_specs``: yields platform-aware specifications.
     - ``_write_spec`` / ``_should_write`` / ``_ensure_parent``: tiny filesystem
       helpers that narrate how files are written.
@@ -36,7 +38,9 @@ __all__ = [
     "DEFAULT_HOST_PLACEHOLDER",
     "ExamplePlan",
     "ExampleSpec",
+    "ExamplesReport",
     "generate_examples",
+    "generate_examples_report",
 ]
 
 
@@ -82,6 +86,19 @@ class ExamplePlan:
     platform: ExamplePlatform
 
 
+@dataclass(frozen=True, slots=True)
+class ExamplesReport:
+    """What one example generation did with each file of the tree.
+
+    Attributes:
+        created: Files written by this run, in generation order.
+        kept: Files that already existed and were left unchanged because *force* was off.
+    """
+
+    created: list[Path]
+    kept: list[Path]
+
+
 def generate_examples(
     destination: str | Path,
     *,
@@ -100,6 +117,44 @@ def generate_examples(
     Raises:
         ValidationError: Before anything is written, when *slug*, *vendor* or *app* is not a
             safe path segment, or *platform* is not a known platform name.
+    """
+    return generate_examples_report(
+        destination, slug=slug, vendor=vendor, app=app, force=force, platform=platform
+    ).created
+
+
+def generate_examples_report(
+    destination: str | Path,
+    *,
+    slug: str,
+    vendor: str,
+    app: str,
+    force: bool = False,
+    platform: str | None = None,
+) -> ExamplesReport:
+    """Run :func:`generate_examples` and report the files it kept as well as those it wrote.
+
+    Args:
+        destination: Directory that receives the example tree.
+        slug: Configuration slug used in paths and file contents.
+        vendor: Vendor namespace used in Windows paths and file contents.
+        app: Application name used in Windows paths and file contents.
+        force: Overwrite existing example files instead of keeping them.
+        platform: Optional platform override, as for :func:`generate_examples`.
+
+    Returns:
+        ExamplesReport: The files created and the existing files left unchanged.
+
+    Raises:
+        ValidationError: As for :func:`generate_examples`.
+
+    Examples:
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     first = generate_examples_report(tmp, slug="demo", vendor="Acme", app="Demo", platform="posix")
+        ...     again = generate_examples_report(tmp, slug="demo", vendor="Acme", app="Demo", platform="posix")
+        >>> (again.created, again.kept == first.created)
+        ([], True)
     """
     plan = _build_example_plan(
         destination=destination,
@@ -151,7 +206,7 @@ def _build_example_plan(
     )
 
 
-def _write_examples(destination: Path, specs: Iterator[ExampleSpec], *, force: bool) -> list[Path]:
+def _write_examples(destination: Path, specs: Iterator[ExampleSpec], *, force: bool) -> ExamplesReport:
     """Write all ``specs`` under *destination* honouring the *force* flag.
 
     Centralise the loop that applies ``force`` semantics and records written paths.
@@ -162,20 +217,22 @@ def _write_examples(destination: Path, specs: Iterator[ExampleSpec], *, force: b
         force: When ``True`` existing files are overwritten.
 
     Returns:
-        list[Path]: Paths written during this invocation.
+        ExamplesReport: Paths written during this invocation, and existing paths left unchanged.
 
     Side Effects:
         Creates directories and writes files to disk.
     """
     written: list[Path] = []
+    kept: list[Path] = []
     for spec in specs:
         path = destination / spec.relative_path
         if not _should_write(path, force=force):
+            kept.append(path)
             continue
         _ensure_parent(path)
         _write_spec(path, spec)
         written.append(path)
-    return written
+    return ExamplesReport(created=written, kept=kept)
 
 
 def _write_spec(path: Path, spec: ExampleSpec) -> None:

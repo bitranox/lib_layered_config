@@ -47,12 +47,13 @@ lib_layered_config fail --json
 |---------------------|----------------------------------------------------------------------------------------------------------|
 | `read`, `read-json` | `{"config": ..., "provenance": ...}`; `provenance` is `null` under `--no-provenance`, `--redact` applies |
 | `deploy`            | every result list, empty ones included, `.d` lists prefixed `dot_d_`                                     |
-| `generate-examples` | `{"created": [paths]}`                                                                                   |
+| `generate-examples` | `{"created": [paths], "skipped": [paths]}`; `skipped` holds the existing files kept without `--force`    |
 | `info`              | the package metadata fields                                                                              |
 | `env-prefix`        | `{"slug": ..., "prefix": ...}`                                                                           |
 
 For `deploy`, `skipped` lists the destinations left alone because they already held the same
-content, the `.d` directory's included.
+content, the `.d` directory's included. For `generate-examples`, it lists the example files that
+already existed and were kept because `--force` was not given.
 
 The exit code is the one the command returns without `--json`, so a script can branch on either. A
 usage error Click finds while reading the arguments (a missing required option, a `--source` that
@@ -1124,16 +1125,17 @@ lib_layered_config generate-examples --destination ./examples \
 
 **Parameters:**
 
-| Parameter                | Type   | Required | Default      | Description                                                                                      |
-|--------------------------|--------|----------|--------------|--------------------------------------------------------------------------------------------------|
-| `--destination`          | path   | Yes      | -            | Directory that will receive the example tree. Will be created if it doesn't exist                |
-| `--slug`                 | string | Yes      | -            | Configuration slug used in generated files                                                       |
-| `--vendor`               | string | Yes      | -            | Vendor namespace interpolated into examples                                                      |
-| `--app`                  | string | Yes      | -            | Application name interpolated into examples                                                      |
-| `--platform`             | choice | No       | auto-detect  | Override platform layout. Valid values: `posix` (Linux/macOS layout), `windows` (Windows layout) |
-| `--force` / `--no-force` | flag   | No       | `--no-force` | Overwrite existing example files                                                                 |
+| Parameter                | Type   | Required | Default      | Description                                                                                                                                                                                                                                                      |
+|--------------------------|--------|----------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--destination`          | path   | Yes      | -            | Directory that will receive the example tree. Will be created if it doesn't exist                                                                                                                                                                                |
+| `--slug`                 | string | Yes      | -            | Configuration slug used in generated files                                                                                                                                                                                                                       |
+| `--vendor`               | string | Yes      | -            | Vendor namespace interpolated into examples                                                                                                                                                                                                                      |
+| `--app`                  | string | Yes      | -            | Application name interpolated into examples                                                                                                                                                                                                                      |
+| `--platform`             | string | No       | auto-detect  | Override platform layout. `posix`, `linux`, `darwin`, `macos`, `mac` write the POSIX layout (`xdg/`, `home/`); `windows`, `win`, `win32`, `wine` write the Windows layout (`ProgramData/`, `AppData/`); any case. Any other value is a usage error (exit code 2) |
+| `--force` / `--no-force` | flag   | No       | `--no-force` | Overwrite existing example files                                                                                                                                                                                                                                 |
 
-**Returns:** JSON array of file paths created. A `--slug`, `--vendor` or `--app` that is not a
+**Returns:** JSON array of file paths created; existing files kept without `--force` are not in it
+(`--json` lists them under `skipped`). A `--slug`, `--vendor` or `--app` that is not a
 safe path segment (`../x`, an absolute path, a control character) is refused with
 `ValidationError` before anything is written, as `read` and `deploy` refuse it.
 
