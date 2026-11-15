@@ -119,6 +119,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- Reading configuration (`read_config`, `read_config_json`, `read_config_raw`, and the read a deploy
+  makes for its modes) no longer holds every parsed file until the last one is parsed: each file is
+  parsed, merged and dropped before the next, so peak memory stays near the merged result plus one file
+  however many files the layers hold. Measured with `.d` files of about 2.2 MB setting the same keys:
+  1, 10 and 40 files peaked at 21, 88 and 315 MB traced before, and at 21, 37 and 37 MB now. A file that
+  does not load is still reported as `LayerLoadError`, naming it; the debug event `layer_loaded` with an
+  app, host or user layer's file count is now logged after that layer's files rather than before.
 - A `.d` directory's files are read and deployed in the order of their exact names on every OS (digits,
   then upper case, then lower case). Before, Windows ordered them ignoring case while Linux and macOS
   did not, so `Z.toml` and `a-extra.toml` setting the same key gave a different winner per host. On

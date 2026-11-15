@@ -43,9 +43,9 @@ from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
 from .domain.redaction import NotSensitiveKeys, redact_mapping
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
-    from .application.merge import MergeResult
+    from .application.merge import LayerSnapshot, MergeResult
     from .application.ports import SourceInfoPayload
 
 
@@ -260,20 +260,35 @@ def read_config_raw(
         dotenv_loader, env_loader = _build_loaders(
             resolver, not_sensitive=declared, searches_dotenv=dotenv_path is None
         )
-        layers = collect_layers(
-            resolver=resolver,
-            prefer=prefer,
-            default_file=_stringify_path(default_file),
-            dotenv_loader=dotenv_loader,
-            env_loader=env_loader,
-            slug=slug,
-            start_dir=start_dir_text,
-            dotenv_path=_stringify_path(dotenv_path),
-        )
     except InvalidFormatError as exc:
         raise LayerLoadError(str(exc)) from exc
+    layers = collect_layers(
+        resolver=resolver,
+        prefer=prefer,
+        default_file=_stringify_path(default_file),
+        dotenv_loader=dotenv_loader,
+        env_loader=env_loader,
+        slug=slug,
+        start_dir=start_dir_text,
+        dotenv_path=_stringify_path(dotenv_path),
+    )
+    return merge_or_empty(_load_errors_as_layer_load_error(layers))
 
-    return merge_or_empty(layers)
+
+def _load_errors_as_layer_load_error(layers: Iterator[LayerSnapshot]) -> Iterator[LayerSnapshot]:
+    """Pass *layers* through, turning an ``InvalidFormatError`` raised while producing one into ``LayerLoadError``.
+
+    The layers are produced lazily, inside the merge's loop, so a wrap around the merge would also
+    catch what the merge itself raises; this wraps only the step that reads and parses a layer.
+    """
+    while True:
+        try:
+            snapshot = next(layers)
+        except StopIteration:
+            return
+        except InvalidFormatError as exc:
+            raise LayerLoadError(str(exc)) from exc
+        yield snapshot
 
 
 #: What a caller passing ``prefer`` is told. A layer has one main file, ``config.toml``, so a suffix
