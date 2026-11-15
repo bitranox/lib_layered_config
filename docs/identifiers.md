@@ -280,7 +280,7 @@ Environment: DB_MANAGER___*
 
 - **Windows/macOS:** Prefer human-readable names with spaces and mixed case (`"Acme Corp"`, `"My Application"`)
 - **Linux/UNIX:** Prefer lowercase with hyphens (`myapp`, `config-kit`)
-- **Environment variables:** Must use uppercase with underscores (`MYAPP_`, `CONFIG_KIT_`)
+- **Environment variables:** Must use uppercase with underscores (`MYAPP___`, `CONFIG_KIT___`)
 - **Profiles:** Allow environment-specific configuration isolation (`test`, `staging`, `production`)
 
 This library uses four identifiers so your application can follow **native conventions on each platform** while maintaining a **consistent configuration identity** and supporting **environment-specific configurations**.

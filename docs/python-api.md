@@ -798,7 +798,10 @@ Compute the canonical environment variable prefix for a slug.
 **Parameters:**
 - `slug` (str, required): Configuration slug (e.g., `"config-kit"`).
 
-**Returns:** Uppercase environment prefix with dashes converted to underscores (e.g., `"CONFIG_KIT"`).
+**Returns:** Uppercase environment prefix with dashes converted to underscores, ending in the `___` separator
+(`"config-kit"` gives `"CONFIG_KIT___"`, `"myapp"` gives `"MYAPP___"`).
+
+**Raises:** `ValidationError` for an empty `slug` (`"slug cannot be empty"`), which `read_config` refuses too.
 
 **Examples:**
 
@@ -852,18 +855,18 @@ slug = "myapp"
 expected_prefix = default_env_prefix(slug)
 
 # Check if environment variables are correctly namespaced
-print(f"Checking environment variables for prefix: {expected_prefix}_")
+print(f"Checking environment variables for prefix: {expected_prefix}")  # MYAPP___
 
 mismatched = []
 for key in os.environ:
     if "DATABASE" in key or "SERVICE" in key:
-        if not key.startswith(expected_prefix + "_"):
+        if not key.startswith(expected_prefix):
             mismatched.append(key)
 
 if mismatched:
     print("\nWarning: Found environment variables that won't be loaded:")
     for key in mismatched:
-        correct_name = f"{expected_prefix}_{key}"
+        correct_name = f"{expected_prefix}{key}"
         print(f"  {key} should be {correct_name}")
 else:
     print("All environment variables are correctly prefixed!")

@@ -205,7 +205,7 @@ Full detail - platform path tables, naming rules, profiles, and validation - is 
 ```python
 from lib_layered_config import read_config
 
-# vendor/app -> macOS + Windows paths; slug -> Linux paths + the MYAPP___ env prefix
+# vendor/app -> macOS + Windows paths; slug -> Linux paths + the CONFIG_KIT___ env prefix
 config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit", profile="production")
 ```
 
@@ -214,7 +214,7 @@ config = read_config(vendor="Acme", app="ConfigKit", slug="config-kit", profile=
 Configuration files are TOML by default (JSON and YAML are also supported). Top-level keys,
 `[section]` tables, nested subtables, and arrays all map onto dotted-path access
 (`config.get("database.pool.size")`) and onto environment-variable overrides
-(`MYAPP___DATABASE__POOL__SIZE`).
+(`MYAPP___DATABASE__POOL__SIZE` for the slug `myapp`).
 
 The full annotated example - every structural feature and how each maps to Python access and
 to env vars - is in **[docs/config-file-structure.md](docs/config-file-structure.md)**.
