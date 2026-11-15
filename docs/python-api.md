@@ -1260,13 +1260,14 @@ Generate example configuration trees for documentation or onboarding.
 - `vendor` (str, required): Vendor namespace.
 - `app` (str, required): Application name.
 - `force` (bool, optional): Overwrite existing example files. Default: `False`.
-- `platform` (str | None, optional): Override platform layout. Valid values: `"posix"`, `"windows"`. Default: `None` (uses current platform).
+- `platform` (str | None, optional): Override platform layout. `"posix"`, `"linux"`, `"darwin"`, `"macos"` and `"mac"` write the POSIX layout (`xdg/`, `home/`); `"windows"`, `"win"`, `"win32"` and `"wine"` write the Windows layout (`ProgramData/`, `AppData/`); case and surrounding spaces are ignored. Any other name raises `ValidationError` listing them. Default: `None` (uses current platform).
 
 **Returns:** List of `Path` objects for files created.
 
 **Raises:** `ValidationError` before anything is written when `slug`, `vendor` or `app` is not a
 safe path segment (`../x`, an absolute path, a control character, empty), checked like
-`read_config` checks them. `vendor` and `app` may contain spaces; `slug` may not.
+`read_config` checks them, or when `platform` is not one of the names above. `vendor` and `app`
+may contain spaces; `slug` may not.
 
 **Examples:**
 

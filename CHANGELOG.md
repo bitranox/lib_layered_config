@@ -238,6 +238,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   became directory names unchecked, so `--slug ../../x` wrote the example files outside
   `--destination` and exited 0, an absolute slug aimed at the filesystem root, and a NUL character
   raised a bare `ValueError`.
+- `generate_examples` refuses an unknown `platform` with `ValidationError`, like `deploy_config` and
+  the CLI. It re-raised the same message as a bare `ValueError`, which `except ConfigError` did not
+  catch; `except ValueError` still does, since `ValidationError` is a `ValueError`.
 - The sdist holds only `src/`, `tests/`, `docs/`, `notebooks/`, the README, CHANGELOG, LICENSE,
   CONTRIBUTING and DEVELOPMENT files, `pyproject.toml` and `.gitignore`. hatchling honours only the
   root `.gitignore`, so an sdist built from a working checkout also shipped files kept out of git

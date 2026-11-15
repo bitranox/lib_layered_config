@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
+from lib_layered_config.domain.errors import ValidationError
 from lib_layered_config.generate import generate_examples
 from tests.support.os_markers import os_agnostic
 
@@ -146,3 +149,13 @@ def test_when_env_body_sings_it_mentions_password_token(tmp_path: Path) -> None:
 def test_when_split_override_body_speaks_it_mentions_config_directory(tmp_path: Path) -> None:
     body = _generated_text(tmp_path, "home", SLUG, "config.d", "10-override.toml")
     assert "config.d" in body
+
+
+@os_agnostic
+def test_an_unknown_platform_is_refused_with_validation_error_and_nothing_written(tmp_path: Path) -> None:
+    # Every other entry point raises ValidationError for an unknown platform; the generator re-raised
+    # the same message as a bare ValueError, which an ``except ConfigError`` does not catch.
+    with pytest.raises(ValidationError, match=r"Platform must be one of: .*windows"):
+        generate_examples(tmp_path / "dest", slug=SLUG, vendor=VENDOR, app=APP, platform="xml")
+
+    assert not (tmp_path / "dest").exists()

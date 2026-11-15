@@ -96,6 +96,10 @@ def generate_examples(
     Creates directories and files under *destination* mirroring the recommended
     filesystem layout. Returns paths of files written. Use *force=True* to
     overwrite existing files; *platform* overrides OS detection ("posix"/"windows").
+
+    Raises:
+        ValidationError: Before anything is written, when *slug*, *vendor* or *app* is not a
+            safe path segment, or *platform* is not a known platform name.
     """
     plan = _build_example_plan(
         destination=destination,
@@ -399,7 +403,7 @@ def _normalise_platform(value: str | None) -> ExamplePlatform:
         ExamplePlatform: Normalised directory layout.
 
     Raises:
-        ValueError: When *value* is invalid.
+        ValidationError: When *value* is not a known platform name; the message lists them.
 
     Examples:
         >>> _normalise_platform('posix')
@@ -409,8 +413,5 @@ def _normalise_platform(value: str | None) -> ExamplePlatform:
     """
     if value is None:
         return _default_platform()
-    try:
-        resolved = normalise_examples_platform(value)
-    except ValueError as exc:  # pragma: no cover - validated via CLI helpers
-        raise ValueError(str(exc)) from exc
+    resolved = normalise_examples_platform(value)
     return resolved or _default_platform()
