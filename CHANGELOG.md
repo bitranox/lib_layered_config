@@ -17,6 +17,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `deploy` refuses a destination that is not a regular file (a directory, FIFO, device or socket) the
   same way: `"<path> is not a regular file; deploy writes only regular files"`. A FIFO there made deploy
   block forever while comparing contents.
+- Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,
+  whitespace and a change of case before the name rule runs, so `dbPassword`, `DBPassword`,
+  `clientSecret`, `accessToken`, `client-secret` and `api-key` are masked like `db_password`.
+  Before, only underscore-separated names matched, and `to_json(redact=True)`, `read --redact`,
+  `read_config_json(redact=True)` and the display view printed camelCase and kebab-case secrets in
+  clear. The same rule now masks the camelCase form of every name it already masked, such as
+  `primaryKey` or `cacheKey` (like `primary_key`); exempt such a path with `not_sensitive`.
+  `key`, `keyBinding`, `hotkey` and `tokenizer` stay visible.
+- The `.env` search passes over a file that neither the current user nor root owns, logs the
+  warning `dotenv_skipped_foreign_owner` with its path and owner uid, and goes on searching. The
+  search climbs every parent directory up to `/`, so a `.env` another user put in a shared directory
+  such as `/tmp` was loaded by every program started below it, and as the dotenv layer it outranked
+  the app, host and user files. A symlinked `.env` must pass for both the link and the file it
+  points to, so a link another user planted is passed over even when it points at a file you own.
+  Only ownership is checked, not the mode, so a group- or
+  world-writable `.env` you own still loads. A process running as root now passes over a `.env`
+  owned by an ordinary user (under `sudo` in a project directory, say); pass it as `dotenv_path`
+  (CLI `--env-file`), which loads the named file whoever owns it. Windows is unchanged.
 
 ### Changed
 - `deploy_config` called with neither `force`, `batch` nor a `conflict_resolver` now reports a file
@@ -54,6 +72,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Reading a configuration or `.env` file no longer allocates the whole 10 MiB size cap: a 4-byte `.env`
   took 10.6 MB transiently, now about its own size. The structured loaders read through the same capped
   reader as `.env` files, so a file that grows after its size was checked cannot pass the cap.
+- `validate_identifier`, `validate_vendor_app` and `validate_hostname` in
+  `lib_layered_config.domain.identifiers` are no longer wrapped in `functools.lru_cache`, so they
+  have no `cache_info()` / `cache_clear()`. Measured, the cache saved under 1% of a `read_config`
+  call (about 1.6 us of 190 us). Results are unchanged.
 
 ### Added
 - Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal
@@ -65,6 +87,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `data`, with `provenance` set to `null` under `--no-provenance`. A usage error in the arguments (a missing option, a path that does not exist,
   an unknown option) prints the envelope too, with exit code 2; only an unknown command keeps Click's
   usage text. Output without `--json` is unchanged.
+- `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what
+  `deploy_config` returns) are importable from `lib_layered_config`.
 
 ### Deprecated
 - `lib_layered_config.examples` moved: `deploy_config`, `deploy_config_paths`, `read_deploy_config`,
@@ -220,36 +244,6 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   through `.git/info/exclude` (local notes, session archives) and tooling files; the sdists on PyPI,
   built by CI from a clean clone, were not affected. A test builds the sdist and checks its members,
   and the unpacked sdist runs its own test suite.
-
-### Added
-- `MergeResult` (what `read_config_raw` returns), `DeployResult` and `DeployAction` (what
-  `deploy_config` returns) are importable from `lib_layered_config`.
-
-### Changed
-- `validate_identifier`, `validate_vendor_app` and `validate_hostname` in
-  `lib_layered_config.domain.identifiers` are no longer wrapped in `functools.lru_cache`, so they
-  have no `cache_info()` / `cache_clear()`. Measured, the cache saved under 1% of a `read_config`
-  call (about 1.6 us of 190 us). Results are unchanged.
-
-### Security
-- Redaction recognises a secret whatever the key's spelling: words are split at `_`, `-`, `.`,
-  whitespace and a change of case before the name rule runs, so `dbPassword`, `DBPassword`,
-  `clientSecret`, `accessToken`, `client-secret` and `api-key` are masked like `db_password`.
-  Before, only underscore-separated names matched, and `to_json(redact=True)`, `read --redact`,
-  `read_config_json(redact=True)` and the display view printed camelCase and kebab-case secrets in
-  clear. The same rule now masks the camelCase form of every name it already masked, such as
-  `primaryKey` or `cacheKey` (like `primary_key`); exempt such a path with `not_sensitive`.
-  `key`, `keyBinding`, `hotkey` and `tokenizer` stay visible.
-- The `.env` search passes over a file that neither the current user nor root owns, logs the
-  warning `dotenv_skipped_foreign_owner` with its path and owner uid, and goes on searching. The
-  search climbs every parent directory up to `/`, so a `.env` another user put in a shared directory
-  such as `/tmp` was loaded by every program started below it, and as the dotenv layer it outranked
-  the app, host and user files. A symlinked `.env` must pass for both the link and the file it
-  points to, so a link another user planted is passed over even when it points at a file you own.
-  Only ownership is checked, not the mode, so a group- or
-  world-writable `.env` you own still loads. A process running as root now passes over a `.env`
-  owned by an ordinary user (under `sudo` in a project directory, say); pass it as `dotenv_path`
-  (CLI `--env-file`), which loads the named file whoever owns it. Windows is unchanged.
 
 ## [7.7.0] - 2026-11-01
 
