@@ -13,13 +13,14 @@ The .d directory can contain mixed formats (TOML, YAML, JSON).
 
 Contents:
     - ``expand_dot_d``: main function to expand a file path
+    - ``in_dot_d_order``: the order of a ``.d`` directory's files, shared with deploy
     - ``_collect_dot_d_files``: helper to collect files from .d directory
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING
+from pathlib import Path, PurePath
+from typing import TYPE_CHECKING, TypeVar
 
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .structured import directory_not_config_file
@@ -29,7 +30,30 @@ if TYPE_CHECKING:
 
 __all__ = [
     "expand_dot_d",
+    "in_dot_d_order",
 ]
+
+_P = TypeVar("_P", bound=PurePath)
+
+
+def in_dot_d_order(paths: Iterable[_P]) -> list[_P]:
+    """Order the files of one ``.d`` directory by their names' exact characters, on every OS.
+
+    Not ``sorted(paths)``: Windows paths compare case-insensitively and POSIX paths do not, so the
+    same directory would merge in a different order (and with a different winner) per host.
+
+    Args:
+        paths: Files of one directory.
+
+    Returns:
+        The same paths in code-point order of their names (digits, upper case, lower case, others).
+
+    Examples:
+        >>> from pathlib import PureWindowsPath
+        >>> [p.name for p in in_dot_d_order([PureWindowsPath("C:/d/a.toml"), PureWindowsPath("C:/d/Z.toml")])]
+        ['Z.toml', 'a.toml']
+    """
+    return sorted(paths, key=lambda path: path.name)
 
 
 _ALLOWED_EXTENSIONS = (".toml", ".yaml", ".yml", ".json")
@@ -111,7 +135,7 @@ def _collect_dot_d_files(dot_d_dir: Path) -> Iterable[str]:
         return
 
     try:
-        entries = sorted(dot_d_dir.iterdir())
+        entries = in_dot_d_order(dot_d_dir.iterdir())
     except OSError as error:
         raise config_path_unreadable(dot_d_dir, error) from error
     # The extension is tested first so a README the directory also holds is never probed.

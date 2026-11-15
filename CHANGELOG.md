@@ -119,6 +119,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A `.d` directory's files are read and deployed in the order of their exact names on every OS (digits,
+  then upper case, then lower case). Before, Windows ordered them ignoring case while Linux and macOS
+  did not, so `Z.toml` and `a-extra.toml` setting the same key gave a different winner per host. On
+  Windows, a `.d` directory mixing upper- and lower-case names now merges in the Linux and macOS order.
 - A deploy with permission setting off (`--no-permissions`, `set_permissions=False`, or a configured
   `enabled = false`) no longer leaves a torn file when a write fails half-way (a full disk, a size
   limit): it writes a temp file beside the destination and renames it into place, as the default path

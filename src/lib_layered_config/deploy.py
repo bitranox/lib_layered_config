@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from ._platform import normalise_resolver_platform
 from .adapters._file_write import write_file
 from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
+from .adapters.file_loaders._dot_d import in_dot_d_order
 from .adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
 from .adapters.path_resolvers.default import DefaultPathResolver
 from .core import read_config_for_deploy, refuse_an_unparseable_deploy_source
@@ -216,7 +217,7 @@ def _collect_dot_d_sources(dot_d_dir: Path) -> list[Path]:
     """
     if kind_or_raise(dot_d_dir) is not PathKind.DIRECTORY:
         return []
-    return sorted(f for f in dot_d_dir.iterdir() if kind_or_raise(f) is PathKind.FILE)
+    return in_dot_d_order(f for f in dot_d_dir.iterdir() if kind_or_raise(f) is PathKind.FILE)
 
 
 def _next_available_path(base: Path, sidecar: _Sidecar) -> Path:

@@ -293,7 +293,8 @@ This means **all formats share the same `.d` directory** - `config.toml`, `confi
 
 **How it works:**
 1. The loader first loads the base file (e.g., `config.toml`) if present
-2. Then loads all files from the `.d` directory (e.g., `config.d/`) in **lexicographic order**
+2. Then loads all files from the `.d` directory (e.g., `config.d/`) in **lexicographic order** of their
+   exact names, the same on every OS: digits first, then upper case, then lower case (`Z.toml` before `a.toml`)
 3. Only files with supported extensions are loaded: `.toml`, `.json`, `.yaml`, `.yml`
 4. Files are merged in order, so later files override earlier ones
 5. **Both the base file and `.d` directory are optional** - either can exist independently
