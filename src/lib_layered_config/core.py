@@ -87,7 +87,7 @@ def read_config(
         start_dir: Optional directory that seeds `.env` discovery.
         default_file: Optional lowest-precedence file injected before filesystem layers.
         max_profile_length: Maximum allowed profile name length (default: 64).
-            Set to 0 or negative to disable length checking.
+            A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
         dotenv_path: Optional explicit path to a ``.env`` file.  When set,
             this file is loaded directly instead of searching upward from
             *start_dir*.
@@ -177,7 +177,7 @@ def read_config_json(
         redact: When ``True``, sensitive values (passwords, tokens, secrets,
             API keys) are replaced with ``***REDACTED***`` in the config data.
         max_profile_length: Maximum allowed profile name length (default: 64).
-            Set to 0 or negative to disable length checking.
+            A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
         not_sensitive: Same meaning as in :func:`read_config`; declared keys stay visible when
             *redact* is set.
 
@@ -231,7 +231,7 @@ def read_config_raw(
     Args:
         vendor / app / slug / profile / prefer / start_dir / default_file / dotenv_path: Same as :func:`read_config`.
         max_profile_length: Maximum allowed profile name length (default: 64).
-            Set to 0 or negative to disable length checking.
+            A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
         not_sensitive: Dotted key paths the application declares as not secret although their
             name looks like one (``["performance.max_token_bytes"]``). An unquoted ``null``/``none``
             in the environment or ``.env`` reads as None for them.
@@ -403,7 +403,7 @@ def _build_resolver(
         start_dir: Optional directory that seeds project-relative resolution (used for
             `.env` discovery); ``None`` preserves resolver defaults.
         max_profile_length: Maximum allowed profile name length (default: 64).
-            Set to 0 or negative to disable length checking.
+            A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
 
     Returns:
         Resolver instance ready for layer discovery.

@@ -408,6 +408,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `app` (str, required): Application name used to compute filesystem paths (e.g., `"ConfigKit"`).
 - `slug` (str, required): Configuration slug used for file paths and environment variable prefix (e.g., `"config-kit"`).
 - `profile` (str | None, optional): Configuration profile name (e.g., `"test"`, `"production"`). When specified, adds a `profile/<name>/` segment to all configuration paths. Default: `None` (no profile).
+- `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 256, or `0` or negative, uses the absolute maximum of 256 characters, so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
 - `prefer` (Sequence[str] | None, optional): Deprecated, no effect: each layer reads only `config.toml` and its `config.d/` directory, so there is no second main file for a suffix ranking to choose; put JSON or YAML files in `config.d/`. Passing it emits a `DeprecationWarning`; it will be removed in a future major release. A single `str` is still refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search; a directory the search cannot enter is skipped, and so is a `.env` that neither the current user nor root owns (POSIX; logged as the warning `dotenv_skipped_foreign_owner`). Default: `None` (uses current working directory; when the operating system cannot name it - a removed directory, or on macOS one the user cannot enter - no project `.env` is searched).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
@@ -562,6 +563,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
+- `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 256, or `0` or negative, uses the absolute maximum of 256 characters, so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
 - `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is still refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
@@ -653,6 +655,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `app` (str, required): Application name.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
+- `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 256, or `0` or negative, uses the absolute maximum of 256 characters, so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
 - `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is still refused with `TypeError`. Default: `None`.
 - `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
@@ -886,6 +889,7 @@ Copy a source configuration file into one or more layer directories with conflic
 - `targets` (Sequence[str], required): Layer targets to deploy to. Valid values: `"app"`, `"host"`, `"user"`.
 - `slug` (str | None, optional): Configuration slug. Default: `None` (uses `app` as slug).
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to deployment paths. Default: `None`.
+- `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 256, or `0` or negative, uses the absolute maximum of 256 characters, so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
 - `platform` (str | None, optional): Override the auto-detected platform. Takes the CLI's `--platform` names: `"linux"`/`"posix"`, `"darwin"`/`"macos"`/`"mac"`, `"win32"`/`"windows"`/`"win"`/`"wine"`, in any case. Any other name raises `ValidationError` listing them. A Windows layout off Windows needs an absolute `LIB_LAYERED_CONFIG_PROGRAMDATA` (or `ProgramData`) for the `app` and `host` targets: the built-in `C:\ProgramData` is relative there and raises `ValidationError` before anything is written, as does a relative value in any Windows root variable on every platform. Default: `None` (auto-detects from current platform).
 - `force` (bool, optional): When True and file exists with different content, backup to `.bak` and overwrite. Default: `False`.
 - `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`. Together with `force=True` it raises `ValidationError` before anything is written: one overwrites an existing file, the other keeps it.

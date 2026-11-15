@@ -86,7 +86,7 @@ class DefaultPathResolver:
                 current interpreter platform.
             hostname: Hostname used for host-specific configuration lookups.
             max_profile_length: Maximum allowed profile name length (default: 64).
-                Set to 0 or negative to disable length checking.
+                A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
 
         Raises:
             ValueError: When vendor, app, slug, profile, or hostname contain invalid path characters.

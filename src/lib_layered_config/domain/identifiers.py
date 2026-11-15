@@ -432,7 +432,7 @@ def validate_profile_name(
     Args:
         value: The profile name to validate.
         max_length: Maximum allowed length (default: 64 characters).
-            Set to 0 or negative to disable length checking (still capped at 256).
+            Set to 0 or negative to use the absolute maximum of 256 instead.
 
     Returns:
         The validated profile name (unchanged if valid).
@@ -471,7 +471,7 @@ def validate_profile_name(
         effective_max = min(max_length, ABSOLUTE_MAX_PROFILE_LENGTH)
         _check_max_length(value, "profile", effective_max)
     else:
-        # Even with length checking "disabled", enforce absolute maximum
+        # 0 or negative selects the absolute maximum rather than turning the check off
         _check_max_length(value, "profile", ABSOLUTE_MAX_PROFILE_LENGTH)
     return validate_identifier(value, "profile")
 
@@ -496,7 +496,7 @@ def is_valid_profile_name(
         value: The profile name to check. None is considered valid (no profile); any other
             non-str value is not a valid name.
         max_length: Maximum allowed length (default: 64 characters).
-            Set to 0 or negative to disable length checking (still capped at 256).
+            Set to 0 or negative to use the absolute maximum of 256 instead.
 
     Returns:
         True if the profile name is valid or None, False otherwise.
