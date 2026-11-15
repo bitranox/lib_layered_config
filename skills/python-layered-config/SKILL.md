@@ -418,7 +418,11 @@ already byte-identical; `"conflict"` means it differs and was left unchanged bec
 any other answer raises `ValidationError`. Permission keywords: `set_permissions`, `dir_mode`,
 `file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
-`ModeKind.DIRECTORY` / `ModeKind.FILE` names which kind of mode a `DeployModeError` is about.
+`DeployMode(value, kind)` checks one mode by itself, `value` an int such as `0o750` and `kind`
+`ModeKind.DIRECTORY` or `ModeKind.FILE` (a file mode also refuses any execute bit). A refused mode raises
+`DeployModeError`, which carries no kind field: its message names the kind and every offending
+bit (`unsafe file mode 0o777: group write (0o020); world write (0o002); an execute bit on a file
+(0o111)`), and a caller that needs the kind already knows which one it passed.
 `force=True` backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`;
 both at once raise `ValidationError` (`--force --batch` is a usage error, exit 2), before anything
 is written.
