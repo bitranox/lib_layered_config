@@ -40,6 +40,17 @@ from lib_layered_config import (
     DeployPermissionsError,
     PermissionProblem,
     deploy_permissions_from_config,
+    # Display and logging
+    display_config,
+    OutputFormat,
+    get_logger,
+    bind_trace_id,
+    # Errors
+    ConfigError,
+    LayerLoadError,
+    InvalidFormatError,
+    NotFoundError,
+    ValidationError,
 )
 ```
 
@@ -657,7 +668,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
 - `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 256, or `0` or negative, uses the absolute maximum of 256 characters, so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
 - `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is still refused with `TypeError`. Default: `None`.
-- `start_dir` (str | None, optional): Starting directory for `.env` search. Default: `None`.
+- `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
 - `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). An unquoted `null`/`none` in the environment or `.env` reads as `None` for them. The returned plain dicts do not carry the declaration: pass it again as `redact_mapping(data, not_sensitive=...)` when you redact them. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
@@ -1429,6 +1440,144 @@ def generate_all_examples():
 generate_all_examples()
 ```
 **Explanation:** Generate complete documentation showing users how to configure your app on any platform. This is essential for cross-platform applications.
+
+---
+
+### `display_config` and `OutputFormat`
+
+Print a loaded `Config` the way the CLI's `read` command does.
+
+```python
+display_config(
+    config: Config,
+    *,
+    output_format: OutputFormat = OutputFormat.HUMAN,
+    section: str | None = None,
+    console: Console | None = None,
+    profile: str | None = None,
+) -> None
+```
+
+**Parameters:**
+- `config` (Config, required): The configuration to print, as `read_config` returns it.
+- `output_format` (OutputFormat, optional): `OutputFormat.HUMAN` (`"human"`) prints TOML-style tables with a
+  `# layer:<layer> profile:<profile> (<path>)` comment above each value; `OutputFormat.JSON` (`"json"`) prints
+  the data as indented JSON. Default: `OutputFormat.HUMAN`.
+- `section` (str | None, optional): Print only this top-level section. Default: `None` (everything).
+- `console` (rich `Console` | None, optional): Where the human format is written. Default: `None` (stdout).
+- `profile` (str | None, optional): Profile name shown in the provenance comments. Default: `None`
+  (`profile:none`).
+
+Both formats replace sensitive values with `***REDACTED***`.
+
+**Raises:** `ValueError` for a `section` the configuration does not have (`"Section 'nope' not found"`) or an
+`output_format` that is not an `OutputFormat`.
+
+```python
+from lib_layered_config import OutputFormat, display_config, read_config
+
+config = read_config(vendor="Acme", app="MyApp", slug="myapp", default_file="defaults.toml")
+display_config(config)
+# # Note: Nested dictionaries are displayed as [section.subsection] headers and might not match the actual TOML [section]
+#
+#
+# [database]
+#     # layer:defaults profile:none (defaults.toml)
+#     host = "db.local"
+#
+#     # layer:defaults profile:none (defaults.toml)
+#     password = "***REDACTED***"
+
+display_config(config, output_format=OutputFormat.JSON, section="database")
+# {
+#   "database": {
+#     "host": "db.local",
+#     "password": "***REDACTED***"
+#   }
+# }
+```
+
+---
+
+### Logging: `get_logger` and `bind_trace_id`
+
+The library logs through the standard `logging` module and attaches no handler, so it is silent until your
+application adds one.
+
+- `get_logger()` returns the `lib_layered_config` logger. Each record carries a `context` attribute, a dict with
+  the event's fields (`layer`, `path`, ...) and `trace_id`. Warnings such as `dotenv_skipped_foreign_owner`,
+  `type_conflict` and `deploy_setting_ignored` are logged at `WARNING`; the load steps at `DEBUG` and `INFO`.
+- `bind_trace_id(trace_id)` sets the trace id that every later record in the current context (a
+  `contextvars` variable, so per thread and per asyncio task) carries; `bind_trace_id(None)` clears it.
+
+```python
+import logging
+
+from lib_layered_config import bind_trace_id, get_logger, read_config
+
+
+class PrintTrace(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        context = getattr(record, "context", {})
+        print(record.levelname, record.getMessage(), context.get("trace_id"), context.get("layer"))
+
+
+logger = get_logger()  # the "lib_layered_config" logger; silent until you attach a handler
+logger.addHandler(PrintTrace())
+logger.setLevel(logging.DEBUG)
+
+bind_trace_id("req-42")  # every event logged in this context carries it
+read_config(vendor="Acme", app="MyApp", slug="myapp", default_file="defaults.toml")
+bind_trace_id(None)
+# DEBUG config_file_read req-42 file
+# DEBUG config_file_loaded req-42 file
+# DEBUG layer_loaded req-42 defaults
+# DEBUG dotenv_not_found req-42 dotenv
+# DEBUG env_variables_loaded req-42 env
+# INFO configuration_merged req-42 final
+```
+
+---
+
+### Errors
+
+Every exception the library defines derives from `ConfigError`, so one `except ConfigError` catches them all.
+`ValidationError` and its subclasses are also `ValueError`s.
+
+```text
+Exception
++-- ConfigError
+    +-- LayerLoadError          a layer file, .env or environment value cannot be read or parsed
+    +-- InvalidFormatError      the loaders' parse error (see below)
+    +-- NotFoundError           the loaders' missing-file signal (see below)
+    +-- ValidationError         (also a ValueError) a refused identifier, platform, target or argument
+        +-- DeployModeError         a refused dir_mode / file_mode
+        +-- DeployPermissionsError  unusable permission settings
+        +-- DeployDestinationError  a deploy destination is a symbolic link or not a regular file
+```
+
+- `LayerLoadError` is what the read functions, `deploy_config` and `read_deploy_config` raise for a file that
+  does not decode or parse; its `__cause__` is the loader's `InvalidFormatError`.
+- `InvalidFormatError` is raised by the file and environment loaders; the public functions re-raise it as
+  `LayerLoadError`, so you meet it only as that `__cause__` or when calling a loader yourself.
+- `NotFoundError` is raised by the file loaders for a file that is not there; the read functions treat that
+  as an empty layer (a missing `default_file` loads nothing) and do not raise it.
+
+Errors from the operating system and the standard library pass through as they are: `FileNotFoundError` for a
+deploy source that does not exist, `PermissionError` behind a permission wall, `TypeError` for an argument of
+the wrong type.
+
+```python
+from lib_layered_config import ConfigError, LayerLoadError, read_config
+
+try:
+    read_config(vendor="Acme", app="MyApp", slug="myapp", default_file="broken.toml")
+except LayerLoadError as exc:
+    print(f"cannot load configuration: {exc}")
+except ConfigError as exc:  # any other library error, ValidationError included
+    print(f"configuration error: {exc}")
+# cannot load configuration: broken.toml is not valid TOML (line 2, column 1)
+```
 
 ---
 

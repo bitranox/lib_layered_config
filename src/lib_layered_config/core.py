@@ -64,7 +64,7 @@ def read_config(
     slug: str,
     profile: str | None = None,
     prefer: Sequence[str] | None = None,
-    start_dir: str | None = None,
+    start_dir: str | Path | None = None,
     default_file: str | Path | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     dotenv_path: str | Path | None = None,
@@ -216,7 +216,7 @@ def read_config_raw(
     slug: str,
     profile: str | None = None,
     prefer: Sequence[str] | None = None,
-    start_dir: str | None = None,
+    start_dir: str | Path | None = None,
     default_file: str | Path | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     dotenv_path: str | Path | None = None,
@@ -244,12 +244,13 @@ def read_config_raw(
     """
     _take_deprecated_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)
+    start_dir_text = _stringify_path(start_dir)
     resolver = _build_resolver(
         vendor=vendor,
         app=app,
         slug=slug,
         profile=profile,
-        start_dir=start_dir,
+        start_dir=start_dir_text,
         max_profile_length=max_profile_length,
     )
 
@@ -266,7 +267,7 @@ def read_config_raw(
             dotenv_loader=dotenv_loader,
             env_loader=env_loader,
             slug=slug,
-            start_dir=start_dir,
+            start_dir=start_dir_text,
             dotenv_path=_stringify_path(dotenv_path),
         )
     except InvalidFormatError as exc:

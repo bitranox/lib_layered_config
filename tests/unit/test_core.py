@@ -65,6 +65,27 @@ def test_read_config_returns_empty_config_when_nothing_found(
     assert result is core.EMPTY_CONFIG
 
 
+@os_agnostic
+def test_every_read_takes_start_dir_as_a_path(
+    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The docs type start_dir as str | Path | None for all three reads; read_config_json was the only
+    # one annotated so, so a type checker refused a Path given to read_config or read_config_raw.
+    sandbox.apply_env(monkeypatch)
+    project = tmp_path / "project"
+    (project / "sub").mkdir(parents=True)
+    (project / ".env").write_text("SERVICE__TIMEOUT=7\n", encoding="utf-8")
+    start = project / "sub"
+
+    config = core.read_config(vendor="Acme", app="Demo", slug="demo", start_dir=start)
+    raw = core.read_config_raw(vendor="Acme", app="Demo", slug="demo", start_dir=start)
+    payload = core.read_config_json(vendor="Acme", app="Demo", slug="demo", start_dir=start)
+
+    assert config.get("service.timeout") == 7
+    assert raw.data == {"service": {"timeout": 7}}
+    assert '"timeout":7' in payload
+
+
 def _run_as_main(monkeypatch: pytest.MonkeyPatch, *arguments: str) -> int | str | None:
     """Run ``python -m lib_layered_config`` in-process and return its exit code."""
     monkeypatch.setattr(sys, "argv", ["lib_layered_config", *arguments])
