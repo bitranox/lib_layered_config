@@ -918,7 +918,10 @@ Copy a source configuration file into one or more layer directories with conflic
 [cli-reference.md#-file-permissions](cli-reference.md#-file-permissions) for the full resolution order and the
 refusal rule.
 
-**Raises:** `FileNotFoundError` (source file does not exist), `PermissionError` (the source, a file in its `.d`
+**Raises:** `FileNotFoundError` (the source does not exist, or is not a regular file - a directory, FIFO,
+device or socket; the message reads `"Configuration source not found: <path>"` for all of them), `LayerLoadError`
+(the source is not a `.toml` file, or does not parse as TOML: `"<path> is not valid TOML (line N, column M)"`;
+nothing is written), `PermissionError` (the source, a file in its `.d`
 directory, or a destination sits behind a permission wall; the same on every Python), `ValueError` (an invalid `profile` name),
 `ValidationError` (an unknown target, before anything is written), `DeployModeError` (a refused `dir_mode` /
 `file_mode`, or one given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
@@ -1235,7 +1238,7 @@ about to replace no longer parses.
   resolved before it is compared, so any spelling of a path matches; a single `str` or `Path` given as
   `skip` raises `TypeError`.
 
-**Raises:** `FileNotFoundError` for a missing source, `ValueError` for an invalid profile, `ValidationError`
+**Raises:** `FileNotFoundError` for a source that does not exist or is not a regular file, `ValueError` for an invalid profile, `ValidationError`
 for an unknown target (`deploy_config_paths`), and `LayerLoadError` for a file not left out that cannot be
 read or parsed (`read_deploy_config`).
 
