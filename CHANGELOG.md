@@ -119,6 +119,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- The CLI prints an error message up to 4000 characters without `--traceback`; it cut every message at
+  500 ("... [TRUNCATED at 500 characters]"). A deploy refusing a configured mode names each problem
+  with its source and then the hint "to deploy anyway, give both --dir-mode and --file-mode ...", about
+  290 characters on its own, so one refused mode with an ordinary home path already lost the hint's
+  end, and two lost the second source and the whole hint. `--json` already carried the whole message.
 - Configuration nested more than 100 tables deep - a JSON or YAML file 101 to 253 levels deep, or an
   environment or `.env` key with more than 100 `__` segments - is refused by `read_config`,
   `read_config_json` and `read_config_raw` as `LayerLoadError` naming where:
