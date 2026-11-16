@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import rich_click as click
 
-from ..deploy import DeployAction, DeployResult
+from ..deploy import DeployAction, DeployResult, deployed_before_failure
 from ..deploy import deploy_config as deploy_config_impl
 from ..domain import json_codec
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
@@ -139,6 +139,40 @@ def _format_results(results: list[DeployResult]) -> str:
     return json_codec.dumps({name: values for name, values in _full_report(results).items() if values}, indent=True)
 
 
+def _written_paths(results: Sequence[DeployResult]) -> list[str]:
+    """Every file *results* wrote, in the order written: backup, destination or .ucf, then the .d copies."""
+    paths: list[str] = []
+    for result in results:
+        paths.extend(_paths_written_by(result))
+        for dot_d_result in result.dot_d_results:
+            paths.extend(_paths_written_by(dot_d_result))
+    return paths
+
+
+def _paths_written_by(result: DeployResult) -> list[str]:
+    """The files one result wrote: a skipped file wrote nothing, a kept one only its .ucf."""
+    written = [result.backup_path, result.ucf_path]
+    if result.action in (DeployAction.CREATED, DeployAction.OVERWRITTEN):
+        written.append(result.destination)
+    return [str(path) for path in written if path is not None]
+
+
+def _written_detail(error: Exception) -> dict[str, object]:
+    """The failure envelope's ``written`` list, present only when the deploy wrote something first."""
+    written = _written_paths(deployed_before_failure(error))
+    return {"written": written} if written else {}
+
+
+def _report_written(error: BaseException) -> None:
+    """Name on stderr the files a failed deploy had already written, before the error itself prints.
+
+    User decision 2026-11-16 (R2-F2): the failure leaves them written, and the error alone does not say so.
+    """
+    written = _written_paths(deployed_before_failure(error))
+    if written:
+        emit_text("deploy stopped after writing:\n" + "\n".join(f"  {path}" for path in written), err=True)
+
+
 def _skipped_in(report: dict[str, list[str]]) -> list[str]:
     """The skipped destinations in a :func:`_full_report`, the .d directory's included."""
     return report["skipped"] + report[_DOT_D_KEY_PREFIX + "skipped"]
@@ -259,9 +293,14 @@ def deploy_command(
             raise DeployPermissionsError(exc.problems, hint=_CLI_DEPLOY_ANYWAY_HINT) from None
 
     if json_envelope:
-        run_in_envelope("deploy", lambda: _full_report(deploy()), skipped=_skipped_in)
+        run_in_envelope("deploy", lambda: _full_report(deploy()), skipped=_skipped_in, detail=_written_detail)
         return
-    emit_json(_format_results(deploy()))
+    try:
+        results = deploy()
+    except BaseException as error:
+        _report_written(error)
+        raise
+    emit_json(_format_results(results))
 
 
 def register(cli_group: click.Group) -> None:

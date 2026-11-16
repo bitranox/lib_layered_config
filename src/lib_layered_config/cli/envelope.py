@@ -27,7 +27,7 @@ from .output import emit_json
 from .typed_click import option
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 __all__ = [
     "EnvelopeCommand",
@@ -54,6 +54,7 @@ def run_in_envelope(
     produce: Callable[[], _T],
     *,
     skipped: Callable[[_T], Sequence[str]] | None = None,
+    detail: Callable[[Exception], Mapping[str, object]] | None = None,
 ) -> None:
     """Run *produce* and print its result as the ``--json`` envelope.
 
@@ -61,6 +62,8 @@ def run_in_envelope(
         command: The command name the envelope reports.
         produce: The command body; returns the JSON-ready ``data``.
         skipped: Picks the skipped items out of ``data``; none when omitted.
+        detail: Extra fields for the failure envelope's ``error`` object, read from the exception
+            (deploy's ``written``); its ``type``, ``message`` and ``exit_code`` always win.
 
     Raises:
         SystemExit: After printing the failure envelope, with the exit code the command would have
@@ -87,7 +90,7 @@ def run_in_envelope(
         # An interrupt is not a command result: lib_cli_exit_tools maps it to the signal's exit code.
         raise
     except Exception as exc:
-        raise SystemExit(_print_failure(command, exc)) from exc
+        raise SystemExit(_print_failure(command, exc, detail=detail)) from exc
     left_out = list(skipped(data)) if skipped is not None else []
     emit_json(json_codec.dumps({"ok": True, "command": command, "data": data, "skipped": left_out}, indent=True))
 
@@ -115,10 +118,13 @@ class EnvelopeCommand(click.RichCommand):
             raise SystemExit(_print_failure(self.name or ctx.info_name or "", exc)) from exc
 
 
-def _print_failure(command: str, exc: Exception) -> int:
-    """Print the failure envelope for *exc* and return the exit code it reports."""
+def _print_failure(
+    command: str, exc: Exception, *, detail: Callable[[Exception], Mapping[str, object]] | None = None
+) -> int:
+    """Print the failure envelope for *exc*, with *detail*'s fields, and return the exit code it reports."""
     code = _exit_code(exc)
-    error = {"type": type(exc).__name__, "message": _message(exc), "exit_code": code}
+    error: dict[str, object] = dict(detail(exc)) if detail is not None else {}
+    error.update({"type": type(exc).__name__, "message": _message(exc), "exit_code": code})
     emit_json(json_codec.dumps({"ok": False, "command": command, "error": error}, indent=True))
     return code
 

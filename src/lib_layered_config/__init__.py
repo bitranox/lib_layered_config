@@ -46,6 +46,7 @@ from .deploy import (
     DeployResult,
     deploy_config,
     deploy_config_paths,
+    deployed_before_failure,
     read_deploy_config,
 )
 from .domain.config import OVERRIDE_LAYER
@@ -109,6 +110,7 @@ __all__ = [
     "deploy_config",
     "deploy_config_paths",
     "deploy_permissions_from_config",
+    "deployed_before_failure",
     "display_config",
     "generate_examples",
     "get_logger",

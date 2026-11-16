@@ -16,6 +16,7 @@ from lib_layered_config import (
     default_env_prefix,
     deploy_config,
     deploy_config_paths,
+    deployed_before_failure,  # what a failed deploy_config wrote first
     read_deploy_config,
     DeployResult,  # what deploy_config returns, one per file
     DeployAction,
@@ -954,6 +955,22 @@ not readable, the section is invalid, a refused `permission_overrides` value, or
 combined with `permissions`; nothing is written), `DeployDestinationError` (a destination or one of its `.d`
 copies is a symbolic link, dangling or not, or not a regular file - a directory, FIFO, device or socket;
 deploy neither writes through a link nor replaces it, and nothing is written).
+
+**Partial failure:** targets are deployed in the order given, each one's `.d` files after its main file.
+An error raised partway is the same exception, re-raised, and carries the results already written:
+`deployed_before_failure(error)` returns them as `DeployResult` items in write order (a `.d` file sits in
+its main file's `dot_d_results`), and `[]` for an error that carries none.
+
+```python
+from lib_layered_config import deploy_config, deployed_before_failure
+
+try:
+    deploy_config("./config.toml", vendor="Acme", app="Demo", targets=["user", "app"], force=True)
+except PermissionError as error:
+    for result in deployed_before_failure(error):
+        print("already written:", result.destination, result.action)
+    raise
+```
 
 **Examples:**
 

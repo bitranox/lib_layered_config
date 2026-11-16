@@ -85,6 +85,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   call (about 1.6 us of 190 us). Results are unchanged.
 
 ### Added
+- `deployed_before_failure(error)`, exported, returns the `DeployResult` items a `deploy_config` call
+  wrote before it raised `error`, in the order written (`[]` for an error no deploy raised). The deploy
+  still raises the same exception; the results ride on it.
+- `deploy --json` puts a `written` list into the failure envelope's `error` object when a deploy stops
+  after writing something: every path it created, overwrote, backed up (`.bak`) or kept as `.ucf`, in
+  write order. The field is absent when nothing was written, so the other envelopes are unchanged.
 - `GenerateDestinationError`, a `ValidationError` raised by `generate_examples` and `generate-examples`
   for an example path it would write through (see Fixed).
 - Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal
@@ -129,6 +135,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A deploy that fails partway (a declined or unanswerable conflict prompt, a permission wall on a
+  later target or `.d` file) no longer hides the files it already wrote. Targets are written in the
+  order given, so `--target user --target app` with a conflict at `app` left the user file deployed
+  while the error, and the `--json` envelope, named nothing written. The CLI now prints
+  `deploy stopped after writing:` and one path per line on stderr before the error; the exit code and
+  the error message are unchanged.
 - `generate_examples` and `generate-examples` no longer write through a link or wait on a FIFO at an
   example path. With `force` (`--force`) a FIFO there blocked the run forever, a symbolic link made it
   overwrite the file the link pointed at, outside the destination, and a directory ended it with a bare

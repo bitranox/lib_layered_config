@@ -26,12 +26,13 @@ System Role:
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ._platform import normalise_resolver_platform
 from .adapters._file_write import write_file
@@ -69,9 +70,13 @@ __all__ = [
     "WindowsDeployment",
     "deploy_config",
     "deploy_config_paths",
+    "deployed_before_failure",
     "read_deploy_config",
 ]
 
+
+#: The attribute deploy_config sets on an exception it lets through: the results written before it.
+_WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_deployed_before_failure"
 
 #: The layers a deploy writes, by the target name a caller spells (case-insensitively).
 _TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in (Layer.APP, Layer.HOST, Layer.USER)}
@@ -650,8 +655,13 @@ def _deploy_to_destination(
     batch: bool,
     conflict_resolver: ConflictResolver | None,
     modes: LayerModes | None,
-) -> DeployResult | None:
+    written: list[DeployResult],
+) -> None:
     """Deploy to a single destination with optional .d directory handling.
+
+    The destination's result is appended to *written* as soon as its file is written, and its
+    ``.d`` copies to that result's ``dot_d_results`` one by one, so a failure part-way leaves
+    *written* holding exactly what was written before it (see :func:`deployed_before_failure`).
 
     Args:
         destination: Target file path.
@@ -661,12 +671,10 @@ def _deploy_to_destination(
         batch: If True, keep existing and write as .ucf.
         conflict_resolver: Callback for interactive conflict resolution.
         modes: The directory and file mode to set, or None to leave permissions to the umask.
-
-    Returns:
-        DeployResult or None if source and destination are the same.
+        written: Receives the destination's result; nothing when source and destination are the same.
     """
     if destination.resolve() == source_path.resolve():
-        return None
+        return
 
     result = _deploy_single(
         destination=destination,
@@ -676,19 +684,18 @@ def _deploy_to_destination(
         conflict_resolver=conflict_resolver,
         modes=modes,
     )
+    written.append(result)
 
     if dot_d_files:
-        dest_dot_d = _get_dot_d_dir(destination)
-        result.dot_d_results = _deploy_dot_d_files(
+        _deploy_dot_d_files(
             dot_d_files=dot_d_files,
-            dest_dot_d=dest_dot_d,
+            dest_dot_d=_get_dot_d_dir(destination),
             force=force,
             batch=batch,
             conflict_resolver=conflict_resolver,
             modes=modes,
+            written=result.dot_d_results,
         )
-
-    return result
 
 
 def deploy_config(
@@ -829,28 +836,61 @@ def deploy_config(
     with source_path.open("rb"):
         pass
     results: list[DeployResult] = []
-
-    for destination in destinations:
-        modes = (
-            None
-            if settings is None
-            else _resolve_layer_modes(
-                settings, destination.layer, dir_mode=request.dir_mode, file_mode=request.file_mode
+    try:
+        for destination in destinations:
+            modes = (
+                None
+                if settings is None
+                else _resolve_layer_modes(
+                    settings, destination.layer, dir_mode=request.dir_mode, file_mode=request.file_mode
+                )
             )
-        )
-        result = _deploy_to_destination(
-            destination=destination.path,
-            source_path=source_path,
-            dot_d_files=dot_d_files,
-            force=force,
-            batch=batch,
-            conflict_resolver=conflict_resolver,
-            modes=modes,
-        )
-        if result is not None:
-            results.append(result)
-
+            _deploy_to_destination(
+                destination=destination.path,
+                source_path=source_path,
+                dot_d_files=dot_d_files,
+                force=force,
+                batch=batch,
+                conflict_resolver=conflict_resolver,
+                modes=modes,
+                written=results,
+            )
+    except BaseException as error:
+        # Any failure, an interrupt included: the files written so far stay written, so say which.
+        _record_written(error, results)
+        raise
     return results
+
+
+def deployed_before_failure(error: BaseException) -> list[DeployResult]:
+    """Return what a :func:`deploy_config` that raised *error* had already written.
+
+    Targets are written one after another in the order given, each with its ``.d`` copies, so a
+    failure part-way (a permission wall, a full disk, a declined prompt) leaves the earlier files
+    written. ``deploy_config`` raises the original exception unchanged and attaches those results
+    to it (user decision 2026-11-16, R2-F2), the last one holding only the ``.d`` copies written
+    before the failure.
+
+    Args:
+        error: An exception, normally one ``deploy_config`` raised.
+
+    Returns:
+        The results in the order they were written; empty when nothing was written, or when *error*
+        did not come out of ``deploy_config`` (a refusal before the first write, for one).
+
+    Examples:
+        >>> deployed_before_failure(ValueError("not from a deploy"))
+        []
+    """
+    return list(cast("list[DeployResult]", getattr(error, _WRITTEN_BEFORE_FAILURE, [])))
+
+
+def _record_written(error: BaseException, results: list[DeployResult]) -> None:
+    """Attach a copy of *results* to *error*, read back by :func:`deployed_before_failure`."""
+    # An exception class that refuses new attributes (a custom __setattr__) must not have its own
+    # error replaced by ours; it then simply carries no list.
+    with contextlib.suppress(AttributeError, TypeError):
+        setattr(error, _WRITTEN_BEFORE_FAILURE, list(results))
 
 
 def deploy_config_paths(
@@ -987,7 +1027,8 @@ def _deploy_dot_d_files(
     batch: bool,
     conflict_resolver: ConflictResolver | None,
     modes: LayerModes | None,
-) -> list[DeployResult]:
+    written: list[DeployResult],
+) -> None:
     """Deploy files from source .d directory to destination .d directory.
 
     Args:
@@ -997,12 +1038,9 @@ def _deploy_dot_d_files(
         batch: If True, keep existing files and write new as .ucf.
         conflict_resolver: Callback to resolve conflicts interactively.
         modes: The directory and file mode to set, or None to leave permissions to the umask.
-
-    Returns:
-        List of DeployResult objects for each .d file deployed.
+        written: Receives each file's result as soon as it is written, so a failure part-way
+            leaves it holding the copies made before it.
     """
-    results: list[DeployResult] = []
-
     for source_file in dot_d_files:
         dest_file = dest_dot_d / source_file.name
 
@@ -1018,9 +1056,7 @@ def _deploy_dot_d_files(
             conflict_resolver=conflict_resolver,
             modes=modes,
         )
-        results.append(result)
-
-    return results
+        written.append(result)
 
 
 def _handle_conflict(

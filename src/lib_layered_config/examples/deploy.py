@@ -12,6 +12,7 @@ from ..deploy import (
     WindowsDeployment,
     deploy_config,
     deploy_config_paths,
+    deployed_before_failure,
     read_deploy_config,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "WindowsDeployment",
     "deploy_config",
     "deploy_config_paths",
+    "deployed_before_failure",
     "read_deploy_config",
 ]

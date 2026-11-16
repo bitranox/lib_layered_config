@@ -42,6 +42,7 @@ lib_layered_config fail --json
 | `error.type`      | on failure, the exception class (`LayerLoadError`, `UsageError`, ...)                                        |
 | `error.message`   | on failure, the message the command prints without `--json`, in full (printed, it is cut at 4000 characters) |
 | `error.exit_code` | on failure, the process exit code, the same one the command returns                                          |
+| `error.written`   | `deploy` only, on a failure after it wrote something: every path written, in order (see below)               |
 
 | Command             | `data`                                                                                                   |
 |---------------------|----------------------------------------------------------------------------------------------------------|
@@ -395,6 +396,11 @@ When a file exists with **different content** and neither `--force` nor `--batch
 - When no answer can be read (stdin at end of file), deploy exits with a usage error (exit code 2)
   naming the file and both unattended choices, `--batch` and `--force`. Files deployed before that
   conflict stay deployed.
+- A deploy that stops on any error after writing something prints `deploy stopped after writing:` on
+  stderr before the error, then each path it created, overwrote, backed up or kept as `.ucf`, one per
+  line, in write order. Targets are written in the order given, so the same conflict leaves different
+  files behind for `--target user --target app` and `--target app --target user`. With `--json` the
+  same paths are the failure envelope's `error.written`, absent when nothing was written.
 
 #### **With `--force` Flag:**
 - **Creates new files** if they don't exist
