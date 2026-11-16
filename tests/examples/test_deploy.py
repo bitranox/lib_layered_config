@@ -284,11 +284,40 @@ def test_a_single_str_targets_is_refused_naming_the_mistake(
     sandbox: LayeredSandbox, source_config: Path, deploy: Callable[..., object], targets: str
 ) -> None:
     """A str is itself a sequence of str: "user" was read as the targets u, s, e, r, and "" deployed
-    nothing. Both are refused with the type a bad target name raises (user-facing: QUALITY-REVIEW R1-F7)."""
+    nothing. Both are refused with the type a bad target name raises."""
     with pytest.raises(ValidationError) as caught:
         deploy(source_config, vendor=VENDOR, app=APP, slug=SLUG, targets=targets)
     assert str(caught.value) == f"targets takes a sequence of layer names, not a single str: write [{targets!r}]"
     assert not (sandbox.roots["user"] / "config.toml").exists()
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    "names",
+    [
+        (VENDOR, APP, "s" * 256, None),
+        ("v" * 256, APP, SLUG, None),
+        (VENDOR, "a" * 256, SLUG, None),
+        (VENDOR, APP, SLUG, "p" * 256),
+    ],
+    ids=["slug", "vendor", "app", "profile"],
+)
+def test_an_identifier_longer_than_a_file_name_is_refused_before_anything_is_written(
+    sandbox: LayeredSandbox, source_config: Path, names: tuple[str, str, str, str | None]
+) -> None:
+    """NAME_MAX is 255; a longer segment used to fail with OSError ENAMETOOLONG from the copy."""
+    vendor, app, slug, profile = names
+    with pytest.raises(ValidationError, match="exceeds maximum length of 255: 256 characters"):
+        deploy_config(
+            source_config,
+            vendor=vendor,
+            app=app,
+            slug=slug,
+            profile=profile,
+            max_profile_length=0,
+            targets=["user", "app"],
+        )
+    assert list(sandbox.roots["user"].rglob("*.toml")) == []
 
 
 @os_agnostic

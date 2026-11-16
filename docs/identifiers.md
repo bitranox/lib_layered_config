@@ -209,7 +209,7 @@ lib_layered_config deploy --source config.toml --vendor Acme --app MyApp --slug 
 - Use non-ASCII characters: `"tëst"` → will raise `ValueError`
 - Use Windows reserved names: `"CON"`, `"NUL"` → will raise `ValueError`
 - Use path separators: `"../etc"` → will raise `ValueError`
-- Exceed 256 characters (absolute limit for filesystem safety)
+- Exceed 255 characters (the longest file name, NAME_MAX)
 
 ---
 
@@ -364,10 +364,10 @@ Each path can have an optional companion `.d` directory (e.g., `config.d/`) for 
 
 Profile names follow the same validation as other identifiers (see below), with an additional length constraint:
 - **Default max length:** 64 characters (configurable via `max_profile_length`)
-- **Absolute max length:** 256 characters (security hardening, cannot be overridden)
+- **Absolute max length:** 255 characters (the longest file name, NAME_MAX; cannot be overridden)
 
 **Valid:** `test`, `production`, `staging-v2`, `dev_local`
-**Invalid:** `../etc`, `.hidden`, `my profile`, `CON`, names exceeding 256 characters
+**Invalid:** `../etc`, `.hidden`, `my profile`, `CON`, names exceeding 255 characters
 
 ---
 
@@ -400,6 +400,7 @@ reserved name such as `con`) turns off only the host layer: reads skip it and lo
 | **No Windows-invalid chars**     | `<`, `>`, `:`, `"`, `\|`, `?`, `*` are forbidden    | `app<test>`, `file:name`          |
 | **No Windows reserved names**    | CON, PRN, AUX, NUL, COM1-9, LPT1-9                  | `CON`, `prn`, `NUL.txt`           |
 | **Cannot end with dot/space**    | Windows restriction                                 | `app.`, `name `                   |
+| **Fits a file name**             | At most 255 characters; a hostname 250 (`.toml`)    | 256 characters                    |
 
 #### Examples
 

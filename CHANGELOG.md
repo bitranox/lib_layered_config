@@ -404,6 +404,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   default) it raised `DeployPermissionsError` saying the configured modes were unknown and to give both
   modes, which could not help; with a `.d` file unreadable and `set_permissions=False` the main file was
   written before the error.
+- `vendor`, `app` and `slug` longer than 255 characters, and an explicit `hostname` longer than 250 (its file
+  is `<hostname>.toml`), raise `ValidationError` on read and deploy alike; the absolute profile limit drops
+  from 256 to 255. Such names never fit a file name: a 300-character slug raised `LayerLoadError` on read
+  and `OSError` (file name too long) on deploy, and a 256-character profile read fine but failed to deploy.
 - `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
   does not parse, in every mode and before anything is written, with `LayerLoadError` and the
   loader's message. Before, the source was parsed only while reading the configured permission

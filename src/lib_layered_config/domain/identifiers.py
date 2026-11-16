@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
+from typing import Final
 
 from .errors import ValidationError
 from .printable import escape_controls
@@ -48,10 +49,17 @@ from .printable import escape_controls
 #: filesystem issues and potential denial-of-service via excessively long names.
 DEFAULT_MAX_PROFILE_LENGTH: int = 64
 
-#: Absolute maximum profile name length (filesystem safety limit).
+#: Longest file or directory name a path segment may have: NAME_MAX, 255 bytes on Linux, macOS
+#: and Windows. Identifiers are ASCII-only, so characters are bytes. A longer segment fails only
+#: when the filesystem is asked (ENAMETOOLONG), as a different error on read and on deploy.
+_NAME_MAX: Final = 255
+
+#: A host file is ``<hostname>.toml``, so the hostname leaves room for the suffix.
+_MAX_HOSTNAME_LENGTH: Final = _NAME_MAX - len(".toml")
+
+#: Absolute maximum profile name length: one path segment, so NAME_MAX.
 #: Even if user sets max_profile_length higher, this limit applies.
-#: This prevents filesystem issues from excessively long path segments.
-ABSOLUTE_MAX_PROFILE_LENGTH: int = 256
+ABSOLUTE_MAX_PROFILE_LENGTH: int = _NAME_MAX
 
 # Control characters that must never appear in profile names
 # Includes null byte, newline, carriage return, tab, and other C0 controls
@@ -296,6 +304,8 @@ def validate_path_segment(value: str, name: str) -> str:
     _check_strict_pattern(value, name)
     _check_not_windows_reserved(value, name)
     _check_no_trailing_dot_or_space(value, name)
+    # Last, so a value an earlier rule refuses keeps that rule's message.
+    _check_max_length(value, name, _NAME_MAX)
     return value
 
 
@@ -374,6 +384,8 @@ def validate_vendor_app(value: str, name: str) -> str:
     _check_permissive_pattern(value, name)
     _check_not_windows_reserved(value, name, split_on_space=True)
     _check_no_trailing_dot_or_space(value, name)
+    # Last, so a value an earlier rule refuses keeps that rule's message.
+    _check_max_length(value, name, _NAME_MAX)
     return value
 
 
@@ -431,7 +443,7 @@ def validate_profile_name(
     cross-platform filesystem compatibility issues.
 
     Security Checks:
-        - Length limit (default 64 characters, absolute max 256 characters)
+        - Length limit (default 64 characters, absolute max 255 characters)
         - No control characters (null bytes, newlines, etc.)
         - No path traversal sequences (``../``, ``..\\``)
         - No path separators (``/``, ``\\``)
@@ -442,13 +454,13 @@ def validate_profile_name(
 
     Note:
         The ``max_length`` parameter is clamped to ``ABSOLUTE_MAX_PROFILE_LENGTH``
-        (256 characters) for filesystem safety. Setting ``max_length=1000`` will
-        effectively use 256 as the limit.
+        (255 characters) for filesystem safety. Setting ``max_length=1000`` will
+        effectively use 255 as the limit.
 
     Args:
         value: The profile name to validate.
         max_length: Maximum allowed length (default: 64 characters).
-            Set to 0 or negative to use the absolute maximum of 256 instead.
+            Set to 0 or negative to use the absolute maximum of 255 instead.
 
     Returns:
         The validated profile name (unchanged if valid).
@@ -504,15 +516,15 @@ def is_valid_profile_name(
 
     Note:
         The ``max_length`` parameter is clamped to ``ABSOLUTE_MAX_PROFILE_LENGTH``
-        (256 characters) for filesystem safety. Setting ``max_length=1000`` will
-        effectively use 256 as the limit. Setting ``max_length=0`` still enforces
-        the 256 character absolute maximum.
+        (255 characters) for filesystem safety. Setting ``max_length=1000`` will
+        effectively use 255 as the limit. Setting ``max_length=0`` still enforces
+        the 255 character absolute maximum.
 
     Args:
         value: The profile name to check. None is considered valid (no profile); any other
             non-str value is not a valid name.
         max_length: Maximum allowed length (default: 64 characters).
-            Set to 0 or negative to use the absolute maximum of 256 instead.
+            Set to 0 or negative to use the absolute maximum of 255 instead.
 
     Returns:
         True if the profile name is valid or None, False otherwise.
@@ -591,6 +603,8 @@ def validate_hostname(value: str) -> str:
     _check_hostname_pattern(value, "hostname")
     _check_not_windows_reserved(value, "hostname")
     _check_no_trailing_space(value, "hostname")
+    # Last, so a value an earlier rule refuses keeps that rule's message.
+    _check_max_length(value, "hostname", _MAX_HOSTNAME_LENGTH)
     return value
 
 
