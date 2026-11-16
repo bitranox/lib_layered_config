@@ -88,17 +88,20 @@ _WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
 # < > : " | ? * / \ and null byte
 _INVALID_CHARS_PATTERN: re.Pattern[str] = re.compile(r'[<>:"|?*\\/\x00]')
 
+# The three _VALID_* patterns below are applied with fullmatch, never match plus "^...$": "$" also
+# matches just before a final newline, which would let "demo\n" through as a path segment.
+
 # Valid strict identifier pattern: ASCII alphanumeric, hyphen, underscore, dot (not at start)
 # Used for: slug, profile
-_VALID_IDENTIFIER_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+_VALID_IDENTIFIER_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]*")
 
 # Valid permissive identifier pattern: ASCII alphanumeric, hyphen, underscore, dot, space
 # Used for: vendor, app (which can have spaces on macOS/Windows paths)
-_VALID_PERMISSIVE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._\- ]*$")
+_VALID_PERMISSIVE_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._\- ]*")
 
 # Valid hostname pattern: ASCII alphanumeric, hyphen, dot (FQDN support)
 # Hostnames can start with alphanumeric, contain hyphens and dots
-_VALID_HOSTNAME_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9.-]*$")
+_VALID_HOSTNAME_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9.-]*")
 
 
 # ============================================================================
@@ -160,14 +163,14 @@ def _raise_pattern_error(value: str, name: str, *, check_space_start: bool) -> N
 
 def _check_permissive_pattern(value: str, name: str) -> None:
     """Check value matches permissive pattern (allows spaces for vendor/app)."""
-    if _VALID_PERMISSIVE_PATTERN.match(value):
+    if _VALID_PERMISSIVE_PATTERN.fullmatch(value):
         return
     _raise_pattern_error(value, name, check_space_start=True)
 
 
 def _check_hostname_pattern(value: str, name: str) -> None:
     """Check value matches hostname pattern (alphanumeric, hyphen, dot)."""
-    if _VALID_HOSTNAME_PATTERN.match(value):
+    if _VALID_HOSTNAME_PATTERN.fullmatch(value):
         return
     if value.startswith(".") or value.startswith("-"):
         raise ValidationError(f"{name} must start with an alphanumeric character: {value}")
@@ -285,7 +288,7 @@ def validate_path_segment(value: str, name: str) -> str:
 
 def _check_strict_pattern(value: str, name: str) -> None:
     """Check value matches strict identifier pattern (no spaces)."""
-    if _VALID_IDENTIFIER_PATTERN.match(value):
+    if _VALID_IDENTIFIER_PATTERN.fullmatch(value):
         return
     _raise_pattern_error(value, name, check_space_start=False)
 

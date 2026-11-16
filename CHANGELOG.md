@@ -119,6 +119,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A slug, vendor, app or hostname ending in a newline (`"demo\n"`) is refused with `ValidationError`
+  (`"slug contains invalid characters: ..."`), as one ending in `\r` already was. Before, a single trailing
+  newline passed the check, so `read_config` loaded it and `deploy_config` wrote into a directory named
+  `demo` plus a newline. A profile was already refused (control characters).
 - `default_env_prefix(slug)` and `lib_layered_config env-prefix` refuse a slug that `read_config`,
   `deploy_config` and `generate_examples` refuse, with the same `ValidationError` message (a usage error,
   exit code 2, in the CLI). Before, only an empty slug was refused, so `env-prefix ../x` printed `../X___`
