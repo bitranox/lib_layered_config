@@ -32,7 +32,14 @@ from .errors import InvalidFormatError
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
 
-__all__ = ["REDACTED_PLACEHOLDER", "NotSensitiveKeys", "is_sensitive", "is_sensitive_at", "redact_mapping"]
+__all__ = [
+    "REDACTED_PLACEHOLDER",
+    "NotSensitiveKeys",
+    "is_sensitive",
+    "is_sensitive_at",
+    "redact_mapping",
+    "redact_value_at",
+]
 
 #: Maximum nesting depth for redaction, counting every mapping, list and tuple level. Guards
 #: against an opaque ``RecursionError`` on a pathological document. It sits well above the 100
@@ -272,6 +279,44 @@ def is_sensitive_at(path: Sequence[str], *, not_sensitive: NotSensitiveKeys = No
     """
     _refuse_str_path(path)
     return bool(path) and is_sensitive(path[-1]) and not not_sensitive.covers(path)
+
+
+def redact_value_at(
+    path: Sequence[str], value: object, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE
+) -> Any:
+    """Return *value*, found at *path* in a tree, as :func:`redact_mapping` of that tree shows it.
+
+    Only *path* is walked: a key on it whose name looks secret masks everything below it, then
+    *value* is redacted by itself. One key of a large configuration so costs that key's depth and
+    size, not a copy of the whole tree. Nesting is counted as in the whole walk, so the mappings
+    along *path* and *value* below it are refused at the same depth; nesting elsewhere in the tree
+    is not looked at.
+
+    Args:
+        path: The key's segments from the root, its own name last.
+        value: What the tree holds at *path*; a caller that must not hand out its own containers
+            passes a copy, since a value with no secret in it comes back as given.
+        not_sensitive: Paths the application declared not sensitive.
+
+    Returns:
+        :data:`REDACTED_PLACEHOLDER` when a key on *path* is sensitive, else *value* redacted.
+
+    Raises:
+        InvalidFormatError: When the mappings along *path*, or *value*, nest past :data:`_MAX_REDACT_DEPTH`.
+        TypeError: *path* is a ``str``.
+
+    Examples:
+        >>> redact_value_at(("credentials", "user"), "alice")
+        '***REDACTED***'
+        >>> redact_value_at(("db",), {"host": "h", "token": "t"})
+        {'host': 'h', 'token': '***REDACTED***'}
+    """
+    _refuse_str_path(path)
+    for depth in range(len(path)):
+        _ensure_depth(depth)  # the mapping holding path[depth], as the whole walk checks it
+        if is_sensitive_at(path[: depth + 1], not_sensitive=not_sensitive):
+            return REDACTED_PLACEHOLDER
+    return _Redactor(not_sensitive).node(value, path=tuple(path), depth=len(path))
 
 
 def redact_mapping(data: dict[str, Any], *, not_sensitive: Iterable[str] | None = None) -> dict[str, Any]:

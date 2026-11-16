@@ -253,7 +253,7 @@ print(f"Test DB: {test_config['database']['host']}")  # test-db.example.com
 
 ##### `Config.get_redacted(key, default=None)`
 
-Return the value at a dotted key as `as_dict(redact=True)` shows it, for a display that shows one key or section. A key below a masked section is masked too, so a single key never shows what the whole view hides; keys declared not sensitive stay visible.
+Return the value at a dotted key as `as_dict(redact=True)` shows it, for a display that shows one key or section. A key below a masked section is masked too, so a single key never shows what the whole view hides; keys declared not sensitive stay visible. Only the key's path and value are walked, so a call costs that key, not the size of the configuration; the redaction depth limit (300 levels) applies to that path and value, not to nesting elsewhere.
 
 **Parameters:**
 - `key` (str, required): Dotted path identifying nested entries.

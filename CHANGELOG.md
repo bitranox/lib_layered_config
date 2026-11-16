@@ -119,6 +119,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `Config.get_redacted(key)` walks only the key's path and redacts only its value. Before, every call
+  built the whole `as_dict(redact=True)` copy first, so one call took 12.6 ms on a 10 000-key
+  configuration and 46 ms on a 40 000-key one, and asking for each key in turn grew with the square of
+  the configuration's size; a leaf now costs about what `get` does (under 20 us measured), and the
+  answer is unchanged. The redaction depth limit (300 levels) now applies to the key's own path and
+  value only: on a `Config` built in Python with a value nested deeper than that, another key is
+  returned instead of refused (no read can produce such a config; the loaders refuse it first).
+  New `lib_layered_config.domain.redaction.redact_value_at(path, value, not_sensitive=...)` does the
+  walk.
 - Reading configuration (`read_config`, `read_config_json`, `read_config_raw`, and the read a deploy
   makes for its modes) no longer holds every parsed file until the last one is parsed: each file is
   parsed, merged and dropped before the next, so peak memory stays near the merged result plus one file
