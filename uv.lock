@@ -1497,14 +1497,14 @@ wheels = [
 
 [[package]]
 name = "lib-cli-exit-tools"
-version = "2.4.1"
+version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "rich-click" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/20/24/b05b4306b008fa27795dd1b747ef06f4b49ade46f68248c4d948c3307cde/lib_cli_exit_tools-2.4.1.tar.gz", hash = "sha256:29e04fcc45667bb0996a01dd1905bf6d2bb202244d910610c8b707136d4f4df5", size = 211195, upload-time = "2026-10-12T20:27:50.145Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d4/96/1ac27f85dbfc453a74bc38b60f7f730c18421fcfe5ec43ef37b6c503b1a8/lib_cli_exit_tools-2.5.0.tar.gz", hash = "sha256:601429330d328ab5af282f7676db897084d41b7e1a554877da4ed0c8258b1b42", size = 246422, upload-time = "2026-11-16T22:40:55.308Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/24/3b6acbb4ddf03f8549ad7288ace009c7b569ed1c0cb49a389c82d156a382/lib_cli_exit_tools-2.4.1-py3-none-any.whl", hash = "sha256:54eccb9338647c4be02130afc2c8f3154ab62dcd7807597fa14c325e1f14be00", size = 39995, upload-time = "2026-10-12T20:27:48.643Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/af/041308d5f17a0afabe8e1a182a30bd317332d69e1b873867b4e3da7fdc1e/lib_cli_exit_tools-2.5.0-py3-none-any.whl", hash = "sha256:fbdc9a32cdc4f8c8fa2a74d953bb144b93606f087606cb8dd06b08e92e6dc1e5", size = 41161, upload-time = "2026-11-16T22:40:54.146Z" },
 ]
 
 [[package]]
@@ -1569,7 +1569,7 @@ requires-dist = [
     { name = "hypothesis", marker = "python_full_version >= '3.11' and extra == 'dev'", specifier = ">=6.170.15" },
     { name = "hypothesis", marker = "python_full_version < '3.11' and extra == 'dev'", specifier = ">=6.168.5,<6.169" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = ">=2.15" },
-    { name = "lib-cli-exit-tools", specifier = ">=2.4.1" },
+    { name = "lib-cli-exit-tools", specifier = ">=2.5.0" },
     { name = "orjson", marker = "python_full_version < '3.14'", specifier = ">=3.13.0" },
     { name = "orjson", marker = "extra == 'orjson'", specifier = ">=3.13.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.10.1" },

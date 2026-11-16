@@ -135,6 +135,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A command whose stdout reader went away (`lib_layered_config info | head -0`) exits with 141 and
+  prints nothing. It exited 1, or 120 with an "Exception ignored ... BrokenPipeError" line. A command
+  that fails on its own keeps its exit code. The
+  fix is in `lib_cli_exit_tools` 2.5.0, now the lowest version this package accepts.
 - A refused vendor, app, slug or hostname is named with each control character written as `\uXXXX`
   (`slug contains invalid characters: demo\u000a`). It was printed raw, so a trailing newline was
   invisible and an ESC sequence reached the terminal. A value without control characters is named as

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "rich-click>=1.9.9",
-  "lib_cli_exit_tools>=2.4.1",
+  "lib-cli-exit-tools>=2.5.0",
   # orjson and rtoml have no free-threaded build (their source builds refuse one) and no marker
   # tells a free-threaded 3.14 from a normal one, so from 3.14, the first release that supports
   # free-threading, they are the optional "orjson" and "rtoml" extras; without them
