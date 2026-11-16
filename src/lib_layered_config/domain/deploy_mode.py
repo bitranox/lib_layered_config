@@ -137,6 +137,20 @@ def parse_mode_text(text: str) -> int:
     return int(significant, 8)
 
 
+def _require_mode_kind(kind: object) -> None:
+    """Raise DeployModeError when *kind* is not a :class:`ModeKind` member.
+
+    Every kind-specific rule compares by identity, so a str such as ``"file"`` skipped them all and
+    let 0o755 pass as a file mode. The parameter is ``object`` so the field's ``ModeKind``
+    annotation does not narrow the check away.
+
+    Raises:
+        DeployModeError: *kind* is not a ModeKind.
+    """
+    if not isinstance(kind, ModeKind):
+        raise DeployModeError(f"a mode kind must be a ModeKind, got {type(kind).__name__}")
+
+
 def _unsafe_bits(mode: int, kind: ModeKind) -> list[str]:
     """Return one label per rule *mode* breaks for *kind*; empty when the mode is safe."""
     problems = [label for bit, label in _SPECIAL_BITS if mode & bit]
@@ -174,12 +188,13 @@ class DeployMode:
     kind: ModeKind
 
     def __post_init__(self) -> None:
-        """Refuse a value that is not an int, is out of range, or breaks a safety rule."""
+        """Refuse a non-int or out-of-range value, a kind that is not a ModeKind, and an unsafe mode."""
         # A caller outside the type checker can pass anything, and bool is an int subclass.
         if type(self.value) is not int:
             raise DeployModeError(f"a mode must be an int, got {type(self.value).__name__}")
         if not 0 <= self.value <= MAX_MODE:
             raise DeployModeError(f"mode {brief_repr(self.value)} is outside 0..{oct(MAX_MODE)}")
+        _require_mode_kind(self.kind)
         problems = _unsafe_bits(self.value, self.kind)
         if problems:
             raise DeployModeError(f"unsafe {self.kind.value} mode {oct(self.value)}: {'; '.join(problems)}")

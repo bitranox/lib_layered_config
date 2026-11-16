@@ -1863,7 +1863,8 @@ print(f"User file mode: {oct(DEFAULT_USER_FILE_MODE)}")  # 0o600
 
 Exported from the package root, used to configure or override `deploy_config`'s permission handling.
 
-- `DeployMode`: An immutable, validated Unix permission mode; an unsafe one cannot be constructed.
+- `DeployMode`: An immutable, validated Unix permission mode; an unsafe one cannot be constructed. `kind` must
+  be a `ModeKind` member (`ModeKind.FILE`, `ModeKind.DIRECTORY`); a str such as `"file"` raises `DeployModeError`.
 - `ModeKind`: Whether a mode applies to a directory or a file (`DIRECTORY`, `FILE`).
 - `LayerModes`: The directory mode and the file mode one layer is deployed with.
 - `DeployPermissions`: Directory and file modes per deployment layer, plus whether to set them at all;

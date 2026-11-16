@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import inspect
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -103,6 +103,19 @@ def test_unsafe_modes_are_refused_naming_every_bit(value: int, kind: ModeKind, f
         DeployMode(value, kind)
     for fragment in fragments:
         assert fragment in str(caught.value)
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    ("value", "kind", "type_name"),
+    [(0o755, "file", "str"), (0o644, "directory", "str"), (0o666, "file", "str"), (0o600, None, "NoneType")],
+    ids=["str-file-with-execute", "str-directory-without-owner-x", "str-file-group-write", "none"],
+)
+def test_a_kind_must_be_a_mode_kind(value: int, kind: object, type_name: str) -> None:
+    # A str kind skipped every kind-specific rule, so 0o755 passed as a file mode.
+    with pytest.raises(DeployModeError) as caught:
+        DeployMode(value, cast("ModeKind", kind))
+    assert str(caught.value) == f"a mode kind must be a ModeKind, got {type_name}"
 
 
 @os_agnostic
