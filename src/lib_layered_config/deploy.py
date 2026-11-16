@@ -775,9 +775,10 @@ def deploy_config(
             in every mode, before anything is written.
         PermissionError: The source, a file in its ``.d`` directory, or a destination sits behind
             a permission wall (an ``OSError`` in general); the same on every Python.
-        ValueError: When profile name is invalid (too long, path traversal, etc.).
-        ValidationError: An unknown target, or force and batch both set (one overwrites an
-            existing file, the other keeps it), refused before anything is written.
+        ValidationError: An invalid vendor, app, slug or profile, an unknown target, or force and
+            batch both set (one overwrites an existing file, the other keeps it), refused before
+            anything is written; or a conflict_resolver answer other than OVERWRITTEN or KEPT,
+            raised when that destination is reached, so files deployed before it stay written.
         DeployModeError: dir_mode or file_mode is out of range or unsafe, or a mode was given
             with set_permissions=False.
         DeployPermissionsError: The configuration cannot be loaded, its permission section is

@@ -8,11 +8,16 @@ fresh file in that directory gets. ``must_write_in_place`` says when that would 
 from __future__ import annotations
 
 import dataclasses
+import os
+from typing import TYPE_CHECKING
 
 import pytest
 
-from lib_layered_config.adapters._file_write import FileFacts, must_write_in_place
-from tests.support.os_markers import os_agnostic
+from lib_layered_config.adapters._file_write import FileFacts, must_write_in_place, write_file
+from tests.support.os_markers import os_agnostic, posix_only
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _ACL = "system.posix_acl_access"
 _LABEL = "security.selinux"
@@ -65,3 +70,24 @@ def test_any_attribute_difference_keeps_the_file_in_place(
     fresh = dataclasses.replace(_BASE, xattrs=fresh_xattrs)
 
     assert must_write_in_place(target, fresh) is True
+
+
+@posix_only
+@pytest.mark.parametrize(("restrict", "expected"), [(True, 0o600), (False, 0o644)], ids=["restrict", "plain"])
+def test_permission_setting_creates_the_new_file_owner_only(tmp_path: Path, *, restrict: bool, expected: int) -> None:
+    """With permission setting on, the file is owner-only from its creation, before the caller's chmod.
+
+    A permissive umask (0o022) shows the difference: a file created at 0o666 would be readable by
+    everyone between the write and the chmod that follows it.
+    """
+    source = tmp_path / "source.toml"
+    source.write_text("token = 'secret'\n", encoding="utf-8")
+    target = tmp_path / "config.toml"
+
+    old_umask = os.umask(0o022)
+    try:
+        write_file(target, source, restrict=restrict, chunk_bytes=64 * 1024)
+    finally:
+        os.umask(old_umask)
+
+    assert (target.read_text(encoding="utf-8"), target.stat().st_mode & 0o777) == ("token = 'secret'\n", expected)

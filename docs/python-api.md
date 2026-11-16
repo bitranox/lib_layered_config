@@ -944,8 +944,10 @@ refusal rule.
 <path>"` for a FIFO, device or socket), `LayerLoadError`
 (the source is not a `.toml` file, or does not parse as TOML: `"<path> is not valid TOML (line N, column M)"`;
 nothing is written), `PermissionError` (the source, a file in its `.d`
-directory, or a destination sits behind a permission wall; the same on every Python), `ValueError` (an invalid `profile` name),
-`ValidationError` (an unknown target, before anything is written), `DeployModeError` (a refused `dir_mode` /
+directory, or a destination sits behind a permission wall; the same on every Python), `ValidationError` (an invalid `vendor`, `app`,
+`slug` or `profile`, an unknown target, or `force` with `batch`, before anything is written; a `conflict_resolver`
+answer other than `OVERWRITTEN` or `KEPT`, when that destination is reached, so the files deployed before it stay
+written), `DeployModeError` (a refused `dir_mode` /
 `file_mode`, or one given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
 not readable, the section is invalid, a refused `permission_overrides` value, or `permission_overrides`
 combined with `permissions`; nothing is written), `DeployDestinationError` (a destination or one of its `.d`
@@ -1571,18 +1573,27 @@ Exception
         +-- DeployModeError         a refused dir_mode / file_mode
         +-- DeployPermissionsError  unusable permission settings
         +-- DeployDestinationError  a deploy destination is a symbolic link or not a regular file
+        +-- LayerRootNotAbsoluteError  a Windows root (ProgramData, APPDATA, LOCALAPPDATA) that is not absolute
 ```
 
-- `LayerLoadError` is what the read functions, `deploy_config` and `read_deploy_config` raise for a file that
-  does not decode or parse; its `__cause__` is the loader's `InvalidFormatError`.
+- `LayerLoadError` is what the read functions and `read_deploy_config` raise for a file that does not decode or
+  parse; its `__cause__` is the loader's `InvalidFormatError`. `deploy_config` raises it for its own source
+  file. A broken file in one of the layers deploy reads its modes from makes it raise `DeployPermissionsError`
+  instead (the configured modes are unknown), whose message names that file and which has no `__cause__`;
+  with `set_permissions=False` that read does not happen.
 - `InvalidFormatError` is raised by the file and environment loaders; the public functions re-raise it as
-  `LayerLoadError`, so you meet it only as that `__cause__` or when calling a loader yourself.
+  `LayerLoadError`, so you meet it as that `__cause__`, when calling a loader yourself, or from
+  `Config.as_dict(redact=True)` and `Config.to_json(redact=True)` on a `Config` you built yourself with values
+  nested more than 300 levels deep (a read refuses tables past 100 levels and any value past 253, so a loaded
+  one never is).
 - `NotFoundError` is raised by the file loaders for a file that is not there; the read functions treat that
   as an empty layer (a missing `default_file` loads nothing) and do not raise it.
 
 Errors from the operating system and the standard library pass through as they are: `FileNotFoundError` for a
-deploy source that does not exist or is not a regular file, `PermissionError` behind a permission wall, `TypeError` for an argument of
-the wrong type.
+deploy source that does not exist or is not a regular file, `PermissionError` behind a permission wall,
+`FileExistsError` or `NotADirectoryError` when a directory deploy must create is a regular file, `TypeError` for
+an argument of the wrong type, and a plain `ValueError` (not a `ConfigError`) for a `not_sensitive` entry with an
+empty segment (`"a..b"`).
 
 ```python
 from lib_layered_config import ConfigError, LayerLoadError, read_config

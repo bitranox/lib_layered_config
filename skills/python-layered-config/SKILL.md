@@ -138,6 +138,10 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 - Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string. A sensitive key
   (one `redact=True` masks: `password`, `token`, `secret`, `*_key`) keeps `null`/`none` as text
   unless declared with `read_config(not_sensitive=[...])`; a number under a sensitive key still converts.
+  The variable's own name decides, lowercased, never the key's spelling in a file:
+  `MY_APP___DB__DBPASSWORD=null` overrides a file's `dbPassword` (case does not matter) but reads as
+  the one word `dbpassword`, which is not sensitive, so the key becomes None. A snake_case key keeps
+  the text: `MY_APP___DB__DB_PASSWORD=null` sets `db_password` to `"null"`.
 - A value starting with `[` or `{` is parsed as JSON, in the environment AND unquoted in `.env`
   (`REPLICAS='["a","b"]'` in a shell, `REPLICAS=["a","b"]` in `.env`); a quoted `.env` value is always literal
   text; a comma list is never split.
@@ -161,8 +165,10 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 
 ## Per-OS config paths
 
-Each layer resolves to a `config.toml` (with an optional companion `config.d/` directory,
-and `.yaml`/`.json` also accepted). `<Vendor>`/`<App>` are verbatim; `<slug>` is the slug.
+Each layer resolves to a `config.toml` (`hosts/<hostname>.toml` for host), always TOML: a
+`config.yaml` or `config.json` beside it is not read. YAML and JSON go in the layer's optional
+companion `config.d/` directory, which takes `.toml`, `.json`, `.yaml` and `.yml` files.
+`<Vendor>`/`<App>` are verbatim; `<slug>` is the slug.
 
 | Layer  | Linux                                   | macOS                                                      | Windows                                    |
 |--------|-----------------------------------------|------------------------------------------------------------|--------------------------------------------|
@@ -306,6 +312,13 @@ Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
 `env-prefix`, `info` and `fail` accept only `--json` and `--help` (`env-prefix` takes a positional
 SLUG). Passing one of the others raises `NoSuchOption`.
 
+While a command runs, the library's warnings go to stderr, one line each, as
+`warning: <event> key=value ...`: for example `warning: type_conflict key=a layer=user path=...
+old_type=scalar new_type=mapping` when a user-layer table replaces an app-layer value, or
+`dotenv_skipped_foreign_owner` and `deploy_setting_ignored`. Stdout and the `--json` envelope do not
+change, so parse stdout and read stderr as diagnostics. A line names keys, paths, layers and types,
+never a configuration value.
+
 ## Designing config files
 
 - **Structure maps to access and to env vars.** A `[database]` section with `host = "..."`
@@ -320,6 +333,7 @@ SLUG). Passing one of the others raises `NoSuchOption`.
   under `redact=True` and in `display_config`.
 - **Split large config with `.d/`.** `config.toml` may have a companion `config.d/` whose
   files (`10-db.toml`, `20-cache.yaml`, ...) load in lexicographic order and can mix formats.
+  Either can exist without the other: a `config.d/` with no `config.toml` beside it still loads.
 - **Quote YAML keys that look like numbers or booleans** (`'1':`, `'true':`): an unquoted one is not a
   string key, and the loader refuses the whole file.
 - **Write ordered YAML as a plain mapping, never `!!omap` or `!!pairs`**: a plain mapping keeps the
@@ -389,7 +403,10 @@ built-in patterns (a field named just `key` is not sensitive). `is_sensitive_at(
 declaration; pass a tuple of segments, never a dotted `str` (refused with `TypeError`).
 `redact_mapping(data, not_sensitive=["performance.max_token_bytes"])` returns a masked deep copy
 of a plain dict; `not_sensitive` takes dotted paths or a `NotSensitiveKeys`. Use it on
-`read_config_raw(...).data`, which does not carry the declaration. A masked value reads
+`read_config_raw(...).data`, which does not carry the declaration. `config.get_redacted("db.password")`
+returns one value as `as_dict(redact=True)` shows it (a key below a masked section is masked too, a
+declared not-sensitive path stays visible), redacting only that key's path rather than copying the
+whole configuration; it takes `default=` like `get`. A masked value reads
 `REDACTED_PLACEHOLDER` (`"***REDACTED***"`); compare against the constant, not the literal.
 
 **A mask keyed on the value's type leaks.** A value starting with `[` or `{` in the environment or
@@ -469,7 +486,10 @@ destination without a deploy: `LinuxDeployment(resolver)` (also `MacDeployment`,
 `Layer.ENV` raises `KeyError`) and returns a `Path`, never `None`, so an `is None` guard fails
 pyright strict too.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
-the list of written paths.
+the list of written paths; an example file that already exists is left unchanged and not listed,
+unless `force=True` overwrites it. `generate_examples_report(...)` from `lib_layered_config.generate`
+takes the same arguments and returns an `ExamplesReport`: `.created` holds the files written,
+`.kept` the existing ones left unchanged.
 
 **Display and logging.** `display_config(config, output_format=OutputFormat.HUMAN)` prints a config
 section by section, each key under a `# layer:<layer> profile:<profile> (<path>)` comment and

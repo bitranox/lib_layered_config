@@ -19,7 +19,7 @@ from lib_cli_exit_tools import get_system_exit_code
 
 from lib_layered_config import cli
 from tests.support import create_layered_sandbox
-from tests.support.os_markers import posix_only
+from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,6 +30,8 @@ VENDOR = "Acme"
 APP = "Demo"
 SLUG = "demo"
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
+#: The printed ``ValidationError: slug contains invalid characters: `` line before the refused slug.
+_SLUG_LINE_PREFIX = len("ValidationError: slug contains invalid characters: ")
 
 
 @pytest.fixture()
@@ -65,3 +67,19 @@ def test_a_refused_configured_mode_prints_every_problem_and_the_hint(
     assert "user_file: unsafe file mode 0o777" in err
     assert "user_directory: unsafe directory mode 0o777" in err
     assert err.endswith("which can make a user file that holds secrets readable by other accounts")
+
+
+@os_agnostic
+@pytest.mark.parametrize(("line_length", "cut"), [(4000, False), (4001, True)], ids=["4000-whole", "4001-cut"])
+def test_the_summary_keeps_exactly_4000_characters(
+    sandbox: LayeredSandbox, capsys: pytest.CaptureFixture[str], *, line_length: int, cut: bool
+) -> None:
+    """The documented limit (cli-reference: "up to 4000 characters") counts the whole ``Type: message`` line."""
+    del sandbox  # only its environment matters: the read must not reach the user's own files
+    slug = "a" * (line_length - _SLUG_LINE_PREFIX - 1) + "/"
+
+    code = cli.main(["read", "--vendor", VENDOR, "--app", APP, "--slug", slug], restore_traceback=False)
+
+    err = _flat(capsys.readouterr().err)
+    assert code == get_system_exit_code(ValueError())
+    assert ("TRUNCATED at 4000 characters" in err, err.endswith("a/")) == (cut, not cut)

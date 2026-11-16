@@ -100,7 +100,8 @@ def read_config(
         Immutable configuration with provenance metadata.
 
     Raises:
-        ValueError: When profile name is invalid (too long, path traversal, etc.).
+        LayerLoadError: A layer file, ``.env`` or environment value cannot be decoded or parsed.
+        ValidationError: *vendor*, *app*, *slug* or *profile* is refused (a ``ValueError`` too).
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
         TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
@@ -185,7 +186,8 @@ def read_config_json(
         JSON document containing ``{"config": ..., "provenance": ...}``.
 
     Raises:
-        ValueError: When profile name is invalid (too long, path traversal, etc.).
+        LayerLoadError: A layer file, ``.env`` or environment value cannot be decoded or parsed.
+        ValidationError: *vendor*, *app*, *slug* or *profile* is refused (a ``ValueError`` too).
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
         TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
@@ -237,7 +239,8 @@ def read_config_raw(
             in the environment or ``.env`` reads as None for them.
 
     Raises:
-        ValueError: When profile name is invalid (too long, path traversal, etc.).
+        LayerLoadError: A layer file, ``.env`` or environment value cannot be decoded or parsed.
+        ValidationError: *vendor*, *app*, *slug* or *profile* is refused (a ``ValueError`` too).
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
         TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.

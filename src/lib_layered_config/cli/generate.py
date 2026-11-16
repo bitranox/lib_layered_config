@@ -70,7 +70,7 @@ def generate_examples_command(
 
 
 def _envelope_data(report: ExamplesReport) -> dict[str, list[str]]:
-    """The ``--json`` data: the files written, and the existing ones kept (as ``deploy`` names them)."""
+    """The ``--json`` data: the files written, and under ``skipped`` the existing ones it kept unchanged."""
     return {"created": [str(path) for path in report.created], "skipped": [str(path) for path in report.kept]}
 
 

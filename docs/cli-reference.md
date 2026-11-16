@@ -33,15 +33,15 @@ lib_layered_config fail --json
 #  "error": {"type": "RuntimeError", "message": "i should fail", "exit_code": 1}}
 ```
 
-| Field             | Meaning                                                                      |
-|-------------------|------------------------------------------------------------------------------|
-| `ok`              | `true` when the command succeeded                                            |
-| `command`         | the command that ran                                                         |
-| `data`            | on success, the command's result (see the table below)                       |
-| `skipped`         | on success, what the command deliberately left alone; `[]` for most commands |
-| `error.type`      | on failure, the exception class (`LayerLoadError`, `UsageError`, ...)        |
-| `error.message`   | on failure, the message the command prints without `--json`                  |
-| `error.exit_code` | on failure, the process exit code, the same one the command returns          |
+| Field             | Meaning                                                                                                      |
+|-------------------|--------------------------------------------------------------------------------------------------------------|
+| `ok`              | `true` when the command succeeded                                                                            |
+| `command`         | the command that ran                                                                                         |
+| `data`            | on success, the command's result (see the table below)                                                       |
+| `skipped`         | on success, what the command deliberately left alone; `[]` for most commands                                 |
+| `error.type`      | on failure, the exception class (`LayerLoadError`, `UsageError`, ...)                                        |
+| `error.message`   | on failure, the message the command prints without `--json`, in full (printed, it is cut at 4000 characters) |
+| `error.exit_code` | on failure, the process exit code, the same one the command returns                                          |
 
 | Command             | `data`                                                                                                   |
 |---------------------|----------------------------------------------------------------------------------------------------------|
@@ -89,6 +89,7 @@ Load configuration and print it either as TOML annotated with each value's sourc
 **Usage:**
 ```bash
 lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
+  [--profile production] \
   [--start-dir /path/to/project] \
   [--default-file ./config.defaults.toml] \
   [--env-file /path/to/.env] \
@@ -100,19 +101,20 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 
 **Parameters:**
 
-| Parameter                          | Type   | Required | Default        | Description                                                                                                                                           |
-|------------------------------------|--------|----------|----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                     |
-| `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                     |
-| `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                              |
-| `--prefer`                         | string | No       | None           | Deprecated, no effect: each layer reads `config.toml` and `config.d/`. Prints a warning on stderr; removed in a future major release                  |
-| `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                       |
-| `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file ending in `.toml`, `.json`, `.yaml` or `.yml`                                       |
-| `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat` |
-| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (TOML with `# source:` comments), `json` (structured JSON)                                                       |
-| `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                          |
-| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                         |
-| `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask sensitive values (passwords, tokens, `*_key`) as `***REDACTED***` in every format; `--no-redact` prints them                                     |
+| Parameter                          | Type   | Required | Default        | Description                                                                                                                                                         |
+|------------------------------------|--------|----------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                                   |
+| `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                                   |
+| `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                                            |
+| `--profile`                        | string | No       | -              | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories |
+| `--prefer`                         | string | No       | None           | Deprecated, no effect: each layer reads `config.toml` and `config.d/`. Prints a warning on stderr; removed in a future major release                                |
+| `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                                     |
+| `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file ending in `.toml`, `.json`, `.yaml` or `.yml`                                                     |
+| `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat`               |
+| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (TOML with `# source:` comments), `json` (structured JSON)                                                                     |
+| `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                                        |
+| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                                       |
+| `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask sensitive values (passwords, tokens, `*_key`) as `***REDACTED***` in every format; `--no-redact` prints them                                                   |
 
 **Examples:**
 
@@ -256,6 +258,7 @@ Always emit combined JSON output (config + provenance). This is a convenience al
 **Usage:**
 ```bash
 lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
+  [--profile production] \
   [--start-dir /path/to/project] \
   [--default-file ./config.defaults.toml] \
   [--env-file /path/to/.env] \
@@ -265,17 +268,18 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
 
 **Parameters:**
 
-| Parameter                  | Type   | Required | Default     | Description                                                          |
-|----------------------------|--------|----------|-------------|----------------------------------------------------------------------|
-| `--vendor`                 | string | Yes      | -           | Vendor namespace                                                     |
-| `--app`                    | string | Yes      | -           | Application name                                                     |
-| `--slug`                   | string | Yes      | -           | Configuration slug                                                   |
-| `--prefer`                 | string | No       | None        | Deprecated, no effect; prints a warning on stderr                    |
-| `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search                                 |
-| `--default-file`           | path   | No       | None        | Path to defaults file                                                |
-| `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)                                  |
-| `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output                                             |
-| `--redact` / `--no-redact` | flag   | No       | `--redact`  | Mask sensitive values as `***REDACTED***`; `--no-redact` prints them |
+| Parameter                  | Type   | Required | Default     | Description                                                                                                                                                         |
+|----------------------------|--------|----------|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--vendor`                 | string | Yes      | -           | Vendor namespace                                                                                                                                                    |
+| `--app`                    | string | Yes      | -           | Application name                                                                                                                                                    |
+| `--slug`                   | string | Yes      | -           | Configuration slug                                                                                                                                                  |
+| `--profile`                | string | No       | -           | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories |
+| `--prefer`                 | string | No       | None        | Deprecated, no effect; prints a warning on stderr                                                                                                                   |
+| `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search                                                                                                                                |
+| `--default-file`           | path   | No       | None        | Path to defaults file                                                                                                                                               |
+| `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)                                                                                                                                 |
+| `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output                                                                                                                                            |
+| `--redact` / `--no-redact` | flag   | No       | `--redact`  | Mask sensitive values as `***REDACTED***`; `--no-redact` prints them                                                                                                |
 
 **Example:**
 ```bash
@@ -1286,7 +1290,7 @@ lib_layered_config env-prefix <slug>
 | `slug`    | string | Yes (positional) | -       | Configuration slug to convert to environment prefix |
 
 **Returns:** Uppercase environment prefix with dashes converted to underscores. A slug `read` and `deploy`
-refuse is a usage error here too (exit code 2): an empty one (`slug cannot be empty`), one holding a path
+refuse (they exit 22) is a usage error here (exit code 2), because the slug is this command's only argument: an empty one (`slug cannot be empty`), one holding a path
 separator or whitespace (`slug contains invalid characters: ../x`), starting with a dot, or non-ASCII.
 
 **Examples:**
@@ -1396,14 +1400,14 @@ python -m pytest tests/
 
 ### `info`
 
-Print package metadata including version, author, and license.
+Print package metadata: name, title, version, homepage, author, author e-mail and shell command.
 
 **Usage:**
 ```bash
 lib_layered_config info
 ```
 
-**Parameters:** None
+**Parameters:** only `--json` (see [Machine-readable output](#machine-readable-output---json))
 
 **Example:**
 ```bash
@@ -1421,7 +1425,7 @@ Intentionally raise a `RuntimeError` for testing error handling and CLI behavior
 lib_layered_config fail
 ```
 
-**Parameters:** None
+**Parameters:** only `--json` (see [Machine-readable output](#machine-readable-output---json))
 
 **Raises:** `RuntimeError` with message `"i should fail"`.
 

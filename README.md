@@ -292,7 +292,7 @@ Any configuration file can have a companion `.d` directory for split configurati
 - `myapp.yaml` → `myapp.d/`
 - `settings.json` → `settings.d/`
 
-This means **all formats share the same `.d` directory** - `config.toml`, `config.yaml`, and `config.json` all use `config.d/`.
+A layer's base file is always TOML (`config.toml`, `hosts/<hostname>.toml`): a `config.yaml` or `config.json` beside it is not read. A layer takes YAML and JSON in its `config.d/`, and a `default_file` may be any of the three formats (`myapp.yaml` loads with `myapp.d/`).
 
 **How it works:**
 1. The loader first loads the base file (e.g., `config.toml`) if present
