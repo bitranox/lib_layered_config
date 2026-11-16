@@ -25,6 +25,7 @@ it the directory's.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import io
 import os
@@ -167,15 +168,29 @@ def _write(
                 with open_source() as reader:
                     shutil.copyfileobj(reader, handle, chunk_bytes)
         if in_place:
-            temp.unlink()
+            _remove_temp(temp)
             _rewrite_in_place(path, open_source, chunk_bytes)
             return
         # Windows gives the new file its directory's ACL; keep the one the replaced file had.
         copy_dacl(acl_from if acl_from is not None else path, temp)
         temp.replace(path)
     except BaseException:
-        temp.unlink(missing_ok=True)
+        # A failed cleanup must not replace the error that stopped the write.
+        with contextlib.suppress(OSError):
+            _remove_temp(temp)
         raise
+
+
+def _remove_temp(temp: Path) -> None:
+    """Delete *temp*, which this process created; a missing one is fine.
+
+    It may hold the destination's mode by now (``_rename_would_change``), and on Windows mode 0o444
+    is the read-only attribute, which refuses the delete: the temp then stayed beside the
+    destination and its PermissionError, naming the temp, replaced the error that mattered.
+    """
+    with contextlib.suppress(FileNotFoundError):
+        temp.chmod(stat.S_IREAD | stat.S_IWRITE)
+    temp.unlink(missing_ok=True)
 
 
 def _create_temp(path: Path, *, mode: int) -> tuple[int, Path]:

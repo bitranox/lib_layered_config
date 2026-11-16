@@ -408,6 +408,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   is `<hostname>.toml`), raise `ValidationError` on read and deploy alike; the absolute profile limit drops
   from 256 to 255. Such names never fit a file name: a 300-character slug raised `LayerLoadError` on read
   and `OSError` (file name too long) on deploy, and a 256-character profile read fine but failed to deploy.
+- On Windows, a forced deploy (permissions off) onto a read-only destination no longer leaves a read-only
+  `.config.toml.<hex>.tmp` beside it: the refusal now names the destination, and the temp file is removed.
 - `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
   does not parse, in every mode and before anything is written, with `LayerLoadError` and the
   loader's message. Before, the source was parsed only while reading the configured permission

@@ -183,21 +183,28 @@ def test_a_hard_linked_destination_is_rewritten_in_place(sandbox: LayeredSandbox
     assert destination.samefile(other)
 
 
-@posix_only
+@os_agnostic
 def test_a_read_only_destination_is_refused_not_replaced(sandbox: LayeredSandbox, tmp_path: Path) -> None:
     # The directory is writable, so a rename would replace a file its owner made read-only.
-    if sys.platform == "win32" or os.geteuid() == 0:
-        pytest.skip("root writes a read-only file anyway")
+    if sys.platform != "win32" and os.geteuid() == 0:
+        pytest.skip("root writes a file with mode 0o444 anyway")
     destination = _destination(sandbox)
     destination.write_text(_OLD, encoding="utf-8")
     destination.chmod(0o444)
     old_inode = destination.stat().st_ino
 
-    with pytest.raises(PermissionError):
-        _force_without_permissions(_source(tmp_path, _NEW))
+    try:
+        with pytest.raises(PermissionError) as caught:
+            _force_without_permissions(_source(tmp_path, _NEW))
 
-    assert destination.read_text(encoding="utf-8") == _OLD
-    assert destination.stat().st_ino == old_inode
+        assert destination.read_text(encoding="utf-8") == _OLD
+        assert destination.stat().st_ino == old_inode
+        # On Windows the temp took the read-only attribute, so removing it failed: it stayed
+        # behind and its error, naming the temp, replaced the refusal of the destination.
+        assert caught.value.filename == str(destination)
+        assert [p.name for p in destination.parent.iterdir() if p.name.endswith(".tmp")] == []
+    finally:
+        destination.chmod(stat.S_IREAD | stat.S_IWRITE)
 
 
 _NO_ID = 0xFFFFFFFF
