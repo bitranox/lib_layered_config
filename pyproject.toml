@@ -81,7 +81,7 @@ dev = [
   "textual>=8.2.8",
   "twine>=7.0.0",
   "certifi>=2026.10.23",         # PYSEC-2026-4320
-  "filelock>=4.2.9; python_version >= '3.11'", # CVE-2026-112906, -112940, -112914, via cachecontrol; 4.2.1 needs 3.11, so 3.10 keeps 4.1.x
+  "filelock>=4.2.10; python_version >= '3.11'", # CVE-2026-112906, -112940, -112914, via cachecontrol; 4.2.1 needs 3.11, so 3.10 keeps 4.1.x
   "hatchling>=1.33.0",
 ]
 yaml = [
