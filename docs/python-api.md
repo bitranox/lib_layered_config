@@ -1602,7 +1602,11 @@ Exception
                                        LIB_LAYERED_CONFIG_ETC / _MAC_APP_ROOT / _MAC_HOME_ROOT)
 ```
 
-- A refusal that names a vendor, app, slug or hostname, or a Windows root that is not absolute, writes each
+- When the home directory cannot be determined (HOME unset and the uid has no passwd entry), the read
+  functions skip the user layer and its `.env` fallback, log the warning `user_layer_skipped_no_home`, and load
+  every other layer. A deploy to the `user` target raises `RuntimeError` naming the variables that fix it. A
+  set `XDG_CONFIG_HOME`, `LIB_LAYERED_CONFIG_MAC_HOME_ROOT` or `APPDATA` needs no home directory.
+- A refusal that names a vendor, app, slug or hostname, or a layer root that is not absolute, writes each
   control character in it as `\uXXXX` (`slug contains invalid characters: demo\u000a`); a backslash is
   kept as it is. The profile refusal names its value with `repr`, as before.
 - `LayerLoadError` is what the read functions and `read_deploy_config` raise for a file that does not decode or

@@ -394,6 +394,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `XDG_CONFIG_HOME` is ignored, as the XDG Base Directory specification says, and `~/.config` is used; before,
   a relative value read and deployed the user layer under the current directory, and an empty one put the
   `.env` fallback there.
+- A process with no home directory (HOME unset and a uid without a passwd entry, as a container running an
+  arbitrary uid) reads every layer but the user layer, and logs `user_layer_skipped_no_home`; before,
+  `read_config` raised `RuntimeError` and loaded nothing. On Windows a set `APPDATA` or `LOCALAPPDATA` no
+  longer asks for the home directory at all. A deploy to the `user` target still raises `RuntimeError`,
+  now naming `HOME` and the user-root variables.
 - `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
   does not parse, in every mode and before anything is written, with `LayerLoadError` and the
   loader's message. Before, the source was parsed only while reading the configured permission

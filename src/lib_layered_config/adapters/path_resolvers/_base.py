@@ -30,12 +30,39 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
 __all__ = [
+    "HomeDirectoryUnknownError",
     "PlatformContext",
     "PlatformStrategy",
     "collect_layer",
     "config_path_present",
+    "home_directory",
     "override_root",
 ]
+
+
+class HomeDirectoryUnknownError(RuntimeError):
+    """The home directory the user layer lives under cannot be determined.
+
+    A RuntimeError, as ``Path.home()`` raises, so an existing ``except RuntimeError`` still catches it.
+    Its own type because a read skips the user layer on exactly this error and on no other
+    RuntimeError: ``Path.resolve()`` raises one for a symlink loop below Python 3.13.
+    """
+
+
+def home_directory() -> Path:
+    """Return the current user's home directory.
+
+    Raises:
+        HomeDirectoryUnknownError: ``Path.home()`` cannot answer: HOME unset and the uid has no
+            passwd entry, or on Windows USERPROFILE, HOMEDRIVE and HOMEPATH all unset.
+    """
+    try:
+        return Path.home()
+    except RuntimeError as exc:
+        raise HomeDirectoryUnknownError(
+            "cannot determine the home directory for the user layer: set HOME, or the variable naming the "
+            "user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, LIB_LAYERED_CONFIG_APPDATA)"
+        ) from exc
 
 
 def override_root(env: Mapping[str, str], name: str, default: Callable[[], Path]) -> Path:

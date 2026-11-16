@@ -32,7 +32,7 @@ from ...domain.identifiers import (
 )
 from ...observability import log_debug, log_warn
 from .._path_probe import current_directory
-from ._base import PlatformContext, PlatformStrategy
+from ._base import HomeDirectoryUnknownError, PlatformContext, PlatformStrategy
 from ._dotenv import DotenvPathFinder
 from ._linux import LinuxStrategy
 from ._macos import MacOSStrategy
@@ -199,7 +199,13 @@ class DefaultPathResolver:
         Returns:
             Ordered user-level configuration paths.
         """
-        return self._record_candidates(Layer.USER, self._strategy.user_paths())
+        try:
+            return self._record_candidates(Layer.USER, self._strategy.user_paths())
+        except HomeDirectoryUnknownError:
+            # A uid with no home has no user configuration to read; the other layers still load
+            # (the rule R1-F2 applies to an unusable machine hostname and the host layer).
+            log_warn("user_layer_skipped_no_home", layer=Layer.USER.value, path=None)
+            return []
 
     def dotenv(self) -> Iterable[str]:
         """Return candidate ``.env`` locations discovered during path resolution.

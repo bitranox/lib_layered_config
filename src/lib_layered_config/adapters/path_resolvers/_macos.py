@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ._base import PlatformStrategy, collect_layer, config_path_present, override_root
+from ._base import PlatformStrategy, collect_layer, config_path_present, home_directory, override_root
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -39,7 +39,9 @@ def mac_home_root(env: Mapping[str, str]) -> Path:
     Raises:
         LayerRootNotAbsoluteError: The override is empty or relative.
     """
-    return override_root(env, "LIB_LAYERED_CONFIG_MAC_HOME_ROOT", lambda: Path.home() / "Library/Application Support")
+    return override_root(
+        env, "LIB_LAYERED_CONFIG_MAC_HOME_ROOT", lambda: home_directory() / "Library/Application Support"
+    )
 
 
 class MacOSStrategy(PlatformStrategy):

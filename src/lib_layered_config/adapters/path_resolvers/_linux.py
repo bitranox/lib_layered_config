@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ._base import PlatformStrategy, collect_layer, config_path_present, override_root
+from ._base import PlatformStrategy, collect_layer, config_path_present, home_directory, override_root
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -44,7 +44,7 @@ def xdg_config_home(env: Mapping[str, str]) -> Path:
     value = env.get("XDG_CONFIG_HOME", "")
     if value and Path(value).root:
         return Path(value)
-    return Path.home() / ".config"
+    return home_directory() / ".config"
 
 
 class LinuxStrategy(PlatformStrategy):

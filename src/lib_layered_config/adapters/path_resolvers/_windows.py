@@ -16,10 +16,10 @@ from typing import TYPE_CHECKING
 
 from ...domain.errors import LayerRootNotAbsoluteError
 from ...domain.printable import escape_controls
-from ._base import PlatformStrategy, collect_layer, config_path_present
+from ._base import PlatformStrategy, collect_layer, config_path_present, home_directory
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
 
 __all__ = [
@@ -51,8 +51,10 @@ def windows_env_value(env: Mapping[str, str], name: str) -> str | None:
     return next((value for key, value in env.items() if key.casefold() == folded), None)
 
 
-def _root(env: Mapping[str, str], *, override: str, name: str, default: Path) -> Path:
-    """The ``LIB_LAYERED_CONFIG_*`` *override* if set, else the Windows variable *name*, else *default*.
+def _root(env: Mapping[str, str], *, override: str, name: str, default: Callable[[], Path]) -> Path:
+    """The ``LIB_LAYERED_CONFIG_*`` *override* if set, else the Windows variable *name*, else *default()*.
+
+    *default* is called only when neither variable is set, so a set APPDATA needs no home directory.
 
     Raises:
         LayerRootNotAbsoluteError: The chosen root is not absolute on this system (a
@@ -64,7 +66,7 @@ def _root(env: Mapping[str, str], *, override: str, name: str, default: Path) ->
         root = Path(env[override])
     else:
         value = windows_env_value(env, name)
-        root = default if value is None else Path(value)
+        root = default() if value is None else Path(value)
     if not root.is_absolute():
         raise LayerRootNotAbsoluteError(
             f"The %{name}% root '{escape_controls(str(root))}' is not an absolute path on this system; set {override} "
@@ -75,20 +77,28 @@ def _root(env: Mapping[str, str], *, override: str, name: str, default: Path) ->
 
 def program_data_root(env: Mapping[str, str]) -> Path:
     """The ``%ProgramData%`` root: the override, else ``ProgramData`` in any case, else ``C:/ProgramData``."""
-    return _root(env, override="LIB_LAYERED_CONFIG_PROGRAMDATA", name="ProgramData", default=Path(r"C:\ProgramData"))
+    return _root(
+        env, override="LIB_LAYERED_CONFIG_PROGRAMDATA", name="ProgramData", default=lambda: Path(r"C:\ProgramData")
+    )
 
 
 def appdata_root(env: Mapping[str, str]) -> Path:
     """The ``%APPDATA%`` root: the override, else ``APPDATA`` in any case, else ``~/AppData/Roaming``."""
     return _root(
-        env, override="LIB_LAYERED_CONFIG_APPDATA", name="APPDATA", default=Path.home() / "AppData" / "Roaming"
+        env,
+        override="LIB_LAYERED_CONFIG_APPDATA",
+        name="APPDATA",
+        default=lambda: home_directory() / "AppData" / "Roaming",
     )
 
 
 def localappdata_root(env: Mapping[str, str]) -> Path:
     """The ``%LOCALAPPDATA%`` root: the override, else ``LOCALAPPDATA`` in any case, else ``~/AppData/Local``."""
     return _root(
-        env, override="LIB_LAYERED_CONFIG_LOCALAPPDATA", name="LOCALAPPDATA", default=Path.home() / "AppData" / "Local"
+        env,
+        override="LIB_LAYERED_CONFIG_LOCALAPPDATA",
+        name="LOCALAPPDATA",
+        default=lambda: home_directory() / "AppData" / "Local",
     )
 
 

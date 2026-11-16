@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .._path_probe import PathKind, checked_kind, probe_path
+from ._base import HomeDirectoryUnknownError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -82,4 +83,8 @@ class DotenvPathFinder:
         Returns:
             Platform fallback path, or ``None`` when the platform names none.
         """
-        return self.strategy.dotenv_path()
+        try:
+            return self.strategy.dotenv_path()
+        except HomeDirectoryUnknownError:
+            # The user layer's own read warns once; the fallback .env sits under the same home.
+            return None
