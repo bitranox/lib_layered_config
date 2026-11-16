@@ -908,7 +908,7 @@ Copy a source configuration file into one or more layer directories with conflic
 - `source` (str | Path, required): Path to the configuration file to copy. It must be a `.toml` file (any case), since every destination is read only as TOML; any other suffix raises `LayerLoadError` before anything is written.
 - `vendor` (str, required): Vendor namespace.
 - `app` (str, required): Application name.
-- `targets` (Sequence[str], required): Layer targets to deploy to. Valid values: `"app"`, `"host"`, `"user"`.
+- `targets` (Sequence[str], required): Layer targets to deploy to. Valid values: `"app"`, `"host"`, `"user"`. A single str (`targets="user"`) raises `ValidationError`: write `["user"]`.
 - `slug` (str | None, optional): Configuration slug. Default: `None` (uses `app` as slug).
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to deployment paths. Default: `None`.
 - `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 256, or `0` or negative, uses the absolute maximum of 256 characters, so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).

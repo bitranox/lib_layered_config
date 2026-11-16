@@ -376,6 +376,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `conflict_resolver` does: with either set, the resolver is never called. They said the resolver is
   called for each differing file, so a resolver used to log or audit a forced deploy recorded
   nothing without warning. The behaviour is unchanged; a test pins it.
+- `deploy_config` and `deploy_config_paths` refuse `targets` given as a single str with
+  `ValidationError: targets takes a sequence of layer names, not a single str: write ['user']`.
+  `targets="user"` was read as the targets u, s, e, r and refused naming `u`; `targets=""` deployed
+  nothing and returned an empty list without a word.
 - `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
   does not parse, in every mode and before anything is written, with `LayerLoadError` and the
   loader's message. Before, the source was parsed only while reading the configured permission

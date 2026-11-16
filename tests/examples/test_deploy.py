@@ -11,6 +11,7 @@ import threading
 import tracemalloc
 from pathlib import Path
 from textwrap import dedent
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -22,6 +23,9 @@ from lib_layered_config.domain.errors import DeployDestinationError, ValidationE
 from lib_layered_config.domain.identifiers import Layer
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only, windows_only
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Private helpers pinned one by one: deploy_config reaches them only in combination, so a
 # failure there would not say which helper broke.
@@ -271,6 +275,20 @@ def test_validate_target_rejects_unknown_names() -> None:
 def test_validate_target_refuses_a_layer_deploy_does_not_write(name: str) -> None:
     with pytest.raises(ValueError, match=f"^Unsupported deployment target: {name}$"):
         _validate_target(name)
+
+
+@os_agnostic
+@pytest.mark.parametrize("deploy", [deploy_config, deploy_config_paths], ids=["deploy_config", "deploy_config_paths"])
+@pytest.mark.parametrize("targets", ["user", ""], ids=["layer-name", "empty"])
+def test_a_single_str_targets_is_refused_naming_the_mistake(
+    sandbox: LayeredSandbox, source_config: Path, deploy: Callable[..., object], targets: str
+) -> None:
+    """A str is itself a sequence of str: "user" was read as the targets u, s, e, r, and "" deployed
+    nothing. Both are refused with the type a bad target name raises (user-facing: QUALITY-REVIEW R1-F7)."""
+    with pytest.raises(ValidationError) as caught:
+        deploy(source_config, vendor=VENDOR, app=APP, slug=SLUG, targets=targets)
+    assert str(caught.value) == f"targets takes a sequence of layer names, not a single str: write [{targets!r}]"
+    assert not (sandbox.roots["user"] / "config.toml").exists()
 
 
 @os_agnostic

@@ -783,10 +783,11 @@ def deploy_config(
             in every mode, before anything is written.
         PermissionError: The source, a file in its ``.d`` directory, or a destination sits behind
             a permission wall (an ``OSError`` in general); the same on every Python.
-        ValidationError: An invalid vendor, app, slug or profile, an unknown target, or force and
-            batch both set (one overwrites an existing file, the other keeps it), refused before
-            anything is written; or a conflict_resolver answer other than OVERWRITTEN or KEPT,
-            raised when that destination is reached, so files deployed before it stay written.
+        ValidationError: An invalid vendor, app, slug or profile, an unknown target, *targets*
+            given as a single str, or force and batch both set (one overwrites an existing file,
+            the other keeps it), refused before anything is written; or a conflict_resolver
+            answer other than OVERWRITTEN or KEPT, raised when that destination is reached, so
+            files deployed before it stay written.
         DeployModeError: dir_mode or file_mode is out of range or unsafe, or a mode was given
             with set_permissions=False.
         DeployPermissionsError: The configuration cannot be loaded, its permission section is
@@ -920,7 +921,7 @@ def deploy_config_paths(
             directory, or something else (a FIFO, device or socket).
         PermissionError: The source or its ``.d`` directory sits behind a permission wall.
         ValueError: The profile name is invalid.
-        ValidationError: A target is not one of app, host and user.
+        ValidationError: *targets* is a single str, or a target is not one of app, host and user.
 
     Examples:
         >>> from tempfile import TemporaryDirectory
@@ -1229,8 +1230,13 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
         One ``_Destination`` per target, in the order given.
 
     Raises:
-        ValidationError: A target is not one of app, host and user.
+        ValidationError: *targets* is a single str, or a target is not one of app, host and user.
     """
+    # A str is itself a Sequence[str], so the type checker passes targets="user", which would be
+    # read as the targets u, s, e, r, and "" as no target at all. ValidationError, not the
+    # TypeError prefer= raises: a non-empty str was already refused with this type.
+    if isinstance(targets, str):
+        raise ValidationError(f"targets takes a sequence of layer names, not a single str: write [{targets!r}]")
     for raw_target in targets:
         layer = _validate_target(raw_target)
         yield _Destination(_strategy_for(resolver).destination_for(layer), layer)
