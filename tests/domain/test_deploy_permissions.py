@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import sys
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -27,7 +28,7 @@ from lib_layered_config.domain.permissions import LAYER_PERMISSIONS
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 
 def _config(section: object, *, sources: dict[str, tuple[str, str | None]] | None = None) -> Config:
@@ -52,6 +53,25 @@ def test_an_absent_section_gives_the_built_in_layer_modes() -> None:
         assert settings.for_layer(layer).file.value == modes.file
     assert settings.enabled is True
     assert settings == DeployPermissions.defaults()
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"lib_layered_config": {"default_permissions": {"user_file": "0o640"}}},
+        MappingProxyType({"lib_layered_config": {"default_permissions": {"user_file": "0o640"}}}),
+    ],
+    ids=["dict", "mappingproxy"],
+)
+def test_a_mapping_that_is_not_a_config_is_refused_naming_read_config(config: Mapping[str, object]) -> None:
+    # A plain mapping has no dotted-key get, so its section used to be ignored and the built-in
+    # 0o600 came back for a configured 0o640.
+    with pytest.raises(TypeError) as caught:
+        deploy_permissions_from_config(cast("Config", config))
+    assert str(caught.value) == (
+        f"deploy_permissions_from_config takes a Config (from read_config), not {type(config).__name__}"
+    )
 
 
 @os_agnostic

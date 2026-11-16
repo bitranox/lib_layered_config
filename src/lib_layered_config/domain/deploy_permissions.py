@@ -24,15 +24,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, NamedTuple, cast
+from typing import Final, NamedTuple, cast
 
+from .config import Config
 from .deploy_mode import DeployMode, DeployModeError, ModeKind, brief_repr
 from .errors import ValidationError
 from .identifiers import Layer
 from .permissions import LAYER_PERMISSIONS
-
-if TYPE_CHECKING:
-    from .config import Config
 
 __all__ = [
     "OVERRIDE_SOURCE",
@@ -295,6 +293,21 @@ def _merge_overrides(section: object, overrides: Mapping[str, object]) -> object
     return merged
 
 
+def _require_config(value: object) -> Config:
+    """Return *value* when it is a :class:`Config`; raise TypeError naming what it is otherwise.
+
+    A plain mapping reaches here from a caller that annotated loosely (or not at all), and its
+    ``get`` finds no dotted key, so the configured section would be dropped without a word. The
+    parameter is ``object`` so the check is not narrowed away by the caller's ``Config`` annotation.
+
+    Raises:
+        TypeError: *value* is not a Config.
+    """
+    if not isinstance(value, Config):
+        raise TypeError(f"deploy_permissions_from_config takes a Config (from read_config), not {type(value).__name__}")
+    return value
+
+
 def deploy_permissions_from_config(
     config: Config,
     *,
@@ -316,6 +329,8 @@ def deploy_permissions_from_config(
             nested key is an unknown setting. A refusal names ``(source: override)``.
 
     Raises:
+        TypeError: *config* is not a :class:`Config`; a plain mapping has no dotted-key lookup, so
+            its section would be ignored.
         DeployPermissionsError: The ``lib_layered_config`` namespace or the section is not a table,
             or a setting is refused; each problem names the file, layer or override that set it.
 
@@ -327,6 +342,7 @@ def deploy_permissions_from_config(
         >>> oct(settings.user.file.value)
         '0o640'
     """
+    config = _require_config(config)
     namespace = config.get(_NAMESPACE_KEY)
     if namespace is not None and not isinstance(namespace, Mapping):
         reason = f"must be a table, got {type(namespace).__name__}"

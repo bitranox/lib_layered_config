@@ -380,6 +380,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `ValidationError: targets takes a sequence of layer names, not a single str: write ['user']`.
   `targets="user"` was read as the targets u, s, e, r and refused naming `u`; `targets=""` deployed
   nothing and returned an empty list without a word.
+- `deploy_permissions_from_config` refuses anything but a `Config` with `TypeError:
+  deploy_permissions_from_config takes a Config (from read_config), not dict`. A plain mapping has no
+  dotted-key lookup, so a configured `[lib_layered_config.default_permissions]` in it was ignored
+  without a word and the built-in modes came back.
 - `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
   does not parse, in every mode and before anything is written, with `LayerLoadError` and the
   loader's message. Before, the source was parsed only while reading the configured permission

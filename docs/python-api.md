@@ -1875,6 +1875,7 @@ Exported from the package root, used to configure or override `deploy_config`'s 
   `read_config(...)` result decides there, unlike in `deploy_config`'s own read. For `deploy_config` itself,
   pass runtime overrides through its own `permission_overrides=` parameter instead - see the `deploy_config`
   section above.
+  Anything but a `Config` (a plain dict included) raises `TypeError`.
 - `DeployModeError`: A permission setting was refused; the message names the reason or every offending bit.
 - `DeployDestinationError`: A file deploy would write is a symbolic link or not a regular file; one line each,
   nothing written.
