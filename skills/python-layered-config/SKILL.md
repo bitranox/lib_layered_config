@@ -365,11 +365,15 @@ lets `FileNotFoundError` and `PermissionError` through as themselves. Wrong-argu
 
 - `LayerLoadError` - `read_config*` could not read, decode or parse a layer file (broken TOML,
   invalid UTF-8, a malformed `.env` line), or the loader refused one (a rule under "Designing
-  config files"); from `deploy_config`, a source or `.d` file that is not TOML or does not parse.
+  config files"), or a layer holds a `.yaml` file and the `yaml` extra is not installed; from
+  `deploy_config`, a source that is not TOML, or a `.d` file that does not parse or is YAML with
+  no `yaml` extra.
 - `InvalidFormatError` - a source cannot be parsed. `read_config*` re-raises it as `LayerLoadError`,
   so you meet it directly only from lower-level calls (nesting deeper than the limit in
   `redact_mapping`, for example).
-- `NotFoundError` - an optional source is unavailable, e.g. a `.yaml` file without the `yaml` extra.
+- `NotFoundError` - an optional source is unavailable (a file that is not there). A `.yaml` file
+  on a host without the `yaml` extra is not skipped: every read and deploy raises `LayerLoadError`
+  naming the file and `lib_layered_config[yaml]`.
 - `ValidationError` (also a `ValueError`) - an identifier or profile name is refused. Its subclasses
   `DeployModeError` (an unsafe or malformed mode, or `dir_mode`/`file_mode` given together with
   `set_permissions=False`), `DeployPermissionsError` (unusable permission settings, one line per
@@ -428,9 +432,9 @@ both at once raise `ValidationError` (`--force --batch` is a usage error, exit 2
 is written.
 The source must be a `.toml` file (destinations are `config.toml` / `<hostname>.toml`, read only as
 TOML): a `.json`, `.yaml` or `.conf` source raises `LayerLoadError` before anything is written.
-A file in the source's `.d` may be any supported format; one that does not parse raises
-`LayerLoadError` too, so no file of the deploy is written, and a non-config file (a `README.md`)
-is copied unparsed.
+A file in the source's `.d` may be any supported format; one that does not parse, or a `.yaml` file
+without the `yaml` extra, raises `LayerLoadError` too, so no file of the deploy is written, and a
+non-config file (a `README.md`) is copied unparsed.
 A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
 permission wall raises `PermissionError` on every Python, before anything is written.
 

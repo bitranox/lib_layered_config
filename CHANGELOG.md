@@ -119,6 +119,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A YAML configuration file on a host without PyYAML (it ships only in the `yaml` extra) is refused:
+  every read and deploy raises `LayerLoadError` with `"<path> is YAML, which needs PyYAML: install it
+  with pip install 'lib_layered_config[yaml]'"`. It used to be skipped without a word, so a `.yaml`
+  `default_file` or a `.yaml` file in a `config.d/` silently did not apply, and `deploy` installed a
+  `.d` YAML file nothing had parsed. A YAML file that is not there is still skipped, as before.
 - `--traceback` works in the installed `lib_layered_config` and `lib-layered-config` commands. It worked
   only through `python -m lib_layered_config`: the console scripts start the CLI without passing the
   arguments on, so the flag, looked up in those arguments beforehand, was never found. The root command now

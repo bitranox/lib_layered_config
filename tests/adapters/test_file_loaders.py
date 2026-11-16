@@ -113,8 +113,26 @@ def test_yaml_loader_explains_when_dependency_is_missing(tmp_path: Path, monkeyp
     monkeypatch.setattr(structured_module, "yaml", None)
     path = _write(tmp_path / "config.yaml", "key: 1\n", encoding="utf-8")
 
-    with pytest.raises(NotFoundError, match="PyYAML is required"):
+    # A refusal, not NotFoundError: a layer read skips NotFoundError, which silently dropped the
+    # file's settings (R5-F1).
+    with pytest.raises(InvalidFormatError) as caught:
         YAMLFileLoader().load(str(path))
+
+    assert (
+        str(caught.value)
+        == f"{path} is YAML, which needs PyYAML: install it with pip install 'lib_layered_config[yaml]'"
+    )
+
+
+@os_agnostic
+def test_yaml_loader_without_pyyaml_still_reports_a_missing_file_as_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "yaml", None)
+    monkeypatch.setattr(structured_module, "yaml", None)
+
+    with pytest.raises(NotFoundError):
+        YAMLFileLoader().load(str(tmp_path / "gone.yaml"))
 
 
 @os_agnostic

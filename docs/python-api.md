@@ -489,7 +489,7 @@ from lib_layered_config import read_config
 # ~/.config/myapp/config.d/20-log.yaml merged after 10-db.json
 config = read_config(vendor="Acme", app="MyApp", slug="myapp")
 ```
-**Explanation:** Each layer's main file is `config.toml`. JSON and YAML files go in its `config.d/` directory, which is merged after `config.toml` in lexicographic file-name order, so a later file overrides an earlier one. YAML needs the `yaml` extra.
+**Explanation:** Each layer's main file is `config.toml`. JSON and YAML files go in its `config.d/` directory, which is merged after `config.toml` in lexicographic file-name order, so a later file overrides an earlier one. YAML needs the `yaml` extra: without it, a `.yaml` file raises `LayerLoadError` naming the file and `lib_layered_config[yaml]` instead of being skipped.
 
 **Example 3: Using a defaults file**
 ```python

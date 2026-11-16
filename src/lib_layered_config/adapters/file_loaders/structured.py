@@ -12,8 +12,8 @@ Contents:
       adapters that delegate to parser-specific helpers.
     - ``_log_file_read`` / ``_log_file_loaded`` / ``_log_file_invalid``:
       structured logging helpers reused across loaders.
-    - ``_ensure_yaml_available``: guard ensuring YAML support is present before
-      attempting to parse.
+    - ``_require_yaml_module``: refuses a YAML file, naming the ``yaml`` extra, when PyYAML is
+      not installed.
 
 Invoked by :func:`lib_layered_config.core._load_files` to parse structured files
 before passing the results to the merge policy.
@@ -388,33 +388,27 @@ def _run_parser(
         return _ParseOutcome(None, describe(exc))
 
 
-def _ensure_yaml_available() -> None:
-    """Announce clearly whether PyYAML can be reached.
+def _require_yaml_module(path: str) -> YAMLModule:
+    """Fetch the PyYAML module, or refuse the YAML file at *path* naming the extra that reads it.
 
-    YAML support is optional; the loader must fail fast with guidance when the
-    dependency is absent so callers can install the expected extra.
+    PyYAML ships only in the ``yaml`` extra. A refusal rather than :class:`NotFoundError`, which
+    every layer read treats as "no file here": skipping the file would drop its settings without a
+    word, and a deploy would install a file nothing had parsed.
 
-    Raises:
-        NotFoundError: When the PyYAML package cannot be imported.
-    """
-    _require_yaml_module()
-
-
-def _require_yaml_module() -> YAMLModule:
-    """Fetch the PyYAML module or explain its absence.
-
-    Downstream helpers need the module object for access to both ``safe_load``
-    and the package-specific ``YAMLError`` type.
+    Args:
+        path: The YAML file being read, named in the refusal.
 
     Returns:
         The imported PyYAML module.
 
     Raises:
-        NotFoundError: When PyYAML is not installed.
+        InvalidFormatError: When PyYAML is not installed.
     """
     module = _load_yaml_module()
     if module is None:
-        raise NotFoundError("PyYAML is required for YAML configuration support")
+        raise InvalidFormatError(
+            f"{path} is YAML, which needs PyYAML: install it with pip install 'lib_layered_config[yaml]'"
+        )
     return module
 
 
@@ -710,7 +704,9 @@ class YAMLFileLoader(BaseFileLoader):
             Parsed configuration mapping.
 
         Raises:
-            NotFoundError: When PyYAML is not installed.
+            NotFoundError: *path* is not a file (a missing file is skipped by a layer read).
+            InvalidFormatError: The file does not parse, or PyYAML is not installed (the message
+                names the ``yaml`` extra).
 
         Side Effects:
             Emits ``config_file_loaded`` debug events.
@@ -724,9 +720,10 @@ class YAMLFileLoader(BaseFileLoader):
             ...     YAMLFileLoader().load(tmp.name)["key"]
             ...     Path(tmp.name).unlink()
         """
-        _ensure_yaml_available()
-        yaml_module = _require_yaml_module()
+        # Read first: a file that is gone stays "not found" (a layer read skips it) whether or not
+        # PyYAML is installed; only a YAML file that is really there is refused for want of a parser.
         raw_bytes = self._read(path)
+        yaml_module = _require_yaml_module(path)
         try:
             decoded = decode_yaml_text(raw_bytes, path=path)
         except InvalidFormatError as exc:
