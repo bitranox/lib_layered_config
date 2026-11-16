@@ -1475,11 +1475,17 @@ display_config(
   `# layer:<layer> profile:<profile> (<path>)` comment above each value; `OutputFormat.JSON` (`"json"`) prints
   the data as indented JSON. Default: `OutputFormat.HUMAN`.
 - `section` (str | None, optional): Print only this top-level section. Default: `None` (everything).
-- `console` (rich `Console` | None, optional): Where the human format is written. Default: `None` (stdout).
+- `console` (rich `Console` | None, optional): Where the human format is written. A console you pass writes
+  to its own file as it is, so it raises where that file cannot encode a value. Default: `None` (stdout).
 - `profile` (str | None, optional): Profile name shown in the provenance comments. Default: `None`
   (`profile:none`).
 
 Both formats replace sensitive values with `***REDACTED***`.
+
+A character stdout cannot encode (CJK or an emoji on a Windows pipe, which uses the cp1252 code page) is
+written as an escape instead of raising `UnicodeEncodeError`, the way the CLI's `read` writes it: `\uXXXX`
+in JSON, which parses back to the same value, and a Python backslash escape (`\u6f22`, `\U0001f600`) in
+the human format. Characters stdout can encode, umlauts on cp1252 included, print as they are.
 
 **Raises:** `ValueError` for a `section` the configuration does not have (`"Section 'nope' not found"`) or an
 `output_format` that is not an `OutputFormat`.

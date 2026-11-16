@@ -119,6 +119,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `display_config` no longer fails on a stdout that cannot encode a value. A piped stdout on Windows uses
+  the cp1252 code page, and a CJK character or an emoji made the JSON view exit with nothing printed and
+  the human view stop part-way with `UnicodeEncodeError` (this reached every CLI built from the CLI
+  template through its `config` command). It now writes such a character as the CLI's `read` does:
+  `\uXXXX` in JSON, which parses back to the same value, and a Python backslash escape in the human
+  view; output on a stream that can encode everything is unchanged byte for byte. A `console` passed in
+  by the caller is written to as it is.
 - JSON output works under a config directory whose name is not valid UTF-8. On Linux a file name is
   bytes, and a path holding a byte that is not UTF-8 (a Latin-1 `x<0xFF>y`) in provenance, a deploy result
   or an error message made `read_config_json`, `Config.to_json` and every CLI `--json` output fail with

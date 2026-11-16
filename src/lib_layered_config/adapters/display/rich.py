@@ -16,6 +16,7 @@ System Role:
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,7 @@ from rich.text import Text
 from ...application.ports import OutputFormat
 from ...domain import json_codec
 from ...domain.redaction import REDACTED_PLACEHOLDER
+from .._stream_text import fit_json, fitted_console_file
 from .toml_text import is_array, is_table, toml_key, toml_path, toml_value
 
 if TYPE_CHECKING:
@@ -63,10 +65,14 @@ def _build_console() -> Console:
     output must do) has no effect on it. Building a fresh console per call
     makes the environment at CALL time the one that decides.
 
+    It writes through a fitting stream (``adapters/_stream_text.py``), so a character stdout
+    cannot encode (CJK or an emoji on a cp1252 pipe) is written as a backslash escape instead of
+    raising.
+
     Returns:
         A new ``Console`` with syntax highlighting disabled.
     """
-    return Console(highlight=False)
+    return Console(file=fitted_console_file(), highlight=False)
 
 
 def _format_source_line(info: SourceInfo, indent: str = "", *, profile: str | None = None) -> Text:
@@ -206,12 +212,16 @@ def display_config(
             OutputFormat.JSON for JSON. Defaults to OutputFormat.HUMAN.
         section: Optional section name to display only that section. When None,
             displays all configuration.
-        console: Optional Rich Console for output. When None, uses the module-level
-            default. Primarily useful for testing.
+        console: Optional Rich Console for the human format. When None, a console on stdout
+            that writes a character stdout cannot encode as a backslash escape. A console you
+            pass writes to its own file as it is, so it raises where that file cannot encode.
         profile: Optional profile name to include in provenance comments.
 
     Side Effects:
-        Writes formatted configuration to stdout via click.echo().
+        Writes formatted configuration to stdout. A character stdout cannot encode (CJK or an
+        emoji on a Windows cp1252 pipe) is written as an escape instead of raising: ``\\uXXXX``
+        in JSON, which parses back to the same value, and a Python backslash escape in the human
+        format, as the CLI's ``read`` does.
 
     Raises:
         ValueError: If a section was requested that doesn't exist, or *output_format* is not one
@@ -249,9 +259,9 @@ def _display_json(config: Config, section: str | None) -> None:
         if config.get(section, default=_ABSENT) is _ABSENT:
             raise ValueError(f"Section '{section}' not found")
         redacted = {section: config.get_redacted(section)}
-        click.echo(json_codec.dumps(redacted, indent=True))
+        click.echo(fit_json(json_codec.dumps(redacted, indent=True), sys.stdout))
     else:
-        click.echo(config.to_json(indent=2, redact=True))
+        click.echo(fit_json(config.to_json(indent=2, redact=True), sys.stdout))
 
 
 def _display_human(
