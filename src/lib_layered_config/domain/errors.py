@@ -9,6 +9,7 @@ Contents:
     - ``InvalidFormatError``: raised when structured configuration cannot be parsed.
     - ``ValidationError``: an identifier, platform or deploy argument was refused.
     - ``DeployDestinationError``: a deploy destination is a symbolic link or not a regular file.
+    - ``GenerateDestinationError``: an example path generation would write through is a link or not a file.
     - ``NotFoundError``: indicates optional configuration sources were absent.
 
 System Role:
@@ -21,6 +22,7 @@ from __future__ import annotations
 __all__ = [
     "ConfigError",
     "DeployDestinationError",
+    "GenerateDestinationError",
     "InvalidFormatError",
     "LayerRootNotAbsoluteError",
     "NotFoundError",
@@ -71,6 +73,17 @@ class DeployDestinationError(ValidationError):
     it, and it writes only regular files (reading a FIFO there would block), so every such
     destination is refused, one line each, before anything is written. A
     :class:`ValidationError`, so ``except ValidationError`` still catches every deploy refusal.
+    """
+
+
+class GenerateDestinationError(ValidationError):
+    """Raised when an example path generation would write is a symbolic link or not a regular file.
+
+    With ``force`` every such path is refused, one line each, before anything is written: writing
+    through a link changes the file it points at, a FIFO would block the write, and a directory,
+    device or socket cannot be an example. Without ``force`` an existing path is kept, so only a link
+    that resolves to nothing, which a plain create would write through, is refused. A
+    :class:`ValidationError`, so ``except ValidationError`` still catches it.
     """
 
 

@@ -1143,7 +1143,11 @@ lib_layered_config generate-examples --destination ./examples \
 **Returns:** JSON array of file paths created; existing files kept without `--force` are not in it
 (`--json` lists them under `skipped`). A `--slug`, `--vendor` or `--app` that is not a
 safe path segment (`../x`, an absolute path, a control character) is refused with
-`ValidationError` before anything is written, as `read` and `deploy` refuse it.
+`ValidationError` before anything is written, as `read` and `deploy` refuse it. With `--force`, an
+example path that is a symbolic link or not a regular file (a directory, FIFO, device or socket) is
+refused with `GenerateDestinationError` (exit code 22 on Linux and macOS, 87 on Windows), one line per path, before anything is
+written; without `--force` only a link that resolves to nothing is refused, and anything else already
+there is kept.
 
 **Examples:**
 

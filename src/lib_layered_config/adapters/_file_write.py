@@ -15,6 +15,7 @@ Contents:
     - ``FileFacts``: what a rename would change about a file.
     - ``must_write_in_place``: whether a rename would change the destination.
     - ``write_file``: write *source* to *path* by the rule above.
+    - ``write_data``: write bytes held in memory to *path* by the rule above, permission setting off.
 
 Extended attributes are read on Linux only; Python reads none on macOS or Windows, so there only
 hard links, owner, group and writability decide. On Windows the replaced file's access list (DACL)
@@ -25,21 +26,22 @@ it the directory's.
 from __future__ import annotations
 
 import errno
+import io
 import os
 import secrets
 import shutil
 import stat
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, BinaryIO, Final
 
 from ._windows_acl import copy_dacl
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
-__all__ = ["FileFacts", "must_write_in_place", "write_file"]
+__all__ = ["FileFacts", "must_write_in_place", "write_data", "write_file"]
 
 _TEMP_FLAGS: Final = (
     os.O_WRONLY
@@ -54,6 +56,8 @@ _TEMP_FLAGS: Final = (
 _RESTRICTED_MODE: Final = 0o600
 _PLAIN_MODE: Final = 0o666
 _TEMP_NAME_TRIES: Final = 100
+# Data already in memory is copied in pieces of this size; any size gives the same file.
+_DATA_CHUNK_BYTES: Final = 64 * 1024
 # A file system that keeps no extended attributes answers these; it has none to lose either.
 _NO_XATTR_SUPPORT: Final = frozenset({errno.ENOTSUP, errno.EOPNOTSUPP})
 
@@ -123,6 +127,36 @@ def write_file(path: Path, source: Path, *, restrict: bool, chunk_bytes: int, ac
         OSError: Reading *source* or writing *path* failed; *path* is then as it was, except when it
             had to be rewritten in place (see ``must_write_in_place``).
     """
+    _write(path, lambda: source.open("rb"), restrict=restrict, chunk_bytes=chunk_bytes, acl_from=acl_from)
+
+
+def write_data(path: Path, data: bytes) -> None:
+    """Write *data* to *path* with permission setting off, by the rule of :func:`write_file`.
+
+    Args:
+        path: The destination; its directory exists, and it is a regular file or missing.
+        data: The whole content.
+
+    Raises:
+        OSError: Writing *path* failed; *path* is then as it was, except when it had to be
+            rewritten in place (see ``must_write_in_place``).
+
+    Examples:
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     target = Path(tmp) / "example.toml"
+        ...     write_data(target, b"key = 1\\n")
+        ...     target.read_bytes(), sorted(p.name for p in Path(tmp).iterdir())
+        (b'key = 1\\n', ['example.toml'])
+    """
+    _write(path, lambda: io.BytesIO(data), restrict=False, chunk_bytes=_DATA_CHUNK_BYTES, acl_from=None)
+
+
+def _write(
+    path: Path, open_source: Callable[[], BinaryIO], *, restrict: bool, chunk_bytes: int, acl_from: Path | None
+) -> None:
+    """Write what *open_source* reads to *path*; see :func:`write_file`."""
     fd, temp = _create_temp(path, mode=_RESTRICTED_MODE if restrict else _PLAIN_MODE)
     try:
         # Written through the descriptor the create opened: taking the destination's mode (0o444,
@@ -130,11 +164,11 @@ def write_file(path: Path, source: Path, *, restrict: bool, chunk_bytes: int, ac
         with os.fdopen(fd, "wb") as handle:
             in_place = not restrict and _rename_would_change(path, temp)
             if not in_place:
-                with source.open("rb") as reader:
+                with open_source() as reader:
                     shutil.copyfileobj(reader, handle, chunk_bytes)
         if in_place:
             temp.unlink()
-            _rewrite_in_place(path, source, chunk_bytes)
+            _rewrite_in_place(path, open_source, chunk_bytes)
             return
         # Windows gives the new file its directory's ACL; keep the one the replaced file had.
         copy_dacl(acl_from if acl_from is not None else path, temp)
@@ -201,7 +235,7 @@ def _xattrs(path: Path) -> dict[str, bytes] | None:
         return {} if exc.errno in _NO_XATTR_SUPPORT else None
 
 
-def _rewrite_in_place(path: Path, source: Path, chunk_bytes: int) -> None:
-    """Overwrite *path* through its own inode; *source* is opened first, so an unreadable one leaves it."""
-    with source.open("rb") as reader, path.open("wb") as writer:
+def _rewrite_in_place(path: Path, open_source: Callable[[], BinaryIO], chunk_bytes: int) -> None:
+    """Overwrite *path* through its own inode; the source is opened first, so an unreadable one leaves it."""
+    with open_source() as reader, path.open("wb") as writer:
         shutil.copyfileobj(reader, writer, chunk_bytes)

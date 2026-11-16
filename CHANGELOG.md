@@ -85,6 +85,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   call (about 1.6 us of 190 us). Results are unchanged.
 
 ### Added
+- `GenerateDestinationError`, a `ValidationError` raised by `generate_examples` and `generate-examples`
+  for an example path it would write through (see Fixed).
 - Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal
   output: `{"ok": true, "command", "data", "skipped"}` on success and
   `{"ok": false, "command", "error": {"type", "message", "exit_code"}}` on failure, with the same exit
@@ -127,6 +129,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `generate_examples` and `generate-examples` no longer write through a link or wait on a FIFO at an
+  example path. With `force` (`--force`) a FIFO there blocked the run forever, a symbolic link made it
+  overwrite the file the link pointed at, outside the destination, and a directory ended it with a bare
+  `IsADirectoryError`; without `force` a symbolic link to nothing made it create the file the link
+  pointed at. Such paths are now refused with `GenerateDestinationError`, one line per path, before
+  anything is written: with `force`, every symbolic link and every path that is not a regular file;
+  without it, only a link that resolves to nothing, while anything else already there is kept as
+  before. A refusal exits 22 (87 on Windows). An example is now written as `deploy_config` writes with
+  permission setting off: through a temporary file renamed into place, so a failed write leaves the
+  old file, except that a file with other hard links, another owner or its own extended attributes is
+  rewritten in place.
 - An environment variable or `.env` key nested deeper than the merge allows (more than 100 `__`
   levels) is refused before it is built. The loader used to build the whole nested table for such a key
   and only then hand it to the merge, which refused it: a 3 MB `.env` holding one key of a million

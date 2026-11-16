@@ -12,6 +12,8 @@ Contents:
     - ``generate_examples_report`` / ``ExamplesReport``: the same run, also naming the files it
       kept, for the CLI's ``--json`` envelope.
     - ``_build_specs``: yields platform-aware specifications.
+    - ``_refuse_unwritable_examples``: refuses an example path it would write through, before
+      anything is written.
     - ``_write_spec`` / ``_should_write`` / ``_ensure_parent``: tiny filesystem
       helpers that narrate how files are written.
 
@@ -25,10 +27,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ._platform import normalise_examples_platform
-from .adapters._path_probe import PathKind, kind_or_raise
+from .adapters._file_write import write_data
+from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise
+from .domain.errors import GenerateDestinationError
 from .domain.identifiers import ExamplePlatform, validate_identifier, validate_vendor_app
 
 if TYPE_CHECKING:
@@ -46,6 +50,10 @@ __all__ = [
 
 DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 """Filename stub used for host-specific example files (documented in README)."""
+
+# Deploy's refusals, worded for generate: a reader of either error sees the same two rules.
+_LINK_REFUSAL: Final = "is a symbolic link; generate neither writes through nor replaces one"
+_NOT_REGULAR_REFUSAL: Final = "is not a regular file; generate writes only regular files"
 
 
 @dataclass(slots=True)
@@ -117,6 +125,11 @@ def generate_examples(
     Raises:
         ValidationError: Before anything is written, when *slug*, *vendor* or *app* is not a
             safe path segment, or *platform* is not a known platform name.
+        GenerateDestinationError: Before anything is written, one line per path: with *force*,
+            an example path that is a symbolic link or not a regular file (a directory, FIFO,
+            device or socket); without it, an example path that is a link resolving to nothing,
+            which a create would write through. Without *force* anything else already at an
+            example path is kept.
     """
     return generate_examples_report(
         destination, slug=slug, vendor=vendor, app=app, force=force, platform=platform
@@ -147,6 +160,7 @@ def generate_examples_report(
 
     Raises:
         ValidationError: As for :func:`generate_examples`.
+        GenerateDestinationError: As for :func:`generate_examples`.
 
     Examples:
         >>> from tempfile import TemporaryDirectory
@@ -222,10 +236,13 @@ def _write_examples(destination: Path, specs: Iterator[ExampleSpec], *, force: b
     Side Effects:
         Creates directories and writes files to disk.
     """
+    # Materialised up front: every path is checked before the first write. A run has a handful of
+    # fixed examples, so holding them costs nothing that grows with any input.
+    planned = [(destination / spec.relative_path, spec) for spec in specs]
+    _refuse_unwritable_examples([path for path, _ in planned], force=force)
     written: list[Path] = []
     kept: list[Path] = []
-    for spec in specs:
-        path = destination / spec.relative_path
+    for path, spec in planned:
         if not _should_write(path, force=force):
             kept.append(path)
             continue
@@ -236,9 +253,12 @@ def _write_examples(destination: Path, specs: Iterator[ExampleSpec], *, force: b
 
 
 def _write_spec(path: Path, spec: ExampleSpec) -> None:
-    """Persist ``spec`` content at *path* using UTF-8 encoding.
+    """Persist ``spec`` content at *path* as UTF-8, with this platform's line endings.
 
-    Keep the actual write primitive isolated for easy stubbing in tests.
+    Written through deploy's writer with permission setting off (user decision 2026-11-16, R3-F3):
+    a temp file renamed into place, so a failed write leaves the old example, except that a file a
+    rename would change (hard links, another owner, its own extended attributes) is rewritten in
+    place, as deploy does. ``os.linesep`` keeps what a text-mode write produced (CRLF on Windows).
 
     Args:
         path: Destination path for the example file.
@@ -247,7 +267,35 @@ def _write_spec(path: Path, spec: ExampleSpec) -> None:
     Side Effects:
         Writes UTF-8 text to *path*.
     """
-    path.write_text(spec.content, encoding="utf-8")
+    write_data(path, spec.content.replace("\n", os.linesep).encode("utf-8"))
+
+
+def _refuse_unwritable_examples(paths: list[Path], *, force: bool) -> None:
+    """Refuse every example path this run would write through, before anything is written.
+
+    Writing through a link changes the file it points at, a FIFO would block the write, and a
+    directory, device or socket cannot be an example (user decision 2026-11-16, R3-F3, as deploy).
+    Without *force* an existing path is kept untouched, so only a link that resolves to nothing,
+    which a create would follow, is refused; a link looping on itself is one of those.
+
+    Raises:
+        GenerateDestinationError: One line per refused path.
+    """
+    problems = [problem for problem in (_example_problem(path, force=force) for path in paths) if problem is not None]
+    if problems:
+        raise GenerateDestinationError("\n".join(problems))
+
+
+def _example_problem(path: Path, *, force: bool) -> str | None:
+    """Why this run cannot write *path*, or ``None`` when it may write or keep it."""
+    if is_symlink_or_raise(path):
+        # A loop reads as missing too (ELOOP); a target behind a permission wall raises the OS error.
+        if force or kind_or_raise(path) is PathKind.MISSING:
+            return f"{path} {_LINK_REFUSAL}"
+        return None
+    if not force or kind_or_raise(path) in (PathKind.MISSING, PathKind.FILE):
+        return None
+    return f"{path} {_NOT_REGULAR_REFUSAL}"
 
 
 def _should_write(path: Path, *, force: bool) -> bool:

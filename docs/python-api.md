@@ -35,6 +35,7 @@ from lib_layered_config import (
     ModeKind,
     DeployModeError,
     DeployDestinationError,
+    GenerateDestinationError,
     LayerModes,
     DeployPermissions,
     DeployPermissionsError,
@@ -1303,7 +1304,13 @@ arguments and returns an `ExamplesReport` with `.created` and `.kept`.
 **Raises:** `ValidationError` before anything is written when `slug`, `vendor` or `app` is not a
 safe path segment (`../x`, an absolute path, a control character, empty), checked like
 `read_config` checks them, or when `platform` is not one of the names above. `vendor` and `app`
-may contain spaces; `slug` may not.
+may contain spaces; `slug` may not. `GenerateDestinationError`, also before anything is written and one
+line per path: with `force=True`, an example path that is a symbolic link (dangling or not) or not a
+regular file (a directory, FIFO, device or socket); without it, an example path that is a link
+resolving to nothing, which a create would write through. Without `force` anything else already at an
+example path is kept. A written example replaces the old one through a temporary file, except that a
+file with other hard links, another owner or its own extended attributes is rewritten in place, as
+`deploy_config` does with permission setting off.
 
 **Examples:**
 
@@ -1573,6 +1580,7 @@ Exception
         +-- DeployModeError         a refused dir_mode / file_mode
         +-- DeployPermissionsError  unusable permission settings
         +-- DeployDestinationError  a deploy destination is a symbolic link or not a regular file
+        +-- GenerateDestinationError  an example path generate would write through is a link or not a regular file
         +-- LayerRootNotAbsoluteError  a Windows root (ProgramData, APPDATA, LOCALAPPDATA) that is not absolute
 ```
 
@@ -1850,6 +1858,8 @@ Exported from the package root, used to configure or override `deploy_config`'s 
 - `DeployModeError`: A permission setting was refused; the message names the reason or every offending bit.
 - `DeployDestinationError`: A file deploy would write is a symbolic link or not a regular file; one line each,
   nothing written.
+- `GenerateDestinationError`: An example path `generate_examples` would write through is a symbolic link or not a
+  regular file (without `force`, only a link resolving to nothing); one line each, nothing written.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
   per bad value, and `.hint` (optional) suggests a way to deploy anyway.
 - `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.
