@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lib_layered_config._layers import (
     _load_entry,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
     _note_layer_error,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
-    _paths_in_preferred_order,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
     _snapshots_from_paths,  # pyright: ignore[reportPrivateUsage] - unit tests of the layer-loading helper itself
     merge_or_empty,
 )
@@ -18,6 +16,8 @@ from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
 
@@ -55,22 +55,9 @@ def test_snapshots_from_paths_skip_entries_without_loaders(tmp_path: Path) -> No
     stray = tmp_path / "orphan.ini"
     stray.write_text("ignored", encoding="utf-8")
 
-    snapshots = list(_snapshots_from_paths(Layer.APP, [str(stray)], None))
+    snapshots = list(_snapshots_from_paths(Layer.APP, [str(stray)]))
 
     assert snapshots == []
-
-
-@os_agnostic
-def test_paths_in_preferred_order_honours_declared_priority(tmp_path: Path) -> None:
-    candidates = [
-        str(tmp_path / "payload.json"),
-        str(tmp_path / "payload.toml"),
-        str(tmp_path / "payload.yaml"),
-    ]
-
-    ordered = _paths_in_preferred_order(candidates, ["yaml", "toml"])
-
-    assert [Path(entry).suffix for entry in ordered] == [".yaml", ".toml", ".json"]
 
 
 @os_agnostic

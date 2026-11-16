@@ -39,7 +39,7 @@ from .domain.identifiers import Layer
 from .observability import log_debug, log_info, log_warn, make_event
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
     from .adapters.dotenv.default import DefaultDotEnvLoader
     from .adapters.path_resolvers.default import DefaultPathResolver
@@ -60,7 +60,6 @@ __all__ = ["collect_deploy_layers", "collect_layers", "merge_or_empty", "parse_w
 def collect_layers(
     *,
     resolver: DefaultPathResolver,
-    prefer: Sequence[str] | None,
     default_file: str | None,
     dotenv_loader: DefaultDotEnvLoader,
     env_loader: DefaultEnvLoader,
@@ -76,7 +75,6 @@ def collect_layers(
     """
     return _snapshots_in_merge_sequence(
         resolver=resolver,
-        prefer=prefer,
         default_file=default_file,
         dotenv_loader=dotenv_loader,
         env_loader=env_loader,
@@ -125,7 +123,7 @@ def _deploy_filesystem_snapshots(resolver: DefaultPathResolver, *, skip: frozens
             log_debug("layer_root_not_absolute", **make_event(layer, None, {"reason": str(exc)}))
             continue
         files = 0
-        for snapshot in _snapshots_from_paths(layer, candidates, None, skip=skip):
+        for snapshot in _snapshots_from_paths(layer, candidates, skip=skip):
             files += 1
             yield snapshot
         if files:
@@ -153,7 +151,6 @@ def _without_user_layer_system_modes(snapshots: Iterable[LayerSnapshot]) -> Iter
 def _snapshots_in_merge_sequence(
     *,
     resolver: DefaultPathResolver,
-    prefer: Sequence[str] | None,
     default_file: str | None,
     dotenv_loader: DefaultDotEnvLoader,
     env_loader: DefaultEnvLoader,
@@ -167,7 +164,7 @@ def _snapshots_in_merge_sequence(
     in one generator so callers cannot accidentally skip a layer.
 
     Args:
-        resolver / prefer / default_file / dotenv_loader / env_loader / slug / start_dir:
+        resolver / default_file / dotenv_loader / env_loader / slug / start_dir:
             Same meaning as :func:`collect_layers`.
         dotenv_path: When set, load this specific file instead of searching.
 
@@ -175,7 +172,7 @@ def _snapshots_in_merge_sequence(
         LayerSnapshot: Snapshot tuples ready for the merge policy.
     """
     yield from _default_snapshots(default_file)
-    yield from _filesystem_snapshots(resolver, prefer)
+    yield from _filesystem_snapshots(resolver)
     yield from _dotenv_snapshots(dotenv_loader, start_dir, dotenv_path=dotenv_path)
     yield from _env_snapshots(env_loader, slug)
 
@@ -265,7 +262,6 @@ def _refuse_an_unloadable_default_file(path: Path) -> None:
 
 def _filesystem_snapshots(
     resolver: DefaultPathResolver,
-    prefer: Sequence[str] | None,
     *,
     skip: frozenset[Path] = frozenset(),
 ) -> Iterator[LayerSnapshot]:
@@ -273,7 +269,6 @@ def _filesystem_snapshots(
 
     Args:
         resolver: Path resolver supplying candidate paths per layer.
-        prefer: Optional suffix ordering applied when multiple files exist.
         skip: Resolved paths that are not loaded (empty for every normal read).
 
     Yields:
@@ -282,7 +277,7 @@ def _filesystem_snapshots(
     for layer, paths in _filesystem_layer_paths(resolver):
         # Streamed, so the layer's file count is noted after its files, not before.
         files = 0
-        for snapshot in _snapshots_from_paths(layer, paths(), prefer, skip=skip):
+        for snapshot in _snapshots_from_paths(layer, paths(), skip=skip):
             files += 1
             yield snapshot
         if files:
@@ -341,24 +336,22 @@ def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapsho
 def _snapshots_from_paths(
     layer: Layer,
     paths: Iterable[str],
-    prefer: Sequence[str] | None,
     *,
     skip: frozenset[Path] = frozenset(),
 ) -> Iterator[LayerSnapshot]:
-    """Yield snapshots for every supported file inside *paths*.
+    """Yield snapshots for every supported file inside *paths*, in the resolver's order.
 
     Each path is expanded to include any companion ``.d`` directory files.
 
     Args:
         layer: The layer the files belong to.
         paths: Iterable of candidate file paths.
-        prefer: Optional suffix ordering hint passed by the CLI/API.
         skip: Resolved paths that are not loaded (empty for every normal read).
 
     Yields:
         LayerSnapshot: Snapshot for each successfully loaded file.
     """
-    for path in _paths_in_preferred_order(paths, prefer):
+    for path in paths:
         yield from _load_entry_with_dot_d(layer, path, skip=skip)
 
 
@@ -436,30 +429,6 @@ def parse_with_dot_d(path: Path) -> None:
     """
     for _ in _load_entry_with_dot_d(Layer.DEFAULTS, str(path)):
         pass
-
-
-def _paths_in_preferred_order(paths: Iterable[str], prefer: Sequence[str] | None) -> list[str]:
-    """Return candidate paths honouring the optional *prefer* order.
-
-    Args:
-        paths: Iterable of candidate file paths.
-        prefer: Optional sequence of preferred suffixes ordered by priority.
-
-    Returns:
-        list[str]: Candidate paths sorted according to preferred suffix ranking.
-
-    Examples:
-        >>> _paths_in_preferred_order(
-        ...     ['a.toml', 'b.yaml'],
-        ...     prefer=('yaml', 'toml'),
-        ... )
-        ['b.yaml', 'a.toml']
-    """
-    ordered = list(paths)
-    if not prefer:
-        return ordered
-    ranking = {suffix.lower().lstrip("."): index for index, suffix in enumerate(prefer)}
-    return sorted(ordered, key=lambda candidate: ranking.get(Path(candidate).suffix.lower().lstrip("."), len(ranking)))
 
 
 def _note_layer_loaded(layer: Layer, path: str | None, details: Mapping[str, object]) -> None:

@@ -267,7 +267,6 @@ def read_config_raw(
         raise LayerLoadError(str(exc)) from exc
     layers = collect_layers(
         resolver=resolver,
-        prefer=prefer,
         default_file=_stringify_path(default_file),
         dotenv_loader=dotenv_loader,
         env_loader=env_loader,
