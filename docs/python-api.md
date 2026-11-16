@@ -946,7 +946,8 @@ refusal rule.
 <path>"` for a FIFO, device or socket), `LayerLoadError`
 (the source is not a `.toml` file, or does not parse as TOML: `"<path> is not valid TOML (line N, column M)"`;
 nothing is written), `PermissionError` (the source, a file in its `.d`
-directory, or a destination sits behind a permission wall; the same on every Python), `ValidationError` (an invalid `vendor`, `app`,
+directory, or a destination cannot be read or sits behind a permission wall; the same on every Python, and for
+the source and its `.d` files in every mode, before anything is written), `ValidationError` (an invalid `vendor`, `app`,
 `slug` or `profile`, an unknown target, or `force` with `batch`, before anything is written; a `conflict_resolver`
 answer other than `OVERWRITTEN` or `KEPT`, when that destination is reached, so the files deployed before it stay
 written), `DeployModeError` (a refused `dir_mode` /

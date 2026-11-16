@@ -43,7 +43,7 @@ from .adapters.path_resolvers._linux import etc_root, xdg_config_home
 from .adapters.path_resolvers._macos import mac_app_root, mac_home_root
 from .adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
 from .adapters.path_resolvers.default import DefaultPathResolver
-from .core import read_config_for_deploy, refuse_an_unparseable_deploy_source
+from .core import read_config_for_deploy, refuse_an_unusable_deploy_source
 from .domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from .domain.deploy_permissions import (
     OVERRIDE_SOURCE,
@@ -780,8 +780,9 @@ def deploy_config(
         LayerLoadError: The source is not a ``.toml`` file (every destination is read only as
             TOML), or it or a configuration file in its ``.d`` directory does not parse; refused
             in every mode, before anything is written.
-        PermissionError: The source, a file in its ``.d`` directory, or a destination sits behind
-            a permission wall (an ``OSError`` in general); the same on every Python.
+        PermissionError: The source, a file in its ``.d`` directory, or a destination cannot be
+            read or sits behind a permission wall (an ``OSError`` in general); the same on every
+            Python, and for the source in every mode before anything is written.
         ValidationError: An invalid vendor, app, slug or profile, an unknown target, *targets*
             given as a single str, or force and batch both set (one overwrites an existing file,
             the other keeps it), refused before anything is written; or a conflict_resolver
@@ -809,7 +810,7 @@ def deploy_config(
     # Every mode, before anything is written: explicit modes skip the configuration read that
     # would otherwise parse the source, and a deployed file the application cannot load is worse
     # than no file.
-    refuse_an_unparseable_deploy_source(source_path)
+    refuse_an_unusable_deploy_source(source_path)
     source_dot_d = _get_dot_d_dir(source_path)
     dot_d_files = _collect_dot_d_sources(source_dot_d)
     resolver = _prepare_resolver(

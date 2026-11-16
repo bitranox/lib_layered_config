@@ -78,17 +78,51 @@ def test_a_walled_source_raises_permission_error_and_writes_nothing(
     assert not (sandbox.roots["user"] / "config.toml").exists()
 
 
+_EVERY_MODE = pytest.mark.parametrize("set_permissions", [None, True, False], ids=["configured", "on", "off"])
+
+
 @posix_only
 @needs_wall
+@_EVERY_MODE
 def test_a_dot_d_directory_that_cannot_be_entered_raises_instead_of_dropping_its_files(
-    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, source_with_unenterable_dot_d: Path
+    sandbox: LayeredSandbox,
+    monkeypatch: pytest.MonkeyPatch,
+    source_with_unenterable_dot_d: Path,
+    set_permissions: bool | None,
 ) -> None:
-    # set_permissions=False skips deploy's own read of the configuration, which would otherwise
-    # refuse the walled .d file first; the .d collection is then the only thing that can notice.
     with pytest.raises(PermissionError):
-        _deploy(sandbox, monkeypatch, source_with_unenterable_dot_d, set_permissions=False)
+        _deploy(sandbox, monkeypatch, source_with_unenterable_dot_d, set_permissions=set_permissions)
 
     assert not (sandbox.roots["user"] / "config.toml").exists()
+
+
+@pytest.fixture(params=["source", "dot_d_file"])
+def unreadable_file_source(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Path]:
+    """A source whose own file, or one file in its ``.d`` directory, cannot be read (mode 000)."""
+    source_dir = tmp_path / "src"
+    dot_d = source_dir / "config.d"
+    dot_d.mkdir(parents=True)
+    source = source_dir / "config.toml"
+    source.write_text("[service]\nport = 1\n", encoding="utf-8")
+    (dot_d / "10-db.toml").write_text("[db]\nhost = 'h'\n", encoding="utf-8")
+    walled = source if request.param == "source" else dot_d / "10-db.toml"
+    walled.chmod(0)
+    yield source
+    walled.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+
+@posix_only
+@needs_wall
+@_EVERY_MODE
+def test_an_unreadable_source_file_raises_permission_error_in_every_mode(
+    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch, unreadable_file_source: Path, set_permissions: bool | None
+) -> None:
+    # The configured-modes read used to hit the file first and raise DeployPermissionsError, whose
+    # "give both modes" remedy cannot work: the copy reads the same file.
+    with pytest.raises(PermissionError):
+        _deploy(sandbox, monkeypatch, unreadable_file_source, set_permissions=set_permissions)
+
+    assert list(sandbox.roots["user"].rglob("*.toml")) == []
 
 
 @posix_only

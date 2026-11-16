@@ -331,13 +331,16 @@ def read_config_for_deploy(
     return _compose_config(result.data, result.provenance)
 
 
-def refuse_an_unparseable_deploy_source(source: Path) -> None:
-    """Refuse a deploy *source*, or a file in its ``.d`` directory, that the application could not load.
+def refuse_an_unusable_deploy_source(source: Path) -> None:
+    """Refuse a deploy *source*, or a file in its ``.d`` directory, that cannot be read or loaded.
 
-    A file that cannot be read is not refused here: deploy reports it as the ``OSError`` its
-    contract names, when it reads the file to copy it.
+    It runs before anything is written and before deploy reads its configured modes, which read the
+    source too and would report an unreadable one as unknown modes - a remedy (give both modes)
+    that cannot work, since the copy reads the same file.
 
     Raises:
+        OSError: A file cannot be read; the read's own error (``PermissionError`` behind a
+            permission wall), as the copy would raise it.
         LayerLoadError: The source is not a ``.toml`` file, or a file does not parse (the loader's
             content-free message, naming the file).
     """
@@ -352,8 +355,9 @@ def refuse_an_unparseable_deploy_source(source: Path) -> None:
     try:
         parse_with_dot_d(source)
     except InvalidFormatError as exc:
-        if isinstance(exc.__cause__, OSError):
-            return
+        unreadable = exc.__cause__
+        if isinstance(unreadable, OSError):
+            raise unreadable from None
         raise LayerLoadError(str(exc)) from exc
 
 
@@ -510,5 +514,5 @@ __all__ = [
     "read_config_for_deploy",
     "read_config_json",
     "read_config_raw",
-    "refuse_an_unparseable_deploy_source",
+    "refuse_an_unusable_deploy_source",
 ]

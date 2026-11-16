@@ -399,6 +399,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `read_config` raised `RuntimeError` and loaded nothing. On Windows a set `APPDATA` or `LOCALAPPDATA` no
   longer asks for the home directory at all. A deploy to the `user` target still raises `RuntimeError`,
   now naming `HOME` and the user-root variables.
+- `deploy` / `deploy_config` raise `PermissionError` for a source, or a file in its `.d` directory, that
+  cannot be read, in every mode and before anything is written, as documented. With permissions set (the
+  default) it raised `DeployPermissionsError` saying the configured modes were unknown and to give both
+  modes, which could not help; with a `.d` file unreadable and `set_permissions=False` the main file was
+  written before the error.
 - `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
   does not parse, in every mode and before anything is written, with `LayerLoadError` and the
   loader's message. Before, the source was parsed only while reading the configured permission
