@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Security
+- On Windows, a deploy that replaces a file keeps the file's access list. A forced or confirmed deploy
+  writes a new file and renames it over the old one, and backs the old one up with a copy; on Windows a
+  new file takes the access list its directory passes down, so a `config.toml` restricted to its user
+  with `icacls /inheritance:r` or `Set-Acl` came back readable by everyone the directory lets in
+  (SYSTEM, Administrators, and any group the directory grants), and so did its `.bak`. The replaced
+  file's DACL, protected or inherited as it was, now goes onto the new file, the `.bak` and the `.ucf`
+  sidecar. The owner is not copied. A file deployed for the first time still takes its directory's
+  access list, and a volume without access lists (FAT, exFAT) is unchanged.
 - `deploy` refuses a destination that is a symbolic link, dangling or not, with
   `DeployDestinationError` (a `ValidationError`): `"<path> is a symbolic link; deploy neither writes
   through nor replaces one"`, one line per link, `.d` copies included, before anything is written. Before,

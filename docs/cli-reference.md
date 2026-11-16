@@ -811,7 +811,7 @@ it does not apply the user-file rule above.
 | **macOS**   | Full permission support via `chmod()`                   |
 | **Windows** | Permissions skipped (Windows uses ACLs, not Unix modes) |
 
-> **Note:** On Windows, file access control should be managed through Windows ACLs (Access Control Lists) using native tools like `icacls` or PowerShell's `Set-Acl`. The library does not attempt to set Windows ACLs.
+> **Note:** On Windows, file access control should be managed through Windows ACLs (Access Control Lists) using native tools like `icacls` or PowerShell's `Set-Acl`. The library sets no ACL of its own, but a deploy that replaces a file keeps the access list that file had: the new file, its `.bak` backup and a `.ucf` sidecar get the replaced file's DACL, protected or inherited as it was. A file deployed for the first time takes its directory's.
 
 ---
 
@@ -873,6 +873,8 @@ $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
 $acl.SetAccessRule($rule)
 Set-Acl "$env:APPDATA\Acme\MyApp\config.toml" $acl
 ```
+
+A forced or confirmed deploy keeps such a restricted ACL on the new file and on its `.bak` and `.ucf` copies; the file's owner is not copied, a replaced file is owned by the user who deployed it.
 
 For system-wide configuration in `%ProgramData%`, use Windows built-in permissions that allow read access for all users but write access only for administrators.
 

@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from ._platform import normalise_resolver_platform
 from .adapters._file_write import write_file
 from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
+from .adapters._windows_acl import copy_dacl
 from .adapters.file_loaders._dot_d import in_dot_d_order
 from .adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
 from .adapters.path_resolvers.default import DefaultPathResolver
@@ -255,6 +256,8 @@ def _backup_file(path: Path) -> Path:
     backup = _next_available_path(path, _Sidecar.BACKUP)
     try:
         shutil.copy2(path, backup)
+        # copy2 does not copy a Windows access list; the backup holds the same secrets as the file.
+        copy_dacl(path, backup)
     except BaseException:
         # A half-written backup would read as a whole one later; the deploy stops here, path untouched.
         backup.unlink(missing_ok=True)
@@ -267,7 +270,7 @@ def _write_ucf(destination: Path, source: Path, *, modes: LayerModes | None) -> 
 
     The .ucf sidecar can hold the same secrets as the primary file, so it gets the
     same layer-appropriate permission hardening (e.g. 0o600 for the user layer) rather
-    than being left at the umask default.
+    than being left at the umask default, and on Windows the primary file's access list.
 
     Args:
         destination: Original destination path.
@@ -281,7 +284,7 @@ def _write_ucf(destination: Path, source: Path, *, modes: LayerModes | None) -> 
     ucf_path.parent.mkdir(parents=True, exist_ok=True)
     if modes is not None:
         apply_mode(ucf_path.parent, modes.directory)
-    _write_from(ucf_path, source, restrict=modes is not None)
+    _write_from(ucf_path, source, restrict=modes is not None, acl_from=destination)
     if modes is not None:
         apply_mode(ucf_path, modes.file)
     return ucf_path
@@ -1205,13 +1208,14 @@ def _copy_file(destination: Path, source: Path, *, modes: LayerModes | None) -> 
         apply_mode(destination, modes.file)
 
 
-def _write_from(path: Path, source: Path, *, restrict: bool = False) -> None:
+def _write_from(path: Path, source: Path, *, restrict: bool = False, acl_from: Path | None = None) -> None:
     """Write the content of *source* to *path*, :data:`_CHUNK_BYTES` at a time, never leaving it torn.
 
     The content goes to a temp file beside *path* that is renamed into place, so a failed write
     leaves the old file (see ``adapters._file_write``). With ``restrict`` (permissions will be
     tightened) the temp file is owner-only, so a secret is never readable before the chmod. Without
     it the new file keeps the old one's mode, and a destination a rename would change - hard links,
-    another owner, its own extended attributes - is rewritten in place.
+    another owner, its own extended attributes - is rewritten in place. On Windows the new file gets
+    the access list of *acl_from*, by default of the file it replaces.
     """
-    write_file(path, source, restrict=restrict, chunk_bytes=_CHUNK_BYTES)
+    write_file(path, source, restrict=restrict, chunk_bytes=_CHUNK_BYTES, acl_from=acl_from)

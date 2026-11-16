@@ -17,7 +17,9 @@ Contents:
     - ``write_file``: write *source* to *path* by the rule above.
 
 Extended attributes are read on Linux only; Python reads none on macOS or Windows, so there only
-hard links, owner, group and writability decide.
+hard links, owner, group and writability decide. On Windows the replaced file's access list (DACL)
+is copied onto the new one before the rename (``_windows_acl.copy_dacl``), so a rename never gives
+it the directory's.
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ import stat
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
+
+from ._windows_acl import copy_dacl
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -102,7 +106,7 @@ def must_write_in_place(target: FileFacts, fresh: FileFacts) -> bool:
     )
 
 
-def write_file(path: Path, source: Path, *, restrict: bool, chunk_bytes: int) -> None:
+def write_file(path: Path, source: Path, *, restrict: bool, chunk_bytes: int, acl_from: Path | None = None) -> None:
     """Write the content of *source* to *path*, *chunk_bytes* at a time.
 
     Args:
@@ -111,6 +115,9 @@ def write_file(path: Path, source: Path, *, restrict: bool, chunk_bytes: int) ->
         restrict: Permission setting is on: the temp file is owner-only and always renamed into
             place, the caller setting the layer's mode afterwards.
         chunk_bytes: How much of *source* is held at once.
+        acl_from: On Windows, the file whose access list the new file gets before it is renamed
+            into place; ``None`` takes the replaced file's, and a new file then keeps its
+            directory's.
 
     Raises:
         OSError: Reading *source* or writing *path* failed; *path* is then as it was, except when it
@@ -129,6 +136,8 @@ def write_file(path: Path, source: Path, *, restrict: bool, chunk_bytes: int) ->
             temp.unlink()
             _rewrite_in_place(path, source, chunk_bytes)
             return
+        # Windows gives the new file its directory's ACL; keep the one the replaced file had.
+        copy_dacl(acl_from if acl_from is not None else path, temp)
         temp.replace(path)
     except BaseException:
         temp.unlink(missing_ok=True)
