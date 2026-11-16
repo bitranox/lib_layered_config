@@ -119,6 +119,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `deploy_config` (and `deploy_config_paths`, `read_deploy_config`) says what a source that is not a
+  regular file is: `"Configuration source is a directory, not a file: <path>"`, or `"Configuration source is
+  not a regular file: <path>"` for a FIFO, device or socket. Both used to read `"Configuration source not
+  found"`, as a missing path still does. The exception is still `FileNotFoundError`, so the CLI exit code
+  (2) is unchanged.
 - On a platform without a layout of its own (a `sys.platform` that is neither Linux, macOS nor
   Windows: FreeBSD, Solaris, Cygwin) the reader now uses the Linux layout, the one `deploy` already
   wrote there. Before, it read no app, host or user file at all, so a file `deploy` had just written was

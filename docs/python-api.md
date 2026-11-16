@@ -933,8 +933,10 @@ Copy a source configuration file into one or more layer directories with conflic
 [cli-reference.md#-file-permissions](cli-reference.md#-file-permissions) for the full resolution order and the
 refusal rule.
 
-**Raises:** `FileNotFoundError` (the source does not exist, or is not a regular file - a directory, FIFO,
-device or socket; the message reads `"Configuration source not found: <path>"` for all of them), `LayerLoadError`
+**Raises:** `FileNotFoundError` (the source is not a regular file; the message says what is there:
+`"Configuration source not found: <path>"` for a missing path or a dangling link,
+`"Configuration source is a directory, not a file: <path>"`, or `"Configuration source is not a regular file:
+<path>"` for a FIFO, device or socket), `LayerLoadError`
 (the source is not a `.toml` file, or does not parse as TOML: `"<path> is not valid TOML (line N, column M)"`;
 nothing is written), `PermissionError` (the source, a file in its `.d`
 directory, or a destination sits behind a permission wall; the same on every Python), `ValueError` (an invalid `profile` name),
@@ -1253,7 +1255,7 @@ about to replace no longer parses.
   resolved before it is compared, so any spelling of a path matches; a single `str` or `Path` given as
   `skip` raises `TypeError`.
 
-**Raises:** `FileNotFoundError` for a source that does not exist or is not a regular file, `ValueError` for an invalid profile, `ValidationError`
+**Raises:** `FileNotFoundError` for a source that does not exist or is not a regular file (worded as for `deploy_config`), `ValueError` for an invalid profile, `ValidationError`
 for an unknown target (`deploy_config_paths`), and `LayerLoadError` for a file not left out that cannot be
 read or parsed (`read_deploy_config`).
 
@@ -1568,7 +1570,7 @@ Exception
   as an empty layer (a missing `default_file` loads nothing) and do not raise it.
 
 Errors from the operating system and the standard library pass through as they are: `FileNotFoundError` for a
-deploy source that does not exist, `PermissionError` behind a permission wall, `TypeError` for an argument of
+deploy source that does not exist or is not a regular file, `PermissionError` behind a permission wall, `TypeError` for an argument of
 the wrong type.
 
 ```python

@@ -31,7 +31,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from ._platform import normalise_resolver_platform
 from .adapters._file_write import write_file
@@ -758,7 +758,8 @@ def deploy_config(
         Each result may contain nested ``dot_d_results`` for .d file deployments.
 
     Raises:
-        FileNotFoundError: If the source file does not exist.
+        FileNotFoundError: The source is not a regular file; the message says whether it is missing, a
+            directory, or something else (a FIFO, device or socket).
         LayerLoadError: The source is not a ``.toml`` file (every destination is read only as
             TOML), or it or a configuration file in its ``.d`` directory does not parse; refused
             in every mode, before anything is written.
@@ -863,7 +864,8 @@ def deploy_config_paths(
         The resolved paths.
 
     Raises:
-        FileNotFoundError: The source file does not exist.
+        FileNotFoundError: The source is not a regular file; the message says whether it is missing, a
+            directory, or something else (a FIFO, device or socket).
         PermissionError: The source or its ``.d`` directory sits behind a permission wall.
         ValueError: The profile name is invalid.
         ValidationError: A target is not one of app, host and user.
@@ -920,7 +922,8 @@ def read_deploy_config(
 
     Raises:
         TypeError: *skip* is a single ``str`` or ``Path`` rather than an iterable of them.
-        FileNotFoundError: The source file does not exist.
+        FileNotFoundError: The source is not a regular file; the message says whether it is missing, a
+            directory, or something else (a FIFO, device or socket).
         LayerLoadError: A file not left out cannot be read, decoded or parsed.
         ValueError: The profile name is invalid.
 
@@ -947,11 +950,21 @@ def read_deploy_config(
     return read_config_for_deploy(resolver=resolver, default_file=source_path, skip=left_out)
 
 
+#: What a deploy says of a source that is not a regular file, by what is there. Every one is a
+#: ``FileNotFoundError``, so a caller's ``except`` and the CLI's exit code do not depend on the kind.
+_SOURCE_REFUSALS: Final[dict[PathKind, str]] = {
+    PathKind.MISSING: "Configuration source not found: {path}",
+    PathKind.DIRECTORY: "Configuration source is a directory, not a file: {path}",
+    PathKind.OTHER: "Configuration source is not a regular file: {path}",
+}
+
+
 def _existing_source(source: str | Path) -> Path:
-    """Return *source* as a path, refusing one that is not a file as the deploy refuses it."""
+    """Return *source* as a path, refusing one that is not a regular file with what is there instead."""
     source_path = Path(source)
-    if kind_or_raise(source_path) is not PathKind.FILE:
-        raise FileNotFoundError(f"Configuration source not found: {source_path}")
+    kind = kind_or_raise(source_path)
+    if kind is not PathKind.FILE:
+        raise FileNotFoundError(_SOURCE_REFUSALS[kind].format(path=source_path))
     return source_path
 
 
