@@ -43,9 +43,9 @@ from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH
 from .domain.redaction import NotSensitiveKeys, redact_mapping
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterable, Sequence
 
-    from .application.merge import LayerSnapshot, MergeResult
+    from .application.merge import MergeResult
     from .application.ports import SourceInfoPayload
 
 
@@ -272,23 +272,12 @@ def read_config_raw(
         start_dir=start_dir_text,
         dotenv_path=_stringify_path(dotenv_path),
     )
-    return merge_or_empty(_load_errors_as_layer_load_error(layers))
-
-
-def _load_errors_as_layer_load_error(layers: Iterator[LayerSnapshot]) -> Iterator[LayerSnapshot]:
-    """Pass *layers* through, turning an ``InvalidFormatError`` raised while producing one into ``LayerLoadError``.
-
-    The layers are produced lazily, inside the merge's loop, so a wrap around the merge would also
-    catch what the merge itself raises; this wraps only the step that reads and parses a layer.
-    """
-    while True:
-        try:
-            snapshot = next(layers)
-        except StopIteration:
-            return
-        except InvalidFormatError as exc:
-            raise LayerLoadError(str(exc)) from exc
-        yield snapshot
+    # The layers are read lazily inside the merge's loop, so this one wrap covers a file that does
+    # not load and the merge's own refusal (nesting past its depth) alike.
+    try:
+        return merge_or_empty(layers)
+    except InvalidFormatError as exc:
+        raise LayerLoadError(str(exc)) from exc
 
 
 #: What a caller passing ``prefer`` is told. A layer has one main file, ``config.toml``, so a suffix

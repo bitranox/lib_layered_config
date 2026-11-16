@@ -37,6 +37,10 @@ if TYPE_CHECKING:
 #: clear ``InvalidFormatError`` well before the interpreter stack limit.
 _MAX_MERGE_DEPTH: Final[int] = 100
 
+#: How much of the key path a too-deep refusal shows: enough to find the table in the file,
+#: bounded because a key can be as long as the file allows.
+_DEPTH_KEY_SHOWN: Final[int] = 80
+
 #: A list index is ASCII digits only: ``str.isdigit`` also accepts superscripts and other
 #: scripts' digits, which ``int()`` either refuses or reads as a number nobody typed.
 _LIST_INDEX_KEY: Final[re.Pattern[str]] = re.compile(r"[0-9]+")
@@ -225,7 +229,7 @@ def _descend(
         InvalidFormatError: When nesting exceeds :data:`_MAX_MERGE_DEPTH`.
     """
     if len(segments) > _MAX_MERGE_DEPTH:
-        raise InvalidFormatError(f"Configuration nesting exceeds the maximum depth of {_MAX_MERGE_DEPTH}")
+        raise InvalidFormatError(_too_deep(snapshot, segments))
     spellings = _StoredSpellings(target) if snapshot.name in _CASE_FOLDED_LAYERS else None
     for incoming_key, value in incoming.items():
         key = incoming_key if spellings is None else spellings.resolve(incoming_key, segments, snapshot)
@@ -236,6 +240,23 @@ def _descend(
             )
         else:
             _store_scalar(target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot)
+
+
+def _too_deep(snapshot: LayerSnapshot, segments: Sequence[str]) -> str:
+    """Say where *snapshot* nests past :data:`_MAX_MERGE_DEPTH`: its file, else its layer, and the key path.
+
+    The key path is cut to :data:`_DEPTH_KEY_SHOWN` characters; its start is what finds the table.
+
+    Examples:
+        >>> _too_deep(LayerSnapshot(Layer.ENV, {}, None), ["k0", "k1"])
+        'environment: configuration nesting exceeds the maximum depth of 100 at k0.k1'
+        >>> _too_deep(LayerSnapshot(Layer.APP, {}, "/etc/demo/config.toml"), ["a" * 100])[-12:]
+        'aaaaaaaa ...'
+    """
+    source = snapshot.origin or ("environment" if snapshot.name is Layer.ENV else snapshot.name.value)
+    path = ".".join(segments)
+    shown = path if len(path) <= _DEPTH_KEY_SHOWN else f"{path[:_DEPTH_KEY_SHOWN]} ..."
+    return f"{source}: configuration nesting exceeds the maximum depth of {_MAX_MERGE_DEPTH} at {shown}"
 
 
 class _StoredSpellings:

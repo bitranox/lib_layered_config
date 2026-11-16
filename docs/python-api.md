@@ -442,7 +442,9 @@ which have no JSON form; write a list or a base64 string instead: <position> (<t
 it as a string instead: <position> (int, N bits)[; ...]"` for a TOML or YAML integer outside that range (TOML
 reads up to 128 bits, a YAML hex literal any width); `"<path> nests <position> N levels deep; JSON output
 takes 253, counted from the top-level table: flatten it, or write it as a string"` for a TOML, JSON or YAML
-file nesting deeper than any JSON view can write; `"<path> repeats a key, and only its last value would
+file nesting deeper than any JSON view can write; `"<path>: configuration nesting exceeds the maximum depth
+of 100 at <key path>"` for tables nested more than 100 deep, from a file or (as `"environment: ..."`) from an
+environment key with more than 100 `__` segments, the key path cut after 80 characters; `"<path> repeats a key, and only its last value would
 load: <position>[; <position>...]"` for a JSON or YAML file naming the same key twice in one table (a YAML
 position adds `" (line N, column M)"`; a YAML merge key `<<` may appear more than once; TOML refuses such a
 file as invalid TOML); `"environment variable <NAME> is not valid UTF-8 (byte

@@ -3,8 +3,7 @@
 Every parsed file used to be held until the last one was parsed: 40 ``.d`` files of 2.2 MB setting
 the same keys peaked at 315 MB traced against 21 MB for one. Now each snapshot is merged and dropped
 before the next is parsed, and 10 or 40 such files peak at 37 MB. A layer file that does not load
-is still reported as ``LayerLoadError``, and an error the merge itself raises is not re-wrapped on
-the way.
+is still reported as ``LayerLoadError`` after others merged.
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ import pytest
 from lib_layered_config import read_config
 from lib_layered_config.core import LayerLoadError
 from lib_layered_config.deploy import read_deploy_config
-from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support import create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 
@@ -111,18 +109,3 @@ def test_a_file_that_does_not_load_after_others_merged_is_a_layer_load_error(
 
     with pytest.raises(LayerLoadError, match=re.escape("999-broken.toml")):
         _read(sandbox, defaults)
-
-
-@os_agnostic
-def test_an_error_the_merge_raises_reaches_the_caller_unwrapped(
-    sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The merge refuses nesting past 100 levels; only errors while producing a layer are wrapped.
-    # Whether the merge's own refusal should be a LayerLoadError too is its own question (C-F5);
-    # streaming the layers must not answer it.
-    monkeypatch.setenv("DEMO___" + "__".join(f"K{i}" for i in range(105)), "1")
-
-    with pytest.raises(InvalidFormatError, match="maximum depth") as caught:
-        read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=sandbox.start_dir)
-
-    assert not isinstance(caught.value, LayerLoadError)

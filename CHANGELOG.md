@@ -119,6 +119,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- Configuration nested more than 100 tables deep - a JSON or YAML file 101 to 253 levels deep, or an
+  environment or `.env` key with more than 100 `__` segments - is refused by `read_config`,
+  `read_config_json` and `read_config_raw` as `LayerLoadError` naming where:
+  `"<path>: configuration nesting exceeds the maximum depth of 100 at a.a.a..."` (`environment:` for an
+  environment key), the key path cut after 80 characters. Before, it was a bare `InvalidFormatError`
+  ("Configuration nesting exceeds the maximum depth of 100") naming no file, variable or key, and code
+  catching `LayerLoadError` for read failures missed it. Both are `ConfigError`, so `except ConfigError`
+  is unaffected; the CLI exits 1 as before. The deploy's read already reported it as `LayerLoadError`
+  and now names the source too.
 - `Config.get_redacted(key)` walks only the key's path and redacts only its value. Before, every call
   built the whole `as_dict(redact=True)` copy first, so one call took 12.6 ms on a 10 000-key
   configuration and 46 ms on a 40 000-key one, and asking for each key in turn grew with the square of
