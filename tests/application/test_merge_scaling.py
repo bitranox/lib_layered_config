@@ -4,9 +4,10 @@ Each container a later layer replaced (a table by a value, a list by a table) us
 provenance entry for the keys below it, so N replacements over N entries cost N*N: 16,000 of them
 took about 4 seconds, and the time quadrupled with each doubling.
 
-The bound is wall clock on purpose. The quadratic path takes about 9 s for the size below and the
-linear one well under a second, so a limit of 2.5 s leaves a slow CI runner room and still fails
-the old code by a wide margin.
+The test bounds how the time GROWS, not the time itself: a fixed limit measured the machine, and an
+older CPU runs this merge about 9x slower per container whatever the size. Eight times the
+containers take about 8x the time on the linear path and about 50x on a quadratic one (measured on
+Linux and Windows, best of three runs each), so a limit of 20x leaves room for noise either way.
 """
 
 from __future__ import annotations
@@ -18,28 +19,40 @@ import pytest
 from lib_layered_config.application.merge import LayerSnapshot, merge_layers
 from lib_layered_config.domain.identifiers import Layer
 
-_CONTAINERS = 24_000
-_LIMIT_SECONDS = 2.5
+_SMALL = 1_000
+_LARGE = 8_000
+_MAX_GROWTH = 20.0
+_RUNS = 3
 
 
-def _shapes(kind: str) -> tuple[dict[str, object], dict[str, object]]:
+def _shapes(kind: str, count: int) -> tuple[dict[str, object], dict[str, object]]:
     if kind == "table_to_value":
-        return {f"t{i}": {"x": 1} for i in range(_CONTAINERS)}, {f"t{i}": 1 for i in range(_CONTAINERS)}
-    return {f"t{i}": [1] for i in range(_CONTAINERS)}, {f"t{i}": {"x": 1} for i in range(_CONTAINERS)}
+        return {f"t{i}": {"x": 1} for i in range(count)}, {f"t{i}": 1 for i in range(count)}
+    return {f"t{i}": [1] for i in range(count)}, {f"t{i}": {"x": 1} for i in range(count)}
+
+
+def _best_merge_seconds(kind: str, count: int) -> float:
+    """The fastest of a few merges of *count* replaced containers: the least disturbed by other load."""
+    timings: list[float] = []
+    for _ in range(_RUNS):
+        low, high = _shapes(kind, count)
+        layers = [LayerSnapshot(Layer.APP, low, "/opt/app.toml"), LayerSnapshot(Layer.USER, high, "/opt/user.toml")]
+        started = time.perf_counter()
+        result = merge_layers(layers)
+        timings.append(time.perf_counter() - started)
+        assert len(result.data) == count
+    return min(timings)
 
 
 @pytest.mark.os_agnostic
 @pytest.mark.parametrize("kind", ["table_to_value", "list_to_table"])
 def test_many_replaced_containers_are_merged_in_linear_time(kind: str) -> None:
-    low, high = _shapes(kind)
-    layers = [LayerSnapshot(Layer.APP, low, "/opt/app.toml"), LayerSnapshot(Layer.USER, high, "/opt/user.toml")]
+    small = _best_merge_seconds(kind, _SMALL)
+    large = _best_merge_seconds(kind, _LARGE)
 
-    started = time.perf_counter()
-    result = merge_layers(layers)
-    elapsed = time.perf_counter() - started
-
-    assert len(result.data) == _CONTAINERS
-    assert elapsed < _LIMIT_SECONDS, f"{_CONTAINERS} replaced containers took {elapsed:.2f}s"
+    growth = large / small
+    times = f"{small:.3f}s for {_SMALL}, {large:.3f}s for {_LARGE}"
+    assert growth < _MAX_GROWTH, f"{_LARGE // _SMALL}x the containers took {growth:.1f}x the time ({times})"
 
 
 @pytest.mark.os_agnostic
