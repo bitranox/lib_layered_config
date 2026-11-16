@@ -740,6 +740,45 @@ def test_deploy_with_conflict_resolver_calls_callback(
 
 
 @os_agnostic
+@pytest.mark.parametrize(
+    ("flag", "decided", "resolver_answer"),
+    [
+        pytest.param("force", DeployAction.OVERWRITTEN, DeployAction.KEPT, id="force"),
+        pytest.param("batch", DeployAction.KEPT, DeployAction.OVERWRITTEN, id="batch"),
+    ],
+)
+def test_force_or_batch_decides_and_the_resolver_is_never_called(
+    sandbox: LayeredSandbox,
+    source_config: Path,
+    flag: str,
+    decided: DeployAction,
+    resolver_answer: DeployAction,
+) -> None:
+    """User decision 2026-11-16 (R5-F6): force, then batch, then the resolver - documented, not refused."""
+    target = sandbox.roots["app"] / "config.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing", encoding="utf-8")
+    calls: list[Path] = []
+
+    def resolver(destination: Path) -> DeployAction:
+        calls.append(destination)
+        return resolver_answer
+
+    results = deploy_config(
+        source_config,
+        vendor=VENDOR,
+        app=APP,
+        targets=["app"],
+        slug=SLUG,
+        conflict_resolver=resolver,
+        force=flag == "force",
+        batch=flag == "batch",
+    )
+
+    assert (calls, results[0].action) == ([], decided)
+
+
+@os_agnostic
 def test_deploy_with_conflict_resolver_overwrite_creates_backup(
     sandbox: LayeredSandbox,
     source_config: Path,

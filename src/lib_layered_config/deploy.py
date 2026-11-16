@@ -739,7 +739,8 @@ def deploy_config(
         batch: If True, keep existing files and write new as .ucf for review (CI/scripts).
         conflict_resolver: Called with the destination of each file whose content differs;
             returns ``DeployAction.OVERWRITTEN`` or ``DeployAction.KEPT``. Any other answer
-            raises :class:`~lib_layered_config.ValidationError`. With neither force, batch
+            raises :class:`~lib_layered_config.ValidationError`. *force* and *batch* decide
+            first: with either set, the resolver is never called. With neither force, batch
             nor a resolver, a differing file is left unchanged and reported as ``CONFLICT``.
         max_profile_length: Maximum allowed profile name length (default: 64).
             A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.

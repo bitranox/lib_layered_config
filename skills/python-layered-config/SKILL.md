@@ -82,7 +82,7 @@ The whole point of the library. To answer "why is this value what it is":
   prints the merged config **and** the provenance map. `read --format json` does the same;
   human output (`read`) prints a `# source:` comment above each value.
 
-**A `--set` style override names itself as the source (5.7.0 and later).** Every key
+**A `--set` style override names itself as the source.** Every key
 `with_overrides` supplies reads back from `origin()` as layer `override` (the exported
 `OVERRIDE_LAYER`), path `None`, so a caller content with that label needs no provenance code of
 its own. Keys it did not touch keep their file. When a scalar replaces a table, the scalar's key
@@ -436,7 +436,10 @@ an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"
 already byte-identical; `"conflict"` means it differs and was left unchanged because no
 `force`, `batch` or `conflict_resolver=` decided, so key a missed update on `"conflict"`. A
 `conflict_resolver(destination)` must return `DeployAction.OVERWRITTEN` or `DeployAction.KEPT`;
-any other answer raises `ValidationError`. Permission keywords: `set_permissions`, `dir_mode`,
+any other answer raises `ValidationError`. `force` (overwrite) and `batch` (keep) decide first:
+with either set, the resolver is never called, so read what a deploy did from the returned
+`DeployResult`s, not from the resolver's calls. Otherwise it is asked once per differing
+destination, each differing `.d` copy included. Permission keywords: `set_permissions`, `dir_mode`,
 `file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
 `DeployMode(value, kind)` checks one mode by itself, `value` an int such as `0o750` and `kind`
@@ -455,7 +458,7 @@ non-config file (a `README.md`) is copied unparsed.
 A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
 permission wall raises `PermissionError` on every Python, before anything is written.
 
-**What a deploy sees, before it runs** (7.2.0 and later). `deploy_config_paths(source, vendor=...,
+**What a deploy sees, before it runs.** `deploy_config_paths(source, vendor=...,
 app=..., slug=..., targets=[...])` returns every file that deploy writes, resolved, as a frozenset:
 each target's config file (`config.toml`, or `hosts/<hostname>.toml` for host) plus, in the `.d`
 directory beside it (`config.d/`, `hosts/<hostname>.d/`), a copy of each file in the source's own `.d`
