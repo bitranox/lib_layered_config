@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 #: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
 #: recurse until Python raises an opaque ``RecursionError``; this bound turns that into a
 #: clear ``InvalidFormatError`` well before the interpreter stack limit.
-_MAX_MERGE_DEPTH: Final[int] = 100
+MAX_MERGE_DEPTH: Final[int] = 100
 
 #: How much of the key path a too-deep refusal shows: enough to find the table in the file,
 #: bounded because a key can be as long as the file allows.
@@ -227,9 +227,9 @@ def _descend(
         Mutates *target* and *provenance* as it walks through *incoming*.
 
     Raises:
-        InvalidFormatError: When nesting exceeds :data:`_MAX_MERGE_DEPTH`.
+        InvalidFormatError: When nesting exceeds :data:`MAX_MERGE_DEPTH`.
     """
-    if len(segments) > _MAX_MERGE_DEPTH:
+    if len(segments) > MAX_MERGE_DEPTH:
         raise InvalidFormatError(_too_deep(snapshot, segments))
     spellings = _StoredSpellings(target) if snapshot.name in _CASE_FOLDED_LAYERS else None
     for incoming_key, value in incoming.items():
@@ -246,7 +246,7 @@ def _descend(
 
 
 def _too_deep(snapshot: LayerSnapshot, segments: Sequence[str]) -> str:
-    """Say where *snapshot* nests past :data:`_MAX_MERGE_DEPTH`: its file, else its layer, and the key path.
+    """Say where *snapshot* nests past :data:`MAX_MERGE_DEPTH`: its file, else its layer, and the key path.
 
     The key path is cut to :data:`_DEPTH_KEY_SHOWN` characters; its start is what finds the table.
 
@@ -257,9 +257,22 @@ def _too_deep(snapshot: LayerSnapshot, segments: Sequence[str]) -> str:
         'aaaaaaaa ...'
     """
     source = snapshot.origin or ("environment" if snapshot.name is Layer.ENV else snapshot.name.value)
+    return f"{source}: {nesting_too_deep(segments)}"
+
+
+def nesting_too_deep(segments: Sequence[str]) -> str:
+    """The refusal for nesting past :data:`MAX_MERGE_DEPTH` at *segments*, without its source.
+
+    Shared with the env and ``.env`` loaders, which refuse a too-deep key before building it, so
+    both refusals read the same. The key path is cut to :data:`_DEPTH_KEY_SHOWN` characters.
+
+    Examples:
+        >>> nesting_too_deep(["k0", "k1"])
+        'configuration nesting exceeds the maximum depth of 100 at k0.k1'
+    """
     path = ".".join(segments)
     shown = path if len(path) <= _DEPTH_KEY_SHOWN else f"{path[:_DEPTH_KEY_SHOWN]} ..."
-    return f"{source}: configuration nesting exceeds the maximum depth of {_MAX_MERGE_DEPTH} at {shown}"
+    return f"configuration nesting exceeds the maximum depth of {MAX_MERGE_DEPTH} at {shown}"
 
 
 class _StoredSpellings:
@@ -855,8 +868,10 @@ def _warn_list_index_out_of_range(dotted: str, snapshot: LayerSnapshot, index: i
 
 
 __all__ = [
+    "MAX_MERGE_DEPTH",
     "LayerSnapshot",
     "MergeResult",
     "ValueKind",
     "merge_layers",
+    "nesting_too_deep",
 ]

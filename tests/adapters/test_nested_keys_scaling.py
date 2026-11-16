@@ -11,7 +11,9 @@ wide margin.
 
 from __future__ import annotations
 
+import re
 import time
+import tracemalloc
 from typing import TypeGuard
 
 import pytest
@@ -53,3 +55,32 @@ def test_a_deeper_key_reuses_a_json_table_key_in_its_original_case() -> None:
     rows = [NestedEntry("DB", {"Host": "h", "host": "shadowed"}, "DB"), NestedEntry("DB__HOST", "x", "DB__HOST")]
 
     assert build_nested(rows, error_cls=ValueError) == {"db": {"Host": "x", "host": "shadowed"}}
+
+
+def _peak_bytes_refusing(segments: int) -> int:
+    """Peak traced memory of build_nested refusing one key of *segments* segments."""
+    key = "__".join(["a"] * segments)
+    tracemalloc.start()
+    try:
+        with pytest.raises(
+            ValueError, match=re.escape("configuration nesting exceeds the maximum depth of 100 at a.a.a")
+        ):
+            build_nested([NestedEntry(key, 1, key)], error_cls=ValueError)
+        return tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+
+@pytest.mark.os_agnostic
+def test_a_key_deeper_than_the_merge_allows_is_refused_without_building_it() -> None:
+    """User decision 2026-11-16 (R3-F2, "Refuse before building"): a key of a million segments built a
+    table a million levels deep (685 MB for a 3 MB .env) only for the merge to refuse it past 100.
+    The refusal now comes first and builds nothing below the depth it reports, so its memory stays a
+    few times the key itself: measured 4.0-4.9x at 25k to 400k segments (the unsplit rest of the key
+    and its lowercased copy), where building every level cost 222x."""
+    segments = 100_000
+    key_bytes = len("__".join(["a"] * segments))
+
+    peak = _peak_bytes_refusing(segments)
+
+    assert peak < 10 * key_bytes, f"refusing a {key_bytes}-byte key peaked at {peak} bytes"

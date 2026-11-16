@@ -127,6 +127,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- An environment variable or `.env` key nested deeper than the merge allows (more than 100 `__`
+  levels) is refused before it is built. The loader used to build the whole nested table for such a key
+  and only then hand it to the merge, which refused it: a 3 MB `.env` holding one key of a million
+  segments took about 685 MB before the refusal, and now takes about 23 MB. The refusal and its message
+  are unchanged, and a key of 101 segments, the deepest the merge accepts, is still loaded.
 - A key whose name holds many dots (a quoted TOML key such as `"a.a.a" = 1`) no longer costs memory
   quadratic in its dots. The merge's provenance index stored a copy of the key cut before every dot,
   so one name with 16,000 dots, in a 32 KB file, took about 250 MB; it now files each key under its

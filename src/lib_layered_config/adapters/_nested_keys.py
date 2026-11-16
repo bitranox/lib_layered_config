@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
+from ..application.merge import MAX_MERGE_DEPTH, nesting_too_deep
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -56,7 +58,9 @@ def build_nested(entries: Iterable[NestedEntry], *, error_cls: type[Exception], 
 
     Raises:
         error_cls: Naming both variables and the dotted path, never a value; or naming the one
-            variable whose key has an empty segment (a leading, trailing or doubled ``__``).
+            variable whose key has an empty segment (a leading, trailing or doubled ``__``); or,
+            once every key is placed, with the merge's own refusal for a key nesting deeper than
+            :data:`MAX_MERGE_DEPTH` (the shallowest such key), built only down to that depth.
 
     Examples:
         >>> rows = [NestedEntry("DB__PORT", 2, "DB__PORT"), NestedEntry("DB", {"host": "h"}, "DB")]
@@ -75,18 +79,60 @@ def build_nested(entries: Iterable[NestedEntry], *, error_cls: type[Exception], 
     target: dict[str, object] = {}
     origins: dict[tuple[str, ...], str] = {}
     index = _CaseIndex()
+    too_deep: list[str] | None = None
     for entry in ordered:
-        parts = entry.key.split(NESTED_KEY_DELIMITER)
-        if "" in parts:
+        parts = _key_parts(entry.key)
+        if "" in parts or (_is_too_deep(parts) and _has_empty_segment(parts[-1])):
             # An empty name is a typo, never a table: placed, it replaced a configured value with
             # {"": ...} or set a key nobody reads, and the override looked applied.
             raise error_cls(f"{where}{entry.label} has an empty key segment (a leading, trailing or doubled '__')")
+        if too_deep is None and _is_too_deep(parts):
+            too_deep = parts[: MAX_MERGE_DEPTH + 1]
         try:
             _assign_parts(target, parts, entry.value, index=index, error_cls=_ScalarBelowError)
         except _ScalarBelowError:
             raise error_cls(where + _collision_message(target, parts, entry.label, origins)) from None
         origins[tuple(part.lower() for part in parts)] = entry.label
+    if too_deep is not None:
+        raise error_cls(where + nesting_too_deep([part.lower() for part in too_deep]))
     return target
+
+
+def _key_parts(key: str) -> list[str]:
+    """Split *key* at ``__`` into at most the segments the merge places, plus the rest unsplit.
+
+    A key deeper than :data:`MAX_MERGE_DEPTH` allows is refused whatever follows its first levels.
+    Splitting all of it, and building a table per segment, cost about 220 bytes per byte of key
+    (685 MB for a 3 MB ``.env``) only for the merge to refuse it (user decision 2026-11-16, R3-F2).
+
+    Examples:
+        >>> _key_parts("DB__PORT")
+        ['DB', 'PORT']
+        >>> parts = _key_parts("__".join(["K"] * 200))
+        >>> len(parts), parts[-1][:5]
+        (102, 'K__K_')
+    """
+    return key.split(NESTED_KEY_DELIMITER, MAX_MERGE_DEPTH + 1)
+
+
+def _is_too_deep(parts: list[str]) -> bool:
+    """Whether :func:`_key_parts` left an unsplit rest: the key nests past what the merge accepts."""
+    return len(parts) > MAX_MERGE_DEPTH + 1
+
+
+def _has_empty_segment(text: str) -> bool:
+    """Whether splitting *text* at ``__`` gives an empty part, found without building the parts.
+
+    Examples:
+        >>> [_has_empty_segment(text) for text in ("a__b", "a____b", "__a", "a__", "a___b")]
+        [False, True, True, True, False]
+    """
+    start = 0
+    while (found := text.find(NESTED_KEY_DELIMITER, start)) != -1:
+        if found == start:
+            return True
+        start = found + len(NESTED_KEY_DELIMITER)
+    return start == len(text)
 
 
 def _collision_message(
