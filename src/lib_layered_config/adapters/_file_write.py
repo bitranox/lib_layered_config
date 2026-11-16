@@ -19,8 +19,8 @@ Contents:
 
 Extended attributes are read on Linux only; Python reads none on macOS or Windows, so there only
 hard links, owner, group and writability decide. On Windows the replaced file's access list (DACL)
-is copied onto the new one before the rename (``_windows_acl.copy_dacl``), so a rename never gives
-it the directory's.
+is copied onto the temp file as soon as it is created, before any content goes in
+(``_windows_acl.copy_dacl``), so neither the content nor a rename ever gets the directory's.
 """
 
 from __future__ import annotations
@@ -160,6 +160,9 @@ def _write(
     """Write what *open_source* reads to *path*; see :func:`write_file`."""
     fd, temp = _create_temp(path, mode=_RESTRICTED_MODE if restrict else _PLAIN_MODE)
     try:
+        # Windows gives the new file its directory's ACL; it takes the replaced file's before any
+        # content goes in, so the content is never readable by more than the file it replaces.
+        copy_dacl(acl_from if acl_from is not None else path, temp)
         # Written through the descriptor the create opened: taking the destination's mode (0o444,
         # say) must not decide whether the copy can be written; must_write_in_place decides that.
         with os.fdopen(fd, "wb") as handle:
@@ -171,8 +174,6 @@ def _write(
             _remove_temp(temp)
             _rewrite_in_place(path, open_source, chunk_bytes)
             return
-        # Windows gives the new file its directory's ACL; keep the one the replaced file had.
-        copy_dacl(acl_from if acl_from is not None else path, temp)
         temp.replace(path)
     except BaseException:
         # A failed cleanup must not replace the error that stopped the write.

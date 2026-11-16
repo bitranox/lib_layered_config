@@ -13,8 +13,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   with `icacls /inheritance:r` or `Set-Acl` came back readable by everyone the directory lets in
   (SYSTEM, Administrators, and any group the directory grants), and so did its `.bak`. The replaced
   file's DACL, protected or inherited as it was, now goes onto the new file, the `.bak` and the `.ucf`
-  sidecar. The owner is not copied. A file deployed for the first time still takes its directory's
+  sidecar as soon as each is created, before any content is written into it. The owner is not copied. A file deployed for the first time still takes its directory's
   access list, and a volume without access lists (FAT, exFAT) is unchanged.
+- A deploy's `.bak` is never readable more widely than the file it backs up. On Linux and macOS the
+  backup was created at the umask's mode (`0o644` under the usual `0o022`) and took the file's mode
+  only after its content was copied, so another user could open the backup of an owner-only
+  `config.toml` in that moment and keep reading it afterwards. The backup is now written owner-only
+  and renamed into place, then takes the file's mode, times and extended attributes.
 - `deploy` refuses a destination that is a symbolic link, dangling or not, with
   `DeployDestinationError` (a `ValidationError`): `"<path> is a symbolic link; deploy neither writes
   through nor replaces one"`, one line per link, `.d` copies included, before anything is written. Before,

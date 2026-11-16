@@ -15,17 +15,18 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
+from lib_layered_config.adapters._file_write import write_file
 from lib_layered_config.deploy import DeployAction, deploy_config
 from tests.support import create_layered_sandbox
 from tests.support.os_markers import windows_only
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from lib_layered_config.deploy import ConflictResolver
     from tests.support import LayeredSandbox
 
@@ -140,3 +141,56 @@ def test_an_inherited_acl_stays_inherited(sandbox: LayeredSandbox, tmp_path: Pat
     assert _deploy(tmp_path, "a = 2\n", force=True) == [DeployAction.OVERWRITTEN]
 
     assert _aces(target) == inherited
+
+
+# An audit hook cannot be removed, so one hook is installed for the process and reads this state.
+# The hook fires when the write opens its source, which is after the temp file exists and before
+# a byte of content goes into it: the access list the temp has then is the one the content meets.
+class _Watch:
+    def __init__(self) -> None:
+        self.source: Path | None = None
+        self.seen: list[list[list[str]]] = []
+        self.busy = False
+
+
+_WATCH = _Watch()
+
+
+def _path_of(value: object) -> Path | None:
+    if isinstance(value, Path):
+        return value
+    return Path(value) if isinstance(value, str) else None
+
+
+def _record_temp_acls(event: str, args: tuple[object, ...]) -> None:
+    source = _WATCH.source
+    if event != "open" or source is None or _WATCH.busy or not args or _path_of(args[0]) != source:
+        return
+    _WATCH.busy = True  # icacls runs a subprocess, which raises audit events of its own
+    try:
+        temps = sorted(p for p in source.parent.iterdir() if p.name.endswith(".tmp"))
+        _WATCH.seen.append([_aces(temp) for temp in temps])
+    finally:
+        _WATCH.busy = False
+
+
+sys.addaudithook(_record_temp_acls)
+
+
+@windows_only
+def test_the_temp_file_has_the_destination_acl_before_any_content_is_written(tmp_path: Path) -> None:
+    # The content is the secret: a temp that took its directory's access list would expose it to
+    # everyone the directory lets in for as long as the write takes.
+    destination = tmp_path / "config.toml"
+    destination.write_text("secret = 1\n", encoding="utf-8")
+    restricted = _restrict_to_owner(destination)
+    source = tmp_path / "source.toml"
+    source.write_text("secret = 2\n", encoding="utf-8")
+    _WATCH.source, _WATCH.seen = source, []
+    try:
+        write_file(destination, source, restrict=False, chunk_bytes=4096)
+    finally:
+        seen, _WATCH.source, _WATCH.seen = _WATCH.seen, None, []
+
+    assert seen == [[restricted]]
+    assert destination.read_text(encoding="utf-8") == "secret = 2\n"

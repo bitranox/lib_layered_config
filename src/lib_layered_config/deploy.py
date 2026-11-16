@@ -37,7 +37,6 @@ from typing import TYPE_CHECKING, Final, NamedTuple, cast
 from ._platform import normalise_resolver_platform
 from .adapters._file_write import write_file
 from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
-from .adapters._windows_acl import copy_dacl
 from .adapters.file_loaders._dot_d import in_dot_d_order
 from .adapters.path_resolvers._linux import etc_root, xdg_config_home
 from .adapters.path_resolvers._macos import mac_app_root, mac_home_root
@@ -262,9 +261,12 @@ def _backup_file(path: Path) -> Path:
     """
     backup = _next_available_path(path, _Sidecar.BACKUP)
     try:
-        shutil.copy2(path, backup)
-        # copy2 does not copy a Windows access list; the backup holds the same secrets as the file.
-        copy_dacl(path, backup)
+        # The backup holds the same secrets as the file. Not shutil.copy2: it creates the copy at the
+        # umask's mode and copies the file's mode only afterwards, and a reader that opens the copy
+        # in between keeps its handle. Written owner-only with the file's Windows access list, the
+        # backup takes the file's mode, times and extended attributes once its content is in place.
+        _write_from(backup, path, restrict=True, acl_from=path)
+        shutil.copystat(path, backup)
     except BaseException:
         # A half-written backup would read as a whole one later; the deploy stops here, path untouched.
         backup.unlink(missing_ok=True)
