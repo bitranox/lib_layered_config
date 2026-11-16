@@ -63,6 +63,25 @@ def _warning_lines(stderr: str) -> list[str]:
 
 
 @os_agnostic
+def test_a_control_character_in_a_warning_field_is_escaped_and_the_line_stays_whole(
+    sandbox: LayeredSandbox, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # User decision 2026-11-16 (R2-F3): a newline split the warning in two, and on a terminal an ESC
+    # sequence went out raw. Both are written as \uXXXX; a plain key prints as before.
+    defaults = tmp_path / "defaults.toml"
+    defaults.write_text('"a\\nb\\u001b[31m\\u0085" = 1\n', encoding="utf-8")
+    sandbox.write("app", "config.toml", content='["a\\nb\\u001b[31m\\u0085"]\nx = 2\n')
+
+    code = cli.main(["read", *IDENTITY, *_start(sandbox), "--default-file", str(defaults)], restore_traceback=True)
+
+    captured = capsys.readouterr()
+    assert code == 0
+    (line,) = _warning_lines(captured.err)
+    assert "key=a\\u000ab\\u001b[31m\\u0085 layer=app " in line
+    assert len(captured.err.splitlines()) == 1
+
+
+@os_agnostic
 def test_a_type_conflict_reaches_stderr_naming_the_key_and_the_file(
     sandbox: LayeredSandbox, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

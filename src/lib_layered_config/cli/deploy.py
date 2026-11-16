@@ -15,7 +15,7 @@ from ..domain.deploy_permissions import DeployPermissionsError
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
-from .output import emit_json, emit_text
+from .output import emit_json, emit_text, escape_controls
 from .typed_click import option
 
 if TYPE_CHECKING:
@@ -170,7 +170,9 @@ def _report_written(error: BaseException) -> None:
     """
     written = _written_paths(deployed_before_failure(error))
     if written:
-        emit_text("deploy stopped after writing:\n" + "\n".join(f"  {path}" for path in written), err=True)
+        emit_text(
+            "deploy stopped after writing:\n" + "\n".join(f"  {escape_controls(path)}" for path in written), err=True
+        )
 
 
 def _skipped_in(report: dict[str, list[str]]) -> list[str]:

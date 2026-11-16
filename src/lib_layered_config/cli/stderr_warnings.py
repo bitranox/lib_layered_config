@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, cast
 
-from .output import emit_text
+from .output import emit_text, escape_controls
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -29,7 +29,8 @@ _HIDDEN_FIELDS = frozenset({"trace_id"})
 def format_warning(record: logging.LogRecord) -> str:
     """Render one warning as ``warning: <event> key=value ...``.
 
-    Fields holding ``None`` are left out, as is the trace identifier.
+    Fields holding ``None`` are left out, as is the trace identifier. A control character in a value
+    is written as ``\\uXXXX``, so the warning stays one line.
 
     Examples:
         >>> record = logging.LogRecord("lib_layered_config", logging.WARNING, "x", 1, "type_conflict", None, None)
@@ -39,7 +40,11 @@ def format_warning(record: logging.LogRecord) -> str:
     """
     context: object = getattr(record, "context", None)
     fields = cast("dict[str, object]", context) if isinstance(context, dict) else {}
-    shown = [f"{name}={value}" for name, value in fields.items() if name not in _HIDDEN_FIELDS and value is not None]
+    shown = [
+        f"{name}={escape_controls(str(value))}"
+        for name, value in fields.items()
+        if name not in _HIDDEN_FIELDS and value is not None
+    ]
     return " ".join(["warning:", record.getMessage(), *shown])
 
 

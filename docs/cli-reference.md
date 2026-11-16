@@ -77,7 +77,9 @@ warning: type_conflict key=database layer=app path=/etc/xdg/myapp/config.toml ol
 
 The events are `dotenv_skipped_foreign_owner`, `deploy_setting_ignored`, `type_conflict`,
 `list_index_out_of_range` and `case_folded_key_ambiguous`. Their fields are key names, paths, layers,
-types and owners, never configuration values, so a warning line cannot print a secret. A program that
+types and owners, never configuration values, so a warning line cannot print a secret. A control
+character in a key or path (a newline, an ESC) is printed as a `\uXXXX` escape, so a warning is always
+one line and never sends a terminal sequence; a backslash prints as it is. A program that
 calls the Python API instead gets the same events as WARNING records on the `lib_layered_config`
 logger, which prints nothing until the application configures logging.
 
@@ -398,7 +400,7 @@ When a file exists with **different content** and neither `--force` nor `--batch
   conflict stay deployed.
 - A deploy that stops on any error after writing something prints `deploy stopped after writing:` on
   stderr before the error, then each path it created, overwrote, backed up or kept as `.ucf`, one per
-  line, in write order. Targets are written in the order given, so the same conflict leaves different
+  line, in write order, a control character in a path printed as `\uXXXX`. Targets are written in the order given, so the same conflict leaves different
   files behind for `--target user --target app` and `--target app --target user`. With `--json` the
   same paths are the failure envelope's `error.written`, absent when nothing was written.
 

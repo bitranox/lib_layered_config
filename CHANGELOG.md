@@ -135,6 +135,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A warning printed on stderr writes a control character in a key or path as `\uXXXX`. A key
+  holding a newline split the warning in two, and on a terminal an ESC sequence in it went out raw and
+  recoloured the rest of the line. A plain key or path prints as before, backslashes included. The
+  paths after `deploy stopped after writing:` are escaped the same way.
 - A deploy that fails partway (a declined or unanswerable conflict prompt, a permission wall on a
   later target or `.d` file) no longer hides the files it already wrote. Targets are written in the
   order given, so `--target user --target app` with a conflict at `app` left the user file deployed

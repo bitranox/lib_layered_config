@@ -210,3 +210,20 @@ def test_the_json_failure_envelope_has_no_written_list_when_nothing_was_written(
     assert code == 2
     assert sorted(cast("dict[str, object]", json.loads(out)["error"])) == ["exit_code", "message", "type"]
     assert "deploy stopped after writing" not in err
+
+
+@posix_only
+def test_a_control_character_in_a_written_path_is_escaped(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # User decision 2026-11-16 (R2-F3): the list is one path per line, so a newline in a path must not
+    # start a new one.
+    created = create_layered_sandbox(tmp_path / "x\ny", vendor=VENDOR, app=APP, slug=SLUG)
+    created.apply_env(monkeypatch)
+    _existing(_config(created, "app"))
+
+    code, _, err = _cli(capsys, monkeypatch, *_deploy_argv(_source(tmp_path), "user", "app"))
+
+    escaped = str(_config(created, "user")).replace("\n", "\\u000a")
+    assert code == 2
+    assert f"deploy stopped after writing:\n  {escaped}\n" in err
