@@ -1601,6 +1601,9 @@ Exception
         +-- LayerRootNotAbsoluteError  a Windows root (ProgramData, APPDATA, LOCALAPPDATA) that is not absolute
 ```
 
+- A refusal that names a vendor, app, slug or hostname, or a Windows root that is not absolute, writes each
+  control character in it as `\uXXXX` (`slug contains invalid characters: demo\u000a`); a backslash is
+  kept as it is. The profile refusal names its value with `repr`, as before.
 - `LayerLoadError` is what the read functions and `read_deploy_config` raise for a file that does not decode or
   parse; its `__cause__` is the loader's `InvalidFormatError`. `deploy_config` raises it for its own source
   file. A broken file in one of the layers deploy reads its modes from makes it raise `DeployPermissionsError`

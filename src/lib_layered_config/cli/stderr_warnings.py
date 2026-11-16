@@ -14,7 +14,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, cast
 
-from .output import emit_text, escape_controls
+from ..domain.printable import escape_controls
+from .output import emit_text
 
 if TYPE_CHECKING:
     from collections.abc import Callable

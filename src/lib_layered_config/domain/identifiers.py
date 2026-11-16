@@ -41,6 +41,7 @@ import re
 from enum import Enum
 
 from .errors import ValidationError
+from .printable import escape_controls
 
 #: Default maximum length for profile names (characters).
 #: Profile names are used as path segments, so reasonable limits prevent
@@ -110,6 +111,19 @@ _VALID_HOSTNAME_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-
 # ============================================================================
 
 
+def _refused(name: str, reason: str, value: str) -> ValidationError:
+    r"""Build the refusal ``<name> <reason>: <value>``, the value's control characters as ``\uXXXX``.
+
+    Every refusal that names the value goes through here, so none prints a newline or an ESC raw
+    (user decision 2026-11-16, R2-F4).
+
+    Examples:
+        >>> str(_refused("slug", "contains invalid characters", "demo\n"))
+        'slug contains invalid characters: demo\\u000a'
+    """
+    return ValidationError(f"{name} {reason}: {escape_controls(value)}")
+
+
 def _check_not_empty(value: str, name: str) -> None:
     """Raise ValueError if value is empty."""
     if not value:
@@ -121,13 +135,13 @@ def _check_ascii_only(value: str, name: str) -> None:
     try:
         value.encode("ascii")
     except UnicodeEncodeError:
-        raise ValidationError(f"{name} contains non-ASCII characters: {value}") from None
+        raise _refused(name, "contains non-ASCII characters", value) from None
 
 
 def _check_no_invalid_chars(value: str, name: str) -> None:
     """Raise ValueError if value contains filesystem-invalid characters."""
     if _INVALID_CHARS_PATTERN.search(value):
-        raise ValidationError(f"{name} contains invalid characters: {value}")
+        raise _refused(name, "contains invalid characters", value)
 
 
 def _check_not_windows_reserved(value: str, name: str, *, split_on_space: bool = False) -> None:
@@ -137,13 +151,13 @@ def _check_not_windows_reserved(value: str, name: str, *, split_on_space: bool =
     if split_on_space:
         base_name = base_name.split()[0]
     if base_name.upper() in _WINDOWS_RESERVED_NAMES:
-        raise ValidationError(f"{name} is a Windows reserved name: {value}")
+        raise _refused(name, "is a Windows reserved name", value)
 
 
 def _check_no_trailing_dot_or_space(value: str, name: str) -> None:
     """Raise ValueError if value ends with dot or space (Windows restriction)."""
     if value.endswith(".") or value.endswith(" "):
-        raise ValidationError(f"{name} cannot end with a dot or space: {value}")
+        raise _refused(name, "cannot end with a dot or space", value)
 
 
 def _raise_pattern_error(value: str, name: str, *, check_space_start: bool) -> None:
@@ -155,11 +169,11 @@ def _raise_pattern_error(value: str, name: str, *, check_space_start: bool) -> N
         check_space_start: If True, space is checked as an invalid start character.
     """
     if value.startswith("."):
-        raise ValidationError(f"{name} cannot start with a dot: {value}")
+        raise _refused(name, "cannot start with a dot", value)
     invalid_starts = ("-", "_", " ") if check_space_start else ("-", "_")
     if any(value.startswith(c) for c in invalid_starts):
-        raise ValidationError(f"{name} must start with an alphanumeric character: {value}")
-    raise ValidationError(f"{name} contains invalid characters: {value}")
+        raise _refused(name, "must start with an alphanumeric character", value)
+    raise _refused(name, "contains invalid characters", value)
 
 
 def _check_permissive_pattern(value: str, name: str) -> None:
@@ -174,14 +188,14 @@ def _check_hostname_pattern(value: str, name: str) -> None:
     if _VALID_HOSTNAME_PATTERN.fullmatch(value):
         return
     if value.startswith(".") or value.startswith("-"):
-        raise ValidationError(f"{name} must start with an alphanumeric character: {value}")
-    raise ValidationError(f"{name} contains invalid characters: {value}")
+        raise _refused(name, "must start with an alphanumeric character", value)
+    raise _refused(name, "contains invalid characters", value)
 
 
 def _check_no_trailing_space(value: str, name: str) -> None:
     """Raise ValueError if value ends with space."""
     if value.endswith(" "):
-        raise ValidationError(f"{name} cannot end with a space: {value}")
+        raise _refused(name, "cannot end with a space", value)
 
 
 def _check_no_control_chars(value: str, name: str) -> None:

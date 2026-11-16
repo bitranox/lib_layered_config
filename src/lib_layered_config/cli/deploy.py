@@ -12,10 +12,11 @@ from ..deploy import deploy_config as deploy_config_impl
 from ..domain import json_codec
 from ..domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from ..domain.deploy_permissions import DeployPermissionsError
+from ..domain.printable import escape_controls
 from .common import normalise_platform_option, normalise_targets
 from .constants import CLICK_CONTEXT_SETTINGS, TARGET_CHOICES
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
-from .output import emit_json, emit_text, escape_controls
+from .output import emit_json, emit_text
 from .typed_click import option
 
 if TYPE_CHECKING:

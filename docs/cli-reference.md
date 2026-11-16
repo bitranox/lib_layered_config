@@ -1304,6 +1304,10 @@ lib_layered_config env-prefix <slug>
 **Returns:** Uppercase environment prefix with dashes converted to underscores. A slug `read` and `deploy`
 refuse (they exit 22) is a usage error here (exit code 2), because the slug is this command's only argument: an empty one (`slug cannot be empty`), one holding a path
 separator or whitespace (`slug contains invalid characters: ../x`), starting with a dot, or non-ASCII.
+A refusal names the value it refused with each control character written as `\uXXXX` (`demo\u000a` for a
+slug ending in a newline), so a trailing newline is visible and an ESC never reaches the terminal raw; a
+backslash prints as it is. The same holds for the vendor, app and hostname refusals and for a Windows
+root that is not absolute.
 
 **Examples:**
 

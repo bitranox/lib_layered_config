@@ -150,3 +150,16 @@ def test_a_planted_relative_programdata_tree_does_not_decide_the_modes(
     deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], platform="win32")
 
     assert ((appdata / "Acme" / "Demo" / "config.toml").stat().st_mode & 0o777) == 0o600
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [("rel\\dir", "'rel\\dir'"), ("rel\ndir", "'rel\\u000adir'")],
+)
+def test_a_refused_root_is_named_with_one_backslash_and_its_control_characters_escaped(value: str, shown: str) -> None:
+    # User decision 2026-11-16 (R2-F4): the path was printed with repr, which doubled each backslash.
+    with pytest.raises(ValidationError) as caught:
+        program_data_root({"LIB_LAYERED_CONFIG_PROGRAMDATA": value})
+
+    assert f"root {shown} is not an absolute path" in str(caught.value)

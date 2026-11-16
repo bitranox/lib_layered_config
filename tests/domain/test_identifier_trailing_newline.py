@@ -42,8 +42,10 @@ def test_a_trailing_newline_is_refused_with_the_carriage_return_message(name: st
 
     newline, carriage_return = _message(check, "demo\n"), _message(check, "demo\r")
 
-    assert newline == carriage_return.replace("\r", "\n")
-    assert "contains invalid characters" in newline
+    # Both characters are printed as escapes (user decision 2026-11-16, R2-F4), so the messages differ
+    # only there.
+    assert newline == carriage_return.replace("\\u000d", "\\u000a")
+    assert newline.endswith("contains invalid characters: demo\\u000a")
 
 
 @os_agnostic

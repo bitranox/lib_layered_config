@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...domain.errors import LayerRootNotAbsoluteError
+from ...domain.printable import escape_controls
 from ._base import PlatformStrategy, collect_layer, config_path_present
 
 if TYPE_CHECKING:
@@ -66,7 +67,7 @@ def _root(env: Mapping[str, str], *, override: str, name: str, default: Path) ->
         root = default if value is None else Path(value)
     if not root.is_absolute():
         raise LayerRootNotAbsoluteError(
-            f"The %{name}% root {str(root)!r} is not an absolute path on this system; set {override} "
+            f"The %{name}% root '{escape_controls(str(root))}' is not an absolute path on this system; set {override} "
             f"(or {name}) to an absolute path"
         )
     return root

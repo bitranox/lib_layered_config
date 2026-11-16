@@ -135,6 +135,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A refused vendor, app, slug or hostname is named with each control character written as `\uXXXX`
+  (`slug contains invalid characters: demo\u000a`). It was printed raw, so a trailing newline was
+  invisible and an ESC sequence reached the terminal. A value without control characters is named as
+  before. The refusal of a Windows root that is not absolute no longer uses `repr`, which doubled every
+  backslash (`'rel\\dir'`); it names the path in quotes with one backslash, its control characters
+  escaped the same way.
 - A warning printed on stderr writes a control character in a key or path as `\uXXXX`. A key
   holding a newline split the warning in two, and on a terminal an ESC sequence in it went out raw and
   recoloured the rest of the line. A plain key or path prints as before, backslashes included. The
