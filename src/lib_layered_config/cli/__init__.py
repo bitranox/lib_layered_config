@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+import lib_cli_exit_tools
 import rich_click as click
 from lib_cli_exit_tools import cli_session
-from lib_cli_exit_tools.application.runner import SessionOverrides
 
 from . import deploy, fail, generate, info, read
 from .common import version_string
@@ -37,19 +37,25 @@ if TYPE_CHECKING:
     help="Show full Python traceback on errors",
 )
 def cli(*, traceback: bool) -> None:
-    """Root command for the CLI group: library warnings go to stderr until the command ends."""
+    """Root command for the CLI group: library warnings go to stderr until the command ends.
+
+    The ``--traceback`` choice is written into ``lib_cli_exit_tools.config`` here, first, because the
+    session's error handler reads it when it reports an exception. Reading it from ``argv`` in
+    ``main()`` instead missed every console-script run, which passes no ``argv``; ``cli_session``
+    restores the whole config when the call ends.
+    """
+    lib_cli_exit_tools.config.traceback = traceback
+    lib_cli_exit_tools.config.traceback_force_color = traceback
     current_context().call_on_close(attach_stderr_warnings())
 
 
 def main(argv: Sequence[str] | None = None, *, restore_traceback: bool = True) -> int:
     """Entry point wiring the CLI through ``lib_cli_exit_tools.cli_session``."""
     args_list = list(argv) if argv is not None else None
-    overrides = _session_overrides(args_list)
 
     with cli_session(
         summary_limit=TRACEBACK_SUMMARY,
         verbose_limit=TRACEBACK_VERBOSE,
-        overrides=overrides or None,
         restore=restore_traceback,
     ) as run:
         runner = cast("Callable[..., int]", run)
@@ -58,24 +64,6 @@ def main(argv: Sequence[str] | None = None, *, restore_traceback: bool = True) -
             argv=args_list,
             prog_name="lib_layered_config",
         )
-
-
-def _session_overrides(argv: Sequence[str] | None) -> SessionOverrides:
-    """Derive configuration overrides for ``cli_session`` based on CLI args."""
-    if not argv:
-        return SessionOverrides()
-
-    try:
-        ctx = cli.make_context("lib_layered_config", list(argv), resilient_parsing=True)
-    except click.ClickException:
-        return SessionOverrides()
-
-    try:
-        enabled = bool(ctx.params.get("traceback", False))
-    finally:
-        ctx.close()
-
-    return SessionOverrides(traceback=enabled) if enabled else SessionOverrides()
 
 
 def _register_commands() -> None:

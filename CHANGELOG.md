@@ -119,6 +119,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `--traceback` works in the installed `lib_layered_config` and `lib-layered-config` commands. It worked
+  only through `python -m lib_layered_config`: the console scripts start the CLI without passing the
+  arguments on, so the flag, looked up in those arguments beforehand, was never found. The root command now
+  sets it itself.
 - `deploy_config` (and `deploy_config_paths`, `read_deploy_config`) says what a source that is not a
   regular file is: `"Configuration source is a directory, not a file: <path>"`, or `"Configuration source is
   not a regular file: <path>"` for a FIFO, device or socket. Both used to read `"Configuration source not

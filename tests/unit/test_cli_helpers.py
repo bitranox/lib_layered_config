@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING
 
 import pytest
 from click.testing import CliRunner
@@ -20,8 +20,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
     from pathlib import Path
 
-    from lib_cli_exit_tools.application.runner import SessionOverrides
-
 
 @os_agnostic
 def test_version_string_reflects_static_metadata() -> None:
@@ -34,35 +32,6 @@ def test_common_describe_distribution_returns_info_lines() -> None:
     importlib.reload(metadata_module)
     expected = list(_expected_info_lines())
     assert list(common_module.describe_distribution()) == expected
-
-
-@os_agnostic
-def test_session_overrides_detect_traceback_flag() -> None:
-    overrides = cli_module._session_overrides(["--traceback"])  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
-    assert overrides == {"traceback": True}
-
-
-@os_agnostic
-def test_session_overrides_default_to_empty_when_flag_absent() -> None:
-    assert cli_module._session_overrides(["read", "--vendor", "Acme"]) == {}  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
-
-
-@os_agnostic
-def test_session_overrides_return_empty_for_none() -> None:
-    assert cli_module._session_overrides(None) == {}  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
-
-
-def _raise_click_exception(*_args: object, **_kwargs: object) -> NoReturn:
-    raise cli_module.click.ClickException("boom")
-
-
-@os_agnostic
-def test_session_overrides_swallow_click_parse_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Click's own parser, not ours: under resilient_parsing it raised for no argv tried
-    # (unknown options, flag values, a lone "-"), so a raising make_context stands in for it.
-    monkeypatch.setattr(cli_module.cli, "make_context", _raise_click_exception, raising=False)
-
-    assert cli_module._session_overrides(["--traceback"]) == {}  # pyright: ignore[reportPrivateUsage] - pins the helper's own result per argv shape; main only forwards it
 
 
 @os_agnostic
@@ -104,12 +73,9 @@ def test_main_delegates_through_cli_session(monkeypatch: pytest.MonkeyPatch) -> 
     captured: dict[str, object] = {}
 
     @contextmanager
-    def fake_session(
-        *, summary_limit: int, verbose_limit: int, overrides: SessionOverrides | None, restore: bool
-    ) -> Generator[Callable[..., int]]:
+    def fake_session(*, summary_limit: int, verbose_limit: int, restore: bool) -> Generator[Callable[..., int]]:
         captured["summary_limit"] = summary_limit
         captured["verbose_limit"] = verbose_limit
-        captured["overrides"] = overrides
         captured["restore"] = restore
 
         def runner(
@@ -131,7 +97,6 @@ def test_main_delegates_through_cli_session(monkeypatch: pytest.MonkeyPatch) -> 
     assert exit_code == 123
     assert captured["summary_limit"] == cli_module.TRACEBACK_SUMMARY
     assert captured["verbose_limit"] == cli_module.TRACEBACK_VERBOSE
-    assert captured["overrides"] == {"traceback": True}
     assert captured["restore"] is False
     assert captured["argv"] == ["--traceback"]
     assert captured["prog_name"] == "lib_layered_config"

@@ -91,18 +91,18 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 
 ### cli/ - command-line interface (package)
 
-| Module               | Responsibility                                                                                                                   |
-|----------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| `__init__.py`        | The Click command group and `main()` entry; wires `lib_cli_exit_tools.cli_session` and derives `SessionOverrides`.               |
-| `common.py`          | Shared CLI helpers: `ReadQuery`, `build_read_query`, `json_payload` / `human_payload` (with redaction), `render_human`.          |
-| `constants.py`       | CLI constants: `TARGET_CHOICES` (from the `Layer` enum) and the Click context settings.                                          |
-| `read.py`            | The `read` and `read-json` commands (secrets masked unless `--no-redact`).                                                       |
-| `stderr_warnings.py` | Prints the library's warnings on stderr, one `warning: <event> key=value` line each, while a command runs; removed when it ends. |
-| `deploy.py`          | The `deploy` command.                                                                                                            |
-| `generate.py`        | The `generate-examples` command.                                                                                                 |
-| `info.py`            | The `info` and `env-prefix` commands.                                                                                            |
-| `fail.py`            | The `fail` diagnostic command.                                                                                                   |
-| `typed_click.py`     | Thin typed wrappers over rich-click decorators, isolating the one partially-untyped boundary.                                    |
+| Module               | Responsibility                                                                                                                      |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| `__init__.py`        | The Click command group and `main()` entry; wires `lib_cli_exit_tools.cli_session`; the group writes `--traceback` into its config. |
+| `common.py`          | Shared CLI helpers: `ReadQuery`, `build_read_query`, `json_payload` / `human_payload` (with redaction), `render_human`.             |
+| `constants.py`       | CLI constants: `TARGET_CHOICES` (from the `Layer` enum) and the Click context settings.                                             |
+| `read.py`            | The `read` and `read-json` commands (secrets masked unless `--no-redact`).                                                          |
+| `stderr_warnings.py` | Prints the library's warnings on stderr, one `warning: <event> key=value` line each, while a command runs; removed when it ends.    |
+| `deploy.py`          | The `deploy` command.                                                                                                               |
+| `generate.py`        | The `generate-examples` command.                                                                                                    |
+| `info.py`            | The `info` and `env-prefix` commands.                                                                                               |
+| `fail.py`            | The `fail` diagnostic command.                                                                                                      |
+| `typed_click.py`     | Thin typed wrappers over rich-click decorators, isolating the one partially-untyped boundary.                                       |
 
 ### deploy.py and generate.py - deployment and scaffolding (one layer between cli and adapters)
 
