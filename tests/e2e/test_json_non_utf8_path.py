@@ -11,7 +11,6 @@ byte as the four characters ``\\xff``.
 from __future__ import annotations
 
 import json
-import os
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -30,8 +29,10 @@ APP = "Demo"
 SLUG = "demo"
 IDENTITY = ["--vendor", VENDOR, "--app", APP, "--slug", SLUG]
 
-#: The directory name ``b"x\xffy"`` as Python reads it from a POSIX file system.
-_BAD_NAME = os.fsdecode(b"x\xffy")
+#: The directory name ``b"x\xffy"`` as Python reads it from a POSIX file system. Built with
+#: surrogateescape rather than ``os.fsdecode``: Windows decodes file names as strict UTF-8, so
+#: ``fsdecode`` raised while importing this module there, before ``posix_only`` could skip it.
+_BAD_NAME = b"x\xffy".decode("utf-8", "surrogateescape")
 #: How JSON output writes that name.
 _ESCAPED_NAME = "x\\xffy"
 
