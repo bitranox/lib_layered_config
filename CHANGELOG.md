@@ -119,6 +119,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- On a platform without a layout of its own (a `sys.platform` that is neither Linux, macOS nor
+  Windows: FreeBSD, Solaris, Cygwin) the reader now uses the Linux layout, the one `deploy` already
+  wrote there. Before, it read no app, host or user file at all, so a file `deploy` had just written was
+  never read back. `platform_family` returns `PlatformFamily.LINUX` for such a value instead of `None`.
 - A slug, vendor, app or hostname ending in a newline (`"demo\n"`) is refused with `ValidationError`
   (`"slug contains invalid characters: ..."`), as one ending in `\r` already was. Before, a single trailing
   newline passed the check, so `read_config` loaded it and `deploy_config` wrote into a directory named

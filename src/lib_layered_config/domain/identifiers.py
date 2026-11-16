@@ -226,25 +226,23 @@ class PlatformFamily(str, Enum):
     WINDOWS = "windows"
 
 
-def platform_family(platform: str) -> PlatformFamily | None:
-    """Classify a ``sys.platform`` value, or return ``None`` for a platform with no known layout.
+def platform_family(platform: str) -> PlatformFamily:
+    """Classify a ``sys.platform`` value; a platform with no layout of its own gets the Linux one.
 
-    ``None`` leaves the fallback to the caller: the resolver offers no paths there, while deploy
-    writes the Linux layout.
+    The fallback lives here, not in each caller, so reading and deploying use the same layout on
+    FreeBSD, Solaris or Cygwin: a deployed file is read back. User decision 2026-11-16.
 
     Examples:
         >>> platform_family("linux"), platform_family("darwin"), platform_family("win32")
         (<PlatformFamily.LINUX: 'linux'>, <PlatformFamily.MACOS: 'macos'>, <PlatformFamily.WINDOWS: 'windows'>)
-        >>> platform_family("freebsd14") is None
-        True
+        >>> platform_family("freebsd14")
+        <PlatformFamily.LINUX: 'linux'>
     """
-    if platform.startswith("linux"):
-        return PlatformFamily.LINUX
     if platform == "darwin":
         return PlatformFamily.MACOS
     if platform.startswith("win"):
         return PlatformFamily.WINDOWS
-    return None
+    return PlatformFamily.LINUX
 
 
 class ExamplePlatform(str, Enum):

@@ -1148,7 +1148,7 @@ def _prepare_resolver(
 
 
 def _strategy_for(resolver: DefaultPathResolver) -> DeploymentStrategy:
-    """Pick the layout for the resolver's platform; one with no known layout deploys the Linux one."""
+    """Pick the layout for the resolver's platform, the one its reads use (``platform_family``)."""
     family = platform_family(resolver.platform)
     if family == PlatformFamily.WINDOWS:
         return WindowsDeployment(resolver)

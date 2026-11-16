@@ -324,10 +324,22 @@ def test_windows_resolver_user_paths_cover_roaming_appdata(tmp_path: Path) -> No
 
 
 @os_agnostic
-def test_platform_paths_returns_empty_for_unknown_platform(tmp_path: Path) -> None:
-    resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, platform="plan9")
-    assert resolver.strategy is None
-    assert (list(resolver.app()), list(resolver.host()), list(resolver.user())) == ([], [], [])
+def test_an_unknown_platform_offers_the_linux_paths(tmp_path: Path) -> None:
+    sandbox = create_layered_sandbox(tmp_path, vendor="Acme", app="Demo", slug="demo", platform="linux")
+    for layer in ("app", "user"):
+        sandbox.write(layer, "config.toml", content="a = 1\n")
+    sandbox.write("host", "penguin.toml", content="a = 1\n")
+
+    def paths(platform: str) -> tuple[list[str], list[str], list[str]]:
+        resolver = DefaultPathResolver(
+            vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, env=sandbox.env, platform=platform, hostname="penguin"
+        )
+        return list(resolver.app()), list(resolver.host()), list(resolver.user())
+
+    unknown = paths("plan9")
+
+    assert unknown == paths("linux")
+    assert all(unknown)
 
 
 @os_agnostic
@@ -339,22 +351,25 @@ def test_platform_paths_returns_empty_for_unknown_platform(tmp_path: Path) -> No
         ("darwin", MacOSStrategy),
         ("win32", WindowsStrategy),
         ("win64", WindowsStrategy),
-        ("cygwin", None),
-        ("freebsd14", None),
+        ("cygwin", LinuxStrategy),
+        ("freebsd14", LinuxStrategy),
     ],
 )
 def test_resolver_selects_the_strategy_of_the_platform_family(
-    tmp_path: Path, platform: str, expected: type[object] | None
+    tmp_path: Path, platform: str, expected: type[object]
 ) -> None:
     resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, platform=platform)
-    selected = None if resolver.strategy is None else type(resolver.strategy)
-    assert selected is expected
+    assert type(resolver.strategy) is expected
 
 
 @os_agnostic
-def test_platform_dotenv_path_returns_none_for_unknown_platform(tmp_path: Path) -> None:
-    resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, platform="plan9")
-    assert resolver._dotenv_finder._platform_path() is None  # pyright: ignore[reportPrivateUsage] - no public route reaches the finder's platform fallback alone
+def test_an_unknown_platform_takes_the_linux_dotenv_fallback(tmp_path: Path) -> None:
+    def fallback(platform: str) -> Path | None:
+        resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, platform=platform)
+        return resolver._dotenv_finder._platform_path()  # pyright: ignore[reportPrivateUsage] - no public route reaches the finder's platform fallback alone
+
+    assert fallback("plan9") == fallback("linux")
+    assert fallback("plan9") is not None
 
 
 @windows_only

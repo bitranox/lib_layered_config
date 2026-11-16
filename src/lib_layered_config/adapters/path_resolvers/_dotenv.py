@@ -32,7 +32,7 @@ class DotenvPathFinder:
     directories. This class provides unified discovery respecting precedence rules.
     """
 
-    def __init__(self, cwd: Path | None, strategy: PlatformStrategy | None) -> None:
+    def __init__(self, cwd: Path | None, strategy: PlatformStrategy) -> None:
         """Store context for dotenv discovery.
 
         Args:
@@ -80,8 +80,6 @@ class DotenvPathFinder:
         """Return the platform-specific ``.env`` fallback location.
 
         Returns:
-            Platform fallback path or ``None`` if no strategy is set.
+            Platform fallback path, or ``None`` when the platform names none.
         """
-        if self.strategy is None:
-            return None
         return self.strategy.dotenv_path()

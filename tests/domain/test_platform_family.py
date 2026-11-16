@@ -23,9 +23,9 @@ def test_platform_family_classifies_a_sys_platform_value(platform: str, expected
 
 
 @pytest.mark.parametrize("platform", ["freebsd14", "cygwin", "aix", "darwin2", ""])
-def test_platform_family_is_none_for_a_platform_with_no_layout(platform: str) -> None:
-    """The resolver offers no paths there; each caller decides its own fallback."""
-    assert platform_family(platform) is None
+def test_a_platform_with_no_layout_of_its_own_gets_the_linux_one(platform: str) -> None:
+    """Reading and deploying share this answer, so a deployed file is read back (P-C)."""
+    assert platform_family(platform) is PlatformFamily.LINUX
 
 
 def test_the_enum_values_are_the_wire_strings() -> None:

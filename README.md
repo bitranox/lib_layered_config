@@ -247,6 +247,9 @@ Use the optional defaults layer when you want one explicitly-provided file to se
 Important directories (overridable via environment variables):
 
 ### Linux
+Also used, for reading and deploying alike, on every platform without a layout of its own (FreeBSD,
+Solaris, Cygwin and other `sys.platform` values that are neither macOS nor Windows).
+
 - `/etc/xdg/<slug>/config.toml` (XDG system-wide, read first)
 - `/etc/xdg/<slug>/config.d/*.{toml,json,yaml,yml}`
 - `/etc/<slug>/config.toml` (also read, after the XDG files; its values win)

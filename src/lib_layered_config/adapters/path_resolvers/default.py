@@ -114,7 +114,7 @@ class DefaultPathResolver:
         self._dotenv_finder = DotenvPathFinder(self.cwd, self._strategy)
 
     @property
-    def strategy(self) -> PlatformStrategy | None:
+    def strategy(self) -> PlatformStrategy:
         """Return the current platform strategy for direct access in tests."""
         return self._strategy
 
@@ -123,16 +123,14 @@ class DefaultPathResolver:
         """Return the platform context for direct access in tests."""
         return self._ctx
 
-    def _select_strategy(self) -> PlatformStrategy | None:
-        """Select the platform strategy, or ``None`` for a platform with no known layout."""
+    def _select_strategy(self) -> PlatformStrategy:
+        """Select the platform strategy; a platform with no layout of its own gets the Linux one."""
         family = platform_family(self.platform)
-        if family == PlatformFamily.LINUX:
-            return LinuxStrategy(self._ctx)
         if family == PlatformFamily.MACOS:
             return MacOSStrategy(self._ctx)
         if family == PlatformFamily.WINDOWS:
             return WindowsStrategy(self._ctx)
-        return None
+        return LinuxStrategy(self._ctx)
 
     def app(self) -> Iterable[str]:
         """Return candidate system-wide configuration paths.
@@ -158,8 +156,7 @@ class DefaultPathResolver:
             ['config.toml']
             >>> tmp.cleanup()
         """
-        strategy = self._strategy
-        return self._record_candidates(Layer.APP, strategy.app_paths() if strategy is not None else ())
+        return self._record_candidates(Layer.APP, self._strategy.app_paths())
 
     def host(self) -> Iterable[str]:
         """Return host-specific overrides.
@@ -170,8 +167,7 @@ class DefaultPathResolver:
         Returns:
             Ordered host-level configuration paths.
         """
-        strategy = self._strategy
-        return self._record_candidates(Layer.HOST, strategy.host_paths() if strategy is not None else ())
+        return self._record_candidates(Layer.HOST, self._strategy.host_paths())
 
     def user(self) -> Iterable[str]:
         """Return user-level configuration locations.
@@ -182,8 +178,7 @@ class DefaultPathResolver:
         Returns:
             Ordered user-level configuration paths.
         """
-        strategy = self._strategy
-        return self._record_candidates(Layer.USER, strategy.user_paths() if strategy is not None else ())
+        return self._record_candidates(Layer.USER, self._strategy.user_paths())
 
     def dotenv(self) -> Iterable[str]:
         """Return candidate ``.env`` locations discovered during path resolution.
@@ -198,10 +193,7 @@ class DefaultPathResolver:
 
     @staticmethod
     def _record_candidates(layer: Layer, candidates: Iterable[str]) -> list[str]:
-        """Materialise *candidates* for *layer* and log how many were found.
-
-        An unknown platform has no strategy, so its callers pass an empty iterable and nothing is logged.
-        """
+        """Materialise *candidates* for *layer* and log how many were found."""
         paths = list(candidates)
         if paths:
             log_debug("path_candidates", layer=layer.value, path=None, count=len(paths))
