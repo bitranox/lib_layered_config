@@ -127,6 +127,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A key whose name holds many dots (a quoted TOML key such as `"a.a.a" = 1`) no longer costs memory
+  quadratic in its dots. The merge's provenance index stored a copy of the key cut before every dot,
+  so one name with 16,000 dots, in a 32 KB file, took about 250 MB; it now files each key under its
+  real parent tables only, and the same file takes no measurable extra memory. `Config.with_overrides`
+  had the same shape in time (16,000 dots took 0.5 s) and is now linear too.
 - `display_config` no longer fails on a stdout that cannot encode a value. A piped stdout on Windows uses
   the cp1252 code page, and a CJK character or an emoji made the JSON view exit with nothing printed and
   the human view stop part-way with `UnicodeEncodeError` (this reached every CLI built from the CLI

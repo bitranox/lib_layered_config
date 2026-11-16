@@ -310,15 +310,24 @@ def _override_keys(value: Any, dotted: str) -> Iterator[str]:
         yield dotted
 
 
-def _is_at_or_below(dotted: str, paths: frozenset[str]) -> bool:
+def _is_at_or_below(dotted: str, paths: frozenset[str], *, lengths: frozenset[int]) -> bool:
     """Whether *dotted* is one of *paths* or lies inside one of them.
 
+    Only the cuts a path could end at are compared: each length in *lengths* (the lengths of
+    *paths*, computed once by the caller) that is the whole key or stops just before a dot.
+    Joining the key again at every one of its dots made a key name holding D dots cost D*D time
+    (user decision 2026-11-16, R3-F1).
+
     Examples:
-        >>> _is_at_or_below("db.host", frozenset({"db"})), _is_at_or_below("dbx", frozenset({"db"}))
-        (True, False)
+        >>> paths = frozenset({"db"})
+        >>> lengths = frozenset(len(path) for path in paths)
+        >>> [_is_at_or_below(key, paths, lengths=lengths) for key in ("db", "db.host", "dbx", "d")]
+        [True, True, False, False]
     """
-    parts = dotted.split(".")
-    return any(".".join(parts[:end]) in paths for end in range(1, len(parts) + 1))
+    size = len(dotted)
+    return any(
+        (length == size or (length < size and dotted[length] == ".")) and dotted[:length] in paths for length in lengths
+    )
 
 
 def _override_provenance(meta: Mapping[str, SourceInfo], replaced: list[tuple[str, Any]]) -> dict[str, SourceInfo]:
@@ -336,7 +345,8 @@ def _override_provenance(meta: Mapping[str, SourceInfo], replaced: list[tuple[st
         [('a', {'layer': 'override', 'path': None, 'key': 'a'}), ('c', {'layer': 'env', 'path': None, 'key': 'c'})]
     """
     paths = frozenset(path for path, _ in replaced)
-    provenance = {key: info for key, info in meta.items() if not _is_at_or_below(key, paths)}
+    lengths = frozenset(len(path) for path in paths)
+    provenance = {key: info for key, info in meta.items() if not _is_at_or_below(key, paths, lengths=lengths)}
     for path, value in replaced:
         for dotted in _override_keys(value, path):
             provenance[dotted] = SourceInfo(layer=OVERRIDE_LAYER, path=None, key=dotted)

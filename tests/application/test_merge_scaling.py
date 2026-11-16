@@ -13,6 +13,7 @@ Linux and Windows, best of three runs each), so a limit of 20x leaves room for n
 from __future__ import annotations
 
 import time
+import tracemalloc
 
 import pytest
 
@@ -79,3 +80,44 @@ def test_merge_result_provenance_is_a_plain_dict_in_merge_order() -> None:
 
     assert type(result.provenance) is dict
     assert list(result.provenance) == ["b", "a.c", "z"]
+
+
+def _peak_bytes_merging_a_dotted_name(dots: int) -> int:
+    """Peak traced memory of merging one key whose NAME holds *dots* dots (a quoted TOML key)."""
+    name = ".".join(["a"] * (dots + 1))
+    layers = [LayerSnapshot(Layer.APP, {name: 1}, "/opt/app.toml")]
+    tracemalloc.start()
+    try:
+        merge_layers(layers)
+        return tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+
+@pytest.mark.os_agnostic
+def test_dots_inside_one_key_name_cost_memory_linear_in_the_name() -> None:
+    """User decision 2026-11-16 (R3-F1, "Index by real segments"): a dot inside a key name is no path.
+
+    The provenance index filed every key under a copy of its text cut before each dot, so one key
+    name with 16,000 dots (a 32 KB file) took about 250 MB. Twice the dots must cost about twice
+    the memory, not four times.
+    """
+    small = _peak_bytes_merging_a_dotted_name(4_000)
+    large = _peak_bytes_merging_a_dotted_name(8_000)
+
+    assert large / small < 3.0, f"twice the dots took {large / small:.1f}x the memory ({small} -> {large} bytes)"
+
+
+@pytest.mark.os_agnostic
+def test_a_replaced_table_under_a_dotted_name_forgets_its_keys() -> None:
+    """A table whose own name holds a dot is still one path segment: replacing it drops its keys."""
+    layers = [
+        LayerSnapshot(Layer.APP, {"a.b": {"c": 1, "d": {"e": 2}}, "a.bx": 3}, None),
+        LayerSnapshot(Layer.USER, {"a.b": "flat"}, None),
+    ]
+
+    result = merge_layers(layers)
+
+    assert result.data == {"a.b": "flat", "a.bx": 3}
+    assert sorted(result.provenance) == ["a.b", "a.bx"]
+    assert result.provenance["a.b"]["layer"] == "user"

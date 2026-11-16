@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import cast
 
 import pytest
@@ -464,3 +465,29 @@ def test_repr_does_not_mention_the_not_sensitive_declaration() -> None:
 def test_a_third_argument_that_is_not_a_declaration_is_refused_at_construction() -> None:
     with pytest.raises(TypeError, match=r"NotSensitiveKeys\.of"):
         Config({"a": 1}, {}, cast("NotSensitiveKeys", ["a"]))
+
+
+def _best_override_seconds(dots: int) -> float:
+    """The fastest of three with_overrides calls beside one key whose NAME holds *dots* dots."""
+    name = ".".join(["a"] * (dots + 1))
+    meta = {
+        name: SourceInfo(layer="app", path=None, key=name),
+        "db.h": SourceInfo(layer="app", path=None, key="db.h"),
+    }
+    config = Config({name: 1, "db": {"h": 1}}, meta)
+    timings: list[float] = []
+    for _ in range(3):
+        started = time.perf_counter()
+        config.with_overrides({"db": {"h": 2}})
+        timings.append(time.perf_counter() - started)
+    return min(timings)
+
+
+@os_agnostic
+def test_with_overrides_time_is_linear_in_the_dots_of_a_key_name() -> None:
+    """User decision 2026-11-16 (R3-F1): checking whether a key lies below a replaced path joined
+    the key's text again at every dot, so four times the dots took sixteen times as long."""
+    small = _best_override_seconds(4_000)
+    large = _best_override_seconds(16_000)
+
+    assert large / small < 8.0, f"4x the dots took {large / small:.1f}x the time ({small:.4f}s -> {large:.4f}s)"

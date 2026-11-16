@@ -23,6 +23,7 @@ import re
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from itertools import accumulate
 from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
 from ..domain.errors import InvalidFormatError
@@ -239,7 +240,9 @@ def _descend(
                 target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot, segments=segments
             )
         else:
-            _store_scalar(target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot)
+            _store_scalar(
+                target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot, segments=segments
+            )
 
 
 def _too_deep(snapshot: LayerSnapshot, segments: Sequence[str]) -> str:
@@ -343,7 +346,7 @@ def _store_branch(
     segments.append(key)
     _descend(branch, provenance, value, snapshot, segments)
     segments.pop()
-    _store_branch_provenance(branch, dotted, provenance, snapshot)
+    _store_branch_provenance(branch, dotted, provenance, snapshot, parents=segments)
 
 
 def _all_numeric_keys(value: Mapping[str, object]) -> bool:
@@ -519,7 +522,7 @@ def _build_new_element(
         _descend(new_element, provenance, override, snapshot, segments)
         segments.pop()
         return new_element
-    provenance[dotted] = _provenance_entry(dotted, snapshot)
+    provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=segments)
     return _clone_leaf(override)
 
 
@@ -544,6 +547,7 @@ def _store_scalar(
     value: object,
     dotted: str,
     snapshot: LayerSnapshot,
+    segments: Sequence[str],
 ) -> None:
     """Set the scalar value and update provenance in lockstep.
 
@@ -557,7 +561,7 @@ def _store_scalar(
         _forget_below(provenance, dotted)  # the keys the container held are gone with it
 
     target[key] = _clone_leaf(value)
-    provenance[dotted] = _provenance_entry(dotted, snapshot)
+    provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=segments)
 
 
 def _clone_dict(value: dict[str, object]) -> dict[str, object]:
@@ -640,6 +644,8 @@ def _store_branch_provenance(
     dotted: str,
     provenance: _Provenance,
     snapshot: LayerSnapshot,
+    *,
+    parents: Sequence[str],
 ) -> None:
     """Give a branch an entry of its own only while it is empty.
 
@@ -662,57 +668,55 @@ def _store_branch_provenance(
         >>> prov = _Provenance()
         >>> from lib_layered_config.domain.identifiers import Layer
         >>> snap = LayerSnapshot(Layer.APP, {'styles': {}}, '/etc/app.toml')
-        >>> _store_branch_provenance({}, 'styles', prov, snap)
+        >>> _store_branch_provenance({}, 'styles', prov, snap, parents=())
         >>> prov['styles']['layer']
         'app'
-        >>> _store_branch_provenance({'DEBUG': 'dim'}, 'styles', prov, snap)
+        >>> _store_branch_provenance({'DEBUG': 'dim'}, 'styles', prov, snap, parents=())
         >>> 'styles' in prov
         False
     """
     if branch:
         provenance.pop(dotted, None)
         return
-    provenance[dotted] = _provenance_entry(dotted, snapshot)
+    provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=parents)
 
 
 class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
-    """Provenance entries plus an index of the keys below each dotted prefix.
+    """Provenance entries plus the tree of paths below each container.
 
     A container replaced by a later layer must take the entries of every key below it along.
     Scanning all entries for that prefix made N replacements over N entries cost N*N (16,000 of
-    them took about 4 s), so each key is filed under every prefix that ends just before one of its
-    dots - exactly the prefixes ``key.startswith(prefix + ".")`` accepts - and
-    :meth:`forget_below` reads that set. Iteration keeps insertion order, like a dict.
+    them took about 4 s), so :meth:`record` files each path under its parent path and
+    :meth:`forget_below` walks the paths below a container. The parents come from the merge's
+    real segments, never from the dots in a path: a key NAME may hold dots (a quoted TOML key),
+    and cutting the text before every dot made one name of D dots cost memory quadratic in D
+    (user decision 2026-11-16, R3-F1). Iteration keeps insertion order, like a dict.
 
     Examples:
         >>> prov = _Provenance()
-        >>> for key in ('a', 'a.b', 'a.b.c', 'ab'):
-        ...     prov[key] = {'layer': 'app', 'path': None, 'key': key}
+        >>> for parents, key in (((), 'a'), (('a',), 'b'), (('a', 'b'), 'c'), ((), 'ab'), ((), 'a.x')):
+        ...     dotted = _join_segments(parents, key)
+        ...     prov.record(dotted, {'layer': 'app', 'path': None, 'key': dotted}, parents=parents)
         >>> prov.forget_below('a')
         >>> list(prov)
-        ['a', 'ab']
+        ['a', 'ab', 'a.x']
     """
 
     def __init__(self) -> None:
         self._entries: dict[str, SourceInfoPayload] = {}
-        self._below: dict[str, set[str]] = {}
+        self._children: dict[str, set[str]] = {}
+        self._parent: dict[str, str] = {}
 
     def __getitem__(self, key: str) -> SourceInfoPayload:
         return self._entries[key]
 
     def __setitem__(self, key: str, value: SourceInfoPayload) -> None:
-        if key not in self._entries:
-            for prefix in _dotted_prefixes(key):
-                self._below.setdefault(prefix, set()).add(key)
-        self._entries[key] = value
+        """Refused: an entry is filed by its parent segments, which only :meth:`record` takes."""
+        raise TypeError(f"provenance for {key!r} is written with record(dotted, entry, parents=...)")
 
     def __delitem__(self, key: str) -> None:
+        """Remove *key*'s entry; the path stays filed, as a branch whose values keep their own entries."""
         del self._entries[key]
-        for prefix in _dotted_prefixes(key):
-            below = self._below[prefix]
-            below.discard(key)
-            if not below:
-                del self._below[prefix]
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._entries)
@@ -720,27 +724,35 @@ class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
     def __len__(self) -> int:
         return len(self._entries)
 
+    def record(self, dotted: str, entry: SourceInfoPayload, *, parents: Sequence[str]) -> None:
+        """Store *entry* for *dotted*, which is *parents* plus one key, filed under its parents."""
+        self._link(dotted, parents)
+        self._entries[dotted] = entry
+
     def forget_below(self, dotted: str) -> None:
-        """Remove the entries of every key nested under *dotted*."""
-        for stale in list(self._below.get(dotted, ())):
-            del self[stale]
+        """Remove the entries of every path nested under *dotted*."""
+        stack = list(self._children.pop(dotted, ()))
+        while stack:
+            path = stack.pop()
+            self._entries.pop(path, None)
+            del self._parent[path]
+            stack.extend(self._children.pop(path, ()))
 
     def as_dict(self) -> dict[str, SourceInfoPayload]:
         """Return the entries as the plain dict :class:`MergeResult` carries."""
         return self._entries
 
-
-def _dotted_prefixes(key: str) -> Iterator[str]:
-    """Yield *key* cut before each of its dots: ``'a.b.c'`` gives ``'a'`` then ``'a.b'``.
-
-    Examples:
-        >>> list(_dotted_prefixes('a.b.c')), list(_dotted_prefixes('flat'))
-        (['a', 'a.b'], [])
-    """
-    dot = key.find(".")
-    while dot != -1:
-        yield key[:dot]
-        dot = key.find(".", dot + 1)
+    def _link(self, dotted: str, parents: Sequence[str]) -> None:
+        """File *dotted* under its parent path, and each parent under its own, up to one already filed."""
+        ends = list(accumulate(len(segment) + 1 for segment in parents))  # each parent path's length plus its dot
+        child = dotted
+        for end in reversed(ends):
+            if child in self._parent:
+                return
+            parent = dotted[: end - 1]
+            self._parent[child] = parent
+            self._children.setdefault(parent, set()).add(child)
+            child = parent
 
 
 def _forget_below(provenance: _Provenance, dotted: str) -> None:
