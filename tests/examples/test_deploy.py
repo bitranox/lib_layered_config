@@ -1242,7 +1242,7 @@ def _peak_python_memory_of_deploying_a_dot_d_file(tmp_path: Path, size: int, *, 
     """Deploy a source whose .d holds one *size*-byte file, then deploy it again unchanged.
 
     The first deploy copies the file, the second compares it and skips it; the peak Python
-    allocation over both is returned.
+    allocation over both is returned. The user root must be fresh: the first deploy has to create.
     """
     root = tmp_path / f"size-{size}"
     (root / "source.d").mkdir(parents=True)
@@ -1255,11 +1255,12 @@ def _peak_python_memory_of_deploying_a_dot_d_file(tmp_path: Path, size: int, *, 
     )
     tracemalloc.start()
     try:
-        deploy()
+        first = deploy()
         again = deploy(batch=True)
         _, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
+    assert [r.action for r in first[0].dot_d_results] == [DeployAction.CREATED]
     assert [r.action for r in again[0].dot_d_results] == [DeployAction.SKIPPED]
     copied = again[0].dot_d_results[0].destination
     assert copied.read_bytes() == asset.read_bytes()
@@ -1269,14 +1270,14 @@ def _peak_python_memory_of_deploying_a_dot_d_file(tmp_path: Path, size: int, *, 
 @os_agnostic
 @pytest.mark.parametrize("set_permissions", [True, False], ids=["permissions", "no-permissions"])
 def test_deploy_copies_a_large_dot_d_file_without_holding_it_in_memory(
-    sandbox: LayeredSandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, set_permissions: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, set_permissions: bool
 ) -> None:
-    del sandbox  # only its environment matters: every deploy below lands inside tmp_path
     mib = 1024 * 1024
     peaks: list[int] = []
     for index, size in enumerate((4 * mib, 16 * mib)):
-        # A fresh user root per size, so each first deploy creates rather than compares.
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "home" / str(index)))
+        # A fresh sandbox per size, so each first deploy creates rather than compares. The sandbox
+        # sets the user root each platform reads (XDG_CONFIG_HOME, APPDATA, the macOS home root).
+        create_layered_sandbox(tmp_path / "home" / str(index), vendor=VENDOR, app=APP, slug=SLUG).apply_env(monkeypatch)
         peaks.append(_peak_python_memory_of_deploying_a_dot_d_file(tmp_path, size, set_permissions=set_permissions))
 
     # Held whole, the 16 MiB file alone would put the peak above 16 MiB; streamed, it stays flat.
