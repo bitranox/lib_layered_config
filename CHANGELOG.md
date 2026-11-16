@@ -119,6 +119,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `default_env_prefix(slug)` and `lib_layered_config env-prefix` refuse a slug that `read_config`,
+  `deploy_config` and `generate_examples` refuse, with the same `ValidationError` message (a usage error,
+  exit code 2, in the CLI). Before, only an empty slug was refused, so `env-prefix ../x` printed `../X___`
+  with exit 0 while `read --slug ../x` and `deploy --slug ../x` exited 22, and `"a b"`, `"x/y"` and
+  `".hidden"` got prefixes no read accepts.
 - The CLI prints an error message up to 4000 characters without `--traceback`; it cut every message at
   500 ("... [TRUNCATED at 500 characters]"). A deploy refusing a configured mode names each problem
   with its source and then the hint "to deploy anyway, give both --dir-mode and --file-mode ...", about

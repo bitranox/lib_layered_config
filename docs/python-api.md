@@ -817,7 +817,9 @@ Compute the canonical environment variable prefix for a slug.
 **Returns:** Uppercase environment prefix with dashes converted to underscores, ending in the `___` separator
 (`"config-kit"` gives `"CONFIG_KIT___"`, `"myapp"` gives `"MYAPP___"`).
 
-**Raises:** `ValidationError` for an empty `slug` (`"slug cannot be empty"`), which `read_config` refuses too.
+**Raises:** `ValidationError` for a `slug` that `read_config`, `deploy_config` and `generate_examples` refuse
+too: empty (`"slug cannot be empty"`), holding a path separator or whitespace (`"slug contains invalid
+characters: ../x"`), starting with a dot (`"slug cannot start with a dot: .x"`), or non-ASCII.
 
 **Examples:**
 

@@ -18,7 +18,8 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Final
 
-from ...domain.errors import InvalidFormatError, ValidationError
+from ...domain.errors import InvalidFormatError
+from ...domain.identifiers import validate_identifier
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
 from .._nested_keys import NestedEntry, build_nested
@@ -50,14 +51,19 @@ def default_env_prefix(slug: str) -> str:
         triple underscore separator.
 
     Raises:
-        ValidationError: *slug* is empty, which ``read_config`` refuses too.
+        ValidationError: *slug* fails the check ``read_config``, ``deploy_config`` and
+            ``generate_examples`` apply (empty, a path separator or whitespace, a leading dot, non-ASCII), so
+            no prefix is returned for a slug no read accepts.
 
     Examples:
         >>> default_env_prefix('lib-layered-config')
         'LIB_LAYERED_CONFIG___'
+        >>> default_env_prefix('../x')
+        Traceback (most recent call last):
+            ...
+        lib_layered_config.domain.errors.ValidationError: slug contains invalid characters: ../x
     """
-    if not slug:
-        raise ValidationError("slug cannot be empty")
+    validate_identifier(slug, "slug")
     return slug.replace("-", "_").upper() + "___"
 
 
