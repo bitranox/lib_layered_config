@@ -19,6 +19,7 @@ import socket
 import sys
 from typing import TYPE_CHECKING
 
+from ...domain.errors import ValidationError
 from ...domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
@@ -29,7 +30,7 @@ from ...domain.identifiers import (
     validate_profile,
     validate_vendor_app,
 )
-from ...observability import log_debug
+from ...observability import log_debug, log_warn
 from .._path_probe import current_directory
 from ._base import PlatformContext, PlatformStrategy
 from ._dotenv import DotenvPathFinder
@@ -84,12 +85,16 @@ class DefaultPathResolver:
                 (useful for deterministic tests).
             platform: Platform identifier (``sys.platform`` clone). Defaults to the
                 current interpreter platform.
-            hostname: Hostname used for host-specific configuration lookups.
+            hostname: Hostname used for host-specific configuration lookups. When omitted, the
+                machine's ``socket.gethostname()``; a machine hostname that cannot name a file turns
+                the host layer off (``host_file_name`` is ``None``) and logs
+                ``host_layer_skipped_invalid_hostname`` instead of refusing.
             max_profile_length: Maximum allowed profile name length (default: 64).
                 A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
 
         Raises:
-            ValueError: When vendor, app, slug, profile, or hostname contain invalid path characters.
+            ValueError: When vendor, app, slug, profile, or an explicit hostname contain invalid
+                path characters.
         """
         self.vendor = validate_vendor_app(vendor, "vendor")
         self.application = validate_vendor_app(app, "app")
@@ -98,7 +103,9 @@ class DefaultPathResolver:
         self.cwd = cwd if cwd is not None else current_directory()
         self.env = {**os.environ, **(env or {})}
         self.platform = platform or sys.platform
-        self.hostname = validate_hostname(hostname or socket.gethostname())
+        #: ``<hostname>.toml``, or ``None`` when the machine's hostname cannot name a file.
+        self.host_file_name: str | None
+        self.host_file_name, self._host_refusal = _host_file(hostname)
 
         # Build the platform context and select the appropriate strategy
         self._ctx = PlatformContext(
@@ -107,11 +114,25 @@ class DefaultPathResolver:
             slug=self.slug,
             cwd=self.cwd,
             env=self.env,
-            hostname=self.hostname,
+            host_file_name=self.host_file_name,
             profile=self.profile,
         )
         self._strategy = self._select_strategy()
         self._dotenv_finder = DotenvPathFinder(self.cwd, self._strategy)
+
+    def require_host_file_name(self) -> str:
+        """Return ``<hostname>.toml`` for a write to the host layer.
+
+        Returns:
+            The host file name.
+
+        Raises:
+            ValidationError: The machine's hostname cannot name a file; the message is the one
+                :func:`validate_hostname` gave.
+        """
+        if self.host_file_name is None:
+            raise ValidationError(self._host_refusal)
+        return self.host_file_name
 
     @property
     def strategy(self) -> PlatformStrategy:
@@ -198,3 +219,30 @@ class DefaultPathResolver:
         if paths:
             log_debug("path_candidates", layer=layer.value, path=None, count=len(paths))
         return paths
+
+
+def _host_file(explicit: str | None) -> tuple[str | None, str]:
+    """Return ``(<hostname>.toml, "")``, or ``(None, refusal)`` for a machine hostname that cannot name a file.
+
+    An explicit *hostname* is the caller's own input and is refused as before. The machine's name
+    is not: no caller can change it, so a name the rules refuse (non-ASCII, a Windows reserved
+    name) turns off only the host layer, which can hold no file under that name anyway, instead
+    of every read and deploy (user decision 2026-11-16, R1-F2).
+
+    Args:
+        explicit: The hostname a caller passed, or ``None`` (or empty) for the machine's.
+
+    Returns:
+        The host file name and an empty refusal, or ``None`` and the validation message.
+
+    Raises:
+        ValidationError: *explicit* is refused.
+    """
+    if explicit:
+        return f"{validate_hostname(explicit)}.toml", ""
+    machine = socket.gethostname()
+    try:
+        return f"{validate_hostname(machine)}.toml", ""
+    except ValidationError as exc:
+        log_warn("host_layer_skipped_invalid_hostname", hostname=machine, reason=str(exc))
+        return None, str(exc)

@@ -545,7 +545,14 @@ class LinuxDeployment(DeploymentStrategy):
 
     def _host_path(self) -> Path:
         profile_seg = self._profile_segment()
-        return self._etc_root() / "xdg" / self.resolver.slug / profile_seg / "hosts" / f"{self.resolver.hostname}.toml"
+        return (
+            self._etc_root()
+            / "xdg"
+            / self.resolver.slug
+            / profile_seg
+            / "hosts"
+            / self.resolver.require_host_file_name()
+        )
 
     def _user_path(self) -> Path:
         candidate = self.resolver.env.get("XDG_CONFIG_HOME")
@@ -581,7 +588,7 @@ class MacDeployment(DeploymentStrategy):
 
     def _host_path(self) -> Path:
         profile_seg = self._profile_segment()
-        return self._app_root() / profile_seg / "hosts" / f"{self.resolver.hostname}.toml"
+        return self._app_root() / profile_seg / "hosts" / self.resolver.require_host_file_name()
 
     def _user_path(self) -> Path:
         profile_seg = self._profile_segment()
@@ -620,7 +627,7 @@ class WindowsDeployment(DeploymentStrategy):
     def _host_path(self) -> Path:
         profile_seg = self._profile_segment()
         host_root = self._program_data_root() / self.resolver.vendor / self.resolver.application / profile_seg / "hosts"
-        return host_root / f"{self.resolver.hostname}.toml"
+        return host_root / self.resolver.require_host_file_name()
 
     def _user_path(self) -> Path:
         profile_seg = self._profile_segment()

@@ -99,9 +99,10 @@ _VALID_IDENTIFIER_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9.
 # Used for: vendor, app (which can have spaces on macOS/Windows paths)
 _VALID_PERMISSIVE_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._\- ]*")
 
-# Valid hostname pattern: ASCII alphanumeric, hyphen, dot (FQDN support)
-# Hostnames can start with alphanumeric, contain hyphens and dots
-_VALID_HOSTNAME_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9.-]*")
+# Valid hostname pattern: ASCII alphanumeric, hyphen, underscore, dot (FQDN support)
+# Hostnames start with alphanumeric. An underscore is not valid in DNS, but container and CI machine
+# names carry one, and it is safe in a file name on every OS, as it is in a slug or profile.
+_VALID_HOSTNAME_PATTERN: re.Pattern[str] = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]*")
 
 
 # ============================================================================
@@ -169,7 +170,7 @@ def _check_permissive_pattern(value: str, name: str) -> None:
 
 
 def _check_hostname_pattern(value: str, name: str) -> None:
-    """Check value matches hostname pattern (alphanumeric, hyphen, dot)."""
+    """Check value matches hostname pattern (alphanumeric, hyphen, underscore, dot)."""
     if _VALID_HOSTNAME_PATTERN.fullmatch(value):
         return
     if value.startswith(".") or value.startswith("-"):
@@ -543,7 +544,7 @@ def validate_hostname(value: str) -> str:
         1. Must not be empty
         2. Must contain only ASCII characters
         3. Must start with alphanumeric character
-        4. May contain alphanumeric, hyphen, and dot (for FQDNs)
+        4. May contain alphanumeric, hyphen, underscore, and dot (for FQDNs)
         5. Must not contain path separators or Windows-invalid characters
         6. Must not be a Windows reserved name
 

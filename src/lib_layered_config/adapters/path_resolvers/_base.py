@@ -60,7 +60,8 @@ class PlatformContext:
         cwd: Current working directory for project-relative searches; ``None`` when the OS
             cannot name it.
         env: Environment variable mapping (for overrides and XDG lookups).
-        hostname: Hostname for host-specific configuration lookups.
+        host_file_name: ``<hostname>.toml`` for host-specific configuration lookups, or ``None``
+            when the machine's hostname cannot name a file, which turns the host layer off.
         profile: Optional profile name for environment-specific configurations.
     """
 
@@ -69,7 +70,7 @@ class PlatformContext:
     slug: str
     cwd: Path | None
     env: dict[str, str]
-    hostname: str
+    host_file_name: str | None
     profile: str | None = None
 
 

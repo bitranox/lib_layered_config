@@ -60,12 +60,15 @@ class LinuxStrategy(PlatformStrategy):
         Returns:
             Host-level configuration paths (empty when missing).
         """
+        host_file = self.ctx.host_file_name
+        if host_file is None:
+            return
         etc_root = Path(self.ctx.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
         profile_seg = self._profile_segment()
-        xdg_candidate = etc_root / "xdg" / self.ctx.slug / profile_seg / "hosts" / f"{self.ctx.hostname}.toml"
+        xdg_candidate = etc_root / "xdg" / self.ctx.slug / profile_seg / "hosts" / host_file
         if config_path_present(xdg_candidate):
             yield str(xdg_candidate)
-        candidate = etc_root / self.ctx.slug / profile_seg / "hosts" / f"{self.ctx.hostname}.toml"
+        candidate = etc_root / self.ctx.slug / profile_seg / "hosts" / host_file
         if config_path_present(candidate):
             yield str(candidate)
 

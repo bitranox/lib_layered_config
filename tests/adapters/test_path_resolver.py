@@ -118,11 +118,11 @@ def test_resolver_context_carries_the_validated_identity(tmp_path: Path) -> None
 
     context = resolver.context
 
-    assert (context.vendor, context.app, context.slug, context.hostname, context.profile) == (
+    assert (context.vendor, context.app, context.slug, context.host_file_name, context.profile) == (
         "Acme",
         "Demo",
         "demo",
-        "mac-host",
+        "mac-host.toml",
         "staging",
     )
 
@@ -295,7 +295,7 @@ def _make_context(
         slug="config-kit",
         cwd=sandbox.start_dir,
         env=env,
-        hostname=hostname,
+        host_file_name=f"{hostname}.toml",
     )
     return ctx, sandbox.roots
 
@@ -383,7 +383,7 @@ def test_windows_user_paths_fall_back_to_localappdata(tmp_path: Path) -> None:
     local_base.mkdir(parents=True, exist_ok=True)
     target = local_base / "config.toml"
     target.write_text("[service]\nvalue=1\n", encoding="utf-8")
-    ctx = PlatformContext(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, env=env, hostname="HOST")
+    ctx = PlatformContext(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, env=env, host_file_name="HOST.toml")
     strategy = WindowsStrategy(ctx)
     user_paths = list(strategy.user_paths())
     assert str(target) in user_paths
@@ -741,7 +741,7 @@ def _make_context_with_profile(
         slug="config-kit",
         cwd=sandbox.start_dir,
         env=sandbox.env,
-        hostname=hostname,
+        host_file_name=f"{hostname}.toml",
         profile=profile,
     )
     return ctx, sandbox.roots
@@ -946,7 +946,7 @@ def test_resolver_without_profile_has_none_context(tmp_path: Path) -> None:
 def _bare_windows_context(tmp_path: Path, env: dict[str, str]) -> PlatformContext:
     """A Windows context whose environment holds only *env*: no LIB_LAYERED_CONFIG_* override."""
     return PlatformContext(
-        vendor="Acme", app="ConfigKit", slug="config-kit", cwd=tmp_path, env=env, hostname="example-host"
+        vendor="Acme", app="ConfigKit", slug="config-kit", cwd=tmp_path, env=env, host_file_name="example-host.toml"
     )
 
 

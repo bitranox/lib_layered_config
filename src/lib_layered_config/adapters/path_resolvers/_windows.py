@@ -159,9 +159,12 @@ class WindowsStrategy(PlatformStrategy):
         Returns:
             Host-level Windows configuration paths.
         """
+        host_file = self.ctx.host_file_name
+        if host_file is None:
+            return
         profile_seg = self._profile_segment()
         base = self._program_data_root() / self.ctx.vendor / self.ctx.app / profile_seg
-        candidate = base / "hosts" / f"{self.ctx.hostname}.toml"
+        candidate = base / "hosts" / host_file
         if config_path_present(candidate):
             yield str(candidate)
 

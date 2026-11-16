@@ -119,6 +119,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A machine hostname no longer stops an application from reading its configuration. The host layer reads
+  `hosts/<hostname>.toml`, and a hostname outside ASCII letters, digits, `-` and `.` (`build_agent_01`, a
+  non-ASCII name, a Windows reserved name such as `con`) made every read and every deploy raise
+  `ValidationError`, even with no host file anywhere. `_` is now allowed, so `build_agent_01` reads
+  `hosts/build_agent_01.toml`. Any other refused machine hostname turns off only the host layer: reads skip
+  it and log the warning `host_layer_skipped_invalid_hostname`, and a deploy to the `host` target still
+  raises `ValidationError` with the same message, before anything is written; other targets deploy.
 - A YAML configuration file on a host without PyYAML (it ships only in the `yaml` extra) is refused:
   every read and deploy raises `LayerLoadError` with `"<path> is YAML, which needs PyYAML: install it
   with pip install 'lib_layered_config[yaml]'"`. It used to be skipped without a word, so a `.yaml`

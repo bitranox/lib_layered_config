@@ -385,6 +385,11 @@ All identifiers are validated to ensure they are safe for use as filesystem dire
 | **profile**  | No             | Profile subdirectory name                                        |
 | **hostname** | No             | Host-specific config files                                       |
 
+The **hostname** is the machine's own (`socket.gethostname()`); it may hold letters, digits, `-`,
+`_` and `.`. A machine hostname that breaks one of the rules below (a non-ASCII name, a Windows
+reserved name such as `con`) turns off only the host layer: reads skip it and log the warning
+`host_layer_skipped_invalid_hostname`, and a deploy to the `host` target raises `ValidationError`.
+
 #### Common Validation Rules (All Identifiers)
 
 | Rule                             | Description                                         | Example Invalid Value             |

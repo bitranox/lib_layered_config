@@ -450,6 +450,8 @@ class TestValidateHostname:
             # IP-like (numeric hostnames are valid)
             "192",
             "server192",
+            # Underscore: not DNS, but container and CI machine names carry one
+            "build_agent_01",
         ],
     )
     def test_accepts_valid_hostnames(self, value: str) -> None:

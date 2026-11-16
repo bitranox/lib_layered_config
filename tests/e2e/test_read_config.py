@@ -370,7 +370,7 @@ def test_read_config_refuses_a_discovered_config_path_that_is_a_directory(
     sandbox.apply_env(monkeypatch)
     # The host file is named after the machine the resolver runs on, not a fixed test name.
     if relative is None:
-        relative = f"{DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG).hostname}.toml"
+        relative = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG).require_host_file_name()
     placed = sandbox.write(layer, relative, content="")
     placed.unlink()
     placed.mkdir()
