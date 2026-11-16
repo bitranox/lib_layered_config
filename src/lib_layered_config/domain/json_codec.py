@@ -14,8 +14,12 @@ loads, is refused, and is written the same way on every interpreter. Measured di
   is refused at orjson's position even when a syntax error follows.
 - Writing: orjson writes NaN and infinity as ``null``; datetimes, dates and times as ISO text; a
   UUID as its string and an Enum as its value; and refuses an integer outside the range above, a
-  non-string key, a lone surrogate, a type it does not know, and nesting deeper than 254 levels.
-  So does the stdlib codec.
+  non-string key, a type it does not know, and nesting deeper than 254 levels. So does the stdlib
+  codec.
+- Writing text with a lone surrogate - a POSIX path or name with a byte that is not UTF-8, which
+  Python carries as ``U+DC80``-``U+DCFF`` - both codecs write the byte as the four characters
+  ``\\xff`` (:func:`escape_lone_surrogates`), so a config under such a directory still prints;
+  orjson alone would refuse the whole document.
 
 Differences that remain:
 
@@ -72,6 +76,7 @@ __all__ = [
     "StdlibCodec",
     "dumps",
     "duplicate_keys",
+    "escape_lone_surrogates",
     "loads",
     "nesting_depth",
     "select_codec",
@@ -101,6 +106,14 @@ CONFIG_MAX_DEPTH: Final[int] = JSON_ENCODE_MAX_DEPTH - 1
 _MAX_INT_TEXT: Final[int] = 20
 
 _ORJSON_TOO_DEEP: Final[str] = "depth limit exceeded"
+
+#: The UTF-16 surrogate range; a lone one has no UTF-8 encoding.
+_SURROGATE_FIRST: Final[int] = 0xD800
+_SURROGATE_LAST: Final[int] = 0xDFFF
+#: Python's ``surrogateescape`` error handler maps an undecodable byte B to ``U+DC00 + B`` (B >= 0x80).
+_SURROGATE_ESCAPE_BASE: Final[int] = 0xDC00
+_ESCAPED_BYTE_FIRST: Final[int] = 0xDC80
+_LONE_SURROGATE: Final[re.Pattern[str]] = re.compile(f"[{chr(_SURROGATE_FIRST)}-{chr(_SURROGATE_LAST)}]")
 
 #: The characters that open, close or quote JSON structure; the depth scan skips everything else.
 _JSON_STRUCTURE: Final[re.Pattern[str]] = re.compile(r'[\[\]{}"\\]')
@@ -159,8 +172,18 @@ class OrjsonCodec:
         self._orjson = cast("_OrjsonModule", orjson)
 
     def dumps(self, value: object, *, indent: bool = False) -> str:
-        """Return *value* as JSON text (see :class:`JsonCodec`)."""
-        return self._orjson.dumps(value, option=self._orjson.OPT_INDENT_2 if indent else 0).decode()
+        """Return *value* as JSON text (see :class:`JsonCodec`).
+
+        orjson refuses text with a lone surrogate; on a refusal the value is written again with
+        every such text escaped (:func:`escape_lone_surrogates`), and a refusal for any other
+        reason stands. The second pass runs only on a refusal, so valid text costs nothing extra.
+        """
+        option = self._orjson.OPT_INDENT_2 if indent else 0
+        try:
+            return self._orjson.dumps(value, option=option).decode()
+        except TypeError:  # orjson.JSONEncodeError subclasses it
+            # A refusal for any other reason refuses the escaped copy the same way.
+            return self._orjson.dumps(_escape_in(value, depth=0), option=option).decode()
 
     def loads(self, text: str) -> object:
         """Return the value *text* holds (see :class:`JsonCodec`)."""
@@ -363,39 +386,62 @@ def _orjson_container(
     for key, item in value.items():
         if not isinstance(key, str):
             raise TypeError("Dict key must be str")
-        shaped[_utf8_text(key)] = _orjson_shape(item, depth=depth + 1)
+        shaped[escape_lone_surrogates(key)] = _orjson_shape(item, depth=depth + 1)
     return shaped
 
 
-def _utf8_text(text: str) -> str:
-    """Return *text* when it can be written as UTF-8, as orjson requires.
+def escape_lone_surrogates(text: str) -> str:
+    r"""Return *text* with each lone surrogate written as an escape, so it has a UTF-8 form.
 
-    A lone surrogate - what an undecodable environment byte becomes under ``surrogateescape`` -
-    has no UTF-8 form; orjson refuses it, while stdlib json with ``ensure_ascii=False`` would write
-    it into text no UTF-8 reader accepts.
-
-    Raises:
-        TypeError: When *text* holds a lone surrogate.
+    A lone surrogate is what a POSIX byte that is not UTF-8 becomes when Python decodes a path,
+    name or environment entry with ``surrogateescape`` (``b"x\xff"`` reads as ``"x\udcff"``). It
+    has no UTF-8 form: orjson refuses it, and stdlib json with ``ensure_ascii=False`` would write
+    text no UTF-8 reader accepts. Such a byte becomes ``\xNN``, the byte on disk; any other lone
+    surrogate (only Python code can pass one) becomes ``\uXXXX``. Text without one is returned
+    as it is.
 
     Examples:
-        >>> _utf8_text("caf" + chr(0xE9)) == "caf" + chr(0xE9)
+        >>> print(escape_lone_surrogates("K" + chr(0xDCFF) + "Y" + chr(0xD800)))
+        K\xffY\ud800
+        >>> escape_lone_surrogates("caf" + chr(0xE9)) == "caf" + chr(0xE9)
         True
-        >>> _utf8_text("caf" + chr(0xDCE9))
-        Traceback (most recent call last):
-        TypeError: str is not valid UTF-8: surrogates not allowed
     """
-    try:
-        text.encode("utf-8")
-    except UnicodeEncodeError as error:
-        raise TypeError("str is not valid UTF-8: surrogates not allowed") from error
-    return text
+    if _LONE_SURROGATE.search(text) is None:
+        return text
+    return _LONE_SURROGATE.sub(_escape_surrogate, text)
+
+
+def _escape_surrogate(match: re.Match[str]) -> str:
+    code = ord(match.group())
+    if code >= _ESCAPED_BYTE_FIRST:
+        return f"\\x{code - _SURROGATE_ESCAPE_BASE:02x}"
+    return f"\\u{code:04x}"
+
+
+def _escape_in(value: object, *, depth: int) -> object:
+    """Return *value* with every text inside it escaped (:func:`escape_lone_surrogates`).
+
+    Walks what orjson writes as JSON objects, arrays and strings; anything else is returned as it
+    is, and nesting past :data:`JSON_ENCODE_MAX_DEPTH` is left alone, since orjson refuses it anyway.
+    Two keys of one object that escape to the same text keep the later value, as the stdlib codec
+    does; no key the library builds holds a lone surrogate.
+    """
+    if isinstance(value, str):
+        return escape_lone_surrogates(value)
+    if depth >= JSON_ENCODE_MAX_DEPTH or not isinstance(value, (dict, list, tuple)):
+        return value
+    if isinstance(value, dict):
+        pairs = cast("dict[object, object]", value).items()
+        return {_escape_in(key, depth=depth): _escape_in(item, depth=depth + 1) for key, item in pairs}
+    items = [_escape_in(item, depth=depth + 1) for item in cast("list[object] | tuple[object, ...]", value)]
+    return tuple(items) if isinstance(value, tuple) else items
 
 
 def _orjson_scalar(value: object) -> object:
     """Shape a scalar the way orjson writes it (see :func:`_orjson_shape`)."""
     if isinstance(value, (str, uuid.UUID)):
         # A str subclass (a str-valued Enum member) keeps its own text; a UUID becomes its string.
-        return _utf8_text(value if isinstance(value, str) else str(value))
+        return escape_lone_surrogates(value if isinstance(value, str) else str(value))
     if value is None or isinstance(value, bool):
         return value
     if isinstance(value, int):

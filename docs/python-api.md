@@ -587,6 +587,11 @@ Load configuration and return it as JSON with provenance metadata.
 
 **Returns:** JSON string containing `{"config": {...}, "provenance": {...}}`.
 
+A path whose name holds a byte that is not UTF-8 (possible on Linux, where a file name is bytes) is
+written with that byte as the four characters `\xNN`: a config under `/opt/x<0xFF>y/` shows
+`"/opt/x\\xffy/..."` in the JSON text, which reads back as `x\xffy`. The same holds for every JSON
+output, `Config.to_json` and the CLI's `--json` included.
+
 **Examples:**
 
 **Example 1: API endpoint - Return configuration as JSON**

@@ -241,10 +241,8 @@ def test_dumps_writes_nan_and_infinity_as_null(codec: JsonCodec) -> None:
         {"s": {1, 2}},
         {"b": b"raw"},
         {"o": object()},
-        # A lone surrogate is what an undecodable environment byte becomes (surrogateescape).
-        {"s": "caf" + chr(0xDCE9)},
-        ["ok", ["x" + chr(0xD800)]],
-        {chr(0xDCFF): 1},
+        # A lone surrogate is escaped, not a reason to write anything else that is refused.
+        {"s": "caf" + chr(0xDCE9), "n": JSON_INT_MAX + 1},
     ],
     ids=[
         "above-uint64",
@@ -253,14 +251,39 @@ def test_dumps_writes_nan_and_infinity_as_null(codec: JsonCodec) -> None:
         "set",
         "bytes",
         "object",
-        "surrogate",
-        "nested-surrogate",
-        "surrogate-key",
+        "surrogate-beside-a-refused-int",
     ],
 )
 def test_dumps_refuses_what_orjson_refuses(codec: JsonCodec, value: object) -> None:
     with pytest.raises(TypeError):
         codec.dumps(value)
+
+
+class _Mode(str, enum.Enum):
+    BAD = "m" + chr(0xDCE9)
+
+
+@os_agnostic
+@pytest.mark.parametrize("codec", CODECS, ids=_codec_id)
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # A lone surrogate is what an undecodable POSIX byte becomes (surrogateescape): written as that byte.
+        ({"s": "caf" + chr(0xDCE9)}, {"s": "caf" + _B + "xe9"}),
+        ({chr(0xDCFF): 1}, {_B + "xff": 1}),
+        (["ok", ("x" + chr(0xDC80) + chr(0xDCFF),)], ["ok", ["x" + _B + "x80" + _B + "xff"]]),
+        # A surrogate no byte maps to (only Python code can pass one) keeps its \u form.
+        ({"s": "a" + chr(0xD800) + "b" + chr(0xDC7F)}, {"s": "a" + _B + "ud800b" + _B + "udc7f"}),
+        ({"m": _Mode.BAD}, {"m": "m" + _B + "xe9"}),
+        ({"s": "caf" + chr(0xE9), "t": "plain"}, {"s": "caf" + chr(0xE9), "t": "plain"}),
+    ],
+    ids=["value", "key", "nested-tuple", "not-a-byte", "str-enum", "valid-text-untouched"],
+)
+def test_dumps_writes_a_lone_surrogate_as_an_escape(codec: JsonCodec, value: object, expected: object) -> None:
+    text = codec.dumps(value)
+
+    text.encode("utf-8")
+    assert json.loads(text) == expected
 
 
 @os_agnostic

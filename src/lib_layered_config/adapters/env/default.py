@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Final
 
 from ...domain.errors import InvalidFormatError
 from ...domain.identifiers import validate_identifier
+from ...domain.json_codec import escape_lone_surrogates
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
 from .._nested_keys import NestedEntry, build_nested
@@ -188,7 +189,9 @@ def _refuse_undecodable(name: str, value: str) -> None:
     """
     name_offset = _first_undecodable_offset(name)
     if name_offset is not None:
-        message = f"environment variable name {_escape_surrogates(name)} is not valid UTF-8 (byte offset {name_offset})"
+        message = (
+            f"environment variable name {escape_lone_surrogates(name)} is not valid UTF-8 (byte offset {name_offset})"
+        )
         raise InvalidFormatError(message)
     value_offset = _first_undecodable_offset(value)
     if value_offset is not None:
@@ -208,32 +211,9 @@ def _first_undecodable_offset(text: str) -> int | None:
     return None
 
 
-def _escape_surrogates(text: str) -> str:
-    r"""Return *text* with each lone surrogate written as an escape: ``\xNN`` for a byte POSIX passed
-    through undecoded, ``\uXXXX`` for any other.
-
-    Examples:
-        >>> print(_escape_surrogates("K\udcffY\ud800"))
-        K\xffY\ud800
-    """
-    return "".join(_escape_one(char) for char in text)
-
-
-def _escape_one(char: str) -> str:
-    code = ord(char)
-    if _ESCAPED_BYTE_FIRST <= code <= _SURROGATE_LAST:
-        return f"\\x{code - _SURROGATE_ESCAPE_BASE:02x}"
-    if _SURROGATE_FIRST <= code <= _SURROGATE_LAST:
-        return f"\\u{code:04x}"
-    return char
-
-
 #: The UTF-16 surrogate range; a lone one has no UTF-8 encoding.
 _SURROGATE_FIRST: Final[int] = 0xD800
 _SURROGATE_LAST: Final[int] = 0xDFFF
-#: Python's ``surrogateescape`` error handler maps an undecodable byte B to ``U+DC00 + B`` (B >= 0x80).
-_SURROGATE_ESCAPE_BASE: Final[int] = 0xDC00
-_ESCAPED_BYTE_FIRST: Final[int] = 0xDC80
 
 
 def _iter_namespace_entries(

@@ -119,6 +119,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- JSON output works under a config directory whose name is not valid UTF-8. On Linux a file name is
+  bytes, and a path holding a byte that is not UTF-8 (a Latin-1 `x<0xFF>y`) in provenance, a deploy result
+  or an error message made `read_config_json`, `Config.to_json` and every CLI `--json` output fail with
+  `TypeError: str is not valid UTF-8`: exit 22, often with nothing on stdout, a broken file reported as
+  that TypeError instead of its `LayerLoadError`, and `deploy --json` wrote its files and then printed
+  nothing. Such a byte is now written as the four characters `\xff` (the byte on disk), on both JSON
+  backends; text that is valid UTF-8 is written as before.
 - A machine hostname no longer stops an application from reading its configuration. The host layer reads
   `hosts/<hostname>.toml`, and a hostname outside ASCII letters, digits, `-` and `.` (`build_agent_01`, a
   non-ASCII name, a Windows reserved name such as `con`) made every read and every deploy raise
