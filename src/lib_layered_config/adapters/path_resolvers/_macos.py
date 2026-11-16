@@ -11,15 +11,35 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ._base import PlatformStrategy, collect_layer, config_path_present
+from ._base import PlatformStrategy, collect_layer, config_path_present, override_root
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
 
 __all__ = [
     "MacOSStrategy",
+    "mac_app_root",
+    "mac_home_root",
 ]
+
+
+def mac_app_root(env: Mapping[str, str]) -> Path:
+    """``LIB_LAYERED_CONFIG_MAC_APP_ROOT`` when set, else ``/Library/Application Support``.
+
+    Raises:
+        LayerRootNotAbsoluteError: The override is empty or relative.
+    """
+    return override_root(env, "LIB_LAYERED_CONFIG_MAC_APP_ROOT", lambda: Path("/Library/Application Support"))
+
+
+def mac_home_root(env: Mapping[str, str]) -> Path:
+    """``LIB_LAYERED_CONFIG_MAC_HOME_ROOT`` when set, else ``~/Library/Application Support``.
+
+    Raises:
+        LayerRootNotAbsoluteError: The override is empty or relative.
+    """
+    return override_root(env, "LIB_LAYERED_CONFIG_MAC_HOME_ROOT", lambda: Path.home() / "Library/Application Support")
 
 
 class MacOSStrategy(PlatformStrategy):
@@ -41,8 +61,7 @@ class MacOSStrategy(PlatformStrategy):
         Returns:
             ``/Library/Application Support`` or overridden root.
         """
-        default_root = Path("/Library/Application Support")
-        return Path(self.ctx.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root))
+        return mac_app_root(self.ctx.env)
 
     def _home_root(self) -> Path:
         """Return the base directory for user-level Application Support.
@@ -50,8 +69,7 @@ class MacOSStrategy(PlatformStrategy):
         Returns:
             ``~/Library/Application Support`` or overridden root.
         """
-        home_default = Path.home() / "Library/Application Support"
-        return Path(self.ctx.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
+        return mac_home_root(self.ctx.env)
 
     def app_paths(self) -> Iterable[str]:
         """Yield macOS application-default configuration paths.

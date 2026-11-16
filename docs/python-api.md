@@ -1598,7 +1598,8 @@ Exception
         +-- DeployPermissionsError  unusable permission settings
         +-- DeployDestinationError  a deploy destination is a symbolic link or not a regular file
         +-- GenerateDestinationError  an example path generate would write through is a link or not a regular file
-        +-- LayerRootNotAbsoluteError  a Windows root (ProgramData, APPDATA, LOCALAPPDATA) that is not absolute
+        +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, or an empty or relative
+                                       LIB_LAYERED_CONFIG_ETC / _MAC_APP_ROOT / _MAC_HOME_ROOT)
 ```
 
 - A refusal that names a vendor, app, slug or hostname, or a Windows root that is not absolute, writes each

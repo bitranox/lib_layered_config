@@ -1306,7 +1306,7 @@ refuse (they exit 22) is a usage error here (exit code 2), because the slug is t
 separator or whitespace (`slug contains invalid characters: ../x`), starting with a dot, or non-ASCII.
 A refusal names the value it refused with each control character written as `\uXXXX` (`demo\u000a` for a
 slug ending in a newline), so a trailing newline is visible and an ESC never reaches the terminal raw; a
-backslash prints as it is. The same holds for the vendor, app and hostname refusals and for a Windows
+backslash prints as it is. The same holds for the vendor, app and hostname refusals and for a layer
 root that is not absolute.
 
 **Examples:**

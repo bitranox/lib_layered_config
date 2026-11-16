@@ -387,6 +387,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `DeployMode` refuses a `kind` that is not a `ModeKind` member with `DeployModeError: a mode kind must be
   a ModeKind, got str`. A str kind skipped every kind-specific safety rule, so `DeployMode(0o755, "file")`
   was accepted with its execute bits, and `DeployMode(0o666, "file")` crashed with `AttributeError`.
+- No Linux or macOS layer resolves under the current directory any more. An empty or relative
+  `LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_MAC_APP_ROOT` or `LIB_LAYERED_CONFIG_MAC_HOME_ROOT` raises
+  `LayerRootNotAbsoluteError`, as the Windows overrides already did; before, `LIB_LAYERED_CONFIG_ETC=""`
+  loaded `./xdg/<slug>/config.toml` as the app layer and a deploy wrote there. An empty or relative
+  `XDG_CONFIG_HOME` is ignored, as the XDG Base Directory specification says, and `~/.config` is used; before,
+  a relative value read and deployed the user layer under the current directory, and an empty one put the
+  `.env` fallback there.
 - `deploy` / `deploy_config` refuse a source, or a TOML/YAML/JSON file in its `.d` directory, that
   does not parse, in every mode and before anything is written, with `LayerLoadError` and the
   loader's message. Before, the source was parsed only while reading the configured permission

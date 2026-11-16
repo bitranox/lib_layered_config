@@ -39,6 +39,8 @@ from .adapters._file_write import write_file
 from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
 from .adapters._windows_acl import copy_dacl
 from .adapters.file_loaders._dot_d import in_dot_d_order
+from .adapters.path_resolvers._linux import etc_root, xdg_config_home
+from .adapters.path_resolvers._macos import mac_app_root, mac_home_root
 from .adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
 from .adapters.path_resolvers.default import DefaultPathResolver
 from .core import read_config_for_deploy, refuse_an_unparseable_deploy_source
@@ -544,8 +546,9 @@ class LinuxDeployment(DeploymentStrategy):
         }
         return mapping[target]()
 
+    # The resolver's own lookups, so a deploy writes exactly where read_config reads.
     def _etc_root(self) -> Path:
-        return Path(self.resolver.env.get("LIB_LAYERED_CONFIG_ETC", "/etc"))
+        return etc_root(self.resolver.env)
 
     def _app_path(self) -> Path:
         profile_seg = self._profile_segment()
@@ -563,8 +566,7 @@ class LinuxDeployment(DeploymentStrategy):
         )
 
     def _user_path(self) -> Path:
-        candidate = self.resolver.env.get("XDG_CONFIG_HOME")
-        base = Path(candidate) if candidate else Path.home() / ".config"
+        base = xdg_config_home(self.resolver.env)
         profile_seg = self._profile_segment()
         return base / self.resolver.slug / profile_seg / "config.toml"
 
@@ -582,13 +584,10 @@ class MacDeployment(DeploymentStrategy):
         return mapping[target]()
 
     def _app_root(self) -> Path:
-        default_root = Path("/Library/Application Support")
-        base = Path(self.resolver.env.get("LIB_LAYERED_CONFIG_MAC_APP_ROOT", default_root))
-        return base / self.resolver.vendor / self.resolver.application
+        return mac_app_root(self.resolver.env) / self.resolver.vendor / self.resolver.application
 
     def _home_root(self) -> Path:
-        home_default = Path.home() / "Library/Application Support"
-        return Path(self.resolver.env.get("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", home_default))
+        return mac_home_root(self.resolver.env)
 
     def _app_path(self) -> Path:
         profile_seg = self._profile_segment()

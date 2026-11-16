@@ -11,6 +11,7 @@ Contents:
     - ``PlatformContext``: dataclass holding resolution context (vendor, app, etc.)
     - ``PlatformStrategy``: abstract base for platform-specific resolvers
     - ``_collect_layer``: shared helper for enumerating config files
+    - ``override_root``: a ``LIB_LAYERED_CONFIG_*`` root override, refused when it is not rooted
     - ``_ALLOWED_EXTENSIONS``: supported config file extensions
 """
 
@@ -21,17 +22,50 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ...domain.errors import LayerRootNotAbsoluteError
+from ...domain.printable import escape_controls
 from .._path_probe import PathKind, checked_kind
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
 __all__ = [
     "PlatformContext",
     "PlatformStrategy",
     "collect_layer",
     "config_path_present",
+    "override_root",
 ]
+
+
+def override_root(env: Mapping[str, str], name: str, default: Callable[[], Path]) -> Path:
+    """The root the override *name* names, or *default()* when *name* is not set.
+
+    *default* is called only when it is needed, so a host that cannot answer ``Path.home()`` still
+    resolves a root the environment names.
+
+    Raises:
+        LayerRootNotAbsoluteError: The value has no root (empty, ``rel/etc``, or a Windows
+            drive-relative ``C:x``), so every layer path - and every deploy - would land under the
+            current working directory. A rooted path is enough: ``/etc`` names the same place
+            whichever OS the resolver runs on, while ``is_absolute()`` is false for it on Windows.
+
+    Examples:
+        >>> env = {"LIB_LAYERED_CONFIG_ETC": "/opt/etc"}
+        >>> override_root(env, "LIB_LAYERED_CONFIG_ETC", lambda: Path("/etc")).as_posix()
+        '/opt/etc'
+        >>> override_root({}, "LIB_LAYERED_CONFIG_ETC", lambda: Path("/etc")).as_posix()
+        '/etc'
+    """
+    if name not in env:
+        return default()
+    value = env[name]
+    if not Path(value).root:
+        raise LayerRootNotAbsoluteError(
+            f"The {name} root '{escape_controls(value)}' is not an absolute path; set {name} to an absolute path "
+            "or unset it"
+        )
+    return Path(value)
 
 
 #: Supported structured configuration file extensions used when expanding

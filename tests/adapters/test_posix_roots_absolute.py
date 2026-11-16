@@ -1,0 +1,111 @@
+"""A Linux or macOS layer root never resolves under the current working directory.
+
+An empty or relative ``LIB_LAYERED_CONFIG_ETC`` made the app layer read ``./xdg/<slug>/config.toml``
+from whatever directory the process ran in, and a deploy write there. The library's own overrides
+(``LIB_LAYERED_CONFIG_ETC``, ``LIB_LAYERED_CONFIG_MAC_APP_ROOT``, ``LIB_LAYERED_CONFIG_MAC_HOME_ROOT``)
+refuse such a value, as the Windows overrides do. ``XDG_CONFIG_HOME`` follows the XDG Base Directory
+specification instead: empty means ``$HOME/.config``, and a relative value is ignored.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
+from lib_layered_config.deploy import deploy_config
+from lib_layered_config.domain.errors import LayerRootNotAbsoluteError
+from tests.support.os_markers import os_agnostic
+
+_SLUG = "demo"
+
+
+def _resolver(env: dict[str, str], *, platform: str, cwd: Path) -> DefaultPathResolver:
+    return DefaultPathResolver(vendor="Acme", app="Demo", slug=_SLUG, env=env, platform=platform, cwd=cwd)
+
+
+def _plant(path: Path, text: str = 'k = "planted"\n') -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty current directory, plus a HOME under tmp_path that Path.home() answers on every OS."""
+    work = tmp_path / "work"
+    work.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.chdir(work)
+    return work
+
+
+@os_agnostic
+@pytest.mark.parametrize("value", ["", "rel/etc"], ids=["empty", "relative"])
+def test_a_relative_linux_etc_override_is_refused_by_the_app_and_host_layers(work: Path, value: str) -> None:
+    _plant(work / value / "xdg" / _SLUG / "config.toml")
+    resolver = _resolver({"LIB_LAYERED_CONFIG_ETC": value}, platform="linux", cwd=work)
+    with pytest.raises(LayerRootNotAbsoluteError) as caught:
+        list(resolver.app())
+    assert str(caught.value) == (
+        f"The LIB_LAYERED_CONFIG_ETC root '{value}' is not an absolute path; set LIB_LAYERED_CONFIG_ETC to an "
+        "absolute path or unset it"
+    )
+
+
+@os_agnostic
+@pytest.mark.parametrize(
+    ("variable", "layer"),
+    [("LIB_LAYERED_CONFIG_MAC_APP_ROOT", "app"), ("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", "user")],
+)
+@pytest.mark.parametrize("value", ["", "rel/root"], ids=["empty", "relative"])
+def test_a_relative_macos_root_override_is_refused(work: Path, variable: str, layer: str, value: str) -> None:
+    _plant(work / value / "Acme" / "Demo" / "config.toml")
+    resolver = _resolver({variable: value}, platform="darwin", cwd=work)
+    with pytest.raises(LayerRootNotAbsoluteError, match=f"^The {variable} root '{value}' is not an absolute path"):
+        list(getattr(resolver, layer)())
+
+
+@os_agnostic
+@pytest.mark.parametrize("value", ["", "rel"], ids=["empty", "relative"])
+def test_an_empty_or_relative_xdg_config_home_falls_back_to_home_config(work: Path, value: str) -> None:
+    _plant(work / value / _SLUG / "config.toml")
+    _plant(work / value / _SLUG / ".env", "K=planted\n")
+    home_config = _plant(Path.home() / ".config" / _SLUG / "config.toml")
+    home_dotenv = _plant(Path.home() / ".config" / _SLUG / ".env", "K=home\n")
+    resolver = _resolver({"XDG_CONFIG_HOME": value}, platform="linux", cwd=work)
+
+    assert [Path(p).resolve() for p in resolver.user()] == [home_config.resolve()]
+    assert [Path(p).resolve() for p in resolver.dotenv()] == [home_dotenv.resolve()]
+
+
+@os_agnostic
+def test_a_linux_app_deploy_with_an_empty_etc_override_writes_nothing_into_the_cwd(
+    work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _plant(tmp_path / "source.toml", "a = 1\n")
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_ETC", "")
+
+    with pytest.raises(LayerRootNotAbsoluteError):
+        deploy_config(source, vendor="Acme", app="Demo", slug=_SLUG, targets=["app"], platform="linux")
+
+    assert list(work.iterdir()) == []
+
+
+@os_agnostic
+def test_a_linux_user_deploy_with_a_relative_xdg_config_home_writes_under_home_config(
+    work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _plant(tmp_path / "source.toml", "a = 1\n")
+    monkeypatch.setenv("XDG_CONFIG_HOME", "rel")
+
+    results = deploy_config(
+        source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform="linux", set_permissions=False
+    )
+
+    assert [r.destination.resolve() for r in results] == [(Path.home() / ".config" / _SLUG / "config.toml").resolve()]
+    assert list(work.iterdir()) == []
