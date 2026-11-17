@@ -40,7 +40,7 @@ from ._macos import MacOSStrategy
 from ._windows import WindowsStrategy
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
     from pathlib import Path
 
 
@@ -69,7 +69,7 @@ class DefaultPathResolver:
         slug: str,
         profile: str | None = None,
         cwd: Path | None = None,
-        env: dict[str, str] | None = None,
+        env: Mapping[str, str] | None = None,
         platform: str | None = None,
         hostname: str | None = None,
         max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,

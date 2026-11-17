@@ -27,7 +27,7 @@ from .._nested_keys import NestedEntry, build_nested
 from .._value_coercion import coerce_value
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping
 
 
 __all__ = [
@@ -79,7 +79,7 @@ class DefaultEnvLoader:
     """
 
     def __init__(
-        self, *, environ: dict[str, str] | None = None, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE
+        self, *, environ: Mapping[str, str] | None = None, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE
     ) -> None:
         """Initialise the loader with a specific ``environ`` mapping for testability.
 
