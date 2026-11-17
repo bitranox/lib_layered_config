@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from lib_layered_config import LayerRootNotAbsoluteError
+from lib_layered_config import DeployResult, LayerRootNotAbsoluteError
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.deploy import deploy_config
 from tests.support.os_markers import os_agnostic
@@ -153,3 +153,27 @@ def test_an_empty_home_is_refused_rather_than_read_as_the_filesystem_root(
     source = _plant(tmp_path / "source.toml", "a = 1\n")
     with pytest.raises(LayerRootNotAbsoluteError, match=expected):
         deploy_config(source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform=platform)
+
+
+@os_agnostic
+@pytest.mark.parametrize("emptied", ["HOME", "USERPROFILE"])
+def test_only_an_empty_home_variable_this_os_reads_is_refused(
+    work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, emptied: str
+) -> None:
+    # Path.home() reads HOME on POSIX and USERPROFILE on Windows; emptying the other one must change nothing.
+    monkeypatch.setenv(emptied, "")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    read_by_this_os = "USERPROFILE" if os.name == "nt" else "HOME"
+    source = _plant(tmp_path / "source.toml", "a = 1\n")
+
+    def deploy() -> list[DeployResult]:
+        return deploy_config(
+            source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform="linux", set_permissions=False
+        )
+
+    if emptied == read_by_this_os:
+        with pytest.raises(LayerRootNotAbsoluteError, match=f"^The {emptied} root '' is not an absolute path"):
+            deploy()
+    else:
+        results = deploy()
+        assert [r.destination.resolve().is_relative_to((tmp_path / "home").resolve()) for r in results] == [True]
