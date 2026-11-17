@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import socket
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..._platform import resolver_platform
@@ -105,9 +106,9 @@ class DefaultPathResolver:
         self.cwd = cwd if cwd is not None else current_directory()
         self.env = {**os.environ, **(env or {})}
         self.platform = resolver_platform(platform or sys.platform)
+        self._host = _host_file(hostname)
         #: ``<hostname>.toml``, or ``None`` when the machine's hostname cannot name a file.
-        self.host_file_name: str | None
-        self.host_file_name, self._host_refusal = _host_file(hostname)
+        self.host_file_name: str | None = None if isinstance(self._host, _HostRefusal) else self._host
 
         # Build the platform context and select the appropriate strategy
         self._ctx = PlatformContext(
@@ -132,9 +133,9 @@ class DefaultPathResolver:
             ValidationError: The machine's hostname cannot name a file; the message is the one
                 :func:`validate_hostname` gave.
         """
-        if self.host_file_name is None:
-            raise ValidationError(self._host_refusal)
-        return self.host_file_name
+        if isinstance(self._host, _HostRefusal):
+            raise ValidationError(self._host.message)
+        return self._host
 
     def destination_for(self, layer: Layer) -> Path:
         """Return the file a deploy writes for *layer*, in the layout the reads of this resolver use.
@@ -245,8 +246,15 @@ class DefaultPathResolver:
         return paths
 
 
-def _host_file(explicit: str | None) -> tuple[str | None, str]:
-    """Return ``(<hostname>.toml, "")``, or ``(None, refusal)`` for a machine hostname that cannot name a file.
+@dataclass(frozen=True, slots=True)
+class _HostRefusal:
+    """Why the machine's hostname names no host file: the message :func:`validate_hostname` gave."""
+
+    message: str
+
+
+def _host_file(explicit: str | None) -> str | _HostRefusal:
+    """Return ``<hostname>.toml``, or the refusal for a machine hostname that cannot name a file.
 
     An explicit *hostname* is the caller's own input and is refused as before. The machine's name
     is not: no caller can change it, so a name the rules refuse (non-ASCII, a Windows reserved
@@ -257,16 +265,16 @@ def _host_file(explicit: str | None) -> tuple[str | None, str]:
         explicit: The hostname a caller passed, or ``None`` (or empty) for the machine's.
 
     Returns:
-        The host file name and an empty refusal, or ``None`` and the validation message.
+        The host file name, or the refusal of the machine's hostname.
 
     Raises:
         ValidationError: *explicit* is refused.
     """
     if explicit:
-        return f"{validate_hostname(explicit)}.toml", ""
+        return f"{validate_hostname(explicit)}.toml"
     machine = socket.gethostname()
     try:
-        return f"{validate_hostname(machine)}.toml", ""
+        return f"{validate_hostname(machine)}.toml"
     except ValidationError as exc:
         log_warn("host_layer_skipped_invalid_hostname", hostname=machine, reason=str(exc))
-        return None, str(exc)
+        return _HostRefusal(str(exc))
