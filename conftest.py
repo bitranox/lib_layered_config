@@ -11,9 +11,7 @@ import os
 import pytest
 
 # The variables a layer root falls back to when no override is set, plus the two app-root overrides that
-# have no plain variable to fall back to. The other overrides (LIB_LAYERED_CONFIG_APPDATA, _LOCALAPPDATA,
-# _PROGRAMDATA, _MAC_HOME_ROOT) are left alone on purpose: an override set here would beat every test that
-# sets the plain variable (APPDATA) itself.
+# have no plain variable to fall back to.
 _LAYER_ROOT_VARIABLES = (
     "HOME",
     "USERPROFILE",
@@ -22,6 +20,16 @@ _LAYER_ROOT_VARIABLES = (
     "XDG_CONFIG_HOME",
     "LIB_LAYERED_CONFIG_ETC",
     "LIB_LAYERED_CONFIG_MAC_APP_ROOT",
+)
+
+# The overrides that have a plain variable behind them. They are deleted, never set: an override beats the
+# plain variable, so one set here would beat every test that sets APPDATA itself, and one left in the
+# developer's shell would beat the roots set here.
+_LAYER_ROOT_OVERRIDES = (
+    "LIB_LAYERED_CONFIG_APPDATA",
+    "LIB_LAYERED_CONFIG_LOCALAPPDATA",
+    "LIB_LAYERED_CONFIG_PROGRAMDATA",
+    "LIB_LAYERED_CONFIG_MAC_HOME_ROOT",
 )
 
 
@@ -33,12 +41,18 @@ def _host_layers_isolated(tmp_path_factory: pytest.TempPathFactory, monkeypatch:
     real app, host and user layers for its slug, so a developer who once ran an example (``demo``,
     ``clash-kit``) saw unrelated tests fail on their own config files. A test that sets a root itself (a
     sandbox's ``apply_env``, its own ``monkeypatch.setenv``, an override variable) runs after this fixture and
-    wins; one that removes a variable to test a default removes it here too.
+    wins; one that removes a variable to test a default removes it here too. An override left in the
+    developer's shell is removed, so it cannot reach past these roots either.
     """
     roots = tmp_path_factory.mktemp("host-roots")
     for name in _LAYER_ROOT_VARIABLES:
         monkeypatch.setenv(name, str(roots / name.lower()))
+    for name in _LAYER_ROOT_OVERRIDES:
+        monkeypatch.delenv(name, raising=False)
     if os.name == "nt":
-        # The library finds ProgramData in any case; off Windows a second spelling set here would compete
-        # with the one a test sets, while Windows' own environment treats them as one variable.
         monkeypatch.setenv("ProgramData", str(roots / "programdata"))
+        return
+    # The library finds ProgramData in any case. Off Windows each spelling is a variable of its own, so one
+    # set here would compete with the spelling a test sets; deleting every one leaves the test's alone.
+    for name in [name for name in os.environ if name.upper() == "PROGRAMDATA"]:
+        monkeypatch.delenv(name)

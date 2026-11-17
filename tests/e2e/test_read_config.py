@@ -40,7 +40,7 @@ def sandbox(tmp_path: Path) -> LayeredSandbox:
 
 
 @pytest.fixture(autouse=True)
-def _host_layers_isolated(sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch) -> None:
+def _sandbox_applied(sandbox: LayeredSandbox, monkeypatch: pytest.MonkeyPatch) -> None:
     # Every read_config here starts from tmp_path; without this a test that never asks for the sandbox read
     # the machine's own app, host and user layers and .env for this slug (a deployed config-kit broke three).
     sandbox.apply_env(monkeypatch)

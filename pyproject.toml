@@ -195,7 +195,7 @@ addopts = ["--maxfail=1", "--doctest-modules", "--ignore=scripts/menu.py", "--ig
 pythonpath = ["src"]
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
 testpaths = ["tests", "src"]
-python_files = ["tests/**/test_*.py"]
+python_files = ["test_*.py"]
 markers = [
   "slow: marks tests as slow (deselect with -m 'not slow')",
   "os_agnostic: executes on every supported operating system",

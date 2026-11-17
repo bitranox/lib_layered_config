@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +20,7 @@ from lib_layered_config import (
 )
 from lib_layered_config.domain.deploy_permissions import SECTION_KEY
 from tests.support import LayeredSandbox, create_layered_sandbox
-from tests.support.os_markers import os_agnostic
+from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -164,6 +166,21 @@ def test_a_missing_source_is_refused(sandbox: LayeredSandbox, tmp_path: Path) ->
         _read(missing)
     with pytest.raises(FileNotFoundError):
         deploy_config_paths(missing, vendor=VENDOR, app=APP, slug=SLUG, targets=["user"])
+
+
+@posix_only
+@pytest.mark.skipif(sys.platform != "win32" and os.geteuid() == 0, reason="root reads through a mode-0 directory")
+def test_a_source_behind_a_permission_wall_raises_permission_error(sandbox: LayeredSandbox, tmp_path: Path) -> None:
+    walled = tmp_path / "walled"
+    walled.mkdir()
+    source = walled / "source.toml"
+    source.write_text("[service]\nflag = true\n", encoding="utf-8")
+    walled.chmod(0)
+    try:
+        with pytest.raises(PermissionError):
+            _read(source)
+    finally:
+        walled.chmod(0o700)
 
 
 @os_agnostic

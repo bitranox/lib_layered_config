@@ -23,6 +23,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _ALLOWED_DIRS = {"src", "tests", "docs", "notebooks"}
 _ALLOWED_FILES = {
     "pyproject.toml",
+    "conftest.py",  # the root fixtures, which the src doctests need too
     "PKG-INFO",
     ".gitignore",  # hatchling always adds it, so a rebuild from the sdist excludes the same files
     "README.md",
@@ -54,7 +55,8 @@ def test_every_sdist_member_sits_under_the_allowlist(tmp_path: Path) -> None:
 def test_the_sdist_carries_what_its_test_suite_needs(tmp_path: Path) -> None:
     members = set(_sdist_members(tmp_path))
 
-    assert {"tests/conftest.py", "tests/support/__init__.py", "src/lib_layered_config/py.typed"} <= members
+    needed = {"conftest.py", "tests/conftest.py", "tests/support/__init__.py", "src/lib_layered_config/py.typed"}
+    assert needed <= members
 
 
 @os_agnostic

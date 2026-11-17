@@ -455,6 +455,10 @@ def test_deploy_windows_falls_back_to_localappdata_when_roaming_missing(
     monkeypatch.setenv("LIB_LAYERED_CONFIG_LOCALAPPDATA", str(local))
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "MissingRoaming"))
     monkeypatch.setenv("LOCALAPPDATA", str(local))
+    # A profile WITH a Roaming folder: a resolver ignoring APPDATA would deploy there and fail this test.
+    profile = tmp_path / "profile"
+    (profile / "AppData" / "Roaming").mkdir(parents=True)
+    monkeypatch.setenv("USERPROFILE", str(profile))
     monkeypatch.setattr(socket, "gethostname", lambda: host)
 
     source = tmp_path / "windows-fallback.toml"
