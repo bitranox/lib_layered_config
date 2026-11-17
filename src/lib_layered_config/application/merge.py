@@ -31,7 +31,7 @@ from ..domain.identifiers import Layer
 from ..observability import log_warn
 
 if TYPE_CHECKING:
-    from .ports import SourceInfoPayload
+    from ..domain.config import SourceInfo
 
 #: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
 #: recurse until Python raises an opaque ``RecursionError``; this bound turns that into a
@@ -84,7 +84,7 @@ class MergeResult:
     """
 
     data: dict[str, object]
-    provenance: dict[str, SourceInfoPayload]
+    provenance: dict[str, SourceInfo]
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -581,7 +581,7 @@ def _build_new_element(
     return _clone_leaf(override)
 
 
-def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfoPayload:
+def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfo:
     """Return the provenance record for a value contributed by *snapshot* at *dotted*.
 
     The record stores the layer's plain ``.value``, not the member: provenance is handed to
@@ -748,7 +748,7 @@ def _store_branch_provenance(
     provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=parents)
 
 
-class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
+class _Provenance(MutableMapping[str, "SourceInfo"]):
     """Provenance entries plus the tree of paths below each container.
 
     A container replaced by a later layer must take the entries of every key below it along.
@@ -770,14 +770,14 @@ class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
     """
 
     def __init__(self) -> None:
-        self._entries: dict[str, SourceInfoPayload] = {}
+        self._entries: dict[str, SourceInfo] = {}
         self._children: dict[str, set[str]] = {}
         self._parent: dict[str, str] = {}
 
-    def __getitem__(self, key: str) -> SourceInfoPayload:
+    def __getitem__(self, key: str) -> SourceInfo:
         return self._entries[key]
 
-    def __setitem__(self, key: str, value: SourceInfoPayload) -> None:
+    def __setitem__(self, key: str, value: SourceInfo) -> None:
         """Refused: an entry is filed by its parent segments, which only :meth:`record` takes."""
         raise TypeError(f"provenance for {key!r} is written with record(dotted, entry, parents=...)")
 
@@ -791,7 +791,7 @@ class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
     def __len__(self) -> int:
         return len(self._entries)
 
-    def record(self, dotted: str, entry: SourceInfoPayload, *, parents: Sequence[str]) -> None:
+    def record(self, dotted: str, entry: SourceInfo, *, parents: Sequence[str]) -> None:
         """Store *entry* for *dotted*, which is *parents* plus one key, filed under its parents."""
         self._link(dotted, parents)
         self._entries[dotted] = entry
@@ -805,7 +805,7 @@ class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
             del self._parent[path]
             stack.extend(self._children.pop(path, ()))
 
-    def as_dict(self) -> dict[str, SourceInfoPayload]:
+    def as_dict(self) -> dict[str, SourceInfo]:
         """Return the entries as the plain dict :class:`MergeResult` carries."""
         return self._entries
 

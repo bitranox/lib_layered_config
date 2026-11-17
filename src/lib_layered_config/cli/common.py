@@ -30,7 +30,7 @@ from .. import __init__conf__
 from .._platform import normalise_examples_platform as _normalise_examples_platform
 from .._platform import normalise_resolver_platform as _normalise_resolver_platform
 from ..adapters.display.toml_text import is_table, toml_key, toml_path, toml_value
-from ..application.ports import OutputFormat, SourceInfoPayload
+from ..application.ports import OutputFormat
 from ..core import read_config, read_config_json, read_config_raw
 from ..domain import json_codec
 from ..domain.redaction import redact_mapping
@@ -39,6 +39,8 @@ from .constants import DEFAULT_JSON_INDENT
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from pathlib import Path
+
+    from ..domain.config import SourceInfo
 
 __all__ = [
     "OutputFormat",
@@ -290,7 +292,7 @@ def json_payload(query: ReadQuery, indent: int | None, *, include_provenance: bo
     return config.to_json(indent=indent, redact=redact)
 
 
-def render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfoPayload]) -> str:
+def render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfo]) -> str:
     """Render configuration as TOML-style sections with provenance comments.
 
     Produces ``[section.subsection]`` headers for nested mappings and emits
@@ -319,7 +321,7 @@ def render_human(data: Mapping[str, object], provenance: Mapping[str, SourceInfo
 
 def _render_section(
     data: Mapping[str, object],
-    provenance: Mapping[str, SourceInfoPayload],
+    provenance: Mapping[str, SourceInfo],
     lines: list[str],
     section_path: tuple[str, ...],
 ) -> None:
