@@ -28,6 +28,7 @@ from collections.abc import Iterator, Mapping
 from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping as MappingType
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Final, TypedDict, TypeVar, cast
 
 from . import json_codec
@@ -55,7 +56,9 @@ class SourceInfo(TypedDict):
 
     Attributes:
         layer: Name of the logical layer (``"defaults"``, ``"app"``, ``"host"``,
-            ``"user"``, ``"dotenv"``, or ``"env"``).
+            ``"user"``, ``"dotenv"``, or ``"env"``), :data:`OVERRIDE_LAYER` for a key
+            :meth:`Config.with_overrides` set, or a source a caller names itself (such as
+            ``"cli"``). Always text: ``Config`` stores an enum member as its value.
         path: Absolute filesystem path when known; ``None`` for ephemeral sources
             such as environment variables.
         key: Fully-qualified dotted key corresponding to the stored value.
@@ -95,6 +98,9 @@ class Config(MappingABC[str, Any]):
     def __post_init__(self) -> None:
         """Freeze internal mappings immediately after construction.
 
+        A provenance entry's ``layer`` is stored as text: an enum member (a ``Layer``, or a caller's own
+        str-valued enum) is stored as its value, so it reads and prints as ``"user"``, not ``Layer.USER``.
+
         Raises:
             TypeError: ``_not_sensitive`` is not a :class:`NotSensitiveKeys`.
         """
@@ -104,7 +110,7 @@ class Config(MappingABC[str, Any]):
                 "use NotSensitiveKeys.of([...])"
             )
         object.__setattr__(self, "_data", _freeze(self._data))
-        object.__setattr__(self, "_meta", _freeze(self._meta))
+        object.__setattr__(self, "_meta", _ReadOnlyMap(_own_provenance(self._meta)))
 
     def __getitem__(self, key: str) -> Any:
         """Return the value stored under a top-level key.
@@ -485,6 +491,26 @@ def _freeze(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
         'real'
     """
     return _ReadOnlyMap(_clone_map(mapping))
+
+
+def _own_provenance(meta: Mapping[str, SourceInfo]) -> dict[str, Any]:
+    """Return a deep copy of *meta* in which every entry's ``layer`` is plain text.
+
+    Examples:
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> _own_provenance({"a": {"layer": Layer.USER, "path": None, "key": "a"}})
+        {'a': {'layer': 'user', 'path': None, 'key': 'a'}}
+    """
+    return {key: _own_entry(info) for key, info in meta.items()}
+
+
+def _own_entry(info: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a copy of one provenance entry, an enum member ``layer`` replaced by its value."""
+    entry = _clone_map(info)
+    layer = entry.get("layer")
+    if isinstance(layer, Enum):
+        entry["layer"] = layer.value
+    return entry
 
 
 def _deep_merge(

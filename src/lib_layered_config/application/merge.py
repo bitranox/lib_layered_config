@@ -26,6 +26,7 @@ from enum import Enum
 from itertools import accumulate
 from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
+from ..domain.config import OVERRIDE_LAYER
 from ..domain.errors import InvalidFormatError
 from ..domain.identifiers import Layer
 from ..observability import log_warn
@@ -118,7 +119,10 @@ class LayerSnapshot:
         """Build a snapshot from a layer member or its plain name.
 
         ``Config.origin(...)["layer"]`` hands callers the plain string, so a caller rebuilding
-        snapshots from provenance holds ``"user"``, not the member.
+        snapshots from provenance holds ``"user"``, not the member. Provenance also holds values
+        that name no layer, and this refuses them: :data:`~lib_layered_config.domain.config.OVERRIDE_LAYER`
+        (``"override"``, every key :meth:`Config.with_overrides` set) and any source a caller
+        names itself (such as ``"cli"``).
 
         Args:
             name: The layer, as a member or its plain name.
@@ -129,13 +133,22 @@ class LayerSnapshot:
             The snapshot, holding the :class:`Layer` member.
 
         Raises:
-            ValueError: *name* names no layer.
+            ValueError: *name* names no layer, ``"override"`` and a caller's own source included.
 
         Examples:
             >>> LayerSnapshot.of("user", {}, None).name is Layer.USER
             True
         """
-        return cls(Layer(name), payload, origin)
+        try:
+            layer = Layer(name)
+        except ValueError:
+            layers = ", ".join(repr(member.value) for member in Layer)
+            raise ValueError(
+                f"{name!r} is not a valid Layer: LayerSnapshot.of takes {layers}; provenance also records "
+                f"{OVERRIDE_LAYER!r} for a key Config.with_overrides set and a caller's own source such as 'cli', "
+                "and neither can be rebuilt into a snapshot"
+            ) from None
+        return cls(layer, payload, origin)
 
 
 def _refuse_a_non_layer(name: object) -> None:
