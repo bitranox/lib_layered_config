@@ -70,9 +70,12 @@ def test_with_no_home_the_resolver_skips_only_the_user_layer(work: Path, tmp_pat
 
 
 @os_agnostic
-def test_a_set_appdata_needs_no_home_on_windows(work: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("variable", ["LIB_LAYERED_CONFIG_APPDATA", "APPDATA"])
+def test_a_set_appdata_needs_no_home_on_windows(work: Path, tmp_path: Path, variable: str) -> None:
+    # Both: the override returns before the APPDATA branch, so only APPDATA itself shows whether the
+    # home-based default is still computed when the variable answers.
     roaming = _plant(tmp_path / "roaming" / "Acme" / "Demo" / "config.toml", 'k = "user"\n')
-    env = {**_app_roots(tmp_path), "LIB_LAYERED_CONFIG_APPDATA": str(tmp_path / "roaming")}
+    env = {**_app_roots(tmp_path), variable: str(tmp_path / "roaming")}
     resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", env=env, platform="win32", cwd=work)
     assert [Path(p) for p in resolver.user()] == [roaming]
 
