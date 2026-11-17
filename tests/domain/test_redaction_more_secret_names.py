@@ -121,6 +121,18 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
             "https://alice:hunter2@example.com/users/bob@example.com",
             f"https://alice:{REDACTED_PLACEHOLDER}@example.com/users/bob@example.com",
         ),
+        # Several URLs in one value, as a broker failover list holds them: every password is masked.
+        (
+            "amqp://u:p1@h1//;amqp://u:p2@h2//",
+            f"amqp://u:{REDACTED_PLACEHOLDER}@h1//;amqp://u:{REDACTED_PLACEHOLDER}@h2//",
+        ),
+        (
+            "redis://u:p1@h1,redis://u:p2@h2/0",
+            f"redis://u:{REDACTED_PLACEHOLDER}@h1,redis://u:{REDACTED_PLACEHOLDER}@h2/0",
+        ),
+        # A URL that does not open the value: after a space, or inside another URL's query.
+        (" postgres://u:s3cret@h/db", f" postgres://u:{REDACTED_PLACEHOLDER}@h/db"),
+        ("http://h/?redirect=http://u:pw@other", f"http://h/?redirect=http://u:{REDACTED_PLACEHOLDER}@other"),
         # A JDBC URL, whose scheme has a sub-scheme.
         ("jdbc:mysql://alice:hunter2@db.example/app", f"jdbc:mysql://alice:{REDACTED_PLACEHOLDER}@db.example/app"),
     ],

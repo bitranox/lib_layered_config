@@ -787,20 +787,22 @@ print(f"Final configuration: {data}")
 `is_sensitive(name)` decides by key name alone, so a size such as `max_token_bytes` is masked like a token.
 The names it masks include `password`, `passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`,
 `apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id`, `authorization` and any
-`_key` suffix, as whole words, also when digits follow (`password2`, `api_key1`). Besides key names, every redacted view masks the password of a value that is a URL,
-under any key:
-`postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`. The authority is read as
-`urllib.parse` reads it (up to the first `/`, `?` or `#`, the password up to its last `@`), so
-`smtp://alice@example.com:hunter2@mail.example.com` is masked and an `@` in the query leaves the host shown.
-When that reading finds no password, the URL is read as parsers that accept an unencoded `/`, `?` or `#` in a
-password read it (SQLAlchemy): the user name up to the first `:`, the password up to the last `@` before the
-query, so `postgresql://app:Ab/9+x@db/prod`, `postgresql://app:/x9Kq@db/prod` and
-`smtp://alice@example.com:Ab/9@mail.example.com` are masked whole and an `@` in the query still leaves the
-host shown. A scheme may carry sub-schemes (`jdbc:mysql://`). A `:` in the path or an IPv6 literal, a drive letter
+`_key` suffix, as whole words, also when digits follow (`password2`, `api_key1`). A table under such a name is
+masked as a whole. Besides key names, every redacted view masks the password of each URL in a string value,
+under any key: `postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`, and each
+URL of a list such as `amqp://u:p1@h1//;amqp://u:p2@h2//` is masked on its own (a URL runs to the next
+`scheme://`). The authority is read as `urllib.parse` reads it (up to the first `/`, `?` or `#`, the password
+up to its last `@`), so `smtp://alice@example.com:hunter2@mail.example.com` is masked and an `@` in the query
+leaves the host shown. When that reading finds no password, the URL is read as parsers that accept an
+unencoded `/`, `?` or `#` in a password read it (SQLAlchemy): the user name up to the first `:`, the password
+up to the last `@` before the query, so `postgresql://app:Ab/9+x@db/prod`, `postgresql://app:/x9Kq@db/prod` and
+`smtp://alice@example.com:Ab/9@mail.example.com` are masked whole and an `@` in the query still leaves the host
+shown. A scheme may carry sub-schemes (`jdbc:mysql://`). A `:` in the path or an IPv6 literal, a drive letter
 (`file://C:/...`) and a port followed by an `@` in the path or query (`https://example.com:8443/?to=a@b`) are
 not a password and are left as they are; so is a password of digits followed by an unencoded `/`, `?` or `#`,
-which reads as a port. A path declared not sensitive
-shows its value as it is, URL included.
+which reads as a port. A password holding an `@` and then a `/` (`mysql://u:p@ss/w@h/db`) is masked up to the
+`@` the first reading ends at, so `ss/w` is shown: encode such a password (`p%40ss%2Fw`). A path declared not
+sensitive shows its value as it is, URL included.
 `NotSensitiveKeys` lets an application declare such keys; the helpers below are importable from `lib_layered_config`.
 
 ##### `NotSensitiveKeys.of(declared)`

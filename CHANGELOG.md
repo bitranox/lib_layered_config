@@ -16,16 +16,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Redaction masks more secrets. Keys named `pwd`, `pass`, `privatekey`, `privkey`, `bearer` or `authorization`
   (`smtp_pass`, `db_pwd`, `auth_bearer`, `smtpPass`, an `Authorization = "Bearer ..."` header) came back in
   clear from `as_dict(redact=True)`, `to_json(redact=True)`, `get_redacted` and the display; they are now
-  masked like `password`, and so are numbered names (`password2`, `api_key1`, `apiKey2`). Like every sensitive key, they also keep a `none` or `null` from an environment
-  variable or `.env` line as that string instead of reading it as no value (`MYAPP___DB__PWD=none` was
-  `None` before). A value that is a URL with a password
-  (`postgres://alice:hunter2@db/app` under `db.url` or any other key) now shows as
-  `postgres://alice:***REDACTED***@db/app`, also when the user name holds an `@`, the password an unencoded
-  `/`, `?`, `#` or `@` (`postgresql://app:Ab/9+x@db/prod`), or both, when the password starts with `/`, and
-  for a scheme with a sub-scheme (`jdbc:mysql://alice:hunter2@db/app`); an `@` in the query leaves the host
-  shown. A key
-  that only looks secret, such as `pass_through`, is masked too;
-  declare it with `read_config(not_sensitive=[...])` to keep it visible.
+  masked like `password`, and so are numbered names (`password2`, `api_key1`, `apiKey2`). Like every sensitive
+  key, they also keep a `none` or `null` from an environment variable or `.env` line as that string instead of
+  reading it as no value (`MYAPP___DB__PWD=none` was `None` before), and a table under such a name is masked
+  as a whole, as `[credentials]` always was: an `[authorization]` table of policy settings now shows as
+  `***REDACTED***`. A key that only looks secret, such as `pass_through` or that table, is masked too; declare
+  it with `read_config(not_sensitive=[...])` to keep it visible.
+- Redaction masks the password of every URL in a string value, under any key:
+  `postgres://alice:hunter2@db/app` under `db.url` now shows as `postgres://alice:***REDACTED***@db/app`. That
+  holds when the user name holds an `@`, when the password holds an unencoded `/`, `?`, `#` or `@`
+  (`postgresql://app:Ab/9+x@db/prod`) or starts with `/`, for a scheme with a sub-scheme
+  (`jdbc:mysql://alice:hunter2@db/app`), and for each URL of a list in one value
+  (`amqp://u:p1@h1//;amqp://u:p2@h2//`); an `@` in the query leaves the host shown. Two shapes no parser reads
+  one way stay as documented in the Python API reference: a password of digits followed by an unencoded `/`,
+  `?` or `#` reads as a port and is shown, and a password holding an `@` and then a `/` is masked only up to
+  the `@` the authority ends at.
 - On Windows, a deploy that replaces a file keeps the file's access list. A forced or confirmed deploy
   writes a new file and renames it over the old one, and backs the old one up with a copy; on Windows a
   new file takes the access list its directory passes down, so a `config.toml` restricted to its user

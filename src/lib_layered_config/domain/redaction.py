@@ -73,9 +73,13 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _CAMEL_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _SEPARATORS: re.Pattern[str] = re.compile(r"[-\s.]+")
 
-#: The scheme that opens a URL value, ``scheme://``, with any sub-schemes (``jdbc:mysql://``); what follows
-#: is split by :func:`_mask_url_password`.
-_URL_SCHEME: re.Pattern[str] = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*(?::[A-Za-z][A-Za-z0-9+.-]*)*://")
+#: A URL's ``scheme://``, with any sub-schemes (``jdbc:mysql://``), anywhere in a value; what follows is
+#: split by :func:`_mask_url_password`. The lookbehind lets a match start only where a run of scheme
+#: characters starts: without it a long run with no ``://`` after it is rescanned from every one of its
+#: positions, which is quadratic in the value's length.
+_URL_SCHEME: re.Pattern[str] = re.compile(
+    r"(?<![A-Za-z0-9+.:-])[A-Za-z][A-Za-z0-9+.-]*(?::[A-Za-z][A-Za-z0-9+.-]*)*://"
+)
 
 #: Where a URL's authority ends when nothing in it is unescaped.
 _AUTHORITY_END = "/?#"
@@ -425,7 +429,31 @@ class _Redactor:
 
 
 def _mask_url_password(value: str) -> str:
-    """Return *value* with the password of a URL replaced by :data:`REDACTED_PLACEHOLDER`.
+    """Return *value* with the password of every URL in it replaced by :data:`REDACTED_PLACEHOLDER`.
+
+    A value can hold several URLs (a broker failover list ``amqp://u:p1@h1//;amqp://u:p2@h2//``, a URL
+    in another URL's query), so each ``scheme://`` starts a URL that runs to the next one, and each is
+    masked on its own (:func:`_mask_one_url`); text before the first is kept as it is.
+
+    Examples:
+        >>> _mask_url_password("redis://u:p1@h1,redis://u:p2@h2")
+        'redis://u:***REDACTED***@h1,redis://u:***REDACTED***@h2'
+        >>> _mask_url_password("plain text")
+        'plain text'
+    """
+    schemes = list(_URL_SCHEME.finditer(value))
+    if not schemes:
+        return value
+    ends = [match.start() for match in schemes[1:]] + [len(value)]
+    masked = (
+        _mask_one_url(value[match.start() : end], match.end() - match.start())
+        for match, end in zip(schemes, ends, strict=True)
+    )
+    return value[: schemes[0].start()] + "".join(masked)
+
+
+def _mask_one_url(url: str, start: int) -> str:
+    """Return *url*, whose authority begins at *start*, with its password replaced by the placeholder.
 
     Two readings of the URL are tried in turn. The first is the one ``urllib.parse`` uses
     (:func:`_urllib_password`); when it finds no password, the second is the one URL parsers that accept
@@ -433,24 +461,20 @@ def _mask_url_password(value: str) -> str:
     mask stopping where ``urllib`` stops shows the rest of such a password in clear.
 
     Examples:
-        >>> _mask_url_password("postgres://alice:hunter2@db/app")
+        >>> _mask_one_url("postgres://alice:hunter2@db/app", 11)
         'postgres://alice:***REDACTED***@db/app'
-        >>> _mask_url_password("postgresql://app:Ab/9+x@db/prod")
+        >>> _mask_one_url("postgresql://app:Ab/9+x@db/prod", 13)
         'postgresql://app:***REDACTED***@db/prod'
-        >>> _mask_url_password("jdbc:mysql://alice:hunter2@db/app")
+        >>> _mask_one_url("jdbc:mysql://alice:hunter2@db/app", 13)
         'jdbc:mysql://alice:***REDACTED***@db/app'
-        >>> _mask_url_password("postgres://alice@db/app")
+        >>> _mask_one_url("postgres://alice@db/app", 11)
         'postgres://alice@db/app'
     """
-    scheme = _URL_SCHEME.match(value)
-    if scheme is None:
-        return value
-    start = scheme.end()
-    span = _urllib_password(value, start) or _dsn_password(value, start)
+    span = _urllib_password(url, start) or _dsn_password(url, start)
     if span is None:
-        return value
+        return url
     colon, at = span
-    return f"{value[: colon + 1]}{REDACTED_PLACEHOLDER}{value[at:]}"
+    return f"{url[: colon + 1]}{REDACTED_PLACEHOLDER}{url[at:]}"
 
 
 def _urllib_password(value: str, start: int) -> tuple[int, int] | None:
