@@ -6,7 +6,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [7.8.0] - 2026-11-17
+## [8.0.0] - 2026-11-17
 
 ### Security
 - The upward `.env` search passes over a `.env` with more than one hard link, logs the warning
@@ -186,8 +186,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   from this release `DeployAction` and `DeployResult` too (see Added), so code importing those two from
   `lib_layered_config.examples` needs this release or later to switch to the root import. The old paths
   (`lib_layered_config.examples`, `.examples.deploy`, `.examples.generate`) still work and re-export the
-  same objects, but importing them raises a `DeprecationWarning`; they are removed in the next major
-  release.
+  same objects, but importing them raises a `DeprecationWarning`; they are removed in 9.0.0.
 - `prefer` on `read_config`, `read_config_json` and `read_config_raw`, and `--prefer` on `read` and
   `read-json`, never changed what was loaded: each layer reads only `config.toml` and its `config.d/`
   directory, so there was no second main file for the suffix ranking to choose. Passing `prefer` now

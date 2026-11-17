@@ -2,8 +2,8 @@
 
 Every name here is re-exported from those modules, and importing this package warns. Import from
 the package root (``from lib_layered_config import deploy_config, DeployAction``) or from
-``lib_layered_config.deploy`` / ``lib_layered_config.generate`` instead. This shim is removed in the
-next major release.
+``lib_layered_config.deploy`` / ``lib_layered_config.generate`` instead. This shim is removed in
+9.0.0.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from ..deploy import (
 from ..generate import DEFAULT_HOST_PLACEHOLDER, ExampleSpec, generate_examples
 
 warnings.warn(
-    "lib_layered_config.examples is deprecated and will be removed in the next major release; import from "
+    "lib_layered_config.examples is deprecated and will be removed in 9.0.0; import from "
     "lib_layered_config, lib_layered_config.deploy or lib_layered_config.generate instead",
     DeprecationWarning,
     stacklevel=2,

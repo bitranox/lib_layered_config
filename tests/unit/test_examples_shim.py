@@ -1,7 +1,7 @@
 """``lib_layered_config.examples`` is a deprecated alias of ``lib_layered_config.deploy`` and ``.generate``.
 
-Consumers still importing the old path keep working until the shim is removed in the next major
-release; each import of the package warns so they can see the move coming.
+Consumers still importing the old path keep working until the shim is removed in 9.0.0;
+each import of the package warns so they can see the move coming.
 """
 
 from __future__ import annotations

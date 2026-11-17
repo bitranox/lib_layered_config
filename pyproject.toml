@@ -1,6 +1,6 @@
 [project]
 name = "lib_layered_config"
-version = "7.8.0"
+version = "8.0.0"
 description = "Cross-platform layered configuration loader for Python"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -263,7 +263,7 @@ type = "layers"
 containers = ["lib_layered_config"]
 layers = [
   "cli",
-  # Deprecated shim re-exporting deploy and generate; removed in the next major release.
+  # Deprecated shim re-exporting deploy and generate; removed in 9.0.0.
   "examples",
   "deploy | generate",
   "adapters",
