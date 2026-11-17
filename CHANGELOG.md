@@ -198,8 +198,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `json.dumps(config["db"])` and `isinstance(..., dict)` keep working. Each read of a table copies it; in a
   loop, read a leaf with `config.get("a.b.c")` or take the section once.
 - `deploy_config`, `deploy_config_paths`, `read_deploy_config` and `deploy --slug ""` refuse an empty slug
-  with `ValidationError: slug cannot be empty` (exit code 22), as `read_config` and `generate_examples`
-  always did. They read `""` as no slug and deployed under the app name, a directory no read with the
+  with `ValidationError: slug cannot be empty` (exit code 22), as `read_config` always did and
+  `generate_examples` now does. They read `""` as no slug and deployed under the app name, a directory no read with the
   same arguments looks in. Leaving the slug out still means the app name.
 - `"db" in config` answers from the keys instead of reading `config["db"]`, so it no longer copies the
   whole table to say yes or no. `config.get("db.host")` no longer checks every key of each table it

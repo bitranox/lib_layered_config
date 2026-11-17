@@ -61,7 +61,7 @@ class ValidationError(ConfigError, ValueError):
 class LayerRootNotAbsoluteError(ValidationError):
     """Raised when a layer root is not an absolute path.
 
-    A Windows root (ProgramData, APPDATA, LOCALAPPDATA), a relative home directory (``HOME`` on
+    A Windows root (ProgramData, APPDATA, LOCALAPPDATA), an empty or relative home directory (``HOME`` on
     Linux and macOS, ``USERPROFILE`` on Windows), or an empty or relative ``LIB_LAYERED_CONFIG_ETC``,
     ``LIB_LAYERED_CONFIG_MAC_APP_ROOT`` or ``LIB_LAYERED_CONFIG_MAC_HOME_ROOT``.
 

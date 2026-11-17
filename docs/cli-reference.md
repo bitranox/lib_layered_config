@@ -30,12 +30,12 @@ Given before the command (`lib_layered_config --traceback read ...`):
 
 A command exits 0 on success and with the error's code on failure:
 
-| Failure                                                                                                                                   | Linux and macOS                                                                  | Windows                           |
-|-------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-----------------------------------|
-| A usage error: an unknown option, a missing or refused argument                                                                           | 2                                                                                | 2                                 |
-| `ValidationError` or a subclass: a refused vendor, app, slug, profile, target or mode; a linked deploy destination; a relative layer root | 22                                                                               | 87                                |
-| Any other library error: a file that cannot be read or parsed (`LayerLoadError`), no home directory (`HomeDirectoryUnknownError`)         | 1                                                                                | 1                                 |
-| An operating-system error                                                                                                                 | its errno: 13 permission denied, 27 file too large, 28 disk full, 2 no such file | its Windows code: 5 access denied |
+| Failure                                                                                                                                                                     | Linux and macOS                                                                  | Windows                           |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-----------------------------------|
+| A usage error: an unknown option, a missing or refused argument (`--target`, `--dir-mode`, `--file-mode`, `env-prefix`'s SLUG)                                              | 2                                                                                | 2                                 |
+| `ValidationError` or a subclass: a refused vendor, app, slug or profile option, a mode from the configuration; a linked deploy destination; an empty or relative layer root | 22                                                                               | 87                                |
+| Any other library error: a file that cannot be read or parsed (`LayerLoadError`), no home directory (`HomeDirectoryUnknownError`)                                           | 1                                                                                | 1                                 |
+| An operating-system error                                                                                                                                                   | its errno: 13 permission denied, 27 file too large, 28 disk full, 2 no such file | its Windows code: 5 access denied |
 
 A path option naming a file that does not exist is a usage error (2), checked before the command runs. A file
 that disappears while the command runs exits with its errno, also 2 on Linux and macOS; `--json` tells the two
@@ -1112,10 +1112,10 @@ lib_layered_config deploy \
 
 **Output:**
 ```json
-{"created": ["C:\\Users\\alice\\AppData\\Roaming\\Acme\\MyApp\\config.toml"]}
+{"created": ["/home/alice/AppData/Local/Acme/MyApp/config.toml"]}
 ```
 
-**Explanation:** Use `--platform` to override platform detection. Useful for testing deployment paths on different platforms without actually being on that platform.
+**Explanation:** Use `--platform` to override platform detection. Useful for testing deployment paths on different platforms without actually being on that platform. The paths stay those of the machine you run on: on Linux the Windows user layer sits under `$HOME/AppData/Local`, because `APPDATA` is unset there (or names no existing directory) and the layer falls back to `LOCALAPPDATA`, which defaults under the home directory. On Windows the same command writes `C:\\Users\\alice\\AppData\\Roaming\\Acme\\MyApp\\config.toml`.
 The `app` and `host` targets need an absolute ProgramData root there: set
 `LIB_LAYERED_CONFIG_PROGRAMDATA` (or `ProgramData`). Off Windows the built-in `C:\ProgramData` is a
 relative path, so the deploy is refused (exit 22) and nothing is written. A relative value in any of

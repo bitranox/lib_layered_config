@@ -1644,7 +1644,7 @@ Exception
         +-- DeployPermissionsError  unusable permission settings
         +-- DeployDestinationError  a deploy destination is a symbolic link or not a regular file
         +-- GenerateDestinationError  an example path generate would write through is a link or not a regular file
-        +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, a relative HOME or
+        +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, an empty or relative HOME or
                                        USERPROFILE, or an empty or relative LIB_LAYERED_CONFIG_ETC /
                                        _MAC_APP_ROOT / _MAC_HOME_ROOT)
 ```

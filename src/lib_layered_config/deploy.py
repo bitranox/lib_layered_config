@@ -962,8 +962,9 @@ def deploy_config_paths(
         FileNotFoundError: The source is not a regular file; the message says whether it is missing, a
             directory, or something else (a FIFO, device or socket).
         PermissionError: The source or its ``.d`` directory sits behind a permission wall.
-        ValueError: The profile name is invalid.
-        ValidationError: *targets* is a single str, or a target is not one of app, host and user.
+        ValidationError: An invalid vendor, app, slug, profile or platform; *targets* is a single str, or a
+            target is not one of app, host and user; or a layer root that is not absolute
+            (``LayerRootNotAbsoluteError``, an empty or relative ``HOME`` included).
 
     Examples:
         >>> from tempfile import TemporaryDirectory
@@ -1020,7 +1021,8 @@ def read_deploy_config(
         FileNotFoundError: The source is not a regular file; the message says whether it is missing, a
             directory, or something else (a FIFO, device or socket).
         LayerLoadError: A file not left out cannot be read, decoded or parsed.
-        ValueError: The profile name is invalid.
+        ValidationError: An invalid vendor, app, slug, profile or platform, or a layer root that is not absolute
+            (``LayerRootNotAbsoluteError``, an empty or relative ``HOME`` included).
 
     Examples:
         >>> from tempfile import TemporaryDirectory
