@@ -72,14 +72,11 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _CAMEL_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _SEPARATORS: re.Pattern[str] = re.compile(r"[-\s.]+")
 
-#: A value that is a URL with a password in its authority: ``scheme://user:password@host...``.
-#: The password cannot run past the first ``/``, ``?`` or ``#`` (where the authority ends), and it
-#: is matched greedily, so the host follows the LAST ``@`` of the authority, as ``urllib.parse`` reads
-#: it: an unescaped ``@`` inside the password is masked with the rest.
-_URL_WITH_PASSWORD: re.Pattern[str] = re.compile(
-    r"(?P<head>[A-Za-z][A-Za-z0-9+.-]*://[^/?#:@]*:)(?P<password>[^/?#]*)(?P<tail>@.*)",
-    re.DOTALL,
-)
+#: The scheme that opens a URL value, ``scheme://``; what follows is split by :func:`_mask_url_password`.
+_URL_SCHEME: re.Pattern[str] = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+
+#: Where a URL's authority ends when nothing in it is unescaped.
+_AUTHORITY_END = "/?#"
 
 
 def is_sensitive(key: str) -> bool:
@@ -426,16 +423,46 @@ class _Redactor:
 def _mask_url_password(value: str) -> str:
     """Return *value* with the password of a URL replaced by :data:`REDACTED_PLACEHOLDER`.
 
+    The password runs from the first ``:`` after the user name to the LAST ``@`` of the value, because
+    URL parsers that take a password with an unescaped ``/``, ``?``, ``#`` or ``@`` in it (SQLAlchemy,
+    and ``urllib.parse`` for the ``@``) read it that way, and a mask that stops earlier shows the rest
+    in clear. Two shapes are not a password, so they stay as they are: a user name holding ``/``, ``?``
+    or ``#`` (``https://example.com/a:b@c``: the ``:`` is in the path), and digits up to the end of the
+    authority (``https://example.com:8443/?to=a@b``: a port, the ``@`` is in the query).
+
     Examples:
         >>> _mask_url_password("postgres://alice:hunter2@db/app")
         'postgres://alice:***REDACTED***@db/app'
+        >>> _mask_url_password("postgresql://app:Ab/9+x@db/prod")
+        'postgresql://app:***REDACTED***@db/prod'
         >>> _mask_url_password("postgres://alice@db/app")
         'postgres://alice@db/app'
     """
-    match = _URL_WITH_PASSWORD.fullmatch(value)
-    if match is None:
+    scheme = _URL_SCHEME.match(value)
+    if scheme is None:
         return value
-    return f"{match['head']}{REDACTED_PLACEHOLDER}{match['tail']}"
+    start = scheme.end()
+    at = value.rfind("@", start)
+    colon = value.find(":", start, at)
+    if at < 0 or colon < 0 or any(char in value[start:colon] for char in _AUTHORITY_END):
+        return value
+    if _is_port(value[colon + 1 : at]):
+        return value
+    return f"{value[: colon + 1]}{REDACTED_PLACEHOLDER}{value[at:]}"
+
+
+def _is_port(after_colon: str) -> bool:
+    """Return ``True`` when *after_colon* is a port that ends the authority, not the start of a password.
+
+    Examples:
+        >>> _is_port("8443/?to=a")
+        True
+        >>> _is_port("1234")
+        False
+    """
+    ends = [index for index in (after_colon.find(char) for char in _AUTHORITY_END) if index >= 0]
+    digits = after_colon[: min(ends)] if ends else ""
+    return digits.isascii() and digits.isdigit()
 
 
 def _ensure_depth(depth: int) -> None:

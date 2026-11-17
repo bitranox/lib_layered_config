@@ -785,8 +785,12 @@ print(f"Final configuration: {data}")
 The names it masks include `password`, `passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`,
 `apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id` and any `_key` suffix, as
 whole words. Besides key names, every redacted view masks the password of a value that is a URL, under any key:
-`postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`. A path declared not
-sensitive shows its value as it is, URL included.
+`postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`. The password runs from the
+first `:` after the user name to the last `@`, so `postgresql://app:Ab/9+x@db/prod` and
+`smtp://alice@example.com:hunter2@mail.example.com` are masked whole. A `:` inside the path
+(`https://example.com/a:b@c`) or a port followed by an `@` in the path or query
+(`https://example.com:8443/?to=a@b`) is not a password and is left as it is. A path declared not sensitive
+shows its value as it is, URL included.
 `NotSensitiveKeys` lets an application declare such keys; the helpers below are importable from `lib_layered_config`.
 
 ##### `NotSensitiveKeys.of(declared)`

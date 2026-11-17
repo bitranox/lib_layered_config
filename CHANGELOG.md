@@ -15,7 +15,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `db_pwd`, `auth_bearer`, `smtpPass`) came back in clear from `as_dict(redact=True)`, `to_json(redact=True)`,
   `get_redacted` and the display; they are now masked like `password`. A value that is a URL with a password
   (`postgres://alice:hunter2@db/app` under `db.url` or any other key) now shows as
-  `postgres://alice:***REDACTED***@db/app`. A key that only looks secret, such as `pass_through`, is masked too;
+  `postgres://alice:***REDACTED***@db/app`; the password runs to the last `@`, so one holding an unencoded `/`, `?`,
+  `#` or `@` (`postgresql://app:Ab/9+x@db/prod`), or behind a user name holding an `@`, is masked whole. A key
+  that only looks secret, such as `pass_through`, is masked too;
   declare it with `read_config(not_sensitive=[...])` to keep it visible.
 - On Windows, a deploy that replaces a file keeps the file's access list. A forced or confirmed deploy
   writes a new file and renames it over the old one, and backs the old one up with a copy; on Windows a

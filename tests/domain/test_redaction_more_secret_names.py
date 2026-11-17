@@ -58,6 +58,16 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("redis://:hunter2@cache.example/0", f"redis://:{REDACTED_PLACEHOLDER}@cache.example/0"),
         ("amqp://alice:p@ss@mq.example/vh", f"amqp://alice:{REDACTED_PLACEHOLDER}@mq.example/vh"),
         ("HTTPS://alice:hunter2@example.com", f"HTTPS://alice:{REDACTED_PLACEHOLDER}@example.com"),
+        # A user name holding an '@', as a mail login often does (urllib reads the password here too).
+        (
+            "smtp://alice@example.com:hunter2@mail.example.com:587",
+            f"smtp://alice@example.com:{REDACTED_PLACEHOLDER}@mail.example.com:587",
+        ),
+        # A password holding an unencoded '/', '?' or '#', which database URL parsers accept.
+        ("postgresql://app:Ab/9+x@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
+        ("postgresql://app:a?b@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
+        ("postgresql://app:a#b@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
+        ("postgresql://app:1234@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
     ],
 )
 def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: str) -> None:
@@ -69,15 +79,27 @@ def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: 
     "value",
     [
         "postgres://alice@db.example/app",
+        "redis://alice@cache.example",
         "https://example.com/path?next=a:b@c",
         "https://example.com/a:b@c",
         "alice:hunter2@db.example",
         "mailto:alice@example.com",
+        # A port, not a password, before an '@' further on in the path or query.
+        "https://example.com:8443/?to=alice@example.com",
+        "https://alice@example.com:8443/users/bob@example.com",
         "not a url at all",
     ],
 )
 def test_a_value_without_a_url_password_is_left_as_it_is(value: str) -> None:
     assert redact_mapping({"url": value}) == {"url": value}
+
+
+@os_agnostic
+def test_a_password_of_non_ascii_digits_before_a_slash_is_not_read_as_a_port() -> None:
+    arabic_three = chr(0x0663)
+    value = f"postgresql://app:{arabic_three * 3}/x@db.example/prod"
+
+    assert redact_mapping({"url": value}) == {"url": f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"}
 
 
 @os_agnostic
