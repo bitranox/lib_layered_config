@@ -473,7 +473,10 @@ before writing anything, in every mode, with or without `--force`/`--batch`:
 
 Writing through the link would change the file it points at, and replacing it would break a link made
 on purpose. Remove the link, or deploy its target yourself. Every linked destination is named, one per
-line. A linked parent directory (`~/.config` itself a link) is followed as usual.
+line. A linked parent directory (`~/.config` itself a link) is followed as usual. A layer directory that is
+a link (`~/.config/myapp` linked to a dotfiles checkout) is written through too, but deploy does not set the
+layer's directory mode on the directory it links to, which it neither made nor owns at that path; it logs
+`deploy_directory_mode_skipped` instead. The files still get their modes.
 
 A destination that exists but is not a regular file (a directory, FIFO, device or socket) is refused
 the same way, with `is not a regular file; deploy writes only regular files`.

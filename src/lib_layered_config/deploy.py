@@ -57,6 +57,7 @@ from .domain.deploy_permissions import (
 from .domain.errors import ConfigError, DeployDestinationError, ValidationError
 from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer, PlatformFamily, platform_family
 from .domain.permissions import apply_mode, modes_apply
+from .observability import log_warn
 
 if TYPE_CHECKING:
     from .domain.config import Config
@@ -315,7 +316,7 @@ def _write_ucf(destination: Path, source: Path, *, modes: LayerModes | None) -> 
     ucf_path = _next_available_path(destination, _Sidecar.UCF)
     ucf_path.parent.mkdir(parents=True, exist_ok=True)
     if modes is not None:
-        apply_mode(ucf_path.parent, modes.directory)
+        _harden_directory(ucf_path.parent, modes.directory)
     _write_from(ucf_path, source, restrict=modes is not None, acl_from=destination)
     if modes is not None:
         apply_mode(ucf_path, modes.file)
@@ -1329,10 +1330,24 @@ def _copy_file(destination: Path, source: Path, *, modes: LayerModes | None) -> 
     """Copy *source* to destination; with *modes*, harden the directory and then the file."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     if modes is not None:
-        apply_mode(destination.parent, modes.directory)
+        _harden_directory(destination.parent, modes.directory)
     _write_from(destination, source, restrict=modes is not None)
     if modes is not None:
         apply_mode(destination, modes.file)
+
+
+def _harden_directory(directory: Path, mode: DeployMode) -> None:
+    """Set *mode* on *directory*, unless *directory* is a symbolic link.
+
+    ``chmod`` follows a link, so hardening a layer directory that links to a dotfiles checkout or a
+    shared directory would change the mode of a directory deploy neither made nor owns at that path
+    (0755 to 0700, or 0750 to 0755 on the app and host layers). The file is still written through
+    the link and gets its own mode; only the target directory is left as it was, and that is logged.
+    """
+    if modes_apply() and is_symlink_or_raise(directory):
+        log_warn("deploy_directory_mode_skipped", path=str(directory), reason="symbolic link")
+        return
+    apply_mode(directory, mode)
 
 
 def _write_from(path: Path, source: Path, *, restrict: bool = False, acl_from: Path | None = None) -> None:

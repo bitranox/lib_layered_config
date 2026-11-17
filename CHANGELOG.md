@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Security
+- A deploy into a layer directory that is a symbolic link no longer changes the mode of the directory it
+  links to. With `~/.config/myapp` linked to a shared 0755 directory, deploy set that directory to 0700 (and on
+  the app and host layers could widen a 0750 one to 0755). The file is still written through the link with
+  its mode; the target directory keeps its own, and the skip is logged as `deploy_directory_mode_skipped`.
 - Redaction masks more secrets. Keys named `pwd`, `pass`, `privatekey`, `privkey` or `bearer` (`smtp_pass`,
   `db_pwd`, `auth_bearer`, `smtpPass`) came back in clear from `as_dict(redact=True)`, `to_json(redact=True)`,
   `get_redacted` and the display; they are now masked like `password`. A value that is a URL with a password
