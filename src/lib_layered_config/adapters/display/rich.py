@@ -17,7 +17,7 @@ System Role:
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import rich_click as click
@@ -47,11 +47,21 @@ _ABSENT = object()
 
 @dataclass(frozen=True)
 class _View:
-    """What every rendered line needs: the config for provenance, the console, the profile."""
+    """What every rendered line needs: the config for provenance, the profile, and where lines go.
+
+    Lines are collected and printed in one ``Console.print`` (:func:`_display_human`): Rich's per-call
+    pipeline made one print per line cost about 150 us a line. Every collected line is a ``Text``,
+    which ``Console.print`` neither highlights nor parses as markup, and none carries a print-level
+    style, so joining them with newlines writes the same bytes the separate prints wrote.
+    """
 
     config: Config
-    console: Console
     profile: str | None
+    lines: list[Text] = field(default_factory=list[Text])
+
+    def emit(self, line: Text | None = None) -> None:
+        """Add *line*, or an empty line, to the output."""
+        self.lines.append(Text() if line is None else line)
 
 
 def _build_console() -> Console:
@@ -125,13 +135,13 @@ def _render_table(table: Mapping[str, object], path: tuple[str, ...], view: _Vie
 
 def _render_header(path: tuple[str, ...], view: _View, *, empty: bool) -> None:
     """Print a table's ``[header]`` (bold cyan); an empty table carries its own source."""
-    view.console.print()
+    view.emit()
     info = view.config.origin(".".join(path)) if empty else None
     if info is not None:
-        view.console.print(_format_source_line(info, profile=view.profile))
+        view.emit(_format_source_line(info, profile=view.profile))
     header = Text("[" + toml_path(path) + "]")
     header.stylize("bold cyan")
-    view.console.print(header)
+    view.emit(header)
 
 
 def _element_paths(value: object, path: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
@@ -160,7 +170,7 @@ def _print_overriding_sources(view: _View, *, key_path: tuple[str, ...], value: 
         if info is not None and not _same_source(info, own):
             line = _format_source_line(info, prefix, profile=view.profile)
             line.append(f" for {toml_path(element)}")
-            view.console.print(line)
+            view.emit(line)
 
 
 def _same_source(info: SourceInfo, other: SourceInfo | None) -> bool:
@@ -178,7 +188,7 @@ def _print_entry(view: _View, *, label: str, key_path: tuple[str, ...], value: o
     prefix = "    " if indent else ""
     info = view.config.origin(".".join(key_path))
     if info is not None:
-        view.console.print(_format_source_line(info, prefix, profile=view.profile))
+        view.emit(_format_source_line(info, prefix, profile=view.profile))
     if is_array(value):
         _print_overriding_sources(view, key_path=key_path, value=value, prefix=prefix)
 
@@ -187,8 +197,8 @@ def _print_entry(view: _View, *, label: str, key_path: tuple[str, ...], value: o
     text.append(label, style="orange3")
     text.append(" = ", style="white")
     text.append(value_str, style="dim red" if _REDACTED in value_str else "green")
-    view.console.print(text)
-    view.console.print()
+    view.emit(text)
+    view.emit()
 
 
 def display_config(
@@ -221,7 +231,8 @@ def display_config(
         Writes formatted configuration to stdout. A character stdout cannot encode (CJK or an
         emoji on a Windows cp1252 pipe) is written as an escape instead of raising: ``\\uXXXX``
         in JSON, which parses back to the same value, and a Python backslash escape in the human
-        format, as the CLI's ``read`` does.
+        format, as the CLI's ``read`` does. The human format prints its note line, then the whole
+        body in one ``Console.print``, so the output appears when the call finishes.
 
     Raises:
         ValueError: If a section was requested that doesn't exist, or *output_format* is not one
@@ -291,18 +302,21 @@ def _display_human(
     if section and redacted_value is _ABSENT:
         raise ValueError(f"Section '{section}' not found")
     con = console or _build_console()
+    # The note is a str printed with a print-level style, which also styles its line ending and is
+    # highlighted when the console highlights: printed on its own, as before, so its bytes stay the same.
     con.print(_OUTPUT_HEADER, style="bright_red")
     con.print()
-    view = _View(config, con, profile)
+    view = _View(config, profile)
 
     if not section:
         _render_table(config.as_dict(redact=True), (), view)
-        return
-    if is_table(redacted_value):
+    elif is_table(redacted_value):
         _render_table(redacted_value, tuple(section.split(".")), view)
     else:
         key_path = tuple(section.split("."))
         _print_entry(view, label=toml_path(key_path), key_path=key_path, value=redacted_value, indent=False)
+    if view.lines:
+        con.print(Text("\n").join(view.lines))
 
 
 __all__ = [
