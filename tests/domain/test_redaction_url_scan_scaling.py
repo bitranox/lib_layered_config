@@ -25,8 +25,20 @@ _LIMIT_SECONDS = 1.0
 @pytest.mark.os_agnostic
 @pytest.mark.parametrize(
     "prefix",
-    ["a" * _LETTERS + "! ", "a:" * (_LETTERS // 2), "x://" * (_LETTERS // 4) + " "],
-    ids=["letters", "scheme-like-chain", "many-schemes"],
+    [
+        "a" * _LETTERS + "! ",
+        "a:" * (_LETTERS // 2),
+        "x://" * (_LETTERS // 4) + " ",
+        # One run per character class a scheme may hold, each glued to the URL, so no class is left
+        # out of the bound: a scan that treats one of them differently is quadratic on that run alone.
+        "a1" * (_LETTERS // 2),
+        "a." * (_LETTERS // 2),
+        "a-" * (_LETTERS // 2),
+        "a+" * (_LETTERS // 2),
+        "1:" * (_LETTERS // 2),
+        "a1:" * (_LETTERS // 3),
+    ],
+    ids=["letters", "scheme-like-chain", "many-schemes", "digits", "dots", "dashes", "pluses", "digit-colons", "mixed"],
 )
 def test_a_long_run_before_a_url_is_scanned_in_linear_time(prefix: str) -> None:
     value = prefix + "x://u:pw@h"

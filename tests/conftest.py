@@ -88,6 +88,34 @@ def _plain_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rich_click.rich_click.FORCE_TERMINAL", False)
 
 
+# Every variable that moves a layer root, on any platform. ``XDG_CONFIG_HOME`` stands in for ``HOME`` on
+# Linux, so ``HOME`` itself stays as it is for tools a test may run.
+_LAYER_ROOT_VARIABLES = (
+    "LIB_LAYERED_CONFIG_ETC",
+    "LIB_LAYERED_CONFIG_MAC_APP_ROOT",
+    "LIB_LAYERED_CONFIG_MAC_HOME_ROOT",
+    "LIB_LAYERED_CONFIG_PROGRAMDATA",
+    "LIB_LAYERED_CONFIG_APPDATA",
+    "LIB_LAYERED_CONFIG_LOCALAPPDATA",
+    "XDG_CONFIG_HOME",
+)
+
+
+@pytest.fixture(autouse=True)
+def _host_layers_isolated(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point every layer root at an empty directory of the test's own.
+
+    A test that calls ``read_config`` without a sandbox otherwise reads the machine's real app, host and
+    user layers for its slug, so a developer who once ran an example (``demo``, ``clash-kit``) saw
+    unrelated tests fail on their own config files. A test that sets a root itself (a sandbox's
+    ``apply_env``, its own ``monkeypatch.setenv``) runs after this fixture and wins; one that removes
+    a variable to test a default removes it here too.
+    """
+    roots = tmp_path_factory.mktemp("host-roots")
+    for name in _LAYER_ROOT_VARIABLES:
+        monkeypatch.setenv(name, str(roots / name.lower()))
+
+
 # =============================================================================
 # Common Test Constants
 # =============================================================================

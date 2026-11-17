@@ -120,8 +120,10 @@ def test_a_relative_home_is_refused_and_a_user_deploy_writes_nothing_into_the_cw
     # Path.home() reads HOME on POSIX and USERPROFILE on Windows; the refusal names the one it read.
     for name in ("HOME", "USERPROFILE"):
         monkeypatch.setenv(name, "relhome")
-    # On Linux an absolute XDG_CONFIG_HOME (set on GitHub's ubuntu image) wins over HOME, so HOME is never read.
+    # On Linux an absolute XDG_CONFIG_HOME (set on GitHub's ubuntu image) wins over HOME, so HOME is never read;
+    # on macOS the user-root override does the same.
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", raising=False)
     _plant(work / "relhome" / ".config" / _SLUG / "config.toml")
     _plant(work / "relhome" / "Library" / "Application Support" / "Acme" / "Demo" / "config.toml")
     variable = "USERPROFILE" if os.name == "nt" else "HOME"
@@ -145,6 +147,7 @@ def test_an_empty_home_is_refused_rather_than_read_as_the_filesystem_root(
     for name in ("HOME", "USERPROFILE"):
         monkeypatch.setenv(name, "")
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", raising=False)
     variable = "USERPROFILE" if os.name == "nt" else "HOME"
     expected = f"^The {variable} root '' is not an absolute path; set {variable} to an absolute path$"
 

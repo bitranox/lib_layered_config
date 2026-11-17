@@ -20,6 +20,10 @@ from tests.support.os_markers import os_agnostic
 _MASKED_PASSWORD = f"postgres://alice:{REDACTED_PLACEHOLDER}@db.example:5432/app"
 
 
+# A non-ASCII letter, built from its code point to keep the source ASCII.
+_E_ACUTE = chr(0xE9)
+
+
 @os_agnostic
 @pytest.mark.parametrize(
     "key",
@@ -142,10 +146,30 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("https://app://8xK3pQ@db.example.com/app", f"https://app:{REDACTED_PLACEHOLDER}@db.example.com/app"),
         ("postgresql://app://Zm9vYmFy@db/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db/prod"),
         ("https://app:ab://cd@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
+        ("https://app:a+b://cd@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
         # A URL after text that is not a scheme: digits, a '-', a number list.
         ("12:https://u:pw@h/x", f"12:https://u:{REDACTED_PLACEHOLDER}@h/x"),
         ("-https://u:pw@h", f"-https://u:{REDACTED_PLACEHOLDER}@h"),
         ("abc:123:https://u:pw@h", f"abc:123:https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("sentinel:26379:redis://u:p@h", f"sentinel:26379:redis://u:{REDACTED_PLACEHOLDER}@h"),
+        (".redis://u:p@h", f".redis://u:{REDACTED_PLACEHOLDER}@h"),
+        (
+            "1:redis://u:p1@h1;2:redis://u:p2@h2",
+            f"1:redis://u:{REDACTED_PLACEHOLDER}@h1;2:redis://u:{REDACTED_PLACEHOLDER}@h2",
+        ),
+        (
+            "redis://u:p1@h1 , 1:redis://u:p2@h2",
+            f"redis://u:{REDACTED_PLACEHOLDER}@h1 , 1:redis://u:{REDACTED_PLACEHOLDER}@h2",
+        ),
+        # An '@' in the fragment, after a password with a '/', leaves the host shown.
+        ("postgresql://app:Ab/9@db/prod#a@b", f"postgresql://app:{REDACTED_PLACEHOLDER}@db/prod#a@b"),
+        # One letter before ':' is a drive letter only when the rest starts with '/' and the letter is ASCII.
+        ("x://a:b/c@h", f"x://a:{REDACTED_PLACEHOLDER}@h"),
+        (f"x://{_E_ACUTE}:/pw@h", f"x://{_E_ACUTE}:{REDACTED_PLACEHOLDER}@h"),
+        # A scheme holding a digit, '+', '.' or '-'.
+        ("s3://AKIAEXAMPLE:s3cr3t@bucket", f"s3://AKIAEXAMPLE:{REDACTED_PLACEHOLDER}@bucket"),
+        ("svn+ssh://u:pw@h/repo", f"svn+ssh://u:{REDACTED_PLACEHOLDER}@h/repo"),
+        ("x-my.app://u:pw@h", f"x-my.app://u:{REDACTED_PLACEHOLDER}@h"),
         # A JDBC URL, whose scheme has a sub-scheme.
         ("jdbc:mysql://alice:hunter2@db.example/app", f"jdbc:mysql://alice:{REDACTED_PLACEHOLDER}@db.example/app"),
     ],
