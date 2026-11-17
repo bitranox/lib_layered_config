@@ -51,7 +51,9 @@ def test_a_long_run_before_a_url_is_scanned_in_linear_time(prefix: str) -> None:
     assert elapsed < _LIMIT_SECONDS, f"{len(prefix)} characters took {elapsed:.2f}s"
 
 
-_COUNT = 10_000
+# At 40,000 a scan that searches again for an '@' or a list separator it already knows is missing takes
+# about 8 s, against a few milliseconds for the linear scan.
+_COUNT = 40_000
 
 
 @pytest.mark.os_agnostic
@@ -60,8 +62,10 @@ _COUNT = 10_000
     [
         ("https://u:" + "a://" * _COUNT + "@h", f"https://u:{REDACTED_PLACEHOLDER}@h"),
         ("x://" * _COUNT + "@h", f"x://x:{REDACTED_PLACEHOLDER}@h"),
-        ("u_://" * _COUNT, "u_://" * _COUNT),
-        ("_://" * _COUNT + ",@h", "_://" * _COUNT + ",@h"),
+        # Each 'ua://' opens a URL (a scheme character before every '://'), with no '@' anywhere after it.
+        ("ua://" * _COUNT, "ua://" * _COUNT),
+        # Each 'ua://' opens a URL whose '@' lies beyond a list separator.
+        ("ua://" * _COUNT + ",@h", "ua://" * _COUNT + ",@h"),
     ],
     ids=["user-info-chain", "schemes-then-at", "no-at", "separator-before-at"],
 )

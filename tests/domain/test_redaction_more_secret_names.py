@@ -168,6 +168,23 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("https://u://8xK3pQ@db", f"https://u:{REDACTED_PLACEHOLDER}@db"),
         ("https://u:/x9Kq@db/prod", f"https://u:{REDACTED_PLACEHOLDER}@db/prod"),
         ("a://b://c://d:pw@h", f"a://b:{REDACTED_PLACEHOLDER}@h"),
+        # A '[' (an IPv6 host, a markdown link) ends the user info, so the next URL is its own.
+        ("http://[::1]:3128|http://user:S3cr3t@proxy", f"http://[::1]:3128|http://user:{REDACTED_PLACEHOLDER}@proxy"),
+        ("http://[2001:db8::1]:8080|https://u:pw@h2", f"http://[2001:db8::1]:8080|https://u:{REDACTED_PLACEHOLDER}@h2"),
+        ("(http://[::1]:8080)(https://u:pw@h)", f"(http://[::1]:8080)(https://u:{REDACTED_PLACEHOLDER}@h)"),
+        ('"http://[::1]"+"https://u:pw@h2"', f'"http://[::1]"+"https://u:{REDACTED_PLACEHOLDER}@h2"'),
+        ("[docs](http://h1)[db](https://u:pw@h2)", f"[docs](http://h1)[db](https://u:{REDACTED_PLACEHOLDER}@h2)"),
+        # A '?', '#', ';' or '@' ends the user info too.
+        (
+            "https://example.com?redirect=https://u:pw@h2",
+            f"https://example.com?redirect=https://u:{REDACTED_PLACEHOLDER}@h2",
+        ),
+        ("https://example.com#x://u:pw@h2", f"https://example.com#x://u:{REDACTED_PLACEHOLDER}@h2"),
+        ("amqp://h1;amqp://u:pw@h2", f"amqp://h1;amqp://u:{REDACTED_PLACEHOLDER}@h2"),
+        (
+            "https://u1:p1@h1|https://u2:p2@h2",
+            f"https://u1:{REDACTED_PLACEHOLDER}@h1|https://u2:{REDACTED_PLACEHOLDER}@h2",
+        ),
         # A '://' with no scheme in front of it does not hide the URL that follows it.
         ("1://https://u:pw@h", f"1://https://u:{REDACTED_PLACEHOLDER}@h"),
         ("://https://u:pw@h", f"://https://u:{REDACTED_PLACEHOLDER}@h"),
@@ -223,6 +240,7 @@ def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: 
         "http://[::1]/?next=alice@example.com",
         "file://C:/data/alice@example.toml",
         "FILE://c:/data/alice@example.toml",
+        "jar:file://C:/data/alice@example.toml",
         # A '://' whose '@' comes only after a space is no user info: the text after it is not a password.
         "https://my_app://notes by admin@example.com",
         "https://example.com:8443/users/bob@example.com?tab=1",

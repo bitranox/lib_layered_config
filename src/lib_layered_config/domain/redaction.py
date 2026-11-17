@@ -491,8 +491,10 @@ def _url_starts(value: str) -> list[tuple[int, int]]:
 
 
 #: What ends a URL's user info for :class:`_UserInfoScan`: the authority's end, the ``@`` before the
-#: host, and the separators between the URLs of a list.
-_USER_INFO_END: Final[re.Pattern[str]] = re.compile(r"[/?#@\s,;]")
+#: host, the separators between the URLs of a list, and ``[``. RFC 3986 user info cannot hold a ``[``;
+#: it opens an IPv6 host or a markdown link, so a ``://`` after it starts a URL of its own
+#: (``http://[::1]:3128|http://u:pw@proxy``).
+_USER_INFO_END: Final[re.Pattern[str]] = re.compile(r"[/?#@\s,;\[]")
 
 #: What separates the URLs of a list, so an ``@`` after one belongs to the next URL.
 _LIST_SEPARATOR: Final[re.Pattern[str]] = re.compile(r"[\s,;]")
