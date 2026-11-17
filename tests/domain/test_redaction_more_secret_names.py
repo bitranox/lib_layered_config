@@ -68,6 +68,12 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("postgresql://app:a?b@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
         ("postgresql://app:a#b@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
         ("postgresql://app:1234@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
+        ("postgresql://app:Ab/9@x@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
+        # An '@' in the query after a real password: only the password is masked, the host stays.
+        (
+            "https://alice:hunter2@example.com/p?email=bob@example.com",
+            f"https://alice:{REDACTED_PLACEHOLDER}@example.com/p?email=bob@example.com",
+        ),
     ],
 )
 def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: str) -> None:
@@ -80,6 +86,7 @@ def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: 
     [
         "postgres://alice@db.example/app",
         "redis://alice@cache.example",
+        "redis://cache.example:6379",
         "https://example.com/path?next=a:b@c",
         "https://example.com/a:b@c",
         "alice:hunter2@db.example",
@@ -87,6 +94,11 @@ def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: 
         # A port, not a password, before an '@' further on in the path or query.
         "https://example.com:8443/?to=alice@example.com",
         "https://alice@example.com:8443/users/bob@example.com",
+        # A ':' inside an IPv6 literal or a drive letter, with an '@' further on, is no password.
+        "http://[2001:db8::1]:8080/api?user=alice@example.com",
+        "http://[::1]/?next=alice@example.com",
+        "file://C:/data/alice@example.toml",
+        "https://example.com:8443/users/bob@example.com?tab=1",
         "not a url at all",
     ],
 )

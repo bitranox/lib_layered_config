@@ -423,12 +423,14 @@ class _Redactor:
 def _mask_url_password(value: str) -> str:
     """Return *value* with the password of a URL replaced by :data:`REDACTED_PLACEHOLDER`.
 
-    The password runs from the first ``:`` after the user name to the LAST ``@`` of the value, because
-    URL parsers that take a password with an unescaped ``/``, ``?``, ``#`` or ``@`` in it (SQLAlchemy,
-    and ``urllib.parse`` for the ``@``) read it that way, and a mask that stops earlier shows the rest
-    in clear. Two shapes are not a password, so they stay as they are: a user name holding ``/``, ``?``
-    or ``#`` (``https://example.com/a:b@c``: the ``:`` is in the path), and digits up to the end of the
-    authority (``https://example.com:8443/?to=a@b``: a port, the ``@`` is in the query).
+    The authority is read first as ``urllib.parse`` reads it: up to the first ``/``, ``?`` or ``#``,
+    with the password up to its last ``@``, so a user name holding ``@`` is masked right and an ``@``
+    later in the query leaves the host shown. Only when that authority holds no ``@`` is the password
+    taken up to the LAST ``@`` of the value, because URL parsers that accept a password with an
+    unescaped ``/``, ``?`` or ``#`` (SQLAlchemy) read it that way and a mask stopping earlier shows the
+    rest in clear. That second reading needs the ``:`` inside the authority, not in an IPv6 literal
+    (``[``), and is not taken for a drive letter (a "password" starting with ``/``) or for digits up
+    to the end of the authority (a port, ``https://example.com:8443/?to=a@b``).
 
     Examples:
         >>> _mask_url_password("postgres://alice:hunter2@db/app")
@@ -442,11 +444,36 @@ def _mask_url_password(value: str) -> str:
     if scheme is None:
         return value
     start = scheme.end()
-    at = value.rfind("@", start)
-    colon = value.find(":", start, at)
-    if at < 0 or colon < 0 or any(char in value[start:colon] for char in _AUTHORITY_END):
+    ends = [index for index in (value.find(char, start) for char in _AUTHORITY_END) if index >= 0]
+    authority_end = min(ends) if ends else len(value)
+    at = value.rfind("@", start, authority_end)
+    if at >= 0:
+        return _mask_between(value, value.find(":", start, at), at)
+    return _mask_past_authority(value, start, authority_end)
+
+
+def _mask_past_authority(value: str, start: int, authority_end: int) -> str:
+    """Mask a password holding ``/``, ``?`` or ``#``: from the first ``:`` to the value's last ``@``.
+
+    Examples:
+        >>> _mask_past_authority("x://app:a/b@db", 4, 9)
+        'x://app:***REDACTED***@db'
+        >>> _mask_past_authority("http://[::1]/?n=a@b", 7, 12)
+        'http://[::1]/?n=a@b'
+    """
+    at = value.rfind("@", authority_end)
+    colon = value.find(":", start, authority_end)
+    if at < 0 or "[" in value[start:colon]:
         return value
-    if _is_port(value[colon + 1 : at]):
+    after_colon = value[colon + 1 : at]
+    if after_colon.startswith("/") or _is_port(after_colon):
+        return value
+    return _mask_between(value, colon, at)
+
+
+def _mask_between(value: str, colon: int, at: int) -> str:
+    """Replace what lies between *colon* and *at* with the placeholder; no ``:`` (-1) leaves *value* as it is."""
+    if colon < 0:
         return value
     return f"{value[: colon + 1]}{REDACTED_PLACEHOLDER}{value[at:]}"
 

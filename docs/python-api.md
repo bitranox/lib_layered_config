@@ -785,11 +785,14 @@ print(f"Final configuration: {data}")
 The names it masks include `password`, `passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`,
 `apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id` and any `_key` suffix, as
 whole words. Besides key names, every redacted view masks the password of a value that is a URL, under any key:
-`postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`. The password runs from the
-first `:` after the user name to the last `@`, so `postgresql://app:Ab/9+x@db/prod` and
-`smtp://alice@example.com:hunter2@mail.example.com` are masked whole. A `:` inside the path
-(`https://example.com/a:b@c`) or a port followed by an `@` in the path or query
-(`https://example.com:8443/?to=a@b`) is not a password and is left as it is. A path declared not sensitive
+`postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`. The authority is read as
+`urllib.parse` reads it (up to the first `/`, `?` or `#`, the password up to its last `@`), so
+`smtp://alice@example.com:hunter2@mail.example.com` is masked and an `@` in the query leaves the host shown.
+When that authority holds no `@`, the password runs to the last `@` of the value, so
+`postgresql://app:Ab/9+x@db/prod` is masked whole. A `:` in the path or an IPv6 literal, a drive letter
+(`file://C:/...`) and a port followed by an `@` in the path or query (`https://example.com:8443/?to=a@b`) are
+not a password and are left as they are; so is a password of digits followed by an unencoded `/`, `?` or `#`,
+which reads as a port. A path declared not sensitive
 shows its value as it is, URL included.
 `NotSensitiveKeys` lets an application declare such keys; the helpers below are importable from `lib_layered_config`.
 
