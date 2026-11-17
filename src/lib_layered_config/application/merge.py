@@ -474,7 +474,9 @@ def _merge_list_element(
     setting one field (``dataset.0.dsn``) leaves the element's other fields intact.
     A nested list element with a numeric-key override recurses by index too, so
     ``matrix.0.0`` overrides one cell without flattening the inner list. Otherwise the
-    slot is rebuilt from the override.
+    slot is rebuilt from the override, and the entries of what a replaced table or list
+    held go with it. Provenance follows the table rule: an element table has an entry
+    of its own only while it is empty.
 
     Args:
         element: Current value occupying the slot.
@@ -488,17 +490,22 @@ def _merge_list_element(
     Returns:
         The merged element (the same mutated container, or a freshly built value).
     """
+    holds_keys = _kind_of(element) is not ValueKind.SCALAR  # read before the checks below narrow *element*
     if _looks_like_mapping(element) and _looks_like_mapping(override):
+        table = cast("MutableMapping[str, object]", element)
         segments.append(index_key)
-        _descend(cast("MutableMapping[str, object]", element), provenance, override, snapshot, segments)
+        _descend(table, provenance, override, snapshot, segments)
         segments.pop()
-        return element
+        _store_branch_provenance(table, dotted, provenance, snapshot, parents=segments)
+        return table
     if isinstance(element, list) and _looks_like_mapping(override) and _all_numeric_keys(override):
         nested = cast("list[object]", element)
         segments.append(index_key)
         _merge_mapping_into_list(nested, provenance, override, snapshot, segments)
         segments.pop()
         return nested
+    if holds_keys:
+        _forget_below(provenance, dotted)  # the keys the replaced container held are gone with it
     return _build_new_element(
         override, provenance=provenance, dotted=dotted, snapshot=snapshot, segments=segments, index_key=index_key
     )
@@ -516,7 +523,9 @@ def _build_new_element(
     """Build a fresh list element from *override*, recording provenance per leaf.
 
     A mapping override is woven into a new dict so nested leaves get their own dotted
-    provenance entries; a scalar (or other leaf) is cloned and recorded at *dotted*.
+    provenance entries, and the dict has an entry of its own only while it is empty (the
+    rule :func:`_store_branch_provenance` applies to a table); a scalar (or other leaf)
+    is cloned and recorded at *dotted*.
 
     Args:
         override: Incoming value for the new/replacement slot.
@@ -534,6 +543,7 @@ def _build_new_element(
         segments.append(index_key)
         _descend(new_element, provenance, override, snapshot, segments)
         segments.pop()
+        _store_branch_provenance(new_element, dotted, provenance, snapshot, parents=segments)
         return new_element
     provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=segments)
     return _clone_leaf(override)
@@ -564,17 +574,29 @@ def _store_scalar(
 ) -> None:
     """Set the scalar value and update provenance in lockstep.
 
-    Warns when a mapping is being replaced by a scalar, as this may indicate
-    a configuration schema mismatch between layers.
+    Warns when a mapping is being replaced by a scalar or a list, naming the kinds, as
+    this may indicate a configuration schema mismatch between layers.
     """
     current = target.get(key)
     if _looks_like_mapping(current):
-        _warn_type_conflict(dotted, snapshot, ValueKind.MAPPING, ValueKind.SCALAR)
+        _warn_type_conflict(dotted, snapshot, ValueKind.MAPPING, _kind_of(value))
     if _looks_like_mapping(current) or isinstance(current, list):
         _forget_below(provenance, dotted)  # the keys the container held are gone with it
 
     target[key] = _clone_leaf(value)
     provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=segments)
+
+
+def _kind_of(value: object) -> ValueKind:
+    """The kind a ``type_conflict`` warning reports for *value*.
+
+    Examples:
+        >>> [_kind_of(value).value for value in ({"a": 1}, [1], "x")]
+        ['mapping', 'list', 'scalar']
+    """
+    if _looks_like_mapping(value):
+        return ValueKind.MAPPING
+    return ValueKind.LIST if isinstance(value, list) else ValueKind.SCALAR
 
 
 def _clone_dict(value: dict[str, object]) -> dict[str, object]:
@@ -637,15 +659,15 @@ def _ensure_branch(
 ) -> MutableMapping[str, object]:
     """Return an existing branch or create a fresh empty one.
 
-    Warns when a scalar value is being replaced by a mapping, as this may
-    indicate a configuration schema mismatch between layers.
+    Warns when a scalar or a list is being replaced by a mapping, naming the kinds, as
+    this may indicate a configuration schema mismatch between layers.
     """
     current = target.get(key)
     if _looks_like_mapping(current):
         return cast("MutableMapping[str, object]", current)
 
     if current is not None:
-        _warn_type_conflict(dotted, snapshot, ValueKind.SCALAR, ValueKind.MAPPING)
+        _warn_type_conflict(dotted, snapshot, _kind_of(current), ValueKind.MAPPING)
 
     new_branch: MutableMapping[str, object] = {}
     target[key] = new_branch

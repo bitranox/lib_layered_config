@@ -334,9 +334,32 @@ class Config(MappingABC[str, Any]):
             >>> merged["db"]["port"], merged.origin("db.host")["layer"], merged.origin("db.port")["layer"]
             (5432, 'override', 'app')
         """
-        replaced: list[tuple[str, Any]] = []
-        merged = _deep_merge(self._data, overrides, replaced=replaced)
-        return Config(merged, _override_provenance(self._meta, replaced), self._not_sensitive)
+        trail = _OverrideTrail()
+        merged = _deep_merge(self._data, overrides, trail=trail)
+        return Config(merged, _override_provenance(self._meta, trail), self._not_sensitive)
+
+
+class _OverrideTrail:
+    """What :func:`_deep_merge` did, for the provenance of the result.
+
+    Attributes:
+        replaced: ``(dotted_path, value)`` for every slot the override REPLACED.
+        merged_into: ``(dotted_path, table)`` for every table the override merged INTO,
+            with the merged table, so its own entry can follow the merge's empty-table rule.
+
+    Examples:
+        >>> trail = _OverrideTrail()
+        >>> _deep_merge({"a": {}, "b": 1}, {"a": {"x": 1}, "b": 2}, trail=trail)
+        {'a': {'x': 1}, 'b': 2}
+        >>> trail.replaced, trail.merged_into
+        ([('a.x', 1), ('b', 2)], [('a', {'x': 1})])
+    """
+
+    __slots__ = ("merged_into", "replaced")
+
+    def __init__(self) -> None:
+        self.replaced: list[tuple[str, Any]] = []
+        self.merged_into: list[tuple[str, Mapping[str, Any]]] = []
 
 
 def _override_keys(value: Any, dotted: str) -> Iterator[str]:
@@ -378,26 +401,35 @@ def _is_at_or_below(dotted: str, paths: frozenset[str], *, lengths: frozenset[in
     )
 
 
-def _override_provenance(meta: Mapping[str, SourceInfo], replaced: list[tuple[str, Any]]) -> dict[str, SourceInfo]:
+def _override_provenance(meta: Mapping[str, SourceInfo], trail: _OverrideTrail) -> dict[str, SourceInfo]:
     """Provenance after a merge: the override for every path it replaced, the old source elsewhere.
 
-    Only a path the merge actually REPLACED changes. Entries at or below it are
-    dropped, since those values are gone, and every other entry is kept exactly as
-    the loader wrote it, including the ones that are not plain leaves (a table
-    inside a list, an empty table).
+    A path the merge REPLACED changes: entries at or below it are dropped, since
+    those values are gone. A table the merge merged INTO follows the merge's rule for
+    a table's own entry: it has none once it holds content, and an override that
+    declares it empty again is its source. Every other entry is kept exactly as the
+    loader wrote it, including the ones that are not plain leaves (a table inside a
+    list, an empty table the override did not touch).
 
     Examples:
         >>> meta = {"a.b": {"layer": "app", "path": "/x.toml", "key": "a.b"},
         ...         "c": {"layer": "env", "path": None, "key": "c"}}
-        >>> sorted(_override_provenance(meta, [("a", 1)]).items())
+        >>> trail = _OverrideTrail()
+        >>> trail.replaced.append(("a", 1))
+        >>> sorted(_override_provenance(meta, trail).items())
         [('a', {'layer': 'override', 'path': None, 'key': 'a'}), ('c', {'layer': 'env', 'path': None, 'key': 'c'})]
     """
-    paths = frozenset(path for path, _ in replaced)
+    paths = frozenset(path for path, _ in trail.replaced)
     lengths = frozenset(len(path) for path in paths)
     provenance = {key: info for key, info in meta.items() if not _is_at_or_below(key, paths, lengths=lengths)}
-    for path, value in replaced:
+    for path, value in trail.replaced:
         for dotted in _override_keys(value, path):
             provenance[dotted] = SourceInfo(layer=OVERRIDE_LAYER, path=None, key=dotted)
+    for path, table in trail.merged_into:
+        if table:
+            provenance.pop(path, None)
+        else:
+            provenance[path] = SourceInfo(layer=OVERRIDE_LAYER, path=None, key=path)
     return provenance
 
 
@@ -453,7 +485,7 @@ def _deep_merge(
     base: Mapping[str, Any],
     overrides: Mapping[str, Any],
     *,
-    replaced: list[tuple[str, Any]] | None = None,
+    trail: _OverrideTrail | None = None,
     prefix: str = "",
 ) -> dict[str, Any]:
     """Recursively merge *overrides* into *base*, returning a new dictionary.
@@ -465,8 +497,8 @@ def _deep_merge(
     Args:
         base: Original mapping.
         overrides: Mapping whose values are merged into *base*.
-        replaced: When given, receives ``(dotted_path, value)`` for every slot the
-            override REPLACED rather than merged into, so provenance can change
+        trail: When given, receives every slot the override REPLACED rather than
+            merged into, and every table it merged into, so provenance can change
             exactly there.
         prefix: Dotted path of *base* inside the whole tree, ending in a dot.
 
@@ -481,16 +513,19 @@ def _deep_merge(
     for key, override_value in overrides.items():
         base_value = merged.get(key)
         if isinstance(base_value, MappingABC) and isinstance(override_value, MappingABC):
-            merged[key] = _deep_merge(
+            table = _deep_merge(
                 cast("MappingType[str, Any]", base_value),
                 cast("MappingType[str, Any]", override_value),
-                replaced=replaced,
+                trail=trail,
                 prefix=f"{prefix}{key}.",
             )
+            merged[key] = table
+            if trail is not None:
+                trail.merged_into.append((f"{prefix}{key}", table))
         else:
             merged[key] = override_value
-            if replaced is not None:
-                replaced.append((f"{prefix}{key}", override_value))
+            if trail is not None:
+                trail.replaced.append((f"{prefix}{key}", override_value))
     return merged
 
 
