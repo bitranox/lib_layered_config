@@ -236,7 +236,7 @@ for key in sensitive_keys:
 Return a deep, mutable copy of the configuration tree.
 
 **Parameters:**
-- `redact` (bool, optional): Replace the values of sensitive keys with `***REDACTED***`; keys declared through `read_config(not_sensitive=...)` stay visible. Default: `False`.
+- `redact` (bool, optional): Replace the values of sensitive keys, and the password of every URL in a string value under any key, with `***REDACTED***` (see [Redaction helpers](#redaction-helpers)); keys declared through `read_config(not_sensitive=...)` stay visible. Default: `False`.
 
 **Returns:** Dictionary containing a deep copy of all configuration data.
 
@@ -299,7 +299,7 @@ Serialize the configuration as JSON.
 
 **Parameters:**
 - `indent` (int | None, optional): Any value but `None` (`0` and `False` included) pretty-prints with a fixed 2-space indent; it is not a level. `None` produces compact output. Default: `None`.
-- `redact` (bool, optional): Replace the values of sensitive keys with `***REDACTED***`; keys declared through `read_config(not_sensitive=...)` stay visible. Default: `False`.
+- `redact` (bool, optional): Replace the values of sensitive keys, and the password of every URL in a string value under any key, with `***REDACTED***` (see [Redaction helpers](#redaction-helpers)); keys declared through `read_config(not_sensitive=...)` stay visible. Default: `False`.
 
 **Returns:** JSON string containing the configuration data.
 
@@ -606,7 +606,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
 - `indent` (int | None, optional): Any value but `None` gives a fixed 2-space indent; `None` for compact output. Default: `None`.
-- `redact` (bool, optional): Replace the values of sensitive keys (`password`, `token`, `secret`, `*_key`, ...) with `***REDACTED***` in the config data. Default: `False`.
+- `redact` (bool, optional): Replace the values of sensitive keys (`password`, `token`, `secret`, `*_key`, ...), and the password of every URL in a string value under any key, with `***REDACTED***` in the config data (see [Redaction helpers](#redaction-helpers)). Default: `False`.
 - `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). Redaction leaves them visible, and an unquoted `null`/`none` in the environment or `.env` reads as `None` for them. Declared keys stay visible when `redact` is set. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
 
 **Returns:** JSON string containing `{"config": {...}, "provenance": {...}}`.
@@ -821,7 +821,11 @@ which reads as a port. A password holding an `@` and then a `/`, `?` or `#` (`my
 shown: encode such a password (`p%40ss%2Fw`). A `://` after a `/`, `?`, `#`, `[`, white
 space, `,` or `;` in a password (`https://u:pa/ss://x@h`) starts a URL of its own, and so does one followed
 by white space, `,` or `;` before the password's `@` (`https://u:pa://x y@h`), so the password before it is
-shown: encode it (`pa%2Fss%3A%2F%2Fx`). A path declared not
+shown: encode it (`pa%2Fss%3A%2F%2Fx`). Only a password, the part after `user:`, is masked: a
+credential carried as the user name (`https://ghp_EXAMPLE@github.com/org/repo.git`) is shown in every
+redacted view, while `https://x-access-token:ghs_EXAMPLE@github.com/org/repo.git` masks the token after
+`x-access-token:`. Keep such a URL under a key whose name is sensitive (`clone_token`, `repo_secret`):
+the whole value is then masked. A path declared not
 sensitive shows its value as it is, URL included.
 `NotSensitiveKeys` lets an application declare such keys; the helpers below are importable from `lib_layered_config`.
 
@@ -998,17 +1002,22 @@ refusal rule.
 `"Configuration source is a directory, not a file: <path>"`, or `"Configuration source is not a regular file:
 <path>"` for a FIFO, device or socket), `LayerLoadError`
 (the source is not a `.toml` file, or does not parse as TOML: `"<path> is not valid TOML (line N, column M)"`;
-nothing is written), `PermissionError` (the source, a file in its `.d`
-directory, or a destination cannot be read or sits behind a permission wall; the same on every Python, and for
-the source and its `.d` files in every mode, before anything is written), `ValidationError` (an invalid `vendor`, `app`,
+nothing is written), `PermissionError` (the source or a file in its `.d` directory cannot be read, or a
+destination sits behind a permission wall; the same on every Python, and for the source and its `.d` files in
+every mode, before anything is written; an existing destination that cannot be read raises it only when it is to
+be overwritten - with `force=True`, or a `conflict_resolver` answering `OVERWRITTEN`, the CLI's prompt included -
+and is otherwise reported as a conflict: `CONFLICT`, or `KEPT` with a `.ucf` beside it under `batch` or a
+resolver answering `KEPT`), `ValidationError` (an invalid `vendor`, `app`,
 `slug` or `profile`, an unknown target, or `force` with `batch`, before anything is written; a `conflict_resolver`
 answer other than `OVERWRITTEN` or `KEPT`, when that destination is reached, so the files deployed before it stay
 written), `DeployModeError` (a refused `dir_mode` /
 `file_mode`, or one given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
 not readable, the section is invalid, a refused `permission_overrides` value, or `permission_overrides`
 combined with `permissions`; nothing is written), `DeployDestinationError` (a destination or one of its `.d`
-copies is a symbolic link, dangling or not, or not a regular file - a directory, FIFO, device or socket;
-deploy neither writes through a link nor replaces it, and nothing is written). A layer directory that is a link
+copies is a symbolic link, dangling or not, or not a regular file - a directory, FIFO, device or socket - or does
+not exist and cannot be created because its nearest existing ancestor is not a directory - a regular file, FIFO or
+dangling link where the layer or `.d` directory belongs: `"<path> cannot be created: <ancestor> is not a
+directory"`; deploy neither writes through a link nor replaces it, and nothing is written). A layer directory that is a link
 is written through, but its target keeps its mode (logged as `deploy_directory_mode_skipped`); a directory
 below it that the deploy writes into (`config.d/`, `hosts/`, `profile/<name>/`) still gets the layer's mode.
 
@@ -1021,7 +1030,7 @@ its main file's `dot_d_results`), and `[]` for an error that carries none.
 from lib_layered_config import deploy_config, deployed_before_failure
 
 try:
-    deploy_config("./config.toml", vendor="Acme", app="Demo", targets=["user", "app"], force=True)
+    deploy_config("./config.toml", vendor="Acme", app="Demo", slug="demo", targets=["user", "app"], force=True)
 except PermissionError as error:
     for result in deployed_before_failure(error):
         print("already written:", result.destination, result.action)
@@ -1332,8 +1341,10 @@ about to replace no longer parses.
   it cannot drift from what the deploy writes. Compare it with `result.destination.resolve()`: a
   `DeployResult` names its destination as the layer root spells it, so under a symlinked
   `XDG_CONFIG_HOME` the two spellings differ.
-- Neither checks the source's format or content: a source `deploy_config` refuses (a `config.json`, a file
-  that does not parse) still gets its paths and is read like any defaults file.
+- `deploy_config_paths` checks neither the source's format nor its content: a source `deploy_config` refuses
+  (a `config.json`, a file that does not parse) still gets its paths. `read_deploy_config` reads a source
+  `deploy_config` refuses for its format (a `config.json`) like any defaults file, and raises `LayerLoadError`
+  for one that does not parse, as `deploy_config` does.
 - `read_deploy_config` returns the configuration the deploy reads for its modes: `source` as the defaults
   layer, then the app, host and user files not in `skip`, then the environment. It reads no `.env` file,
   and a user-layer file keeps only its `user_*` and `enabled` permission settings. Each `skip` entry is
@@ -1666,7 +1677,7 @@ Exception
     +-- ValidationError         (also a ValueError) a refused identifier, platform, target or argument
         +-- DeployModeError         a refused dir_mode / file_mode
         +-- DeployPermissionsError  unusable permission settings
-        +-- DeployDestinationError  a deploy destination is a symbolic link or not a regular file
+        +-- DeployDestinationError  a deploy destination is a symbolic link, not a regular file, or cannot be created
         +-- GenerateDestinationError  an example path generate would write through is a link or not a regular file
         +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, an empty or relative HOME or
                                        USERPROFILE, or an empty or relative LIB_LAYERED_CONFIG_ETC /
@@ -1696,8 +1707,8 @@ Exception
 
 Errors from the operating system and the standard library pass through as they are: `FileNotFoundError` for a
 deploy source that does not exist or is not a regular file, `PermissionError` behind a permission wall,
-`FileExistsError` or `NotADirectoryError` when a directory deploy or `generate_examples` must create is a
-regular file, `TypeError` or `AttributeError` for an argument of the wrong type (`vendor=5` is an
+`FileExistsError` or `NotADirectoryError` when a directory `generate_examples` must create is a regular file
+(deploy refuses that case with `DeployDestinationError` before writing), `TypeError` or `AttributeError` for an argument of the wrong type (`vendor=5` is an
 `AttributeError`: which one depends on the first operation the value meets), and a plain `ValueError` (not a
 `ConfigError`) for a `not_sensitive` entry with an empty segment (`"a..b"`) and for a `display_config` section
 the configuration does not have.
@@ -1957,8 +1968,8 @@ Exported from the package root, used to configure or override `deploy_config`'s 
   section above.
   Anything but a `Config` (a plain dict included) raises `TypeError`.
 - `DeployModeError`: A permission setting was refused; the message names the reason or every offending bit.
-- `DeployDestinationError`: A file deploy would write is a symbolic link or not a regular file; one line each,
-  nothing written.
+- `DeployDestinationError`: A file deploy would write is a symbolic link, not a regular file, or cannot be
+  created because its nearest existing ancestor is not a directory; one line each, nothing written.
 - `GenerateDestinationError`: An example path `generate_examples` would write through is a symbolic link or not a
   regular file (without `force`, only a link resolving to nothing); one line each, nothing written.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`

@@ -30,12 +30,12 @@ Given before the command (`lib_layered_config --traceback read ...`):
 
 A command exits 0 on success and with the error's code on failure:
 
-| Failure                                                                                                                                                                     | Linux and macOS                                                                  | Windows                           |
-|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-----------------------------------|
-| A usage error: an unknown option, a missing or refused argument (`--target`, `--platform`, `--dir-mode`, `--file-mode`, `env-prefix`'s SLUG)                                | 2                                                                                | 2                                 |
-| `ValidationError` or a subclass: a refused vendor, app, slug or profile option, a mode from the configuration; a linked deploy destination; an empty or relative layer root | 22                                                                               | 87                                |
-| Any other library error: a file that cannot be read or parsed (`LayerLoadError`), no home directory (`HomeDirectoryUnknownError`)                                           | 1                                                                                | 1                                 |
-| An operating-system error                                                                                                                                                   | its errno: 13 permission denied, 27 file too large, 28 disk full, 2 no such file | its Windows code: 5 access denied |
+| Failure                                                                                                                                                                                                                          | Linux and macOS                                                                  | Windows                           |
+|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-----------------------------------|
+| A usage error: an unknown option, a missing or refused argument (`--target`, `--platform`, `--dir-mode`, `--file-mode`, `env-prefix`'s SLUG)                                                                                     | 2                                                                                | 2                                 |
+| `ValidationError` or a subclass: a refused vendor, app, slug or profile option, a mode from the configuration; a deploy destination that is a link, is not a regular file, or cannot be created; an empty or relative layer root | 22                                                                               | 87                                |
+| Any other library error: a file that cannot be read or parsed (`LayerLoadError`), no home directory (`HomeDirectoryUnknownError`)                                                                                                | 1                                                                                | 1                                 |
+| An operating-system error                                                                                                                                                                                                        | its errno: 13 permission denied, 27 file too large, 28 disk full, 2 no such file | its Windows code: 5 access denied |
 
 A path option naming a file that does not exist is a usage error (2), checked before the command runs. A file
 that disappears while the command runs exits with its errno, also 2 on Linux and macOS; `--json` tells the two
@@ -133,20 +133,20 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 
 **Parameters:**
 
-| Parameter                          | Type   | Required | Default        | Description                                                                                                                                                         |
-|------------------------------------|--------|----------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                                   |
-| `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                                   |
-| `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                                            |
-| `--profile`                        | string | No       | -              | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories |
-| `--prefer`                         | string | No       | None           | Deprecated, no effect: each layer reads `config.toml` and `config.d/`. Prints a warning on stderr; removed in a future major release                                |
-| `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                                     |
-| `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file ending in `.toml`, `.json`, `.yaml` or `.yml`                                                     |
-| `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat`               |
-| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (TOML with `# source:` comments), `json` (structured JSON)                                                                     |
-| `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                                        |
-| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output: with `--format json`, and in the `--json` envelope, where `--no-provenance` gives `"provenance": null`                  |
-| `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask the values of sensitive keys (passwords, tokens, `*_key`) and the password of every URL as `***REDACTED***` in every format; `--no-redact` prints them         |
+| Parameter                          | Type   | Required | Default        | Description                                                                                                                                                                                                                                                            |
+|------------------------------------|--------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--vendor`                         | string | Yes      | -              | Vendor namespace used to compute filesystem paths                                                                                                                                                                                                                      |
+| `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                                                                                                                                      |
+| `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                                                                                                                                               |
+| `--profile`                        | string | No       | -              | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories                                                                                                    |
+| `--prefer`                         | string | No       | None           | Deprecated, no effect: each layer reads `config.toml` and `config.d/`. Prints a warning on stderr; removed in a future major release                                                                                                                                   |
+| `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                                                                                                                                        |
+| `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file ending in `.toml`, `.json`, `.yaml` or `.yml`                                                                                                                                                        |
+| `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat`                                                                                                                  |
+| `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (TOML with `# source:` comments), `json` (structured JSON)                                                                                                                                                                        |
+| `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                                                                                                                                           |
+| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output: with `--format json`, and in the `--json` envelope, where `--no-provenance` gives `"provenance": null`                                                                                                                     |
+| `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask the values of sensitive keys (passwords, tokens, `*_key`) and the password of every URL as `***REDACTED***` in every format; a token used as a URL's user name (`https://<token>@host`) stays visible unless its key name is sensitive; `--no-redact` prints them |
 
 **Examples:**
 
@@ -300,18 +300,18 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
 
 **Parameters:**
 
-| Parameter                  | Type   | Required | Default     | Description                                                                                                                                                         |
-|----------------------------|--------|----------|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--vendor`                 | string | Yes      | -           | Vendor namespace                                                                                                                                                    |
-| `--app`                    | string | Yes      | -           | Application name                                                                                                                                                    |
-| `--slug`                   | string | Yes      | -           | Configuration slug                                                                                                                                                  |
-| `--profile`                | string | No       | -           | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories |
-| `--prefer`                 | string | No       | None        | Deprecated, no effect; prints a warning on stderr                                                                                                                   |
-| `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search                                                                                                                                |
-| `--default-file`           | path   | No       | None        | Path to defaults file                                                                                                                                               |
-| `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)                                                                                                                                 |
-| `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output                                                                                                                                            |
-| `--redact` / `--no-redact` | flag   | No       | `--redact`  | Mask sensitive values as `***REDACTED***`; `--no-redact` prints them                                                                                                |
+| Parameter                  | Type   | Required | Default     | Description                                                                                                                                                                                                               |
+|----------------------------|--------|----------|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--vendor`                 | string | Yes      | -           | Vendor namespace                                                                                                                                                                                                          |
+| `--app`                    | string | Yes      | -           | Application name                                                                                                                                                                                                          |
+| `--slug`                   | string | Yes      | -           | Configuration slug                                                                                                                                                                                                        |
+| `--profile`                | string | No       | -           | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories                                                       |
+| `--prefer`                 | string | No       | None        | Deprecated, no effect; prints a warning on stderr                                                                                                                                                                         |
+| `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search                                                                                                                                                                                      |
+| `--default-file`           | path   | No       | None        | Path to defaults file                                                                                                                                                                                                     |
+| `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)                                                                                                                                                                                       |
+| `--indent` / `--no-indent` | flag   | No       | `--indent`  | Pretty-print JSON output                                                                                                                                                                                                  |
+| `--redact` / `--no-redact` | flag   | No       | `--redact`  | Mask the values of sensitive keys and the password of every URL as `***REDACTED***`; a token used as a URL's user name (`https://<token>@host`) stays visible unless its key name is sensitive; `--no-redact` prints them |
 
 **Example:**
 ```bash
@@ -493,6 +493,14 @@ layer.
 
 A destination that exists but is not a regular file (a directory, FIFO, device or socket) is refused
 the same way, with `is not a regular file; deploy writes only regular files`.
+
+So is a destination that does not exist yet and cannot be created because its nearest existing ancestor
+is not a directory: a regular file, FIFO or dangling link where `~/.config/myapp` or its `config.d/`
+belongs. Every target is checked first, so nothing is written, not even a target listed before it:
+
+```
+~/.config/myapp/config.toml cannot be created: ~/.config/myapp is not a directory
+```
 
 Deploy copies and compares files a chunk at a time, so a large file in the `.d` directory costs no more
 memory than a small one.

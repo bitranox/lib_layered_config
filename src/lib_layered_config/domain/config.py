@@ -180,8 +180,9 @@ class Config(MappingABC[str, Any]):
         context that does not require provenance.
 
         Args:
-            redact: When ``True``, sensitive values (passwords, tokens, secrets,
-                API keys) are replaced with ``***REDACTED***``.
+            redact: When ``True``, the values of sensitive keys (passwords, tokens,
+                secrets, API keys) and the password of every URL in a string value, under
+                any key, are replaced with ``***REDACTED***``.
 
         Returns:
             Independent copy of the configuration data.
@@ -212,9 +213,9 @@ class Config(MappingABC[str, Any]):
         Args:
             indent: When set to any non-``None`` value, produces 2-space
                 indented output (always a 2-space indent).
-            redact: When ``True``, sensitive values (passwords, tokens, secrets,
-                API keys) are replaced with ``***REDACTED***`` before
-                serialisation.
+            redact: When ``True``, the values of sensitive keys (passwords, tokens,
+                secrets, API keys) and the password of every URL in a string value, under
+                any key, are replaced with ``***REDACTED***`` before serialisation.
 
         Returns:
             JSON payload containing the cloned configuration data.

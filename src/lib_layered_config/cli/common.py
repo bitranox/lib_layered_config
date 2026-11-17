@@ -260,7 +260,8 @@ def json_payload(query: ReadQuery, indent: int | None, *, include_provenance: bo
         query: Normalised read parameters.
         indent: Indentation width or ``None`` for compact output.
         include_provenance: When ``True`` use :func:`read_config_json` to include source metadata.
-        redact: When ``True`` mask sensitive values (passwords, tokens, keys) before output.
+        redact: When ``True`` mask the values of sensitive keys (passwords, tokens, keys) and
+            the password of every URL in a string value before output.
 
     Returns:
         JSON document ready for ``click.echo``.
@@ -366,7 +367,8 @@ def human_payload(query: ReadQuery, *, redact: bool = False) -> str:
 
     Args:
         query: Normalised read parameters.
-        redact: When ``True`` mask sensitive values before rendering.
+        redact: When ``True`` mask the values of sensitive keys and the password of every URL
+            in a string value before rendering.
     """
     result = read_config_raw(
         vendor=query.vendor,

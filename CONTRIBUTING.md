@@ -4,8 +4,8 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 
 ## 1. Workflow Overview
 
-1. Fork and branch – use short, imperative branch names (`feature/deep-merge-policy`, `fix/env-loader`).
-2. Make focused commits – keep unrelated refactors out of the same change.
+1. Fork and branch - use short, imperative branch names (`feature/deep-merge-policy`, `fix/env-loader`).
+2. Make focused commits - keep unrelated refactors out of the same change.
 3. Run `make test` locally before pushing (see the automation note below).
 4. Update documentation and changelog entries impacted by the change.
 5. Open a pull request referencing any relevant issues.
@@ -13,8 +13,8 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 ## 2. Commits & Pushes
 
 - Commit messages should be imperative (`Add path resolver contracts`, `Fix dotenv parser`).
-- The test harness (`make test`) performs an allow-empty commit named `test: auto commit before Codecov upload` immediately before it sends coverage to Codecov. Drop it afterwards with `git reset --soft HEAD~1` if you do not want to keep it.
-- `make push` always performs a commit before pushing. It prompts for a message when run interactively, honours `COMMIT_MESSAGE="…"` when provided, and creates an empty commit if nothing is staged. The Textual menu (`make menu → push`) exposes the same behaviour via an input field.
+- `make test` makes no commit.
+- `make push MSG="..."` runs the gate, stages every change (`git add -A`), commits with that message and pushes. Without `MSG=` it asks for a message on a terminal and uses `chores` otherwise; with nothing to commit the commit is empty. See [DEVELOPMENT.md](DEVELOPMENT.md#make-targets).
 
 ## 3. Coding Standards
 
@@ -22,11 +22,11 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 - Domain layer (`lib_layered_config.domain`) remains pure Python (stdlib only), free of I/O and logging.
 - Application layer orchestrates use cases and depends only on domain abstractions.
 - Adapters contain all boundary I/O (filesystem, env vars, logging) and are the only place structured logs are emitted.
-- Public surface is consciously tiny: `Config`, `read_config`, `read_config_raw`, error classes, `default_env_prefix`, `bind_trace_id`, `get_logger`.
+- The public surface is what `lib_layered_config.__all__` lists; anything else is internal. Add to it only on purpose, and document the addition in `docs/python-api.md`.
 
 ## 4. Tests & Tooling
 
-- `make test` runs Ruff (lint + format check), import-linter, Pyright, and Pytest with coverage ≥90% plus doctests.
+- `make test` formats and fixes with Ruff, then runs the checks: Ruff, import-linter, Pyright, Pytest with doctests and coverage of at least 90%, Bandit and pip-audit; [DEVELOPMENT.md](DEVELOPMENT.md#test-pipeline-make-test) lists every stage.
 - Shared fixtures live under `tests/support`; prefer `create_layered_sandbox` over bespoke platform scaffolding.
 - The dev extra (`pip install -e .[dev]`) installs Ruff, Pyright, Pytest, Bandit, pip-audit, Hypothesis, and typing/coverage helpers.
 - Import contracts live in `pyproject.toml` (`[tool.importlinter]`). Update them if you move modules between layers.
@@ -38,7 +38,7 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 
 Before opening a PR, confirm:
 
-- [ ] `make test` passes locally (and you removed the auto-created Codecov commit if undesired).
+- [ ] `make test` passes locally, and you committed what it reformatted.
 - [ ] README usage snippets, tables, and doctests reflect the change.
 - [ ] `CHANGELOG.md` documents user-visible behaviour.
 - [ ] Example generators still run idempotently (`python - <<'PY'` snippets in docs when relevant).

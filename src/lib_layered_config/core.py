@@ -175,8 +175,10 @@ def read_config_json(
             :func:`read_config`.
         indent: Optional indentation level.  Any non-``None`` value produces
             2-space indented output (always a 2-space indent).
-        redact: When ``True``, sensitive values (passwords, tokens, secrets,
-            API keys) are replaced with ``***REDACTED***`` in the config data.
+        redact: When ``True``, the values of sensitive keys (passwords, tokens, secrets,
+            API keys) and the password of every URL in a string value, under any key
+            (``postgres://alice:***REDACTED***@db/app``), are replaced with
+            ``***REDACTED***`` in the config data.
         max_profile_length: Maximum allowed profile name length (default: 64).
             A value above 255, or 0 or negative, uses the absolute maximum of 255 characters.
         not_sensitive: Same meaning as in :func:`read_config`; declared keys stay visible when

@@ -8,7 +8,7 @@ Contents:
     - ``ConfigError``: base class for every library-specific exception.
     - ``InvalidFormatError``: raised when structured configuration cannot be parsed.
     - ``ValidationError``: an identifier, platform or deploy argument was refused.
-    - ``DeployDestinationError``: a deploy destination is a symbolic link or not a regular file.
+    - ``DeployDestinationError``: a deploy destination is a symbolic link, not a regular file, or cannot be created.
     - ``GenerateDestinationError``: an example path generation would write through is a link or not a file.
     - ``NotFoundError``: indicates optional configuration sources were absent.
     - ``HomeDirectoryUnknownError``: the home directory the user layer lives under cannot be determined.
@@ -73,12 +73,15 @@ class LayerRootNotAbsoluteError(ValidationError):
 
 
 class DeployDestinationError(ValidationError):
-    """Raised when a file deploy would write is a symbolic link (dangling or not) or not a regular file.
+    """Raised when a file deploy would write is a link (dangling or not), not a regular file, or cannot be created.
 
     Deploy neither writes through a link (which would change the file it points at) nor replaces
-    it, and it writes only regular files (reading a FIFO there would block), so every such
-    destination is refused, one line each, before anything is written. A
-    :class:`ValidationError`, so ``except ValidationError`` still catches every deploy refusal.
+    it, and it writes only regular files (reading a FIFO there would block). A destination that does
+    not exist yet cannot be created when its nearest existing ancestor is not a directory (a regular
+    file, FIFO or dangling link where the layer or ``.d`` directory belongs): ``<path> cannot be
+    created: <ancestor> is not a directory``. Every such destination is refused, one line each,
+    before anything is written. A :class:`ValidationError`, so ``except ValidationError`` still
+    catches every deploy refusal.
     """
 
 

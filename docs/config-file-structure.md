@@ -40,6 +40,19 @@ username = "admin"
 # Passwords should come from environment variables or .env files!
 # Set via: MYAPP___DATABASE__PASSWORD=secret
 
+# ============================================================================
+# ARRAYS (Lists)
+# ============================================================================
+# An array is a key like any other, so it sits in its table's own section:
+# TOML refuses a second [database] header further down.
+# Access in Python: config.get("database.replicas")
+# Returns: ["replica1.db.local", "replica2.db.local", "replica3.db.local"]
+replicas = [
+    "replica1.db.local",
+    "replica2.db.local",
+    "replica3.db.local"
+]
+
 
 # ============================================================================
 # NESTED SECTIONS (Subtables)
@@ -59,20 +72,6 @@ recycle = 3600  # seconds
 enabled = true
 verify = true
 cert_path = "/etc/ssl/certs/db.pem"
-
-
-# ============================================================================
-# ARRAYS (Lists)
-# ============================================================================
-# Access in Python: config.get("database.replicas")
-# Returns: ["replica1.db.local", "replica2.db.local"]
-
-[database]
-replicas = [
-    "replica1.db.local",
-    "replica2.db.local",
-    "replica3.db.local"
-]
 
 
 # ============================================================================
@@ -339,7 +338,7 @@ from lib_layered_config import read_config
 config = read_config(vendor="Acme", app="MyApp", slug="myapp")
 
 # Top-level keys
-debug = config.get("debug")  # false
+debug = config.get("debug")  # False
 env = config.get("environment")  # "production"
 
 # Section values
@@ -348,7 +347,7 @@ db_port = config.get("database.port")  # 5432
 
 # Nested section values
 pool_size = config.get("database.pool.size")  # 10
-ssl_enabled = config.get("database.ssl.enabled")  # true
+ssl_enabled = config.get("database.ssl.enabled")  # True
 
 # Deep nesting
 retry_attempts = config.get("service.retry.max_attempts")  # 3
@@ -359,7 +358,7 @@ replicas = config.get("database.replicas")  # ["replica1.db.local", ...]
 first_replica = config.get("database.replicas")[0]  # "replica1.db.local"
 
 # Feature flags
-new_ui_enabled = config.get("features.new_ui")  # false
+new_ui_enabled = config.get("features.new_ui")  # False
 analytics_rate = config.get("features.analytics.sampling_rate")  # 0.1
 
 # With defaults
