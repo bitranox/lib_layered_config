@@ -232,7 +232,12 @@ missing path as a usage error (exit 2). A directory is refused either way.
   layout (`deploy_config(..., platform="win32")`, `deploy --platform windows`) for the `app` or
   `host` target with neither variable set, because the built-in `C:\ProgramData` is relative
   there. A `user`-only deploy needs no ProgramData root and no variable at all: the `APPDATA` and
-  `LOCALAPPDATA` defaults sit under the home directory, which is absolute everywhere.
+  `LOCALAPPDATA` defaults sit under the home directory, which is absolute everywhere. The POSIX
+  overrides follow the same rule: an empty or relative `LIB_LAYERED_CONFIG_ETC`,
+  `LIB_LAYERED_CONFIG_MAC_APP_ROOT` or `LIB_LAYERED_CONFIG_MAC_HOME_ROOT` raises
+  `LayerRootNotAbsoluteError` (a `ValidationError`) naming the variable, on a read and a deploy
+  alike, before anything is read or written, while a relative `XDG_CONFIG_HOME` is ignored, as
+  the XDG spec says, and the user layer stays under `~/.config`.
 - **A Windows user-layer deploy whose `%APPDATA%` directory does not exist writes under
   `%LOCALAPPDATA%` instead.** `deploy --target user` (and `deploy_config(..., targets=["user"])`)
   on Windows writes `%LOCALAPPDATA%\<Vendor>\<App>\config.toml` whenever the `%APPDATA%`
@@ -388,14 +393,22 @@ lets `FileNotFoundError` and `PermissionError` through as themselves. Wrong-argu
 - `NotFoundError` - an optional source is unavailable (a file that is not there). A `.yaml` file
   on a host without the `yaml` extra is not skipped: every read and deploy raises `LayerLoadError`
   naming the file and `lib_layered_config[yaml]`.
-- `ValidationError` (also a `ValueError`) - an identifier or profile name is refused. Its subclasses
+- `ValidationError` (also a `ValueError`) - an identifier or profile name is refused, or a layer
+  root is not an absolute path (its subclass `LayerRootNotAbsoluteError`). Its subclasses
   `DeployModeError` (an unsafe or malformed mode, or `dir_mode`/`file_mode` given together with
   `set_permissions=False`), `DeployPermissionsError` (unusable permission settings, one line per
   problem; `.problems` holds one `PermissionProblem` each, with `.key`, `.reason` and `.source`, a
   `str`: the path of the file that set the key, else its layer name, `"override"` for a
   `permission_overrides` value, or `None`) and
   `DeployDestinationError` (a file deploy would write is a symbolic link, dangling or
-  not, or not a regular file; one line each, nothing is written) come from deploy.
+  not, or not a regular file, or it cannot be created because a file stands where a directory
+  belongs, `<path> cannot be created: <ancestor> is not a directory`, or no directory above it
+  exists, as on a missing Windows drive; one line each, nothing is written) come from deploy.
+  `GenerateDestinationError`, the same refusal for an example path, comes from
+  `generate_examples`.
+- `HomeDirectoryUnknownError` (also a `RuntimeError`) - the home directory cannot be determined
+  (`HOME` unset and no passwd entry, as for a container user). `deploy_config` and
+  `deploy_config_paths` raise it for the `user` target; a read skips the user layer and warns.
 
 **Redaction helpers.** `is_sensitive("smtp_password")` -> `True` checks one key NAME against the
 built-in patterns (a field named just `key` is not sensitive). `is_sensitive_at(("performance",
@@ -415,8 +428,10 @@ table, a number, a bool or None. An app-written mask guarded by `isinstance(valu
 password wrapped in a list (`'["postgresql://user:pw@db.example/app"]'`) straight through, in every
 output mode. Mask by KEY, whatever the value's shape: `redact_mapping` and `redact=True` already
 mask a sensitive-named key whatever its value and recurse into nested mappings, lists and tuples.
-A secret-bearing key whose name matches no built-in pattern (a database `url`:
-`is_sensitive("url")` is `False`) is masked by neither, so your own mask must name it and mask
+A URL's password (`scheme://user:pw@host`) in a string value is masked under any key, a `url`
+included, by `redact_mapping` and every `redact=True` view (`as_dict`, `to_json`, the CLI).
+A bare secret under a key whose name matches no built-in pattern (a `conn` holding a password:
+`is_sensitive("conn")` is `False`) is masked by neither, so your own mask must name it and mask
 every shape; only None, which carries no secret, may show. Such a key reads an unquoted
 `null`/`none` as None, while a sensitive-named key keeps them as text (see "Environment-variable
 overrides") and is masked anyway. Refuse a non-text value for a text setting at the boundary,
@@ -492,7 +507,10 @@ pyright strict too.
 the list of written paths; an example file that already exists is left unchanged and not listed,
 unless `force=True` overwrites it. `generate_examples_report(...)` from `lib_layered_config.generate`
 takes the same arguments and returns an `ExamplesReport`: `.created` holds the files written,
-`.kept` the existing ones left unchanged.
+`.kept` the existing ones left unchanged. A run that fails part-way (a full disk, a permission
+wall) raises the original exception unchanged; `generated_before_failure(error)` (exported from
+`lib_layered_config`) returns the example files it had already written, a `list[Path]`, for
+either function.
 
 **Display and logging.** `display_config(config, output_format=OutputFormat.HUMAN)` prints a config
 section by section, each key under a `# layer:<layer> profile:<profile> (<path>)` comment and
