@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [7.8.0] - 2026-11-17
+
 ### Security
 - The upward `.env` search passes over a `.env` with more than one hard link, logs the warning
   `dotenv_skipped_hard_link` with its path and link count, and goes on searching. A hard link keeps its file's
