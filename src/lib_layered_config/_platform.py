@@ -7,6 +7,8 @@ documentation.
 Contents:
     - ``normalise_resolver_platform``: map CLI adapter aliases to ``sys.platform``
       style identifiers.
+    - ``resolver_platform``: the same aliases for the path resolver, which also takes a
+      ``sys.platform`` value no alias names.
     - ``normalise_examples_platform``: map example-generation aliases to the two
       supported documentation families.
     - ``_sanitize`` plus canonical mapping constants that keep user inputs tidy and
@@ -28,6 +30,7 @@ from .domain.identifiers import ExamplePlatform
 __all__ = [
     "normalise_examples_platform",
     "normalise_resolver_platform",
+    "resolver_platform",
 ]
 
 
@@ -134,6 +137,20 @@ def normalise_resolver_platform(alias: str | None) -> str | None:
     except KeyError as exc:
         allowed = ", ".join(sorted(_CANONICAL_RESOLVER))
         raise ValidationError(f"Platform must be one of: {allowed}.") from exc
+
+
+def resolver_platform(platform: str) -> str:
+    """Return the ``sys.platform`` style identifier for *platform*, an alias or a ``sys.platform`` value.
+
+    An alias :func:`normalise_resolver_platform` takes (any case, surrounding spaces) becomes its
+    canonical identifier; anything else is returned unchanged, so a ``sys.platform`` value with no
+    alias of its own (``freebsd14``, ``cygwin``) keeps the layout the resolver gives it.
+
+    Examples:
+        >>> resolver_platform("MacOS"), resolver_platform(" Windows "), resolver_platform("freebsd14")
+        ('darwin', 'win32', 'freebsd14')
+    """
+    return _CANONICAL_RESOLVER.get(platform.strip().lower(), platform)
 
 
 def normalise_examples_platform(alias: str | None) -> ExamplePlatform | None:

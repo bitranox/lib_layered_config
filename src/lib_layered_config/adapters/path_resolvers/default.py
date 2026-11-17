@@ -19,6 +19,7 @@ import socket
 import sys
 from typing import TYPE_CHECKING
 
+from ..._platform import resolver_platform
 from ...domain.errors import ValidationError
 from ...domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
@@ -83,8 +84,9 @@ class DefaultPathResolver:
             cwd: Working directory to use when searching for ``.env`` files.
             env: Optional environment mapping that overrides ``os.environ`` values
                 (useful for deterministic tests).
-            platform: Platform identifier (``sys.platform`` clone). Defaults to the
-                current interpreter platform.
+            platform: A ``sys.platform`` value, or one of the aliases ``deploy_config`` takes
+                (``macos``, ``mac``, ``windows``, ``win``, ... in any case); stored as the
+                ``sys.platform`` identifier it names. Defaults to the current interpreter platform.
             hostname: Hostname used for host-specific configuration lookups. When omitted, the
                 machine's ``socket.gethostname()``; a machine hostname that cannot name a file turns
                 the host layer off (``host_file_name`` is ``None``) and logs
@@ -102,7 +104,7 @@ class DefaultPathResolver:
         self.profile = validate_profile(profile, max_length=max_profile_length)
         self.cwd = cwd if cwd is not None else current_directory()
         self.env = {**os.environ, **(env or {})}
-        self.platform = platform or sys.platform
+        self.platform = resolver_platform(platform or sys.platform)
         #: ``<hostname>.toml``, or ``None`` when the machine's hostname cannot name a file.
         self.host_file_name: str | None
         self.host_file_name, self._host_refusal = _host_file(hostname)

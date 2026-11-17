@@ -354,7 +354,7 @@ def test_an_unknown_platform_offers_the_linux_paths(tmp_path: Path) -> None:
         ("cygwin", LinuxStrategy),
         ("freebsd14", LinuxStrategy),
         ("freebsd", LinuxStrategy),
-        ("macos", LinuxStrategy),
+        ("macos", MacOSStrategy),
         ("sunos5", LinuxStrategy),
     ],
 )
