@@ -26,7 +26,9 @@ System Role:
 
 from __future__ import annotations
 
-from .adapters.display import display_config
+import importlib
+from typing import TYPE_CHECKING
+
 from .application.merge import MergeResult
 from .application.ports import OutputFormat
 from .core import (
@@ -80,6 +82,29 @@ from .domain.redaction import REDACTED_PLACEHOLDER, NotSensitiveKeys, is_sensiti
 from .generate import generate_examples, generated_before_failure
 from .observability import bind_trace_id, get_logger
 from .testing import i_should_fail
+
+if TYPE_CHECKING:
+    from .adapters.display import display_config
+
+#: Names exported on first access, each from the module named here. ``display_config`` needs Rich and
+#: rich-click, which a program that only reads configuration never uses: importing them eagerly cost
+#: about a third of ``import lib_layered_config``.
+_LAZY_EXPORTS = {"display_config": ".adapters.display"}
+
+
+def __getattr__(name: str) -> object:
+    """Import a lazily exported name on first access and keep it in the module namespace.
+
+    Raises:
+        AttributeError: *name* is not a name this package exports.
+    """
+    module = _LAZY_EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(module, __name__), name)
+    globals()[name] = value
+    return value
+
 
 __all__ = [
     "DEFAULT_APP_DIR_MODE",

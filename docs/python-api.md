@@ -1598,6 +1598,9 @@ display_config(
 
 Both formats replace sensitive values with `***REDACTED***`. The human format prints its note line and then
 the whole body in one `Console.print`, so the output appears when the call finishes rather than line by line.
+`import lib_layered_config` does not import Rich or rich-click: the package imports the display adapter the
+first time `display_config` is used (`from lib_layered_config import display_config`, the attribute, or
+`import *`), so a missing or broken Rich shows there rather than at the package import.
 
 A character stdout cannot encode (CJK or an emoji on a Windows pipe, which uses the cp1252 code page) is
 written as an escape instead of raising `UnicodeEncodeError`, the way the CLI's `read` writes it: `\uXXXX`

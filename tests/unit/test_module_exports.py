@@ -7,6 +7,7 @@ import. A module without one, or one that lists a name it no longer defines, dri
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,46 @@ def _declared_all(tree: ast.Module) -> list[str] | None:
     return None
 
 
+def _type_checking_imports(tree: ast.Module) -> set[str]:
+    """Names imported under a top-level ``if TYPE_CHECKING:``, which a type checker sees and Python does not."""
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+            names.update(
+                alias.asname or alias.name
+                for child in node.body
+                if isinstance(child, ast.ImportFrom)
+                for alias in child.names
+            )
+    return names
+
+
+def _lazy_exports(tree: ast.Module) -> set[str]:
+    """Names a module exports through its ``__getattr__``: the keys of its literal ``_LAZY_EXPORTS`` dict.
+
+    Each must also be imported under ``if TYPE_CHECKING:``, so a type checker resolves it.
+    """
+    for node in tree.body:
+        if "_LAZY_EXPORTS" in _assigned_names(node):
+            assert isinstance(node, (ast.Assign, ast.AnnAssign)), "_LAZY_EXPORTS must be assigned"
+            assert isinstance(node.value, ast.Dict), "_LAZY_EXPORTS must be a literal dict"
+            names = {ast.literal_eval(key) for key in node.value.keys if key is not None}
+            missing = names - _type_checking_imports(tree)
+            assert not missing, f"lazily exported {sorted(missing)} not imported under TYPE_CHECKING"
+            return names
+    return set()
+
+
+@os_agnostic
+def test_every_lazily_exported_name_resolves_at_runtime() -> None:
+    """``__all__`` may list a lazy name only because ``__getattr__`` really provides it."""
+    package = importlib.import_module("lib_layered_config")
+    lazy = _lazy_exports(ast.parse((SOURCE_ROOT / "__init__.py").read_text(encoding="utf-8")))
+
+    assert lazy == {"display_config"}
+    assert all(callable(getattr(package, name)) for name in lazy)
+
+
 @os_agnostic
 @pytest.mark.parametrize("path", _modules(), ids=_module_id)
 def test_a_module_defining_public_names_lists_them_in_all(path: Path) -> None:
@@ -76,7 +117,9 @@ def test_a_module_defining_public_names_lists_them_in_all(path: Path) -> None:
     imported = {
         alias.asname or alias.name for node in tree.body if isinstance(node, ast.ImportFrom) for alias in node.names
     }
-    assert set(declared) <= defined | imported, f"{module} lists names it neither defines nor imports"
+    assert set(declared) <= defined | imported | _lazy_exports(tree), (
+        f"{module} lists names it neither defines nor imports"
+    )
     if path.name != "__init__.py":
         assert defined <= set(declared), f"{module} defines {sorted(defined - set(declared))} outside __all__"
 
