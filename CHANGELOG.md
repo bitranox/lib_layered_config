@@ -321,6 +321,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `# source:` comment above each value (`path=(memory)` for the environment). The examples showed an
   older `key: value` / `provenance:` form, and Example 7's `grep -A1 "service.timeout"` matched
   nothing; it is now `grep -B1 "timeout ="`.
+- The `.env` example in `docs/cli-reference.md` (Recommendations for Sensitive Data) wrote its keys with
+  the environment prefix, `MYAPP___DATABASE__PASSWORD=...`. A `.env` key takes no prefix, so that line
+  set `myapp._database.password` and left `database.password` unset; the example now reads
+  `DATABASE__PASSWORD=...`.
 - The `.env` search checks each file once. The resolver's search list, which `read_config` hands the
   loader, repeats the loader's own upward walk and holds the per-user `.env` that is already the
   walk's first candidate when `start_dir` is the user config directory, so a passed-over `.env` was

@@ -96,3 +96,13 @@ def test_an_unquoted_scalar_has_the_same_type_in_both_layers(
     from_env = _read(tmp_path, key="email.extra")
     assert from_dotenv == from_env == expected
     assert type(from_dotenv) is type(from_env)
+
+
+@os_agnostic
+def test_a_dotenv_key_takes_no_environment_prefix(tmp_path: Path) -> None:
+    # The docs show a .env file without the prefix; a prefixed line is a different, deeper key.
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("DATABASE__PASSWORD=plain\nPARITY_PROBE___DATABASE__PASSWORD=prefixed\n", encoding="utf-8")
+
+    assert _read(tmp_path, dotenv, key="database.password") == "plain"
+    assert _read(tmp_path, dotenv, key="parity_probe._database.password") == "prefixed"

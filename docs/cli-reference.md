@@ -927,9 +927,11 @@ For system-wide configuration in `%ProgramData%`, use Windows built-in permissio
 2. **Use `.env` files** with `600` permissions for local development
    ```bash
    # .env file (chmod 600)
-   MYAPP___DATABASE__PASSWORD=secret123
-   MYAPP___API__TOKEN=tok_abc123
+   DATABASE__PASSWORD=secret123
+   API__TOKEN=tok_abc123
    ```
+   A `.env` key takes no `MYAPP___` prefix: `MYAPP___DATABASE__PASSWORD` in a `.env` file is read as
+   `myapp._database.password`, not `database.password`.
 
 3. **Use a secrets manager** for production
    - **HashiCorp Vault** - Enterprise-grade secret management
