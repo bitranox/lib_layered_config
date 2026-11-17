@@ -9,15 +9,13 @@ from __future__ import annotations
 
 import dataclasses
 import os
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
+from lib_layered_config.adapters import _file_write as file_write_module
 from lib_layered_config.adapters._file_write import FileFacts, must_write_in_place, write_file
 from tests.support.os_markers import os_agnostic, posix_only
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _ACL = "system.posix_acl_access"
 _LABEL = "security.selinux"
@@ -91,3 +89,34 @@ def test_permission_setting_creates_the_new_file_owner_only(tmp_path: Path, *, r
         os.umask(old_umask)
 
     assert (target.read_text(encoding="utf-8"), target.stat().st_mode & 0o777) == ("token = 'secret'\n", expected)
+
+
+def _open_descriptors() -> int | None:
+    """How many descriptors this process has open, where the OS lists them (Linux /proc); None elsewhere."""
+    fd_dir = Path("/proc/self/fd")
+    return len(list(fd_dir.iterdir())) if fd_dir.is_dir() else None
+
+
+@os_agnostic
+def test_a_failed_access_list_copy_closes_the_temp_and_leaves_no_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # copy_dacl wraps the Windows security API, the edge that can refuse (a share without WRITE_DAC, an
+    # unreadable access list); an open temp handle there blocks its own delete on Windows.
+    def refuse(_source: Path, _target: Path) -> None:
+        raise PermissionError("cannot read the access list")
+
+    monkeypatch.setattr(file_write_module, "copy_dacl", refuse)
+    destination = tmp_path / "config.toml"
+    destination.write_text("a = 1\n", encoding="utf-8")
+    source = tmp_path / "source.toml"
+    source.write_text("a = 2\n", encoding="utf-8")
+    before = _open_descriptors()
+
+    for _ in range(3):
+        with pytest.raises(PermissionError):
+            write_file(destination, source, restrict=False, chunk_bytes=4096)
+
+    assert _open_descriptors() == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["config.toml", "source.toml"]
+    assert destination.read_text(encoding="utf-8") == "a = 1\n"

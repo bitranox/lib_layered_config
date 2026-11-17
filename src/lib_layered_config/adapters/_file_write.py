@@ -160,12 +160,14 @@ def _write(
     """Write what *open_source* reads to *path*; see :func:`write_file`."""
     fd, temp = _create_temp(path, mode=_RESTRICTED_MODE if restrict else _PLAIN_MODE)
     try:
-        # Windows gives the new file its directory's ACL; it takes the replaced file's before any
-        # content goes in, so the content is never readable by more than the file it replaces.
-        copy_dacl(acl_from if acl_from is not None else path, temp)
         # Written through the descriptor the create opened: taking the destination's mode (0o444,
         # say) must not decide whether the copy can be written; must_write_in_place decides that.
+        # The with owns the descriptor from here, so a refusal below still closes it, and on Windows
+        # an open handle would block the cleanup delete.
         with os.fdopen(fd, "wb") as handle:
+            # Windows gives the new file its directory's ACL; it takes the replaced file's before any
+            # content goes in, so the content is never readable by more than the file it replaces.
+            copy_dacl(acl_from if acl_from is not None else path, temp)
             in_place = not restrict and _rename_would_change(path, temp)
             if not in_place:
                 with open_source() as reader:
