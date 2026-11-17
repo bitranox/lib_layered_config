@@ -58,7 +58,12 @@ from .domain.deploy_permissions import (
     PermissionProblem,
     deploy_permissions_from_config,
 )
-from .domain.errors import DeployDestinationError, GenerateDestinationError
+from .domain.errors import (
+    DeployDestinationError,
+    GenerateDestinationError,
+    HomeDirectoryUnknownError,
+    LayerRootNotAbsoluteError,
+)
 from .domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
@@ -94,10 +99,12 @@ __all__ = [
     "DeployPermissionsError",
     "DeployResult",
     "GenerateDestinationError",
+    "HomeDirectoryUnknownError",
     "InvalidFormatError",
     "Layer",
     "LayerLoadError",
     "LayerModes",
+    "LayerRootNotAbsoluteError",
     "MergeResult",
     "ModeKind",
     "NotFoundError",

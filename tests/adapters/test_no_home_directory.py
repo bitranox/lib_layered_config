@@ -10,13 +10,14 @@ an edge this suite cannot inject, so it is patched here.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import NoReturn
 
 import pytest
 
-from lib_layered_config import read_config
-from lib_layered_config.adapters.path_resolvers._base import HomeDirectoryUnknownError
+import lib_layered_config
+from lib_layered_config import ConfigError, HomeDirectoryUnknownError, read_config
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.deploy import deploy_config
 from tests.support.os_markers import os_agnostic
@@ -96,9 +97,19 @@ def test_a_user_deploy_with_no_home_is_refused_naming_the_remedy(work: Path, tmp
     source = _plant(tmp_path / "source.toml", "a = 1\n")
     with pytest.raises(HomeDirectoryUnknownError) as caught:
         deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], platform="linux")
-    assert isinstance(caught.value, RuntimeError)
+    # Path.home() reads USERPROFILE on Windows and ignores HOME there, so the remedy names what it reads.
+    home_variable = "USERPROFILE" if os.name == "nt" else "HOME"
     assert str(caught.value) == (
-        "cannot determine the home directory for the user layer: set HOME, or the variable naming the "
-        "user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, LIB_LAYERED_CONFIG_APPDATA)"
+        f"cannot determine the home directory for the user layer: set {home_variable}, or the variable naming "
+        "the user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, LIB_LAYERED_CONFIG_APPDATA)"
     )
     assert list(work.iterdir()) == []
+
+
+@os_agnostic
+def test_the_no_home_error_is_a_config_error_and_still_a_runtime_error() -> None:
+    # Every error the library defines derives from ConfigError; RuntimeError, as Path.home() raises,
+    # so an existing ``except RuntimeError`` keeps catching it.
+    assert issubclass(HomeDirectoryUnknownError, ConfigError)
+    assert issubclass(HomeDirectoryUnknownError, RuntimeError)
+    assert "HomeDirectoryUnknownError" in lib_layered_config.__all__

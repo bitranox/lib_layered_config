@@ -103,6 +103,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   files it had written are then named on stderr (`deploy stopped after writing:`), as without it.
 - `GenerateDestinationError`, a `ValidationError` raised by `generate_examples` and `generate-examples`
   for an example path it would write through (see Fixed).
+- `HomeDirectoryUnknownError` and `LayerRootNotAbsoluteError` can be imported from `lib_layered_config`,
+  so a caller can catch the no-home and relative-root refusals the documentation describes.
 - Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal
   output: `{"ok": true, "command", "data", "skipped"}` on success and
   `{"ok": false, "command", "error": {"type", "message", "exit_code"}}` on failure, with the same exit
@@ -147,18 +149,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - A command whose stdout reader went away (`lib_layered_config info | head -0`) exits with 141 and
   prints nothing. It exited 1, or 120 with an "Exception ignored ... BrokenPipeError" line. A command
-  that fails on its own keeps its exit code. The
+  that fails on its own keeps its exit code, unless `--json` sends its failure envelope to the gone
+  reader, which also exits 141. The
   fix is in `lib_cli_exit_tools` 2.5.0, now the lowest version this package accepts.
 - A refused vendor, app, slug or hostname is named with each control character written as `\uXXXX`
   (`slug contains invalid characters: demo\u000a`). It was printed raw, so a trailing newline was
   invisible and an ESC sequence reached the terminal. A value without control characters is named as
-  before. The refusal of a Windows root that is not absolute no longer uses `repr`, which doubled every
-  backslash (`'rel\\dir'`); it names the path in quotes with one backslash, its control characters
-  escaped the same way.
-- A warning printed on stderr writes a control character in a key or path as `\uXXXX`. A key
-  holding a newline split the warning in two, and on a terminal an ESC sequence in it went out raw and
-  recoloured the rest of the line. A plain key or path prints as before, backslashes included. The
-  paths after `deploy stopped after writing:` are escaped the same way.
+  before.
 - A deploy that fails partway (a declined or unanswerable conflict prompt, a permission wall on a
   later target or `.d` file) no longer hides the files it already wrote. Targets are written in the
   order given, so `--target user --target app` with a conflict at `app` left the user file deployed
@@ -179,13 +176,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - An environment variable or `.env` key nested deeper than the merge allows (more than 100 `__`
   levels) is refused before it is built. The loader used to build the whole nested table for such a key
   and only then hand it to the merge, which refused it: a 3 MB `.env` holding one key of a million
-  segments took about 685 MB before the refusal, and now takes about 23 MB. The refusal and its message
-  are unchanged, and a key of 101 segments, the deepest the merge accepts, is still loaded.
-- A key whose name holds many dots (a quoted TOML key such as `"a.a.a" = 1`) no longer costs memory
-  quadratic in its dots. The merge's provenance index stored a copy of the key cut before every dot,
-  so one name with 16,000 dots, in a 32 KB file, took about 250 MB; it now files each key under its
-  real parent tables only, and the same file takes no measurable extra memory. `Config.with_overrides`
-  had the same shape in time (16,000 dots took 0.5 s) and is now linear too.
+  segments peaked at about 290 MB in 7.7.0 before the refusal, and now at about 50 MB, the import
+  included. The refusal is the `LayerLoadError` described under the nesting-depth entry, and a key of
+  101 segments, the deepest the merge accepts, is still loaded.
+- `Config.with_overrides` takes time linear in the dots of a key's name (a quoted TOML key such as
+  `"a.a.a" = 1`). It cut the name before every dot, so a key with 16,000 dots took 0.5 s; it now takes
+  no measurable time.
 - `display_config` no longer fails on a stdout that cannot encode a value. A piped stdout on Windows uses
   the cp1252 code page, and a CJK character or an emoji made the JSON view exit with nothing printed and
   the human view stop part-way with `UnicodeEncodeError` (this reached every CLI built from the CLI
@@ -279,7 +275,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   left half-written beside the destination.
 - The CLI shows the library's warnings: each one is printed on stderr as one
   `warning: <event> key=value ...` line while a command runs, in every output mode, so stdout and the
-  `--json` envelope are unchanged. Before, the warnings went to a logger with only a `NullHandler`, so
+  `--json` envelope are unchanged; a control character in a key or path is written as `\uXXXX`, so a
+  newline cannot split the line and an ESC sequence cannot reach the terminal (the paths after
+  `deploy stopped after writing:` are escaped the same way). Before, the warnings went to a logger with
+  only a `NullHandler`, so
   a CLI user never saw a passed-over `.env` another user owns (`dotenv_skipped_foreign_owner`), an
   ignored `app_*` setting in a user file (`deploy_setting_ignored`) or a `type_conflict`, although the
   docs said these were reported. The Python API is unchanged and stays silent until the application
@@ -407,8 +406,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - A process with no home directory (HOME unset and a uid without a passwd entry, as a container running an
   arbitrary uid) reads every layer but the user layer, and logs `user_layer_skipped_no_home`; before,
   `read_config` raised `RuntimeError` and loaded nothing. On Windows a set `APPDATA` or `LOCALAPPDATA` no
-  longer asks for the home directory at all. A deploy to the `user` target still raises `RuntimeError`,
-  now naming `HOME` and the user-root variables.
+  longer asks for the home directory at all. A deploy to the `user` target raises
+  `HomeDirectoryUnknownError`, a `ConfigError` that is still a `RuntimeError`, naming `HOME`
+  (`USERPROFILE` on Windows, where Python ignores `HOME`) and the user-root variables.
 - `deploy` / `deploy_config` raise `PermissionError` for a source, or a file in its `.d` directory, that
   cannot be read, in every mode and before anything is written, as documented. With permissions set (the
   default) it raised `DeployPermissionsError` saying the configured modes were unknown and to give both

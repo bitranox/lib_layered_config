@@ -1594,6 +1594,7 @@ Exception
     +-- LayerLoadError          a layer file, .env or environment value cannot be read or parsed
     +-- InvalidFormatError      the loaders' parse error (see below)
     +-- NotFoundError           the loaders' missing-file signal (see below)
+    +-- HomeDirectoryUnknownError  (also a RuntimeError) no home directory to put the user layer under
     +-- ValidationError         (also a ValueError) a refused identifier, platform, target or argument
         +-- DeployModeError         a refused dir_mode / file_mode
         +-- DeployPermissionsError  unusable permission settings
@@ -1603,9 +1604,10 @@ Exception
                                        LIB_LAYERED_CONFIG_ETC / _MAC_APP_ROOT / _MAC_HOME_ROOT)
 ```
 
-- When the home directory cannot be determined (HOME unset and the uid has no passwd entry), the read
-  functions skip the user layer and its `.env` fallback, log the warning `user_layer_skipped_no_home`, and load
-  every other layer. A deploy to the `user` target raises `RuntimeError` naming the variables that fix it. A
+- When the home directory cannot be determined (HOME unset and the uid has no passwd entry; on Windows
+  USERPROFILE, HOMEDRIVE and HOMEPATH all unset), the read functions skip the user layer and its `.env`
+  fallback, log the warning `user_layer_skipped_no_home`, and load every other layer. A deploy to the `user`
+  target raises `HomeDirectoryUnknownError`, also a `RuntimeError`, naming the variables that fix it. A
   set `XDG_CONFIG_HOME`, `LIB_LAYERED_CONFIG_MAC_HOME_ROOT` or `APPDATA` needs no home directory.
 - A refusal that names a vendor, app, slug or hostname, or a layer root that is not absolute, writes each
   control character in it as `\uXXXX` (`slug contains invalid characters: demo\u000a`); a backslash is
@@ -1625,9 +1627,11 @@ Exception
 
 Errors from the operating system and the standard library pass through as they are: `FileNotFoundError` for a
 deploy source that does not exist or is not a regular file, `PermissionError` behind a permission wall,
-`FileExistsError` or `NotADirectoryError` when a directory deploy must create is a regular file, `TypeError` for
-an argument of the wrong type, and a plain `ValueError` (not a `ConfigError`) for a `not_sensitive` entry with an
-empty segment (`"a..b"`).
+`FileExistsError` or `NotADirectoryError` when a directory deploy or `generate_examples` must create is a
+regular file, `TypeError` or `AttributeError` for an argument of the wrong type (`vendor=5` is an
+`AttributeError`: which one depends on the first operation the value meets), and a plain `ValueError` (not a
+`ConfigError`) for a `not_sensitive` entry with an empty segment (`"a..b"`) and for a `display_config` section
+the configuration does not have.
 
 ```python
 from lib_layered_config import ConfigError, LayerLoadError, read_config

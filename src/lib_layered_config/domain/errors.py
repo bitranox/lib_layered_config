@@ -11,6 +11,7 @@ Contents:
     - ``DeployDestinationError``: a deploy destination is a symbolic link or not a regular file.
     - ``GenerateDestinationError``: an example path generation would write through is a link or not a file.
     - ``NotFoundError``: indicates optional configuration sources were absent.
+    - ``HomeDirectoryUnknownError``: the home directory the user layer lives under cannot be determined.
 
 System Role:
     Adapters raise these exceptions; the composition root and CLI translate them
@@ -23,6 +24,7 @@ __all__ = [
     "ConfigError",
     "DeployDestinationError",
     "GenerateDestinationError",
+    "HomeDirectoryUnknownError",
     "InvalidFormatError",
     "LayerRootNotAbsoluteError",
     "NotFoundError",
@@ -96,4 +98,13 @@ class NotFoundError(ConfigError):
     Used when files, directory entries, or environment variable namespaces are
     genuinely missing; callers generally treat this as informational rather than
     fatal.
+    """
+
+
+class HomeDirectoryUnknownError(ConfigError, RuntimeError):
+    """The home directory the user layer lives under cannot be determined.
+
+    Also a ``RuntimeError``, as ``Path.home()`` raises, so an existing ``except RuntimeError`` still
+    catches it. Its own type because a read skips the user layer on exactly this error and on no other
+    RuntimeError: ``Path.resolve()`` raises one for a symlink loop below Python 3.13.
     """

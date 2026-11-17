@@ -130,6 +130,8 @@ def generate_examples(
             device or socket); without it, an example path that is a link resolving to nothing,
             which a create would write through. Without *force* anything else already at an
             example path is kept.
+        NotADirectoryError: When *destination*, or a directory an example path needs, is a
+            regular file.
     """
     return generate_examples_report(
         destination, slug=slug, vendor=vendor, app=app, force=force, platform=platform

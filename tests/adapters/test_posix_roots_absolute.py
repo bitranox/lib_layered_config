@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from lib_layered_config import LayerRootNotAbsoluteError
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.deploy import deploy_config
-from lib_layered_config.domain.errors import LayerRootNotAbsoluteError
 from tests.support.os_markers import os_agnostic
 
 _SLUG = "demo"

@@ -18,11 +18,12 @@ Contents:
 from __future__ import annotations
 
 import abc
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...domain.errors import LayerRootNotAbsoluteError
+from ...domain.errors import HomeDirectoryUnknownError, LayerRootNotAbsoluteError
 from ...domain.printable import escape_controls
 from .._path_probe import PathKind, checked_kind
 
@@ -40,15 +41,6 @@ __all__ = [
 ]
 
 
-class HomeDirectoryUnknownError(RuntimeError):
-    """The home directory the user layer lives under cannot be determined.
-
-    A RuntimeError, as ``Path.home()`` raises, so an existing ``except RuntimeError`` still catches it.
-    Its own type because a read skips the user layer on exactly this error and on no other
-    RuntimeError: ``Path.resolve()`` raises one for a symlink loop below Python 3.13.
-    """
-
-
 def home_directory() -> Path:
     """Return the current user's home directory.
 
@@ -59,9 +51,12 @@ def home_directory() -> Path:
     try:
         return Path.home()
     except RuntimeError as exc:
+        # Path.home() reads USERPROFILE on Windows and ignores HOME there, so name what it reads.
+        home_variable = "USERPROFILE" if os.name == "nt" else "HOME"
         raise HomeDirectoryUnknownError(
-            "cannot determine the home directory for the user layer: set HOME, or the variable naming the "
-            "user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, LIB_LAYERED_CONFIG_APPDATA)"
+            f"cannot determine the home directory for the user layer: set {home_variable}, or the variable "
+            "naming the user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, "
+            "LIB_LAYERED_CONFIG_APPDATA)"
         ) from exc
 
 
