@@ -40,6 +40,22 @@ def test_a_dotted_slug_gets_a_note_on_stderr_and_an_unchanged_answer(
 
 
 @os_agnostic
+@pytest.mark.parametrize("slug", ["2app", "9"])
+def test_a_slug_starting_with_a_digit_gets_a_note_with_a_remedy_that_works(
+    slug: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # "2app" holds only letters and digits, so a remedy naming the allowed characters alone sends the
+    # reader back to the slug they already have: the note has to name the first character too.
+    code = cli.main(["env-prefix", slug], restore_traceback=False)
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.out == f"{slug.upper()}___\n"
+    assert "does not start with a digit" in captured.err
+    assert "a slug that starts with a letter" in captured.err
+
+
+@os_agnostic
 @pytest.mark.parametrize("slug", ["my-app", "my_app", "App2"])
 def test_a_slug_giving_a_shell_name_gets_no_note(slug: str, capsys: pytest.CaptureFixture[str]) -> None:
     code = cli.main(["env-prefix", slug], restore_traceback=False)
@@ -50,10 +66,13 @@ def test_a_slug_giving_a_shell_name_gets_no_note(slug: str, capsys: pytest.Captu
 
 
 @os_agnostic
-def test_a_variable_under_a_dotted_prefix_is_still_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    create_layered_sandbox(tmp_path, vendor="Acme", app="Dotted", slug="my.app").apply_env(monkeypatch)
-    monkeypatch.setenv("MY.APP___SERVICE__TIMEOUT", "15")
+@pytest.mark.parametrize("slug", ["my.app", "2app"])
+def test_a_variable_under_an_unexportable_prefix_is_still_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, slug: str
+) -> None:
+    create_layered_sandbox(tmp_path, vendor="Acme", app="Dotted", slug=slug).apply_env(monkeypatch)
+    monkeypatch.setenv(f"{slug.upper()}___SERVICE__TIMEOUT", "15")
 
-    config = read_config(vendor="Acme", app="Dotted", slug="my.app", start_dir=str(tmp_path))
+    config = read_config(vendor="Acme", app="Dotted", slug=slug, start_dir=str(tmp_path))
 
     assert config.get("service.timeout") == 15

@@ -59,14 +59,17 @@ def env_prefix_command(slug: str, *, json_envelope: bool) -> None:
 def _note_unexportable(prefix: str) -> None:
     """Say on stderr when *prefix* is not a name a POSIX shell can ``export``.
 
-    A dot in the slug stays in the prefix. Such a variable is still read, so the prefix is not
-    rewritten, but the reader has to set it some other way than ``export``.
+    A dot in the slug stays in the prefix, and so does a leading digit. Such a variable is still read,
+    so the prefix is not rewritten, but the reader has to set it some other way than ``export``. The
+    remedy names the first character as well: a slug must start with a letter or digit, and only a
+    letter gives a name a shell accepts.
     """
     if _SHELL_NAME.fullmatch(prefix):
         return
     emit_text(
-        f"note: {prefix} is not a name a POSIX shell can export (only letters, digits and _ are); "
-        "set such variables with env(1) or a container's environment, or use a slug of letters, digits, - and _",
+        f"note: {prefix} is not a name a POSIX shell can export (a name holds only letters, digits and _ "
+        "and does not start with a digit); set such variables with env(1) or a container's or service's "
+        "environment, or use a slug that starts with a letter and holds only letters, digits, - and _",
         err=True,
     )
 

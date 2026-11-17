@@ -1337,10 +1337,11 @@ slug ending in a newline), so a trailing newline is visible and an ESC never rea
 backslash prints as it is. The same holds for the vendor, app and hostname refusals and for a layer
 root that is not absolute.
 
-A dot in the slug stays in the prefix (`my.app` gives `MY.APP___`). Such a variable is read like any other, but
-no POSIX shell can `export` the name, so the command adds a note on stderr saying so; stdout and the `--json`
-data are unchanged. Set those variables with env(1) (`env 'MY.APP___DB__HOST=x' myapp`) or a container's
-environment, or choose a slug of letters, digits, `-` and `_`.
+A dot in the slug stays in the prefix (`my.app` gives `MY.APP___`), and so does a leading digit (`2app` gives
+`2APP___`). Such a variable is read like any other, but no POSIX shell can `export` the name, so the command adds
+a note on stderr saying so; stdout and the `--json` data are unchanged. Set those variables with env(1)
+(`env 'MY.APP___DB__HOST=x' myapp`) or a container's or service's environment, or choose a slug that starts with
+a letter and holds only letters, digits, `-` and `_`.
 
 **Examples:**
 

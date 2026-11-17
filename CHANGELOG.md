@@ -63,9 +63,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - `env-prefix` prints a note on stderr when the prefix is not a name a POSIX shell can `export`, which a dot
-  in the slug causes (`my.app` gives `MY.APP___`). The prefix itself, stdout and the `--json` data are
-  unchanged, and such variables are still read; the note says to set them with env(1) or a container's
-  environment.
+  in the slug (`my.app` gives `MY.APP___`) or a leading digit (`2app` gives `2APP___`) causes. The prefix
+  itself, stdout and the `--json` data are unchanged, and such variables are still read; the note says to
+  set them with env(1) or a container's or service's environment, or to use a slug that starts with a
+  letter.
 - `deploy_config` called with neither `force`, `batch` nor a `conflict_resolver` now reports a file
   whose content differs as `DeployAction.CONFLICT` (new member, value `"conflict"`) and leaves it
   unchanged, as before. It was reported as `SKIPPED`, which the documentation reserves for a file that is

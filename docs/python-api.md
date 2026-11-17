@@ -844,8 +844,9 @@ Compute the canonical environment variable prefix for a slug.
 
 **Returns:** Uppercase environment prefix with dashes converted to underscores, ending in the `___` separator
 (`"config-kit"` gives `"CONFIG_KIT___"`, `"myapp"` gives `"MYAPP___"`). A dot stays (`"my.app"` gives
-`"MY.APP___"`): the environment layer reads such variables, but a POSIX shell cannot `export` them, so they are
-set with env(1) or a container's environment.
+`"MY.APP___"`), and so does a leading digit (`"2app"` gives `"2APP___"`): the environment layer reads such
+variables, but a POSIX shell cannot `export` them, so they are set with env(1) or a container's or service's
+environment.
 
 **Raises:** `ValidationError` for a `slug` that `read_config`, `deploy_config` and `generate_examples` refuse
 too: empty (`"slug cannot be empty"`), holding a path separator or whitespace (`"slug contains invalid
