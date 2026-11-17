@@ -178,6 +178,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   every later read returned. The `Config` now owns a deep copy and hands out a copy of each nested table,
   list or provenance record, of the same type, so `json.dumps(config["db"])` and `isinstance(..., dict)`
   keep working.
+- `deploy_config`, `deploy_config_paths`, `read_deploy_config` and `deploy --slug ""` refuse an empty slug
+  with `ValidationError: slug cannot be empty` (exit code 22), as `read_config` and `generate_examples`
+  always did. They read `""` as no slug and deployed under the app name, a directory no read with the
+  same arguments looks in. Leaving the slug out still means the app name.
 - `"db" in config` answers from the keys instead of reading `config["db"]`, so it no longer copies the
   whole table to say yes or no. `config.get("db.host")` no longer checks every key of each table it
   passes (a lookup in a table of 128 000 keys took about 120 times as long as in one of 1 000). A

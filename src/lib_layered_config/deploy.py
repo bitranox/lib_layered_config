@@ -844,7 +844,7 @@ def deploy_config(
     resolver = _prepare_resolver(
         vendor=vendor,
         app=app,
-        slug=slug or app,
+        slug=_slug_or_app(slug, app),
         profile=profile,
         platform=platform,
         max_profile_length=max_profile_length,
@@ -923,6 +923,20 @@ def _record_written(error: BaseException, results: list[DeployResult]) -> None:
         setattr(error, _WRITTEN_BEFORE_FAILURE, list(results))
 
 
+def _slug_or_app(slug: str | None, app: str) -> str:
+    """Return *slug*, or *app* when no slug was given.
+
+    Only ``None`` means "not given". An empty string is a value, which the resolver then refuses as
+    ``read_config`` does; reading it as falsy deployed under the app name, where no read of the same
+    arguments looks.
+
+    Examples:
+        >>> _slug_or_app(None, "Demo"), _slug_or_app("demo", "Demo"), _slug_or_app("", "Demo")
+        ('Demo', 'demo', '')
+    """
+    return app if slug is None else slug
+
+
 def deploy_config_paths(
     source: str | Path,
     *,
@@ -964,7 +978,7 @@ def deploy_config_paths(
     resolver = _prepare_resolver(
         vendor=vendor,
         app=app,
-        slug=slug or app,
+        slug=_slug_or_app(slug, app),
         profile=profile,
         platform=platform,
         max_profile_length=max_profile_length,
@@ -1022,7 +1036,7 @@ def read_deploy_config(
     resolver = _prepare_resolver(
         vendor=vendor,
         app=app,
-        slug=slug or app,
+        slug=_slug_or_app(slug, app),
         profile=profile,
         platform=platform,
         max_profile_length=max_profile_length,
