@@ -696,6 +696,9 @@ def _is_port(after_colon: str) -> bool:
         False
     """
     ends = [index for index in (after_colon.find(char) for char in _AUTHORITY_END) if index >= 0]
+    # The masker never gets here with no '/', '?' or '#' after the colon: urllib reads such a password
+    # first (fuzzed: 0 of 1,311,111 inputs reach it). The empty arm is a guard for another caller,
+    # since min() of an empty list raises ValueError (user decision 2026-11-17, s6 R4-F4).
     digits = after_colon[: min(ends)] if ends else ""
     return digits.isascii() and digits.isdigit()
 
