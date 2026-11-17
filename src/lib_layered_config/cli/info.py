@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import rich_click as click
 
 from ..core import default_env_prefix
@@ -17,6 +19,9 @@ __all__ = [
     "info_command",
     "register",
 ]
+
+#: A name ``export NAME=value`` accepts in a POSIX shell.
+_SHELL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 @click.command("info", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
@@ -44,10 +49,26 @@ def _slug_argument(_ctx: click.Context, param: click.Parameter, value: str) -> s
 @json_envelope_option
 def env_prefix_command(slug: str, *, json_envelope: bool) -> None:
     """Echo the canonical environment variable prefix for a slug."""
+    _note_unexportable(default_env_prefix(slug))
     if json_envelope:
         run_in_envelope("env-prefix", lambda: {"slug": slug, "prefix": default_env_prefix(slug)})
         return
     emit_text(default_env_prefix(slug))
+
+
+def _note_unexportable(prefix: str) -> None:
+    """Say on stderr when *prefix* is not a name a POSIX shell can ``export``.
+
+    A dot in the slug stays in the prefix. Such a variable is still read, so the prefix is not
+    rewritten, but the reader has to set it some other way than ``export``.
+    """
+    if _SHELL_NAME.fullmatch(prefix):
+        return
+    emit_text(
+        f"note: {prefix} is not a name a POSIX shell can export (only letters, digits and _ are); "
+        "set such variables with env(1) or a container's environment, or use a slug of letters, digits, - and _",
+        err=True,
+    )
 
 
 def _metadata_fields() -> dict[str, str]:
