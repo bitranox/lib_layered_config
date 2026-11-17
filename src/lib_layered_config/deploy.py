@@ -834,7 +834,10 @@ def deploy_config(
             in every mode, before anything is written.
         PermissionError: The source, a file in its ``.d`` directory, or a destination cannot be
             read or sits behind a permission wall (an ``OSError`` in general); the same on every
-            Python, and for the source in every mode before anything is written.
+            Python, and for the source in every mode before anything is written. An existing
+            destination that cannot be read raises this only with ``force=True``; otherwise it is
+            reported as a conflict (``CONFLICT``, or kept with a ``.ucf`` beside it under *batch* or
+            a resolver that keeps it), since its content cannot be compared.
         ValidationError: An invalid vendor, app, slug or profile, an unknown target, *targets*
             given as a single str, or force and batch both set (one overwrites an existing file,
             the other keeps it), refused before anything is written; or a conflict_resolver
@@ -978,7 +981,9 @@ def deploy_config_paths(
     Each target's configuration file and, in its companion ``.d`` directory, a copy of every file
     in the source's own ``.d`` directory, whether or not any of them exists yet. This is the set
     the deploy leaves out of its own read (see :func:`read_deploy_config`), computed by the code
-    the deploy itself runs; the arguments mean what they mean there.
+    the deploy itself runs; the arguments mean what they mean there. It does not check the
+    source's format or content: a source :func:`deploy_config` refuses (a ``config.json``, a file
+    that does not parse) still gets its paths.
 
     Returns:
         The resolved paths.
@@ -1031,7 +1036,9 @@ def read_deploy_config(
     file is read, and a user-layer file keeps only its ``user_*`` and ``enabled`` permission
     settings. The deploy's exact read passes ``skip=deploy_config_paths(...)`` for the same
     source and targets; a caller may leave out fewer files, for example only those that no
-    longer parse.
+    longer parse. It does not check that *source* is one :func:`deploy_config` accepts: a
+    ``config.json`` source is read like any defaults file, where the deploy refuses it with
+    ``LayerLoadError``.
 
     Args:
         source: The configuration file a deploy would copy; read as the defaults layer.

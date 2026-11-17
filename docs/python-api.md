@@ -1332,6 +1332,8 @@ about to replace no longer parses.
   it cannot drift from what the deploy writes. Compare it with `result.destination.resolve()`: a
   `DeployResult` names its destination as the layer root spells it, so under a symlinked
   `XDG_CONFIG_HOME` the two spellings differ.
+- Neither checks the source's format or content: a source `deploy_config` refuses (a `config.json`, a file
+  that does not parse) still gets its paths and is read like any defaults file.
 - `read_deploy_config` returns the configuration the deploy reads for its modes: `source` as the defaults
   layer, then the app, host and user files not in `skip`, then the environment. It reads no `.env` file,
   and a user-layer file keeps only its `user_*` and `enabled` permission settings. Each `skip` entry is

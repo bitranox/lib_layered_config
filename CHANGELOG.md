@@ -191,6 +191,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `deploy_config` refuses a destination it could never create, because a regular file, FIFO or dangling link
+  sits where its layer or `.d` directory belongs, with `DeployDestinationError` before anything is written. It
+  used to write the files it reached first (`config.toml`, an earlier target) and then fail with
+  `FileExistsError`.
+- `Config.with_overrides` no longer reports an empty table's original source after the override fills it:
+  `origin("styles")` is now `None`, as it is when a later layer fills the table. An override that declares an
+  empty table empty again is reported as its source.
+- When an environment or `.env` index override changes a list element's kind (a table to a value, a value to
+  a table, or a value to an empty table), provenance and the display no longer credit the element, or keys it
+  no longer holds, to the layer it replaced.
+- The `type_conflict` warning reports `old_type=list` or `new_type=list` when a list and a table replace each
+  other, instead of `scalar`.
 - `display_config(section=...)` with a section that does not exist raises `ValueError` before printing
   anything in the human format too; it used to print its header note first.
 - The `.env.example` that `generate_examples` and `generate-examples` write sets the setting it names once
