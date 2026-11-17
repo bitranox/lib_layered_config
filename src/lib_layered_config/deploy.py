@@ -849,6 +849,19 @@ def deploy_config(
             ``HOMEDRIVE`` and ``HOMEPATH`` all unset), unless the variable naming the user-layer root
             answers instead (``XDG_CONFIG_HOME``, ``LIB_LAYERED_CONFIG_MAC_HOME_ROOT``,
             ``LIB_LAYERED_CONFIG_APPDATA``); nothing has been written.
+
+    Examples:
+        >>> import os
+        >>> from tempfile import TemporaryDirectory
+        >>> from unittest import mock
+        >>> with TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": tmp}):
+        ...     source = Path(tmp) / "source.toml"
+        ...     _ = source.write_text("[db]\\nport = 5432\\n", encoding="utf-8")
+        ...     results = deploy_config(
+        ...         source, vendor="Acme", app="Demo", slug="deploy-doctest", targets=["user"], platform="linux"
+        ...     )
+        ...     [(r.action.value, r.destination.parent.name, r.destination.name) for r in results]
+        [('created', 'deploy-doctest', 'config.toml')]
     """
     if force and batch:
         raise ValidationError("force=True overwrites an existing file and batch=True keeps it; pass one")

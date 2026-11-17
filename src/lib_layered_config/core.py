@@ -193,6 +193,23 @@ def read_config_json(
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
         TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
+
+    Examples:
+        >>> import json
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     defaults = Path(tmp) / "defaults.toml"
+        ...     _ = defaults.write_text('[db]\\nport = 5432\\npassword = "hunter2"\\n', encoding="utf-8")
+        ...     text = read_config_json(
+        ...         vendor="Acme",
+        ...         app="Demo",
+        ...         slug="core-doctest-read-config-json",
+        ...         default_file=defaults,
+        ...         dotenv_path=Path(tmp) / "missing.env",
+        ...         redact=True,
+        ...     )
+        >>> json.loads(text)["config"]
+        {'db': {'port': 5432, 'password': '***REDACTED***'}}
     """
     _take_deprecated_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)
@@ -240,12 +257,33 @@ def read_config_raw(
             name looks like one (``["performance.max_token_bytes"]``). An unquoted ``null``/``none``
             in the environment or ``.env`` reads as None for them.
 
+    Returns:
+        The merged data and its provenance, both plain mutable dictionaries: ``data`` nested like
+        the configuration, ``provenance`` keyed by dotted path.
+
     Raises:
         LayerLoadError: A layer file, ``.env`` or environment value cannot be decoded or parsed.
         ValidationError: *vendor*, *app*, *slug* or *profile* is refused (a ``ValueError`` too).
         TypeError: *not_sensitive* is a single str or holds a non-str entry.
         TypeError: *prefer* is a single str.
         ValueError: A *not_sensitive* entry has an empty segment.
+
+    Examples:
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     defaults = Path(tmp) / "defaults.toml"
+        ...     _ = defaults.write_text("[db]\\nport = 5432\\n", encoding="utf-8")
+        ...     result = read_config_raw(
+        ...         vendor="Acme",
+        ...         app="Demo",
+        ...         slug="core-doctest-read-config-raw",
+        ...         default_file=defaults,
+        ...         dotenv_path=Path(tmp) / "missing.env",
+        ...     )
+        >>> result.data
+        {'db': {'port': 5432}}
+        >>> result.provenance["db.port"]["layer"]
+        'defaults'
     """
     _take_deprecated_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)

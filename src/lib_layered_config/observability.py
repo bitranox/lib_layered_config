@@ -60,6 +60,13 @@ def get_logger() -> logging.Logger:
 
     Returns:
         logging.Logger: Shared logger instance for ``lib_layered_config``.
+
+    Examples:
+        >>> logger = get_logger()
+        >>> logger.name
+        'lib_layered_config'
+        >>> any(isinstance(handler, logging.NullHandler) for handler in logger.handlers)
+        True
     """
     return _LOGGER
 

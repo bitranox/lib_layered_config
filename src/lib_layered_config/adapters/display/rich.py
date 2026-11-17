@@ -233,6 +233,17 @@ def display_config(
         suitable for parsing by other tools. Sensitive values (passwords,
         secrets, tokens, credentials, API keys) are automatically redacted
         using ``lib_layered_config``'s redaction API.
+
+    Examples:
+        >>> from lib_layered_config import Config
+        >>> config = Config({"db": {"host": "localhost", "password": "hunter2"}}, {})
+        >>> display_config(config, output_format=OutputFormat.JSON)
+        {
+          "db": {
+            "host": "localhost",
+            "password": "***REDACTED***"
+          }
+        }
     """
     if _known_format(output_format) is OutputFormat.JSON:
         _display_json(config, section)
