@@ -49,3 +49,26 @@ def test_a_long_run_before_a_url_is_scanned_in_linear_time(prefix: str) -> None:
 
     assert redacted["note"] == f"{prefix}x://u:{REDACTED_PLACEHOLDER}@h"
     assert elapsed < _LIMIT_SECONDS, f"{len(prefix)} characters took {elapsed:.2f}s"
+
+
+_COUNT = 10_000
+
+
+@pytest.mark.os_agnostic
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        ("https://u:" + "a://" * _COUNT + "@h", f"https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("x://" * _COUNT + "@h", f"x://x:{REDACTED_PLACEHOLDER}@h"),
+        ("u_://" * _COUNT, "u_://" * _COUNT),
+        ("_://" * _COUNT + ",@h", "_://" * _COUNT + ",@h"),
+    ],
+    ids=["user-info-chain", "schemes-then-at", "no-at", "separator-before-at"],
+)
+def test_a_long_chain_of_user_info_markers_is_scanned_in_linear_time(value: str, shown: str) -> None:
+    started = time.perf_counter()
+    redacted = redact_mapping({"note": value})
+    elapsed = time.perf_counter() - started
+
+    assert redacted["note"] == shown
+    assert elapsed < _LIMIT_SECONDS, f"{len(value)} characters took {elapsed:.2f}s"

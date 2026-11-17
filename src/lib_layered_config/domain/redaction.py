@@ -457,33 +457,91 @@ def _url_starts(value: str) -> list[tuple[int, int]]:
 
     Each ``://`` closes a scheme, found by walking back from it; the walk stops at the previous ``://``
     (a ``/`` is not a scheme character), so the whole scan reads each character a bounded number of
-    times. A scheme that starts exactly where the previous URL's authority starts belongs to that URL:
-    it is a password beginning with ``//`` (``https://app://8xK3pQ@db``) or holding ``:`` and ``//``,
-    not a URL of its own. A ``://`` with no scheme in front of it belongs to no URL, so it is no
-    "previous URL" for the scheme after it (``1://https://u:pw@h``).
+    times. A ``://`` that sits in the user info of the URL before it belongs to that URL, not to a URL of
+    its own: one whose stretch since that URL's authority start holds none of ``/ ? # @``, white space,
+    ``,`` and ``;`` (the ``://`` already taken as user info aside), and that an ``@`` follows before any
+    white space, ``,`` or ``;`` (``postgresql://svc_user://8xK3pQ@db``, ``https://app://x://y@h``). A
+    ``://`` with no scheme in front of it belongs to no URL, so it is no "previous URL" for the scheme
+    after it (``1://https://u:pw@h``).
 
     Examples:
         >>> _url_starts("amqp://u:p@h1//;amqp://u:p@h2//")
         [(0, 7), (16, 23)]
         >>> _url_starts("https://app://8xK3pQ@db")
         [(0, 8)]
+        >>> _url_starts("postgresql://svc_user://8xK3pQ@db")
+        [(0, 13)]
         >>> _url_starts("12:https://u:pw@h")
         [(3, 11)]
         >>> _url_starts("1://https://u:pw@h")
         [(4, 12)]
     """
+    scan = _UserInfoScan(value)
     starts: list[tuple[int, int]] = []
-    authority = 0  # where the authority of the last ``://`` that belongs to a URL starts
     end = value.find(_SCHEME_END)
     while end >= 0:
-        begin = _scheme_start(value, end)
         after = end + len(_SCHEME_END)
+        inside = scan.in_user_info(end, after)  # asked for every ``://``: it reads each stretch once
+        begin = None if inside else _scheme_start(value, end)
         if begin is not None:
-            if not (authority > 0 and begin == authority):
-                starts.append((begin, after))
-            authority = after
+            starts.append((begin, after))
+            scan.open_at(after)
         end = value.find(_SCHEME_END, after)
     return starts
+
+
+#: What ends a URL's user info for :class:`_UserInfoScan`: the authority's end, the ``@`` before the
+#: host, and the separators between the URLs of a list.
+_USER_INFO_END: Final[re.Pattern[str]] = re.compile(r"[/?#@\s,;]")
+
+#: What separates the URLs of a list, so an ``@`` after one belongs to the next URL.
+_LIST_SEPARATOR: Final[re.Pattern[str]] = re.compile(r"[\s,;]")
+
+
+class _UserInfoScan:
+    """Answers, for each ``://`` in turn, whether it sits in the user info of the URL before it.
+
+    Each stretch between two ``://`` is searched once, and the next ``@`` and the next list separator
+    are found once and kept until the scan passes them, so a value with many ``://`` stays linear.
+    """
+
+    __slots__ = ("_at", "_closed", "_from", "_separator", "_value")
+
+    def __init__(self, value: str) -> None:
+        self._value = value
+        self._from = 0
+        self._closed = True
+        self._at = value.find("@")
+        found = _LIST_SEPARATOR.search(value)
+        self._separator = found.start() if found else -1
+
+    def open_at(self, authority: int) -> None:
+        """Start the user info of a URL whose authority starts at *authority*."""
+        self._from = authority
+        self._closed = False
+
+    def in_user_info(self, end: int, after: int) -> bool:
+        """Return ``True`` when the ``://`` from *end* to *after* sits in the open URL's user info."""
+        if not self._closed and _USER_INFO_END.search(self._value, self._from, end):
+            self._closed = True
+        self._from = after
+        if self._closed:
+            return False
+        at = self._next_at(after)
+        return at >= 0 and not 0 <= self._next_separator(after) < at
+
+    def _next_at(self, start: int) -> int:
+        """Return the first ``@`` at or after *start*, or -1; the kept one moves only forward."""
+        if 0 <= self._at < start:
+            self._at = self._value.find("@", start)
+        return self._at
+
+    def _next_separator(self, start: int) -> int:
+        """Return the first list separator at or after *start*, or -1; the kept one moves only forward."""
+        if 0 <= self._separator < start:
+            found = _LIST_SEPARATOR.search(self._value, start)
+            self._separator = found.start() if found else -1
+        return self._separator
 
 
 def _scheme_start(value: str, end: int) -> int | None:
@@ -592,10 +650,21 @@ def _dsn_password(value: str, start: int) -> tuple[int, int] | None:
         return None
     at = value.rfind("@", colon + 1, _first_of(value, "?#", first_at))
     password = value[colon + 1 : at]
-    is_drive = colon - start == 1 and value[start].isascii() and value[start].isalpha() and password.startswith("/")
+    is_drive = (
+        _is_file_scheme(value[: max(start - len(_SCHEME_END), 0)])
+        and colon - start == 1
+        and value[start].isascii()
+        and value[start].isalpha()
+        and password.startswith("/")
+    )
     if is_drive or _is_port(password):
         return None
     return colon, at
+
+
+def _is_file_scheme(scheme: str) -> bool:
+    """Return ``True`` when *scheme* (with any sub-schemes) names a ``file`` URL, whatever its case."""
+    return scheme.rpartition(":")[2].lower() == "file"
 
 
 def _first_of(value: str, chars: str, start: int) -> int:

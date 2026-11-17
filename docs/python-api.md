@@ -801,15 +801,16 @@ leaves the host shown. When that reading finds no password, the URL is read as p
 unencoded `/`, `?` or `#` in a password read it (SQLAlchemy): the user name up to the first `:`, the password
 up to the last `@` before the query, so `postgresql://app:Ab/9+x@db/prod`, `postgresql://app:/x9Kq@db/prod` and
 `smtp://alice@example.com:Ab/9@mail.example.com` are masked whole and an `@` in the query still leaves the host
-shown. A scheme may carry sub-schemes (`jdbc:mysql://`) and may follow other text (`12:https://u:pw@h`); a
-`://` that a password starts with, or that follows only letters, digits, `+`, `.`, `-` and `:` in it
-(`https://app://8xK3pQ@db`, `https://app:a+b://cd@h`), does not start another URL. A `:` in the path or an IPv6 literal, a drive letter
-(`file://C:/...`) and a port followed by an `@` in the path or query (`https://example.com:8443/?to=a@b`) are
+shown. A scheme may carry sub-schemes (`jdbc:mysql://`) and may follow other text (`12:https://u:pw@h`). A
+`://` in a URL's user name or password does not start another URL: one with none of `/`, `?`, `#`, `@`, white
+space, `,` and `;` between the URL's `//` and it, and an `@` after it before any white space, `,` or `;`
+(`postgresql://svc_user://8xK3pQ@db/prod`, `https://app:a+b://cd@h`). A `:` in the path or an IPv6 literal, a
+drive letter in a `file` URL (`file://C:/...`) and a port followed by an `@` in the path or query (`https://example.com:8443/?to=a@b`) are
 not a password and are left as they are; so is a password of digits followed by an unencoded `/`, `?` or `#`,
 which reads as a port. A password holding an `@` and then a `/` (`mysql://u:p@ss/w@h/db`) is masked up to the
-`@` the first reading ends at, so `ss/w` is shown: encode such a password (`p%40ss%2Fw`). A `://` after any other character of a password
-(`https://u:pa/ss://x@h`, `https://u:a_b://c@h`) starts a URL of its own, so the password before it is shown:
-encode it (`pa%2Fss%3A%2F%2Fx`). A path declared not
+`@` the first reading ends at, so `ss/w` is shown: encode such a password (`p%40ss%2Fw`). A `://` after a `/`, `?` or `#` in a password
+(`https://u:pa/ss://x@h`) starts a URL of its own, so the password before it is shown: encode it
+(`pa%2Fss%3A%2F%2Fx`). A path declared not
 sensitive shows its value as it is, URL included.
 `NotSensitiveKeys` lets an application declare such keys; the helpers below are importable from `lib_layered_config`.
 

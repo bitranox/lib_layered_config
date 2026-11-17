@@ -31,11 +31,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   holds when the user name holds an `@`, when the password holds an unencoded `/`, `?`, `#` or `@`
   (`postgresql://app:Ab/9+x@db/prod`) or starts with `/`, for a scheme with a sub-scheme
   (`jdbc:mysql://alice:hunter2@db/app`), for a scheme after other text (`12:https://u:pw@h`), when the
-  password starts with `//` or holds scheme characters and `://` (`https://app://8xK3pQ@db`), and for each URL of a list in one value
+  user name or password holds a `://` (`https://app://8xK3pQ@db`, `postgresql://svc_user://8xK3pQ@db/prod`), and for each URL of a list in one value
   (`amqp://u:p1@h1//;amqp://u:p2@h2//`); an `@` in the query leaves the host shown. Three shapes no parser reads
   one way stay as documented in the Python API reference: a password of digits followed by an unencoded `/`,
   `?` or `#` reads as a port and is shown, a password holding an `@` and then a `/` is masked only up to
-  the `@` the authority ends at, and a password holding a `://` after another character (`/`, `_`) is shown.
+  the `@` the authority ends at, and a password holding a `://` after a `/`, `?` or `#` is shown.
 - On Windows, a deploy that replaces a file keeps the file's access list. A forced or confirmed deploy
   writes a new file and renames it over the old one, and backs the old one up with a copy; on Windows a
   new file takes the access list its directory passes down, so a `config.toml` restricted to its user

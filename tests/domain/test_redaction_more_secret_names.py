@@ -150,6 +150,24 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("https://app:a.b://cd@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
         ("https://app:a-b://cd@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
         ("https://app://x://y@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
+        # A '://' in the user info (none of / ? # @ space , ; before it, an '@' after it) is part of the URL.
+        ("postgresql://svc_user://8xK3pQ@db/prod", f"postgresql://svc_user:{REDACTED_PLACEHOLDER}@db/prod"),
+        ("https://my_app://8xK3pQ@db", f"https://my_app:{REDACTED_PLACEHOLDER}@db"),
+        ("https://1app:ab://cd@h", f"https://1app:{REDACTED_PLACEHOLDER}@h"),
+        ("https://:ab://cd@h", f"https://:{REDACTED_PLACEHOLDER}@h"),
+        ("https://app:1a://cd@h", f"https://app:{REDACTED_PLACEHOLDER}@h"),
+        ("https://app:+ab://cd@h", f"https://app:{REDACTED_PLACEHOLDER}@h"),
+        ("https://app:-x://cd@h", f"https://app:{REDACTED_PLACEHOLDER}@h"),
+        ("https://app:.x://cd@h", f"https://app:{REDACTED_PLACEHOLDER}@h"),
+        ("https://u:a_b://c@h", f"https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("https://u:-://redis://x@h", f"https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("https://u:%://redis://x@h", f"https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("https://u:1://a://b@h", f"https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("https://app:1://https://u:pw@h", f"https://app:{REDACTED_PLACEHOLDER}@h"),
+        # A one-letter user name is a drive letter only in a file URL.
+        ("https://u://8xK3pQ@db", f"https://u:{REDACTED_PLACEHOLDER}@db"),
+        ("https://u:/x9Kq@db/prod", f"https://u:{REDACTED_PLACEHOLDER}@db/prod"),
+        ("a://b://c://d:pw@h", f"a://b:{REDACTED_PLACEHOLDER}@h"),
         # A '://' with no scheme in front of it does not hide the URL that follows it.
         ("1://https://u:pw@h", f"1://https://u:{REDACTED_PLACEHOLDER}@h"),
         ("://https://u:pw@h", f"://https://u:{REDACTED_PLACEHOLDER}@h"),
@@ -204,6 +222,9 @@ def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: 
         "http://[2001:db8::1]:8080/api?user=alice@example.com",
         "http://[::1]/?next=alice@example.com",
         "file://C:/data/alice@example.toml",
+        "FILE://c:/data/alice@example.toml",
+        # A '://' whose '@' comes only after a space is no user info: the text after it is not a password.
+        "https://my_app://notes by admin@example.com",
         "https://example.com:8443/users/bob@example.com?tab=1",
         # A ':' in the query or fragment of a URL with no path is not a password's.
         "https://example.com?redirect=mailto:bob@example.com",
