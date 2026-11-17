@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from ._platform import normalise_examples_platform
 from .adapters._file_write import write_data
-from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
+from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, uncreatable_reason
 from .adapters.env.default import default_env_prefix
 from .domain.errors import GenerateDestinationError
 from .domain.identifiers import ExamplePlatform, validate_identifier, validate_vendor_app
@@ -57,8 +57,6 @@ DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 # Deploy's refusals, worded for generate: a reader of either error sees the same two rules.
 _LINK_REFUSAL: Final = "is a symbolic link; generate neither writes through nor replaces one"
 _NOT_REGULAR_REFUSAL: Final = "is not a regular file; generate writes only regular files"
-_BLOCKED_DIRECTORY_REFUSAL: Final = "cannot be created: {ancestor} is not a directory"
-_NO_ANCESTOR_REFUSAL: Final = "cannot be created: no directory above it exists"
 
 # The attribute a failed run attaches its written paths under, read by generated_before_failure.
 _WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_generated_before_failure"
@@ -345,27 +343,10 @@ def _example_problem(path: Path, *, force: bool) -> str | None:
         return None
     kind = kind_or_raise(path)
     if kind is PathKind.MISSING:
-        return _blocked_directory_problem(path)
+        return uncreatable_reason(path)
     if not force or kind is PathKind.FILE:
         return None
     return f"{path} {_NOT_REGULAR_REFUSAL}"
-
-
-def _blocked_directory_problem(path: Path) -> str | None:
-    """Why the missing *path* cannot be created, or ``None`` when its nearest existing ancestor is a directory.
-
-    The same walk as deploy's (``deploy`` and ``generate`` are sibling layers, so neither imports the
-    other): a path below a regular file stats as missing (ENOTDIR), so without it the run would write
-    the examples it reaches first and then fail at the ``mkdir`` for this one. The first ancestor
-    that exists decides: a directory (a link to one included) can take the missing levels, anything
-    else cannot; when none exists (a Windows drive that is not mapped) nothing can.
-    """
-    for ancestor in path.parents:
-        if kind_or_raise(ancestor) is PathKind.DIRECTORY:
-            return None
-        if lexists_or_raise(ancestor):
-            return f"{path} {_BLOCKED_DIRECTORY_REFUSAL.format(ancestor=ancestor)}"
-    return f"{path} {_NO_ANCESTOR_REFUSAL}"
 
 
 def _should_write(path: Path, *, force: bool) -> bool:

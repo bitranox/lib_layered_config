@@ -36,7 +36,13 @@ from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ._platform import normalise_resolver_platform
 from .adapters._file_write import write_file
-from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
+from .adapters._path_probe import (
+    PathKind,
+    is_symlink_or_raise,
+    kind_or_raise,
+    lexists_or_raise,
+    uncreatable_reason,
+)
 from .adapters.file_loaders._dot_d import in_dot_d_order
 from .adapters.path_resolvers._linux import etc_root, xdg_config_home
 from .adapters.path_resolvers._macos import mac_app_root, mac_home_root
@@ -101,10 +107,6 @@ _DEPLOY_ANYWAY_HINT = (
 _LINK_REFUSAL = "is a symbolic link; deploy neither writes through nor replaces one"
 #: Why a FIFO, device, socket or directory at a destination is refused; reading a FIFO would block.
 _NOT_REGULAR_REFUSAL = "is not a regular file; deploy writes only regular files"
-#: Why a destination below a file, FIFO or dangling link is refused: its directory cannot be made.
-_BLOCKED_DIRECTORY_REFUSAL = "cannot be created: {ancestor} is not a directory"
-#: Why a destination with nothing above it is refused: a Windows root on a drive or share that is not there.
-_NO_ANCESTOR_REFUSAL = "cannot be created: no directory above it exists"
 #: How much of a file deploy holds at a time while copying or comparing it.
 _CHUNK_BYTES = 64 * 1024
 
@@ -505,27 +507,8 @@ def _destination_problem(path: Path) -> str | None:
     if kind is PathKind.FILE:
         return None
     if kind is PathKind.MISSING:
-        return _blocked_directory_problem(path)
+        return uncreatable_reason(path)
     return f"{path} {_NOT_REGULAR_REFUSAL}"
-
-
-def _blocked_directory_problem(path: Path) -> str | None:
-    """Why the missing *path* cannot be created, or ``None`` when its nearest existing ancestor is a directory.
-
-    A path below a regular file stats as missing (ENOTDIR reads as absent, as pathlib reads it), so
-    without this walk the deploy would write the destinations it reaches first and then fail at the
-    ``mkdir`` for this one. The walk stops at the first ancestor that exists: a directory (a link to
-    one included) can take the missing levels; anything else there - a file, a FIFO, a dangling or
-    looping link - cannot, and ``mkdir`` would raise ``FileExistsError``. When no ancestor exists,
-    not even the root, ``mkdir`` would raise ``FileNotFoundError``: on POSIX ``/`` always exists, on
-    Windows a drive or share that is not there leaves nothing to create the path in.
-    """
-    for ancestor in path.parents:
-        if kind_or_raise(ancestor) is PathKind.DIRECTORY:
-            return None
-        if lexists_or_raise(ancestor):
-            return f"{path} {_BLOCKED_DIRECTORY_REFUSAL.format(ancestor=ancestor)}"
-    return f"{path} {_NO_ANCESTOR_REFUSAL}"
 
 
 def _describe_load_failure(exc: Exception) -> str:

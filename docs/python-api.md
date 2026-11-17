@@ -1017,7 +1017,9 @@ combined with `permissions`; nothing is written), `DeployDestinationError` (a de
 copies is a symbolic link, dangling or not, or not a regular file - a directory, FIFO, device or socket - or does
 not exist and cannot be created because its nearest existing ancestor is not a directory - a regular file, FIFO or
 dangling link where the layer or `.d` directory belongs: `"<path> cannot be created: <ancestor> is not a
-directory"`; deploy neither writes through a link nor replaces it, and nothing is written). A layer directory that is a link
+directory"`, or with no existing ancestor at all, as on a Windows drive or share that is not there: `"<path>
+cannot be created: no directory above it exists"`; deploy neither writes through a link nor replaces it, and
+nothing is written). A layer directory that is a link
 is written through, but its target keeps its mode (logged as `deploy_directory_mode_skipped`); a directory
 below it that the deploy writes into (`config.d/`, `hosts/`, `profile/<name>/`) still gets the layer's mode.
 
@@ -1398,8 +1400,10 @@ safe path segment (`../x`, an absolute path, a control character, empty), checke
 may contain spaces; `slug` may not. `GenerateDestinationError`, also before anything is written and one
 line per path: with `force=True`, an example path that is a symbolic link (dangling or not) or not a
 regular file (a directory, FIFO, device or socket); without it, an example path that is a link
-resolving to nothing, which a create would write through. Without `force` anything else already at an
-example path is kept. A written example replaces the old one through a temporary file, except that a
+resolving to nothing, which a create would write through; in both modes, a missing example path that
+cannot be created (a regular file, FIFO or dangling link where `destination` or an example's directory
+belongs, or no directory above it at all), worded as `deploy_config` words it. Without `force` anything else
+already at an example path is kept. A written example replaces the old one through a temporary file, except that a
 file with other hard links, another owner or its own extended attributes is rewritten in place, as
 `deploy_config` does with permission setting off.
 
@@ -1678,7 +1682,7 @@ Exception
         +-- DeployModeError         a refused dir_mode / file_mode
         +-- DeployPermissionsError  unusable permission settings
         +-- DeployDestinationError  a deploy destination is a symbolic link, not a regular file, or cannot be created
-        +-- GenerateDestinationError  an example path generate would write through is a link or not a regular file
+        +-- GenerateDestinationError  an example path generate would write is a link, not a regular file, or uncreatable
         +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, an empty or relative HOME or
                                        USERPROFILE, or an empty or relative LIB_LAYERED_CONFIG_ETC /
                                        _MAC_APP_ROOT / _MAC_HOME_ROOT)
@@ -1707,8 +1711,7 @@ Exception
 
 Errors from the operating system and the standard library pass through as they are: `FileNotFoundError` for a
 deploy source that does not exist or is not a regular file, `PermissionError` behind a permission wall,
-`FileExistsError` or `NotADirectoryError` when a directory `generate_examples` must create is a regular file
-(deploy refuses that case with `DeployDestinationError` before writing), `TypeError` or `AttributeError` for an argument of the wrong type (`vendor=5` is an
+`TypeError` or `AttributeError` for an argument of the wrong type (`vendor=5` is an
 `AttributeError`: which one depends on the first operation the value meets), and a plain `ValueError` (not a
 `ConfigError`) for a `not_sensitive` entry with an empty segment (`"a..b"`) and for a `display_config` section
 the configuration does not have.
@@ -1969,9 +1972,11 @@ Exported from the package root, used to configure or override `deploy_config`'s 
   Anything but a `Config` (a plain dict included) raises `TypeError`.
 - `DeployModeError`: A permission setting was refused; the message names the reason or every offending bit.
 - `DeployDestinationError`: A file deploy would write is a symbolic link, not a regular file, or cannot be
-  created because its nearest existing ancestor is not a directory; one line each, nothing written.
+  created because its nearest existing ancestor is not a directory or no ancestor exists; one line each,
+  nothing written.
 - `GenerateDestinationError`: An example path `generate_examples` would write through is a symbolic link or not a
-  regular file (without `force`, only a link resolving to nothing); one line each, nothing written.
+  regular file (without `force`, only a link resolving to nothing), or a missing one cannot be created; one line
+  each, nothing written.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
   per bad value, and `.hint` (optional) suggests a way to deploy anyway.
 - `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.

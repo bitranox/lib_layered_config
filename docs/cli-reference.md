@@ -502,6 +502,9 @@ belongs. Every target is checked first, so nothing is written, not even a target
 ~/.config/myapp/config.toml cannot be created: ~/.config/myapp is not a directory
 ```
 
+A destination with no existing directory above it at all, as on a Windows drive or share that is not there,
+is refused the same way, with `cannot be created: no directory above it exists`.
+
 Deploy copies and compares files a chunk at a time, so a large file in the `.d` directory costs no more
 memory than a small one.
 
@@ -1200,8 +1203,10 @@ safe path segment (`../x`, an absolute path, a control character) is refused wit
 example path that is a symbolic link or not a regular file (a directory, FIFO, device or socket) is
 refused with `GenerateDestinationError` (exit code 22 on Linux and macOS, 87 on Windows), one line per path, before anything is
 written; without `--force` only a link that resolves to nothing is refused, and anything else already
-there is kept. A run that stops on any error after writing some examples (a regular file where a
-directory must go, a permission wall, a full disk, an interrupt) prints `generate-examples stopped after
+there is kept. In both modes a missing example path that cannot be created (a regular file, FIFO or
+dangling link where the destination or an example's directory belongs, or no directory above it at all) is
+refused the same way before anything is written. A run that stops on any error after writing some examples (a
+permission wall, a full disk, an interrupt) prints `generate-examples stopped after
 writing:` on stderr before the error, then each example it wrote, one per line, in write order, a
 control character in a path printed as `\uXXXX`. With `--json` the same paths are the failure envelope's
 `error.written`, absent when nothing was written.

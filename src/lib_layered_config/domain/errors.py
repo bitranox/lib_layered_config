@@ -9,7 +9,7 @@ Contents:
     - ``InvalidFormatError``: raised when structured configuration cannot be parsed.
     - ``ValidationError``: an identifier, platform or deploy argument was refused.
     - ``DeployDestinationError``: a deploy destination is a symbolic link, not a regular file, or cannot be created.
-    - ``GenerateDestinationError``: an example path generation would write through is a link or not a file.
+    - ``GenerateDestinationError``: an example path generation would write is a link, not a file, or cannot be created.
     - ``NotFoundError``: indicates optional configuration sources were absent.
     - ``HomeDirectoryUnknownError``: the home directory the user layer lives under cannot be determined.
 
@@ -79,20 +79,24 @@ class DeployDestinationError(ValidationError):
     it, and it writes only regular files (reading a FIFO there would block). A destination that does
     not exist yet cannot be created when its nearest existing ancestor is not a directory (a regular
     file, FIFO or dangling link where the layer or ``.d`` directory belongs): ``<path> cannot be
-    created: <ancestor> is not a directory``. Every such destination is refused, one line each,
-    before anything is written. A :class:`ValidationError`, so ``except ValidationError`` still
-    catches every deploy refusal.
+    created: <ancestor> is not a directory``; nor when no ancestor exists at all (a Windows drive or
+    share that is not there): ``<path> cannot be created: no directory above it exists``. Every such
+    destination is refused, one line each, before anything is written. A :class:`ValidationError`, so
+    ``except ValidationError`` still catches every deploy refusal.
     """
 
 
 class GenerateDestinationError(ValidationError):
-    """Raised when an example path generation would write is a symbolic link or not a regular file.
+    """Raised when an example path generation would write is a symbolic link, not a regular file, or cannot be created.
 
     With ``force`` every such path is refused, one line each, before anything is written: writing
     through a link changes the file it points at, a FIFO would block the write, and a directory,
     device or socket cannot be an example. Without ``force`` an existing path is kept, so only a link
-    that resolves to nothing, which a plain create would write through, is refused. A
-    :class:`ValidationError`, so ``except ValidationError`` still catches it.
+    that resolves to nothing, which a plain create would write through, is refused. In both modes a
+    missing example path is refused when it cannot be created, with the same wording as
+    :class:`DeployDestinationError`: a regular file, FIFO or dangling link where the destination or an
+    example's directory belongs, or no directory above it at all. A :class:`ValidationError`, so
+    ``except ValidationError`` still catches it.
     """
 
 

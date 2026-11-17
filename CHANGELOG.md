@@ -192,9 +192,29 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - `deploy_config` refuses a destination it could never create, because a regular file, FIFO or dangling link
-  sits where its layer or `.d` directory belongs, with `DeployDestinationError` before anything is written. It
-  used to write the files it reached first (`config.toml`, an earlier target) and then fail with
-  `FileExistsError`.
+  sits where its layer or `.d` directory belongs, or because no directory above it exists at all (a Windows
+  layer root on a drive or share that is not there), with `DeployDestinationError` before anything is written.
+  It used to write the files it reached first (`config.toml`, an earlier target) and then fail with
+  `FileExistsError` or `FileNotFoundError`.
+- `generate_examples` and `generate-examples` refuse a missing example path they could never create (a regular
+  file where the destination or an example's directory belongs, or no directory above it) with
+  `GenerateDestinationError` before anything is written, with or without `force`, worded as deploy words it.
+  They used to write the earlier examples and then raise `FileExistsError`, or `NotADirectoryError` when the
+  destination itself was a file (CLI exit 17 or 20; now 22, 87 on Windows).
+- A list element that a later layer turns from a table into a value or a list, or the reverse (for example
+  `PREFIX___DS__0=x` over `ds = [{a = 1}]`), logs `type_conflict`, as the same change of a table key does.
+- A list index override written with leading zeros (`PREFIX___DS__00__K`) records its source under the plain
+  index (`ds.0.k`), so a later `PREFIX___DS__0` override no longer leaves a stale `ds.00.k` entry behind;
+  `list_index_out_of_range` names the plain index too.
+- `Config.get_redacted` no longer copies a value whose path is masked whole.
+- The docs describe every `DeployDestinationError` refusal; say that an unreadable existing destination raises
+  `PermissionError` only when it is to be overwritten (`force=True`, or a `conflict_resolver` or the CLI prompt
+  answering overwrite) and is a conflict otherwise; that `read_deploy_config` raises `LayerLoadError` for a
+  source that does not parse, while `deploy_config_paths` ignores the content; that `redact` and `--redact`
+  also mask a URL's password under any key, while a token carried as the URL's user name
+  (`https://<token>@host`) stays visible unless its key name is sensitive. The complete example in
+  `config-file-structure.md` is valid TOML again (it had a second `[database]` header) and shows Python's
+  `False`/`True`; `DEVELOPMENT.md` and `CONTRIBUTING.md` describe what `make test` and `make push MSG=` do.
 - `Config.with_overrides` no longer reports an empty table's original source after the override fills it:
   `origin("styles")` is now `None`, as it is when a later layer fills the table. An override that declares an
   empty table empty again is reported as its source.
@@ -367,8 +387,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   a CLI user never saw a passed-over `.env` another user owns (`dotenv_skipped_foreign_owner`), an
   ignored `app_*` setting in a user file (`deploy_setting_ignored`) or a `type_conflict`, although the
   docs said these were reported. The Python API is unchanged and stays silent until the application
-  configures logging. A warning's `layer` field is now the layer's name (`app`) for every event; the
-  merge warnings used to carry the enum member, which a text formatter printed as `Layer.APP` on
+  configures logging. A warning's `layer` field is now the layer's name (`app`) for every event, and
+  `type_conflict`'s `old_type` and `new_type` are the kind's name (`mapping`, `scalar`, `list`); the
+  merge warnings used to carry the enum members, which a text formatter printed as `Layer.APP` on
   Python 3.11+.
 - `docs/cli-reference.md` and `read --help` describe the human output as it is: TOML with a
   `# source:` comment above each value (`path=(memory)` for the environment). The examples showed an

@@ -39,6 +39,7 @@ __all__ = [
     "kind_or_raise",
     "lexists_or_raise",
     "probe_path",
+    "uncreatable_reason",
 ]
 
 # What pathlib before 3.14 already read as "not there": a missing entry, a file where a directory
@@ -46,6 +47,10 @@ __all__ = [
 # unresolvable-name codes. Keeping exactly that set leaves those answers unchanged on every version.
 _ABSENT_ERRNOS: Final = frozenset({errno.ENOENT, errno.ENOTDIR, errno.EBADF, errno.ELOOP})
 _ABSENT_WINERRORS: Final = frozenset({21, 123, 1921})
+#: Why a path below a file, FIFO or dangling link cannot be created: its directory cannot be made.
+_BLOCKED_DIRECTORY_REFUSAL: Final = "cannot be created: {ancestor} is not a directory"
+#: Why a path with nothing above it cannot be created: a Windows root on a drive or share that is not there.
+_NO_ANCESTOR_REFUSAL: Final = "cannot be created: no directory above it exists"
 
 
 class PathKind(Enum):
@@ -204,6 +209,42 @@ def lexists_or_raise(path: Path) -> bool:
         False
     """
     return _lstat_mode(path) is not None
+
+
+def uncreatable_reason(path: Path) -> str | None:
+    """Why the missing *path* could never be created, or ``None`` when its nearest existing ancestor is a directory.
+
+    A path below a regular file stats as missing (ENOTDIR reads as absent, as pathlib reads it), so a
+    writer that checks only the path itself would write what it reaches first and then fail at the
+    ``mkdir`` for this one. Deploy and generate refuse such a path before writing anything, with this
+    reason. The first ancestor that exists decides: a directory (a link to one included) can take the
+    missing levels; anything else there - a file, a FIFO, a dangling or looping link - cannot, since
+    ``mkdir`` would raise ``FileExistsError``. When no ancestor exists, not even the root, ``mkdir``
+    would raise ``FileNotFoundError``: on POSIX ``/`` always exists, on Windows a drive or share that
+    is not there leaves nothing to create the path in.
+
+    Args:
+        path: A path that does not exist yet.
+
+    Returns:
+        ``"<path> cannot be created: <ancestor> is not a directory"``, ``"<path> cannot be created: no
+        directory above it exists"``, or ``None`` when the path can be created.
+
+    Raises:
+        OSError: An ancestor's check failed for a reason other than "absent" (a permission wall).
+        ValueError: *path* holds a NUL byte or a name the OS cannot take.
+
+    Examples:
+        >>> from pathlib import Path
+        >>> uncreatable_reason(Path("/nonexistent-lib-layered-config-probe/config.toml")) is None
+        True
+    """
+    for ancestor in path.parents:
+        if kind_or_raise(ancestor) is PathKind.DIRECTORY:
+            return None
+        if lexists_or_raise(ancestor):
+            return f"{path} {_BLOCKED_DIRECTORY_REFUSAL.format(ancestor=ancestor)}"
+    return f"{path} {_NO_ANCESTOR_REFUSAL}"
 
 
 def _lstat_mode(path: Path) -> int | None:

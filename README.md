@@ -535,7 +535,8 @@ pool_size = 50
 
 ### Type Conflict Warnings
 
-When a later layer overwrites a scalar value with a mapping (or vice versa), a warning is emitted:
+When a later layer overwrites a scalar value or a list with a mapping (or the reverse), a warning is emitted.
+The same holds for a list element, such as `MYAPP___DS__0=x` over `ds = [{a = 1}]`:
 
 ```python
 import logging
@@ -548,7 +549,7 @@ logging.basicConfig(level=logging.WARNING)
 # A WARNING log is emitted: "type_conflict" with details about the key, layers, and types involved
 ```
 
-This helps identify configuration mismatches where a key changes from a simple value to a nested structure (or the reverse) across layers.
+This helps identify configuration mismatches where a key or a list element changes from a simple value to a nested structure (or the reverse) across layers.
 
 ## Architecture Overview
 
