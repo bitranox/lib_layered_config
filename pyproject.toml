@@ -107,6 +107,7 @@ packages = ["src/lib_layered_config"]
 # An allowlist, not a denylist: hatchling honours only the root .gitignore, so
 # a file hidden through .git/info/exclude would otherwise ship (tests/test_sdist_contents.py).
 only-include = [
+    "conftest.py",
     "src",
     "tests",
     "docs",

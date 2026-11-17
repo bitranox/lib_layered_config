@@ -1021,6 +1021,7 @@ def read_deploy_config(
         TypeError: *skip* is a single ``str`` or ``Path`` rather than an iterable of them.
         FileNotFoundError: The source is not a regular file; the message says whether it is missing, a
             directory, or something else (a FIFO, device or socket).
+        PermissionError: The source sits behind a permission wall.
         LayerLoadError: A file not left out cannot be read, decoded or parsed.
         ValidationError: An invalid vendor, app, slug, profile or platform. A layer whose root is not
             absolute (an empty or relative ``HOME``, say) is left out of the read, not refused, as the

@@ -1325,7 +1325,7 @@ about to replace no longer parses.
   `skip` raises `TypeError`.
 
 **Raises:** `FileNotFoundError` for a source that does not exist or is not a regular file (worded as for `deploy_config`);
-`ValidationError` for an invalid vendor, app, slug, profile or platform; for `deploy_config_paths` also for
+`PermissionError` for a source behind a permission wall; `ValidationError` for an invalid vendor, app, slug, profile or platform; for `deploy_config_paths` also for
 `targets` given as a single string, an unknown target, or a requested target whose layer root is not absolute
 (`LayerRootNotAbsoluteError`); for `read_deploy_config` `TypeError` for a `skip` given as a single `str` or
 `Path`, and `LayerLoadError` for a file not left out that cannot be read or parsed. `read_deploy_config` leaves

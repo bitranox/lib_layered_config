@@ -47,5 +47,5 @@ def test_a_long_run_before_a_url_is_scanned_in_linear_time(prefix: str) -> None:
     redacted = redact_mapping({"note": value})
     elapsed = time.perf_counter() - started
 
-    assert redacted["note"].endswith(f"x://u:{REDACTED_PLACEHOLDER}@h")
+    assert redacted["note"] == f"{prefix}x://u:{REDACTED_PLACEHOLDER}@h"
     assert elapsed < _LIMIT_SECONDS, f"{len(prefix)} characters took {elapsed:.2f}s"
