@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 import rich_click as click
 
-from ..domain import json_codec
+from ..core import read_config, read_config_raw
+from ..domain.redaction import redact_mapping
 from .common import (
     build_read_query,
     human_payload,
@@ -50,17 +51,38 @@ def _warn_deprecated_prefer(prefer: Sequence[str]) -> None:
         emit_text(_PREFER_WARNING, err=True)
 
 
-def _envelope_data(query: ReadQuery, *, include_provenance: bool, redact: bool) -> object:
+def _envelope_data(query: ReadQuery, *, include_provenance: bool, redact: bool) -> dict[str, object]:
     """Return a read's envelope ``data``: always ``{"config": ..., "provenance": ...}``.
 
     Without provenance the key stays and holds ``None``. A bare config in ``data`` would make a
     top-level table named ``config`` indistinguishable from the wrapper, and a consumer would have
     to know which flag was passed before it could read the result.
+
+    The data is the mapping ``read_config_json`` and ``Config.to_json`` serialise, built the same
+    way, so the envelope's one ``dumps`` writes what the plain JSON output writes.
     """
-    if include_provenance:
-        return json_codec.loads(json_payload(query, None, include_provenance=True, redact=redact))
-    config = json_codec.loads(json_payload(query, None, include_provenance=False, redact=redact))
-    return {"config": config, "provenance": None}
+    if not include_provenance:
+        config = read_config(
+            vendor=query.vendor,
+            app=query.app,
+            slug=query.slug,
+            profile=query.profile,
+            start_dir=query.start_dir,
+            default_file=query.default_file,
+            dotenv_path=query.dotenv_path,
+        )
+        return {"config": config.as_dict(redact=redact), "provenance": None}
+    result = read_config_raw(
+        vendor=query.vendor,
+        app=query.app,
+        slug=query.slug,
+        profile=query.profile,
+        start_dir=query.start_dir,
+        default_file=query.default_file,
+        dotenv_path=query.dotenv_path,
+    )
+    data = redact_mapping(result.data) if redact else result.data
+    return {"config": data, "provenance": result.provenance}
 
 
 @click.command("read", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
