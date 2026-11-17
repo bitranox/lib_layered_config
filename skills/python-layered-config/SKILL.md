@@ -198,14 +198,20 @@ count as found: it is passed over with a WARNING record `dotenv_skipped_foreign_
 on to the next candidate. So a `.env` another user put in `/tmp` is never loaded, and a process
 running as root (`sudo` in a project directory) passes over that user's own `.env`. Only the owner
 is checked, never the mode: a `.env` you own loads even when it is group- or world-writable. Windows
-has no such check. `dotenv_path=` (CLI `--env-file`) loads that one file with no search and no owner
-check. It may be a regular file, a FIFO such as a shell process substitution (`--env-file <(printf
-'KEY=value')`), or a device. Every config file has the same 10 MiB cap: exactly 10 MiB (10485760
-bytes) loads, one byte more is refused, and an endless source such as `/dev/zero` is refused after
-reading one byte past the cap. Like `cat`, a FIFO read waits for its writer and for it to close,
-with no timeout: a writer that never closes blocks the read forever. In Python a `dotenv_path=` that
-does not exist loads nothing (an empty dotenv layer, no error); the CLI's `--env-file` refuses a
-missing path as a usage error (exit 2). A directory is refused either way.
+has no such check. On every OS, Windows included, a searched `.env` with more than one hard link is
+passed over the same way, with a WARNING record `dotenv_skipped_hard_link` on the same logger
+(`record.context` holds its `path` and `link_count`), and the search goes on to the next candidate:
+a hard link keeps the owner of the file it links to. So a real `.env` that also has a second link (a
+`cp -al` backup tree) is not loaded by the search; name it with `dotenv_path=` instead.
+`dotenv_path=` (CLI `--env-file`) loads that one file with no search and no owner or link check. It
+may be a regular file, a FIFO such as a shell process substitution
+(`--env-file <(printf 'KEY=value')`), or a device. Every config file has the same 10 MiB cap:
+exactly 10 MiB (10485760 bytes) loads, one byte more is refused, and an endless source such as
+`/dev/zero` is refused after reading one byte past the cap. Like `cat`, a FIFO read waits for its
+writer and for it to close, with no timeout: a writer that never closes blocks the read forever. In
+Python a `dotenv_path=` that does not exist loads nothing (an empty dotenv layer, no error); the
+CLI's `--env-file` refuses a missing path as a usage error (exit 2). A directory is refused either
+way.
 
 ## Probing and testing an app built on it
 
@@ -425,7 +431,9 @@ included, so declare only a path that holds no secret.
 shows no secret.
 `is_sensitive_at(("performance", "max_token_bytes"), not_sensitive=NotSensitiveKeys.of([...]))`
 checks a key PATH and honours a declaration; pass a tuple of segments, never a dotted `str`
-(refused with `TypeError`).
+(refused with `TypeError`). Its `not_sensitive` takes a `NotSensitiveKeys` or the dotted paths
+themselves (`not_sensitive=["performance.max_token_bytes"]`), as `redact_mapping` does; a single
+`str` there is refused with `TypeError` too.
 `redact_mapping(data, not_sensitive=["performance.max_token_bytes"])` returns a masked deep copy
 of a plain dict; `not_sensitive` takes dotted paths or a `NotSensitiveKeys`. Use it on
 `read_config_raw(...).data`, which does not carry the declaration. `config.get_redacted("db.password")`
