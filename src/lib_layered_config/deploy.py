@@ -32,6 +32,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ._platform import normalise_resolver_platform
@@ -91,10 +92,12 @@ _WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_deployed_before_failure"
 _PARTIAL_RESULT: Final = "_lib_layered_config_failed_overwrite"
 
 #: The layers a deploy writes, by the target name a caller spells (case-insensitively).
-_TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in DEPLOY_LAYERS}
+_TARGET_LAYERS: Final[Mapping[str, Layer]] = MappingProxyType({layer.value: layer for layer in DEPLOY_LAYERS})
 
 #: The deploy_config parameter each kind of explicit mode comes from, named in its refusal.
-_MODE_PARAMETERS: Mapping[ModeKind, str] = {ModeKind.DIRECTORY: "dir_mode", ModeKind.FILE: "file_mode"}
+_MODE_PARAMETERS: Final[Mapping[ModeKind, str]] = MappingProxyType(
+    {ModeKind.DIRECTORY: "dir_mode", ModeKind.FILE: "file_mode"}
+)
 
 #: How to deploy when the configured modes cannot be read. Both modes come first: turning permission
 #: setting off leaves every mode to the umask, which can make a user file that holds secrets readable
@@ -1046,11 +1049,13 @@ def read_deploy_config(
 
 #: What a deploy says of a source that is not a regular file, by what is there. Every one is a
 #: ``FileNotFoundError``, so a caller's ``except`` and the CLI's exit code do not depend on the kind.
-_SOURCE_REFUSALS: Final[dict[PathKind, str]] = {
-    PathKind.MISSING: "Configuration source not found: {path}",
-    PathKind.DIRECTORY: "Configuration source is a directory, not a file: {path}",
-    PathKind.OTHER: "Configuration source is not a regular file: {path}",
-}
+_SOURCE_REFUSALS: Final[Mapping[PathKind, str]] = MappingProxyType(
+    {
+        PathKind.MISSING: "Configuration source not found: {path}",
+        PathKind.DIRECTORY: "Configuration source is a directory, not a file: {path}",
+        PathKind.OTHER: "Configuration source is not a regular file: {path}",
+    }
+)
 
 
 def _existing_source(source: str | Path) -> Path:

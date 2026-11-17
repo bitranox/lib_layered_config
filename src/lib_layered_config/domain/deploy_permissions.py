@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final, NamedTuple, cast
 
 from .config import Config
@@ -52,11 +53,13 @@ SECTION_KEY: Final[str] = f"{_NAMESPACE_KEY}.{_SECTION_NAME}"
 #: override (such as an application's ``--set``).
 OVERRIDE_SOURCE: Final[str] = "override"
 _ENABLED: Final[str] = "enabled"
-_MODE_FIELDS: Final[dict[str, ModeKind]] = {
-    f"{layer.value}_{suffix}": kind
-    for layer in DEPLOY_LAYERS
-    for suffix, kind in (("directory", ModeKind.DIRECTORY), ("file", ModeKind.FILE))
-}
+_MODE_FIELDS: Final[Mapping[str, ModeKind]] = MappingProxyType(
+    {
+        f"{layer.value}_{suffix}": kind
+        for layer in DEPLOY_LAYERS
+        for suffix, kind in (("directory", ModeKind.DIRECTORY), ("file", ModeKind.FILE))
+    }
+)
 _KNOWN_KEYS: Final[str] = ", ".join(sorted({*_MODE_FIELDS, _ENABLED}))
 #: The settings a user-layer file may not decide: the modes of the system-wide layers.
 _APP_AND_HOST_MODE_FIELDS: Final[frozenset[str]] = frozenset(

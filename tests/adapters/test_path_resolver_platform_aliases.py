@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from lib_layered_config._platform import _CANONICAL_RESOLVER  # pyright: ignore[reportPrivateUsage]
+from lib_layered_config._platform import (
+    _CANONICAL_RESOLVER,  # pyright: ignore[reportPrivateUsage] - the alias table the entry points read
+)
 from lib_layered_config.adapters.path_resolvers import (
     DefaultPathResolver,
     LinuxStrategy,

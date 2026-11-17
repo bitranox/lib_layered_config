@@ -22,10 +22,14 @@ System Role:
 
 from __future__ import annotations
 
-from typing import Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
 
 from .domain.errors import ValidationError
 from .domain.identifiers import ExamplePlatform
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 __all__ = [
     "normalise_examples_platform",
@@ -36,31 +40,35 @@ __all__ = [
 
 #: Canonical resolver identifiers used when wiring the path resolver adapter.
 #: Values mirror ``sys.platform`` strings so downstream code can branch safely.
-_CANONICAL_RESOLVER: Final[dict[str, str]] = {
-    "linux": "linux",
-    "posix": "linux",
-    "darwin": "darwin",
-    "mac": "darwin",
-    "macos": "darwin",
-    "windows": "win32",
-    "win": "win32",
-    "win32": "win32",
-    "wine": "win32",
-}
+_CANONICAL_RESOLVER: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "linux": "linux",
+        "posix": "linux",
+        "darwin": "darwin",
+        "mac": "darwin",
+        "macos": "darwin",
+        "windows": "win32",
+        "win": "win32",
+        "win32": "win32",
+        "wine": "win32",
+    }
+)
 
 #: Canonical families used by documentation/example helpers. They collapse the
 #: wide variety of aliases into the two supported directory layouts.
-_CANONICAL_EXAMPLES: Final[dict[str, ExamplePlatform]] = {
-    "posix": ExamplePlatform.POSIX,
-    "linux": ExamplePlatform.POSIX,
-    "darwin": ExamplePlatform.POSIX,
-    "mac": ExamplePlatform.POSIX,
-    "macos": ExamplePlatform.POSIX,
-    "windows": ExamplePlatform.WINDOWS,
-    "win": ExamplePlatform.WINDOWS,
-    "win32": ExamplePlatform.WINDOWS,
-    "wine": ExamplePlatform.WINDOWS,
-}
+_CANONICAL_EXAMPLES: Final[Mapping[str, ExamplePlatform]] = MappingProxyType(
+    {
+        "posix": ExamplePlatform.POSIX,
+        "linux": ExamplePlatform.POSIX,
+        "darwin": ExamplePlatform.POSIX,
+        "mac": ExamplePlatform.POSIX,
+        "macos": ExamplePlatform.POSIX,
+        "windows": ExamplePlatform.WINDOWS,
+        "win": ExamplePlatform.WINDOWS,
+        "win32": ExamplePlatform.WINDOWS,
+        "wine": ExamplePlatform.WINDOWS,
+    }
+)
 
 
 def _sanitize(alias: str | None) -> str | None:

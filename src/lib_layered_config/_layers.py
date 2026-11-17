@@ -20,7 +20,8 @@ separate from adapters while remaining independent of the domain layer.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
 
 from .adapters._path_probe import PathKind, checked_kind
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
@@ -47,12 +48,14 @@ if TYPE_CHECKING:
 #: Mapping from file suffix to loader instance. The ordering preserves the
 #: precedence documented for structured configuration formats while keeping all
 #: logic in one place.
-_FILE_LOADERS = {
-    ".toml": TOMLFileLoader(),
-    ".json": JSONFileLoader(),
-    ".yaml": YAMLFileLoader(),
-    ".yml": YAMLFileLoader(),
-}
+_FILE_LOADERS: Final = MappingProxyType(
+    {
+        ".toml": TOMLFileLoader(),
+        ".json": JSONFileLoader(),
+        ".yaml": YAMLFileLoader(),
+        ".yml": YAMLFileLoader(),
+    }
+)
 
 __all__ = ["collect_deploy_layers", "collect_layers", "merge_or_empty", "parse_with_dot_d"]
 
