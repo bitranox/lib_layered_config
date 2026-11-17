@@ -32,7 +32,7 @@ None of these are hard to fix once. They are hard to fix *forever*, because the 
 
 What that buys you:
 
-- **One frozen object.** `read_config(...)` returns a `Config` nothing downstream can mutate, so your program cannot quietly begin to disagree with itself.
+- **One frozen object.** `read_config(...)` returns a `Config` nothing downstream can mutate, so your program cannot quietly begin to disagree with itself. A nested table or list you read comes back as your own copy, and the `Config` itself supports `copy.deepcopy` and `pickle`, so it can be cloned or sent to another process.
 - **Every value carries its origin.** `config.origin("service.timeout")` reports the layer and the path it came from. Debugging stops being a seance.
 - **The paths are already sorted.** Linux (XDG), macOS, and Windows locations are resolved for you, so you never bake someone else's `/etc` into your code.
 - **One name switches the whole environment.** Profiles keep test, staging, and production in separate trees; ask for `profile="production"` and you get production's config, not a hand-merged guess at it.
@@ -96,7 +96,7 @@ Full reference: **[docs/python-api.md](docs/python-api.md)**
 ## Key Features
 
 - **Deterministic layering** - precedence is always `defaults → app → host → user → dotenv → env`.
-- **Immutable value object** - returned `Config` prevents accidental mutation and exposes dotted-path helpers.
+- **Immutable value object** - returned `Config` prevents accidental mutation, down to nested tables and lists, supports `copy.deepcopy` and `pickle`, and exposes dotted-path helpers.
 - **Provenance tracking** - every key reports the layer and path that produced it.
 - **Cross-platform path discovery** - Linux (XDG), macOS, and Windows layouts with environment overrides for tests.
 - **Configuration profiles** - test, staging, and production live in separate trees; select one by name (`profile="production"`) instead of hand-merging environments.

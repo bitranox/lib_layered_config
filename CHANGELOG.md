@@ -153,6 +153,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A `Config` is now immutable below its top level too. `config["db"]["host"] = ...`, an `append` to a list
+  read with `config.get(...)`, or a change to the mapping the `Config` was built from used to change what
+  every later read returned. The `Config` now owns a deep copy and hands out a copy of each nested table,
+  list or provenance record, of the same type, so `json.dumps(config["db"])` and `isinstance(..., dict)`
+  keep working.
+- `copy.deepcopy`, `copy.copy` and `pickle` of a `Config` used to raise `cannot pickle 'mappingproxy'
+  object`; they now work and keep its provenance and declared `not_sensitive` paths.
 - A relative home directory (`HOME=rel` on Linux and macOS, a relative `USERPROFILE` on Windows) is refused
   with `LayerRootNotAbsoluteError` naming that variable, as a relative `LIB_LAYERED_CONFIG_ETC` is. Before,
   the Linux and macOS user layer, and a deploy to it, resolved under the current directory.

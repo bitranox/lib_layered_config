@@ -82,6 +82,12 @@ if origin and origin["layer"] == Layer.ENV:
 
 Immutable configuration value object with provenance tracking and dotted-path lookups.
 
+A `Config` owns a deep copy of the data it was built from, and `config["db"]`, `config.get(...)`, `items()`,
+`values()` and `origin(...)` return a nested table, list or provenance record as a copy of the same type: changing
+what you read never changes the `Config`. Scalars are returned as they are. A `Config` works with `copy.copy`,
+`copy.deepcopy` and `pickle` (every protocol), and the copy keeps its provenance and its declared `not_sensitive`
+paths. Like a `dict`, it is not hashable.
+
 #### Methods
 
 ##### `Config.get(key, default=None)`

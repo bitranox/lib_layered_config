@@ -9,7 +9,8 @@ precedence rules documented for layered configuration.
 Contents:
     - ``SourceInfo``: typed dictionary describing layer, path, and dotted key.
     - ``Config``: frozen mapping-like dataclass exposing lookup, provenance, and
-      serialisation helpers.
+      serialisation helpers. It owns a deep copy of its data and hands out copies of
+      nested containers, so no caller can change it.
     - Internal helpers (``_follow_path``, ``_clone_map`` ...) that keep traversal
       logic pure and testable.
     - ``EMPTY_CONFIG``: canonical empty instance shared across the composition
@@ -27,7 +28,6 @@ from collections.abc import Iterable, Iterator, Mapping
 from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping as MappingType
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Any, Final, TypedDict, TypeGuard, TypeVar, cast
 
 from . import json_codec
@@ -78,8 +78,9 @@ class Config(MappingABC[str, Any]):
     serialisation.
 
     Attributes:
-        _data: Mapping containing the merged configuration tree. Stored as a
-            ``MappingProxyType`` to prevent mutation.
+        _data: Mapping containing the merged configuration tree. Stored as a deep copy
+            in a read-only mapping; reads return copies of nested tables and lists, so a
+            caller changing a value it read never changes the ``Config``.
         _meta: Mapping of dotted keys to :class:`SourceInfo`, allowing provenance
             queries via :meth:`origin`.
         _not_sensitive: Paths the application declared not sensitive (``read_config(not_sensitive=...)``);
@@ -101,13 +102,14 @@ class Config(MappingABC[str, Any]):
                 f"Config's third argument must be a NotSensitiveKeys, got {type(self._not_sensitive).__name__}: "
                 "use NotSensitiveKeys.of([...])"
             )
-        object.__setattr__(self, "_data", _lock_map(self._data))
-        object.__setattr__(self, "_meta", _lock_map(self._meta))
+        object.__setattr__(self, "_data", _freeze(self._data))
+        object.__setattr__(self, "_meta", _freeze(self._meta))
 
     def __getitem__(self, key: str) -> Any:
         """Return the value stored under a top-level key.
 
-        Consumers expect ``Config`` to behave like a standard mapping.
+        Consumers expect ``Config`` to behave like a standard mapping. A table or list
+        comes back as a copy, so changing it leaves the ``Config`` as it was.
 
         Args:
             key: Top-level key to retrieve.
@@ -123,7 +125,7 @@ class Config(MappingABC[str, Any]):
             >>> cfg["debug"]
             True
         """
-        return self._data[key]
+        return _clone_value(self._data[key])
 
     def __iter__(self) -> Iterator[str]:
         """Iterate over top-level keys in insertion order."""
@@ -193,7 +195,8 @@ class Config(MappingABC[str, Any]):
         """Return the value for *key* or a default when the path is missing.
 
         Layered configuration relies on dotted keys (e.g. ``"db.host"``).
-        This helper avoids repetitive traversal code at call sites.
+        This helper avoids repetitive traversal code at call sites. A table or list
+        comes back as a copy, so changing it leaves the ``Config`` as it was.
 
         Args:
             key: Dotted path identifying nested entries.
@@ -212,7 +215,10 @@ class Config(MappingABC[str, Any]):
             >>> cfg.get("db.port", default=5432)
             5432
         """
-        return _follow_path(self._data, key, default)
+        value = _follow_path(self._data, key, _MISSING)
+        if value is _MISSING:
+            return default
+        return _clone_value(value)
 
     def get_redacted(self, key: str, default: Any = None) -> Any:
         """Return the value at dotted *key* as ``as_dict(redact=True)`` shows it.
@@ -249,7 +255,7 @@ class Config(MappingABC[str, Any]):
             key: Dotted key in the metadata map.
 
         Returns:
-            Metadata dictionary or ``None`` if the key was never observed.
+            A copy of the metadata dictionary, or ``None`` if the key was never observed.
 
         Examples:
             >>> meta = {"db.host": {"layer": "app", "path": "/etc/app.toml", "key": "db.host"}}
@@ -259,7 +265,8 @@ class Config(MappingABC[str, Any]):
             >>> cfg.origin("missing") is None
             True
         """
-        return self._meta.get(key)
+        info = self._meta.get(key)
+        return None if info is None else SourceInfo(**info)
 
     def with_overrides(self, overrides: Mapping[str, Any]) -> Config:
         """Return a new configuration with deep-merged overrides applied.
@@ -356,23 +363,52 @@ def _override_provenance(meta: Mapping[str, SourceInfo], replaced: list[tuple[st
     return provenance
 
 
-def _lock_map(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Return a read-only view of *mapping*.
+class _ReadOnlyMap(MappingABC[str, Any]):
+    """A read-only mapping over a dict nothing else holds, which ``copy`` and ``pickle`` can handle.
 
-    Internal state must remain immutable to uphold the domain contract.
-
-    Args:
-        mapping: Mapping to wrap. A shallow copy protects against caller mutation.
-
-    Returns:
-        ``MappingProxyType`` over a copy of the source mapping.
+    ``MappingProxyType`` refuses both ("cannot pickle 'mappingproxy' object"), which made every
+    ``Config`` impossible to copy or pickle. Build one through :func:`_freeze`, never directly.
 
     Examples:
-        >>> view = _lock_map({"flag": True})
-        >>> view["flag"], isinstance(view, MappingProxyType)
-        (True, True)
+        >>> view = _freeze({"flag": True})
+        >>> view["flag"], view
+        (True, {'flag': True})
     """
-    return MappingProxyType(dict(mapping))
+
+    __slots__ = ("_items",)
+
+    def __init__(self, items: dict[str, Any]) -> None:
+        self._items = items
+
+    def __getitem__(self, key: str) -> Any:
+        return self._items[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._items)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __repr__(self) -> str:
+        return repr(self._items)
+
+    def __reduce__(self) -> tuple[type[_ReadOnlyMap], tuple[dict[str, Any]]]:
+        return (_ReadOnlyMap, (self._items,))
+
+
+def _freeze(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return a read-only mapping over a deep copy of *mapping*.
+
+    A shallow copy left nested tables and lists shared with whoever built the mapping.
+
+    Examples:
+        >>> source = {"db": {"host": "real"}}
+        >>> frozen = _freeze(source)
+        >>> source["db"]["host"] = "changed"
+        >>> frozen["db"]["host"]
+        'real'
+    """
+    return _ReadOnlyMap(_clone_map(mapping))
 
 
 def _deep_merge(
@@ -525,7 +561,7 @@ def _looks_like_mapping(value: object) -> TypeGuard[MappingType[str, Any]]:
     return all(isinstance(key, str) for key in cast("Iterable[object]", value.keys()))
 
 
-EMPTY_CONFIG = Config(MappingProxyType({}), MappingProxyType({}))
+EMPTY_CONFIG = Config({}, {})
 """Shared empty configuration used by the composition root and CLI helpers.
 
 Avoids repeated allocations when no layers contribute values. The empty
