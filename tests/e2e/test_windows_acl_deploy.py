@@ -135,8 +135,14 @@ def test_a_kept_file_gives_its_ucf_sidecar_its_own_acl(sandbox: LayeredSandbox, 
 
 @windows_only
 def test_an_inherited_acl_stays_inherited(sandbox: LayeredSandbox, tmp_path: Path) -> None:
+    # A new file inherits only what its directory passes down. On the windows-latest runner the temp
+    # directories pass nothing, so a new file got the process's default ACL, with no (I) entry, and
+    # the test had nothing to keep. One inheritable entry on the user root gives it the case it tests.
+    root = sandbox.roots["user"]
+    root.mkdir(parents=True, exist_ok=True)
+    _run(_tool("icacls"), str(root), "/grant", f"*{_own_sid()}:(OI)(CI)(F)")
     assert _deploy(tmp_path, "a = 1\n") == [DeployAction.CREATED]
-    target = sandbox.roots["user"] / "config.toml"
+    target = root / "config.toml"
     inherited = _aces(target)
     assert any("(I)" in ace for ace in inherited), inherited
 
