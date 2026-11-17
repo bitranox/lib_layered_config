@@ -325,7 +325,9 @@ print(compact_json)
 Return a new configuration with *overrides* deep-merged in: nested tables merge key by key, while scalars and lists replace the value they meet.
 
 **Parameters:**
-- `overrides` (Mapping[str, Any], required): Nested mapping of keys and values to merge in.
+- `overrides` (Mapping[str, Any], required): Nested mapping of keys and values to merge in, nested as the
+  data is (`{"db": {"host": "x"}}`). A key is a name, never a dotted path: `{"db.host": "x"}` adds a
+  top-level key literally named `db.host`, as a quoted TOML key would, and leaves `db.host` unchanged.
 
 **Returns:** New `Config` instance with overrides applied. Every key the override supplies reports `origin()` as layer `"override"` (`OVERRIDE_LAYER`), path `None`; keys it did not touch keep their original source, and keys it removed have none. The original instance is unchanged.
 

@@ -270,7 +270,10 @@ class Config(MappingABC[str, Any]):
         in *overrides* replace the corresponding values in the original.
 
         Args:
-            overrides: Mapping of keys and values to merge.
+            overrides: Mapping of keys and values to merge, nested as the data is:
+                ``{"db": {"host": "x"}}``. A key is a name, never a dotted path:
+                ``{"db.host": "x"}`` adds a top-level key literally named ``db.host``
+                (as a quoted TOML key does) and leaves ``db.host`` unchanged.
 
         Returns:
             New configuration instance. Every key *overrides* supplies is recorded
