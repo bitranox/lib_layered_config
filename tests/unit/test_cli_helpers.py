@@ -206,17 +206,6 @@ def test_render_human_multiple_top_level_sections() -> None:
 
 
 @os_agnostic
-def test_normalise_prefer_returns_none_for_empty_input() -> None:
-    assert common_module.normalise_prefer(()) is None
-
-
-@os_agnostic
-def test_normalise_prefer_lowercases_suffixes() -> None:
-    result = common_module.normalise_prefer(["YAML", ".Toml"])
-    assert result == ("yaml", "toml")
-
-
-@os_agnostic
 def test_cli_read_config_json_emits_combined_payload(tmp_path: Path) -> None:
     defaults = tmp_path / "defaults.toml"
     defaults.write_text("[service]\nport = 8080\n", encoding="utf-8")

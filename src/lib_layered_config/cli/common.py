@@ -8,7 +8,7 @@ Contents:
     * :class:`ReadQuery` - frozen bundle capturing the parameters for configuration reads.
     * :class:`OutputFormat` - enum for CLI output format selection (re-exported from application.ports).
     * Metadata helpers (:func:`version_string`, :func:`describe_distribution`).
-    * Query shaping (:func:`build_read_query`, :func:`normalise_prefer`, :func:`stringify`).
+    * Query shaping (:func:`build_read_query`, :func:`stringify`).
     * Output shaping (:func:`json_payload`, :func:`human_payload`, :func:`render_human`).
     * Human-friendly utilities (:func:`render_human`, :func:`json_paths`).
 
@@ -50,7 +50,6 @@ __all__ = [
     "json_payload",
     "normalise_examples_platform_option",
     "normalise_platform_option",
-    "normalise_prefer",
     "normalise_targets",
     "package_metadata",
     "parse_output_format",
@@ -89,7 +88,6 @@ class ReadQuery:
         app: Application identifier within the vendor namespace.
         slug: Configuration slug (environment/project).
         profile: Optional profile name for environment-specific configuration paths.
-        prefer: Ordered tuple of preferred file extensions, lowercased; ``None`` when the CLI falls back to defaults.
         start_dir: Starting directory as a string or ``None`` to use the current working directory.
         default_file: Optional baseline configuration file to load before layered overrides.
     """
@@ -98,7 +96,6 @@ class ReadQuery:
     app: str
     slug: str
     profile: str | None
-    prefer: tuple[str, ...] | None
     start_dir: str | None
     default_file: str | None
     dotenv_path: str | None
@@ -146,7 +143,6 @@ def build_read_query(
     app: str,
     slug: str,
     profile: str | None,
-    prefer: Sequence[str],
     start_dir: Path | None,
     default_file: Path | None,
     dotenv_path: Path | None = None,
@@ -160,7 +156,6 @@ def build_read_query(
         app: Raw CLI string describing the application name.
         slug: Raw CLI string describing the configuration slice to read.
         profile: Optional profile name for environment-specific configuration.
-        prefer: List of extensions supplied via ``--prefer`` (possibly empty).
         start_dir: Optional explicit starting directory.
         default_file: Optional explicit baseline file.
         dotenv_path: Optional explicit ``.env`` file path.
@@ -173,22 +168,10 @@ def build_read_query(
         app=app,
         slug=slug,
         profile=profile,
-        prefer=normalise_prefer(prefer),
         start_dir=stringify(start_dir),
         default_file=stringify(default_file),
         dotenv_path=stringify(dotenv_path),
     )
-
-
-def normalise_prefer(values: Sequence[str]) -> tuple[str, ...] | None:
-    """Normalise preferred extensions by lowercasing and trimming dots.
-
-    Returns:
-        Tuple of cleaned extensions, or ``None`` when no values were supplied.
-    """
-    if not values:
-        return None
-    return tuple(value.lower().lstrip(".") for value in values)
 
 
 def normalise_targets(values: Sequence[str]) -> tuple[str, ...]:
@@ -288,7 +271,6 @@ def json_payload(query: ReadQuery, indent: int | None, *, include_provenance: bo
             app=query.app,
             slug=query.slug,
             profile=query.profile,
-            prefer=query.prefer,
             start_dir=query.start_dir,
             default_file=query.default_file,
             indent=indent,
@@ -300,7 +282,6 @@ def json_payload(query: ReadQuery, indent: int | None, *, include_provenance: bo
         app=query.app,
         slug=query.slug,
         profile=query.profile,
-        prefer=query.prefer,
         start_dir=query.start_dir,
         default_file=query.default_file,
         dotenv_path=query.dotenv_path,
@@ -392,7 +373,6 @@ def human_payload(query: ReadQuery, *, redact: bool = False) -> str:
         app=query.app,
         slug=query.slug,
         profile=query.profile,
-        prefer=query.prefer,
         start_dir=query.start_dir,
         default_file=query.default_file,
         dotenv_path=query.dotenv_path,

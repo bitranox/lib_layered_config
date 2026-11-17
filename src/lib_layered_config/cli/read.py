@@ -40,15 +40,14 @@ _PREFER_WARNING = (
 )
 
 
-def _drop_deprecated_prefer(prefer: Sequence[str]) -> tuple[str, ...]:
-    """Tell the user on stderr that ``--prefer`` does nothing, and return no suffixes.
+def _warn_deprecated_prefer(prefer: Sequence[str]) -> None:
+    """Tell the user on stderr that ``--prefer`` does nothing.
 
-    stderr keeps the notice out of a JSON envelope on stdout, and the empty result keeps the Python
-    API from warning a second time about the same flag.
+    stderr keeps the notice out of a JSON envelope on stdout. The values go no further, so the Python
+    API's DeprecationWarning for ``prefer=`` never fires a second time for the same flag.
     """
     if prefer:
         emit_text(_PREFER_WARNING, err=True)
-    return ()
 
 
 def _envelope_data(query: ReadQuery, *, include_provenance: bool, redact: bool) -> object:
@@ -133,12 +132,12 @@ def read_command(
     json_envelope: bool,
 ) -> None:
     """Read configuration and print it as source-annotated TOML or as JSON."""
+    _warn_deprecated_prefer(prefer)
     query = build_read_query(
         vendor=vendor,
         app=app,
         slug=slug,
         profile=profile,
-        prefer=_drop_deprecated_prefer(prefer),
         start_dir=start_dir,
         default_file=default_file,
         dotenv_path=dotenv_path,
@@ -207,12 +206,12 @@ def read_json_command(
     json_envelope: bool,
 ) -> None:
     """Always emit combined JSON (config + provenance)."""
+    _warn_deprecated_prefer(prefer)
     query = build_read_query(
         vendor=vendor,
         app=app,
         slug=slug,
         profile=profile,
-        prefer=_drop_deprecated_prefer(prefer),
         start_dir=start_dir,
         default_file=default_file,
         dotenv_path=dotenv_path,
