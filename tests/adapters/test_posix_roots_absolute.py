@@ -10,14 +10,16 @@ specification instead: empty means ``$HOME/.config``, and a relative value is ig
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
 
 from lib_layered_config import DeployResult, LayerRootNotAbsoluteError
+from lib_layered_config.adapters.path_resolvers._base import home_directory
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
 from lib_layered_config.deploy import deploy_config
-from tests.support.os_markers import os_agnostic
+from tests.support.os_markers import os_agnostic, posix_only
 
 _SLUG = "demo"
 
@@ -156,6 +158,49 @@ def test_an_empty_home_is_refused_rather_than_read_as_the_filesystem_root(
     source = _plant(tmp_path / "source.toml", "a = 1\n")
     with pytest.raises(LayerRootNotAbsoluteError, match=expected):
         deploy_config(source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform=platform)
+
+
+@posix_only
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_an_empty_passwd_home_is_refused_like_an_empty_home(
+    work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("pwd is POSIX-only")
+    import pwd  # noqa: PLC0415 - POSIX-only module: a module-level import breaks collection on Windows
+
+    # With HOME unset, Path.home() reads the account's passwd home field, and an empty one also comes back as
+    # "/" (CPython's posixpath.expanduser), so a user deploy went to /.config/<slug> (user decision 2026-11-17,
+    # s6 R4-F2). The passwd database is the OS edge this suite cannot inject, so getpwuid is patched.
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", raising=False)
+    entry = pwd.struct_passwd(("nohome", "x", os.getuid(), os.getgid(), "", "", "/bin/sh"))
+    monkeypatch.setattr(pwd, "getpwuid", lambda uid: entry)
+    expected = "^The HOME root '' is not an absolute path; set HOME to an absolute path$"
+
+    with pytest.raises(LayerRootNotAbsoluteError, match=expected):
+        list(_resolver({}, platform=platform, cwd=work).user())
+    source = _plant(tmp_path / "source.toml", "a = 1\n")
+    with pytest.raises(LayerRootNotAbsoluteError, match=expected):
+        deploy_config(source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform=platform)
+
+
+@posix_only
+def test_a_passwd_home_is_used_when_home_is_unset(work: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    if sys.platform == "win32":
+        pytest.skip("pwd is POSIX-only")
+    import pwd  # noqa: PLC0415 - POSIX-only module: a module-level import breaks collection on Windows
+
+    # The control: a non-empty passwd home still answers, so only the empty field is refused.
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    home = work / "account-home"
+    entry = pwd.struct_passwd(("withhome", "x", os.getuid(), os.getgid(), "", str(home), "/bin/sh"))
+    monkeypatch.setattr(pwd, "getpwuid", lambda uid: entry)
+
+    assert list(_resolver({}, platform="linux", cwd=work).user()) == []
+    assert home_directory() == home
 
 
 @os_agnostic

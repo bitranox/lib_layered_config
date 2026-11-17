@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import abc
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -47,11 +48,14 @@ def home_directory() -> Path:
     Raises:
         HomeDirectoryUnknownError: ``Path.home()`` cannot answer: HOME unset and the uid has no
             passwd entry, or on Windows USERPROFILE, HOMEDRIVE and HOMEPATH all unset.
-        LayerRootNotAbsoluteError: The home directory is a relative path (``HOME=rel``) or empty.
+        LayerRootNotAbsoluteError: The home directory is a relative path (``HOME=rel``) or empty, or
+            HOME is unset and the account's passwd home field is empty.
     """
-    if os.environ.get(_home_variable()) == "":
-        # Checked before Path.home(): for an empty HOME it answers "/" (3.10 to 3.15 measured), which has a root, so the
-        # user layer and every user deploy would land under /.config instead of being refused.
+    home_text = os.environ.get(_home_variable())
+    if home_text == "" or (home_text is None and _passwd_home_is_empty()):
+        # Checked before Path.home(): for an empty HOME, and with HOME unset for an empty passwd home field, it
+        # answers "/" (3.10 to 3.15 measured; CPython's posixpath.expanduser), which has a root, so the user layer
+        # and every user deploy would land under /.config instead of being refused (user decision 2026-11-17).
         raise _not_absolute("")
     try:
         home = Path.home()
@@ -74,6 +78,22 @@ def _not_absolute(home: str) -> LayerRootNotAbsoluteError:
         f"The {_home_variable()} root '{escape_controls(home)}' is not an absolute path; set "
         f"{_home_variable()} to an absolute path"
     )
+
+
+def _passwd_home_is_empty() -> bool:
+    """Whether the current account's passwd entry has an empty home field (POSIX; never on Windows).
+
+    An account with no passwd entry is not this case: ``Path.home()`` then raises, which the caller
+    reports as an unknown home directory.
+    """
+    if sys.platform == "win32":
+        return False
+    import pwd  # noqa: PLC0415 - POSIX-only module, absent on Windows
+
+    try:
+        return pwd.getpwuid(os.getuid()).pw_dir == ""
+    except KeyError:
+        return False
 
 
 def _home_variable() -> str:

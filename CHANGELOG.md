@@ -262,7 +262,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   with `LayerRootNotAbsoluteError` naming that variable, as a relative `LIB_LAYERED_CONFIG_ETC` is. Before,
   the Linux and macOS user layer, and a deploy to it, resolved under the current directory. An empty one
   (`HOME=`) is refused the same way; `Path.home()` reads it as `/`, so the user layer and a user deploy went
-  to `/.config/<slug>`.
+  to `/.config/<slug>`. So is an account whose passwd entry has an empty home field when `HOME` is unset (a
+  system or container account), which `Path.home()` reads as `/` too.
 - A command whose stdout reader went away (`lib_layered_config info | head -0`) exits with 141 and
   prints nothing. It exited 1, or 120 with an "Exception ignored ... BrokenPipeError" line. A command
   that fails on its own keeps its exit code, unless `--json` sends its failure envelope to the gone

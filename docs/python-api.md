@@ -1684,8 +1684,9 @@ Exception
         +-- DeployDestinationError  a deploy destination is a symbolic link, not a regular file, or cannot be created
         +-- GenerateDestinationError  an example path generate would write is a link, not a regular file, or uncreatable
         +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, an empty or relative HOME or
-                                       USERPROFILE, or an empty or relative LIB_LAYERED_CONFIG_ETC /
-                                       _MAC_APP_ROOT / _MAC_HOME_ROOT)
+                                       USERPROFILE, HOME unset with an empty passwd home field, or an
+                                       empty or relative LIB_LAYERED_CONFIG_ETC / _MAC_APP_ROOT /
+                                       _MAC_HOME_ROOT)
 ```
 
 - When the home directory cannot be determined (HOME unset and the uid has no passwd entry; on Windows
