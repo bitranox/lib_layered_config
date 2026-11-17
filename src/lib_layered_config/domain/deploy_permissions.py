@@ -29,7 +29,7 @@ from typing import Final, NamedTuple, cast
 from .config import Config
 from .deploy_mode import DeployMode, DeployModeError, ModeKind, brief_repr
 from .errors import ValidationError
-from .identifiers import Layer
+from .identifiers import DEPLOY_LAYERS, Layer
 from .permissions import LAYER_PERMISSIONS
 
 __all__ = [
@@ -54,7 +54,7 @@ OVERRIDE_SOURCE: Final[str] = "override"
 _ENABLED: Final[str] = "enabled"
 _MODE_FIELDS: Final[dict[str, ModeKind]] = {
     f"{layer.value}_{suffix}": kind
-    for layer in (Layer.APP, Layer.HOST, Layer.USER)
+    for layer in DEPLOY_LAYERS
     for suffix, kind in (("directory", ModeKind.DIRECTORY), ("file", ModeKind.FILE))
 }
 _KNOWN_KEYS: Final[str] = ", ".join(sorted({*_MODE_FIELDS, _ENABLED}))
@@ -154,7 +154,7 @@ class DeployPermissions:
 
     def __post_init__(self) -> None:
         """Refuse a field that does not match its declared type, for a caller-built instance too."""
-        for name in ("app", "host", "user"):
+        for name in (layer.value for layer in DEPLOY_LAYERS):
             value = getattr(self, name)
             if not isinstance(value, LayerModes):
                 raise DeployModeError(f"{name} must be a LayerModes, got {type(value).__name__}")

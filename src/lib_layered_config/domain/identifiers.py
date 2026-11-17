@@ -243,6 +243,11 @@ class Layer(str, Enum):
     ENV = "env"
 
 
+#: The layers a deploy writes, in this order: the deploy targets, the CLI's ``--target`` choices and
+#: the layers ``DeployPermissions`` holds modes for.
+DEPLOY_LAYERS: Final[tuple[Layer, ...]] = (Layer.APP, Layer.HOST, Layer.USER)
+
+
 class PlatformFamily(str, Enum):
     """The directory layouts the path resolver and deploy know, one per operating-system family."""
 
@@ -612,6 +617,7 @@ def validate_hostname(value: str) -> str:
 
 __all__ = [
     "DEFAULT_MAX_PROFILE_LENGTH",
+    "DEPLOY_LAYERS",
     "ExamplePlatform",
     "Layer",
     "PlatformFamily",

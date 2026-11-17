@@ -62,7 +62,7 @@ from .domain.deploy_permissions import (
     parse_deploy_permissions,
 )
 from .domain.errors import ConfigError, DeployDestinationError, ValidationError
-from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
+from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, DEPLOY_LAYERS, Layer
 from .domain.permissions import apply_mode, modes_apply
 from .domain.printable import escape_controls
 from .observability import log_warn
@@ -91,7 +91,7 @@ _WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_deployed_before_failure"
 _PARTIAL_RESULT: Final = "_lib_layered_config_failed_overwrite"
 
 #: The layers a deploy writes, by the target name a caller spells (case-insensitively).
-_TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in (Layer.APP, Layer.HOST, Layer.USER)}
+_TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in DEPLOY_LAYERS}
 
 #: The deploy_config parameter each kind of explicit mode comes from, named in its refusal.
 _MODE_PARAMETERS: Mapping[ModeKind, str] = {ModeKind.DIRECTORY: "dir_mode", ModeKind.FILE: "file_mode"}
@@ -362,12 +362,21 @@ def _same_content(first: Path, second: Path) -> bool:
                 return True
 
 
-def _validate_target(target: str) -> Layer:
+def _validate_target(target: Layer | str) -> Layer:
     """Return the layer a caller-spelled *target* names (any case), refusing any other name."""
-    layer = _TARGET_LAYERS.get(target.lower())
+    name = _target_text(target)
+    layer = _TARGET_LAYERS.get(name.lower())
     if layer is None:
-        raise ValidationError(f"Unsupported deployment target: {target}")
+        raise ValidationError(f"Unsupported deployment target: {name}")
     return layer
+
+
+def _target_text(target: Layer | str) -> str:
+    """Return *target* as the text a message names: a member by its value, a str as given.
+
+    An f-string over a ``(str, Enum)`` member reads ``Layer.ENV`` on Python 3.11 and later.
+    """
+    return target.value if isinstance(target, Layer) else target
 
 
 def _checked_mode(value: int | DeployMode | None, *, kind: ModeKind) -> _CheckedMode:
@@ -666,7 +675,7 @@ def deploy_config(
     *,
     vendor: str,
     app: str,
-    targets: Sequence[str],
+    targets: Sequence[Layer | str],
     slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
@@ -692,7 +701,7 @@ def deploy_config(
             its contents are also deployed.
         vendor: Vendor namespace.
         app: Application name.
-        targets: Layer targets to deploy to (app, host, user), a sequence such as ``["user"]``. An
+        targets: Layer targets to deploy to (app, host, user), a sequence such as ``["user"]`` or ``[Layer.USER]``. An
             empty sequence deploys nothing and returns ``[]``, as iterating it does; a single str is
             refused, because it would be read character by character.
         slug: Slug identifying the configuration set.
@@ -907,7 +916,7 @@ def deploy_config_paths(
     *,
     vendor: str,
     app: str,
-    targets: Sequence[str],
+    targets: Sequence[Layer | str],
     slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
@@ -927,7 +936,7 @@ def deploy_config_paths(
             there is one, adds the paths of its copies.
         vendor: Vendor namespace.
         app: Application name.
-        targets: Layer targets (app, host, user), a sequence such as ``["user"]``; an empty
+        targets: Layer targets (app, host, user), a sequence such as ``["user"]`` or ``[Layer.USER]``; an empty
             sequence gives an empty set.
         slug / profile / platform / max_profile_length: As for :func:`deploy_config`; *platform*
             chooses whose layer paths are returned.
@@ -1285,7 +1294,7 @@ def _prepare_resolver(
     )
 
 
-def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> Iterator[_Destination]:
+def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[Layer | str]) -> Iterator[_Destination]:
     """Yield the destination of each valid target, with the layer it deploys to.
 
     Args:
@@ -1303,7 +1312,7 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
     # TypeError prefer= raises: a non-empty str was already refused with this type.
     if isinstance(targets, str):
         raise ValidationError(
-            f"targets takes a sequence of layer names, not a single str: {_str_targets_remedy(targets)}"
+            f"targets takes a sequence of layer names, not a single str: {_str_targets_remedy(_target_text(targets))}"
         )
     for raw_target in targets:
         layer = _validate_target(raw_target)
