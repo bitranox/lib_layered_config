@@ -86,6 +86,7 @@ def _peak_bytes_merging_a_dotted_name(dots: int) -> int:
     """Peak traced memory of merging one key whose NAME holds *dots* dots (a quoted TOML key)."""
     name = ".".join(["a"] * (dots + 1))
     layers = [LayerSnapshot(Layer.APP, {name: 1}, "/opt/app.toml")]
+    merge_layers(layers)  # warm imports and caches outside the measurement
     tracemalloc.start()
     try:
         merge_layers(layers)

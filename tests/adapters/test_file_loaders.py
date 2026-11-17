@@ -281,6 +281,7 @@ def test_a_capped_read_allocates_about_what_the_file_holds(tmp_path: Path, size:
     # file, a 4-byte .env included; the read must grow with the file, not with the cap.
     target = tmp_path / "config.toml"
     target.write_bytes(b"#" * size)
+    structured_module.read_capped_bytes(target)  # warm imports and caches outside the measurement
 
     tracemalloc.start()
     try:

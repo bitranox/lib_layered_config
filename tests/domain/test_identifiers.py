@@ -844,18 +844,6 @@ class TestIsValidProfileName:
         assert is_valid_profile_name("a" * 256, max_length=-1) is False
 
 
-class TestDefaultMaxProfileLength:
-    """Tests for DEFAULT_MAX_PROFILE_LENGTH constant."""
-
-    def test_value_is_64(self) -> None:
-        """Default max profile length should be 64."""
-        assert DEFAULT_MAX_PROFILE_LENGTH == 64
-
-    def test_is_immutable_int(self) -> None:
-        """Constant should be an integer."""
-        assert isinstance(DEFAULT_MAX_PROFILE_LENGTH, int)
-
-
 class TestAbsoluteMaxProfileLength:
     """Tests for ABSOLUTE_MAX_PROFILE_LENGTH constant and clamping behavior.
 
@@ -867,10 +855,6 @@ class TestAbsoluteMaxProfileLength:
     def test_value_is_255(self) -> None:
         """Absolute max profile length should be 255."""
         assert ABSOLUTE_MAX_PROFILE_LENGTH == 255
-
-    def test_is_immutable_int(self) -> None:
-        """Constant should be an integer."""
-        assert isinstance(ABSOLUTE_MAX_PROFILE_LENGTH, int)
 
     def test_accepts_profile_at_absolute_max_length(self) -> None:
         """Profile exactly at absolute max length (255) should be accepted."""

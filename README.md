@@ -581,24 +581,17 @@ Consult [`docs/systemdesign/module_reference.md`](docs/systemdesign/module_refer
 ## Development
 
 ```bash
-pip install "lib_layered_config[dev]"
-make test          # lint + type-check + pytest + coverage (fail-under=90%)
-make build         # build wheel / sdist artifacts
-make run -- --help # run the CLI via the repo entrypoint
+uv sync --all-extras              # or: pip install -e ".[dev]"
+make test                         # the full local gate
+make build                        # build wheel and sdist artifacts
+uv run lib_layered_config --help  # run the CLI from the checkout
 ```
 
-The development extra now targets the latest stable releases of the toolchain
-(pytest 8.4.2, ruff 0.14.0, codecov-cli 11.2.3, etc.), so upgrading your local
-environment before running `make` is recommended.
-
-*Formatting gate:* Ruff formatting runs in check mode during `make test`. Run `ruff format .` (or `pre-commit run --all-files`) before pushing and consider `pre-commit install` to keep local edits aligned.
-
-*Coverage gate:* the maintained test suite must stay ≥90% (see `pyproject.toml`). Add targeted unit tests if you extend functionality.
-
-**Platform notes**
-
-- Windows runners install `pipx` and `uv` automatically in CI; locally ensure `pipx` is on your `PATH` before running `make test` so the wheel verification step succeeds.
-- The journald prerequisite step runs only on Linux; macOS/Windows skips it, so there is no extra setup required on those platforms.
+`make test` formats with `ruff format .` and applies `ruff check --fix .` before it checks, so commit
+first if you want to see what it rewrote; CI only checks. Coverage must stay at 90% or above
+(`[tool.coverage.report] fail_under`). The development tools and their minimum versions are the `dev`
+extra in `pyproject.toml`. [DEVELOPMENT.md](DEVELOPMENT.md) describes every stage of the gate, the
+make targets and the release checklist.
 
 ### Continuous integration
 

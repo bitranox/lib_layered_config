@@ -35,6 +35,7 @@ def _best_time(cfg: Config, calls: int = 200, rounds: int = 5) -> float:
 @os_agnostic
 def test_a_membership_test_copies_nothing() -> None:
     cfg = _config(20_000)
+    _ = "section" in cfg  # warm imports and caches outside the measurement
 
     tracemalloc.start()
     try:

@@ -60,11 +60,12 @@ def test_a_deeper_key_reuses_a_json_table_key_in_its_original_case() -> None:
 def _peak_bytes_refusing(segments: int) -> int:
     """Peak traced memory of build_nested refusing one key of *segments* segments."""
     key = "__".join(["a"] * segments)
+    refusal = re.escape("configuration nesting exceeds the maximum depth of 100 at a.a.a")
+    with pytest.raises(ValueError, match=refusal):  # warm imports and caches outside the measurement
+        build_nested([NestedEntry(key, 1, key)], error_cls=ValueError)
     tracemalloc.start()
     try:
-        with pytest.raises(
-            ValueError, match=re.escape("configuration nesting exceeds the maximum depth of 100 at a.a.a")
-        ):
+        with pytest.raises(ValueError, match=refusal):
             build_nested([NestedEntry(key, 1, key)], error_cls=ValueError)
         return tracemalloc.get_traced_memory()[1]
     finally:

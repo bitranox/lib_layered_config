@@ -1,18 +1,18 @@
-"""Runtime-checkable protocols defining adapter contracts.
+"""Runtime-checkable protocols stating the adapter contracts.
 
-Ensure the composition root depends on abstractions instead of concrete
-implementations, mirroring the Clean Architecture layering in the system design.
+Each protocol states what one kind of adapter provides. The read and deploy functions build the
+concrete adapters directly (``DefaultPathResolver``, ``DefaultDotEnvLoader``, ``DefaultEnvLoader``
+and the TOML, JSON and YAML file loaders) and are typed with them, not with these protocols; the
+contract tests (``tests/adapters/test_port_contracts.py``) check with ``isinstance`` that each
+adapter satisfies its protocol.
 
 Contents:
     - ``OutputFormat``: enum for CLI/adapter output format selection.
     - ``SourceInfoPayload``: type alias for domain ``SourceInfo`` TypedDict.
     - Type aliases (``ConfigData``, ``ProvenanceData``) for consistent signatures.
     - Protocols for each adapter type (path resolver, file loader, dotenv loader,
-      environment loader) plus the merge interface consumed by tests and tooling.
-
-System Role:
-    Adapters must implement these protocols; tests (`tests/adapters/test_port_contracts.py`)
-    use ``isinstance`` checks to enforce compliance at runtime.
+      environment loader), each checked by the contract tests, plus ``Merger``, the shape of a
+      merge step, which no class implements and no test checks.
 """
 
 from __future__ import annotations

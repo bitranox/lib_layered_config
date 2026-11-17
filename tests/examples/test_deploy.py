@@ -1374,6 +1374,9 @@ def test_deploy_copies_a_large_dot_d_file_without_holding_it_in_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, set_permissions: bool
 ) -> None:
     mib = 1024 * 1024
+    # One small deploy first, so imports and caches are warm before the 4 MiB one is measured.
+    create_layered_sandbox(tmp_path / "home" / "warm", vendor=VENDOR, app=APP, slug=SLUG).apply_env(monkeypatch)
+    _peak_python_memory_of_deploying_a_dot_d_file(tmp_path, 64 * 1024, set_permissions=set_permissions)
     peaks: list[int] = []
     for index, size in enumerate((4 * mib, 16 * mib)):
         # A fresh sandbox per size, so each first deploy creates rather than compares. The sandbox

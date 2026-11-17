@@ -9,10 +9,6 @@ import pytest
 from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from lib_layered_config.domain.identifiers import Layer
 from lib_layered_config.domain.permissions import (
-    DEFAULT_APP_DIR_MODE,
-    DEFAULT_APP_FILE_MODE,
-    DEFAULT_USER_DIR_MODE,
-    DEFAULT_USER_FILE_MODE,
     LAYER_PERMISSIONS,
     DefaultLayerModes,
     apply_mode,
@@ -31,18 +27,6 @@ if TYPE_CHECKING:
 @os_agnostic
 class TestPermissionConstants:
     """Test permission constant values."""
-
-    def test_app_dir_mode_is_755(self) -> None:
-        assert DEFAULT_APP_DIR_MODE == 0o755
-
-    def test_app_file_mode_is_644(self) -> None:
-        assert DEFAULT_APP_FILE_MODE == 0o644
-
-    def test_user_dir_mode_is_700(self) -> None:
-        assert DEFAULT_USER_DIR_MODE == 0o700
-
-    def test_user_file_mode_is_600(self) -> None:
-        assert DEFAULT_USER_FILE_MODE == 0o600
 
     def test_layer_permissions_has_app_layer(self) -> None:
         assert LAYER_PERMISSIONS[Layer.APP] == DefaultLayerModes(directory=0o755, file=0o644)

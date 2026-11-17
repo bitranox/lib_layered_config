@@ -125,8 +125,22 @@ def generate_examples(
     """Write canonical example files for each configuration layer.
 
     Creates directories and files under *destination* mirroring the recommended
-    filesystem layout. Returns paths of files written. Use *force=True* to
-    overwrite existing files; *platform* overrides OS detection ("posix"/"windows").
+    filesystem layout.
+
+    Args:
+        destination: Directory that receives the example tree; created when it is missing.
+        slug: Configuration slug used in paths and file contents.
+        vendor: Vendor namespace used in Windows paths and file contents.
+        app: Application name used in Windows paths and file contents.
+        force: Overwrite existing example files instead of keeping them.
+        platform: The layout to write instead of the running OS's: ``posix`` (or ``linux``,
+            ``darwin``, ``mac``, ``macos``) writes ``xdg/`` and ``home/``, ``windows`` (or ``win``,
+            ``win32``, ``wine``) writes ``ProgramData/`` and ``AppData/Roaming/``; both write
+            ``.env.example``.
+
+    Returns:
+        The files written, in the order they were written. An existing example file kept because
+        *force* is not set is left out; :func:`generate_examples_report` lists those too.
 
     Raises:
         ValidationError: Before anything is written, when *slug*, *vendor* or *app* is not a
@@ -142,6 +156,14 @@ def generate_examples(
 
     Any error raised after the first write carries the examples already written, read back with
     :func:`generated_before_failure`.
+
+    Examples:
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     written = generate_examples(tmp, slug="demo", vendor="Acme", app="Demo", platform="posix")
+        ...     again = generate_examples(tmp, slug="demo", vendor="Acme", app="Demo", platform="posix")
+        >>> sorted(path.name for path in written), again
+        (['.env.example', '10-override.toml', 'config.toml', 'config.toml', 'your-hostname.toml'], [])
     """
     return generate_examples_report(
         destination, slug=slug, vendor=vendor, app=app, force=force, platform=platform

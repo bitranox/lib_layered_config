@@ -843,6 +843,11 @@ def deploy_config(
             cannot be created because its nearest existing ancestor is not a directory (a regular
             file where the layer or ``.d`` directory belongs) or because no ancestor exists (a
             Windows layer root on a drive that is not mapped); nothing has been written.
+        HomeDirectoryUnknownError: A ``user`` target is requested and the home directory cannot be
+            determined (``HOME`` unset and the uid has no passwd entry; on Windows ``USERPROFILE``,
+            ``HOMEDRIVE`` and ``HOMEPATH`` all unset), unless the variable naming the user-layer root
+            answers instead (``XDG_CONFIG_HOME``, ``LIB_LAYERED_CONFIG_MAC_HOME_ROOT``,
+            ``LIB_LAYERED_CONFIG_APPDATA``); nothing has been written.
     """
     if force and batch:
         raise ValidationError("force=True overwrites an existing file and batch=True keeps it; pass one")
@@ -976,6 +981,16 @@ def deploy_config_paths(
     source's format or content: a source :func:`deploy_config` refuses (a ``config.json``, a file
     that does not parse) still gets its paths.
 
+    Args:
+        source: The configuration file a deploy would copy; its companion ``.d`` directory, when
+            there is one, adds the paths of its copies.
+        vendor: Vendor namespace.
+        app: Application name.
+        targets: Layer targets (app, host, user), a sequence such as ``["user"]``; an empty
+            sequence gives an empty set.
+        slug / profile / platform / max_profile_length: As for :func:`deploy_config`; *platform*
+            chooses whose layer paths are returned.
+
     Returns:
         The resolved paths.
 
@@ -987,6 +1002,11 @@ def deploy_config_paths(
             target is not one of app, host and user; or the layer root a requested target needs is not
             absolute (``LayerRootNotAbsoluteError``: an empty or relative ``HOME`` for ``user``, the app
             root for ``app`` and ``host``). A root no requested target needs is not checked.
+        HomeDirectoryUnknownError: A ``user`` target is requested and the home directory cannot be
+            determined (``HOME`` unset and the uid has no passwd entry; on Windows ``USERPROFILE``,
+            ``HOMEDRIVE`` and ``HOMEPATH`` all unset), unless the variable naming the user-layer root
+            answers instead (``XDG_CONFIG_HOME``, ``LIB_LAYERED_CONFIG_MAC_HOME_ROOT``,
+            ``LIB_LAYERED_CONFIG_APPDATA``).
 
     Examples:
         >>> from tempfile import TemporaryDirectory
@@ -1048,7 +1068,8 @@ def read_deploy_config(
         LayerLoadError: A file not left out cannot be read, decoded or parsed.
         ValidationError: An invalid vendor, app, slug, profile or platform. A layer whose root is not
             absolute (an empty or relative ``HOME``, say) is left out of the read, not refused, as the
-            deploy's own read does.
+            deploy's own read does; so is the user layer when the home directory cannot be determined
+            (no ``HomeDirectoryUnknownError`` is raised here).
 
     Examples:
         >>> from tempfile import TemporaryDirectory

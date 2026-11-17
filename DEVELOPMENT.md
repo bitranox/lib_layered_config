@@ -71,9 +71,8 @@ The workflows under `.github/workflows/` come from the shared CI template and ar
 
 ### Platform specifics
 
-- **Windows** - ensure `pipx` is installed and on your `PATH` so the wheel verification step succeeds; the CI workflow mirrors this by installing pipx before running the job.
-- **Linux** - journald prerequisites are installed automatically in CI; local environments only need this if you plan to exercise the journald adapters manually.
-- **macOS** - no additional tooling beyond the standard dev dependencies is required.
+- No platform needs setup of its own: `make test` runs the same on Linux, macOS and Windows, and
+  `make ensure` installs an external tool bmk reports missing for the current OS.
 
 ## Architecture Rules
 
@@ -101,6 +100,11 @@ Keep runtime code side-effect free at import time. Only adapters and the composi
 ## Examples & Docs
 
 - `lib_layered_config.generate.generate_examples` scaffolds commented example files for each layer (`app/`, `hosts/`, `user/`, `.env.example`).
-- README snippets double as doctests; keep them short and deterministic.
+- The suite executes these docs, so keep their examples runnable and deterministic: the docstring
+  examples under `src/` (`--doctest-modules`), `docs/python-api.md`
+  (`tests/e2e/test_python_api_docs.py`), the generate-examples sections of `docs/cli-reference.md` and
+  `docs/python-api.md` (`tests/e2e/test_generate_examples_docs.py`), `docs/config-file-structure.md`
+  (`tests/e2e/test_config_file_structure_docs.py`) and `notebooks/Quickstart.ipynb`
+  (`tests/e2e/test_notebooks.py`). The README is not executed.
 
 Happy building!
