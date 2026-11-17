@@ -12,8 +12,8 @@ Contents:
     - ``generate_examples_report`` / ``ExamplesReport``: the same run, also naming the files it
       kept, for the CLI's ``--json`` envelope.
     - ``_build_specs``: yields platform-aware specifications.
-    - ``_refuse_unwritable_examples``: refuses an example path it would write through, before
-      anything is written.
+    - ``_refuse_unwritable_examples``: refuses an example path it would write through, or whose
+      directory cannot be made, before anything is written.
     - ``_write_spec`` / ``_should_write`` / ``_ensure_parent``: tiny filesystem
       helpers that narrate how files are written.
 
@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from ._platform import normalise_examples_platform
 from .adapters._file_write import write_data
-from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise
+from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, lexists_or_raise
 from .adapters.env.default import default_env_prefix
 from .domain.errors import GenerateDestinationError
 from .domain.identifiers import ExamplePlatform, validate_identifier, validate_vendor_app
@@ -57,6 +57,8 @@ DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 # Deploy's refusals, worded for generate: a reader of either error sees the same two rules.
 _LINK_REFUSAL: Final = "is a symbolic link; generate neither writes through nor replaces one"
 _NOT_REGULAR_REFUSAL: Final = "is not a regular file; generate writes only regular files"
+_BLOCKED_DIRECTORY_REFUSAL: Final = "cannot be created: {ancestor} is not a directory"
+_NO_ANCESTOR_REFUSAL: Final = "cannot be created: no directory above it exists"
 
 # The attribute a failed run attaches its written paths under, read by generated_before_failure.
 _WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_generated_before_failure"
@@ -135,9 +137,10 @@ def generate_examples(
             an example path that is a symbolic link or not a regular file (a directory, FIFO,
             device or socket); without it, an example path that is a link resolving to nothing,
             which a create would write through. Without *force* anything else already at an
-            example path is kept.
-        NotADirectoryError: When *destination*, or a directory an example path needs, is a
-            regular file.
+            example path is kept. In both modes, a missing example path that cannot be created:
+            the nearest existing path above it is not a directory (a regular file where
+            *destination* or a directory an example needs belongs), or nothing above it exists (a
+            Windows drive that is not mapped).
 
     Any error raised after the first write carries the examples already written, read back with
     :func:`generated_before_failure`.
@@ -196,11 +199,10 @@ def generate_examples_report(
 def generated_before_failure(error: BaseException) -> list[Path]:
     """Return the example files a :func:`generate_examples` run that raised *error* had already written.
 
-    The examples are written one after another in a fixed order, so a failure part-way (a regular
-    file where a directory must go, a permission wall, a full disk, an interrupt) leaves the earlier
-    ones written. ``generate_examples`` and ``generate_examples_report`` raise the original exception
-    unchanged and attach those paths to it, as ``deploy_config`` does (user decision 2026-11-16,
-    R2-F2, for deploy).
+    The examples are written one after another in a fixed order, so a failure part-way (a permission
+    wall, a full disk, an interrupt) leaves the earlier ones written. ``generate_examples`` and
+    ``generate_examples_report`` raise the original exception unchanged and attach those paths to
+    it, as ``deploy_config`` does (user decision 2026-11-16, R2-F2, for deploy).
 
     Args:
         error: An exception, normally one ``generate_examples`` raised.
@@ -323,7 +325,8 @@ def _refuse_unwritable_examples(paths: list[Path], *, force: bool) -> None:
     Writing through a link changes the file it points at, a FIFO would block the write, and a
     directory, device or socket cannot be an example (user decision 2026-11-16, R3-F3, as deploy).
     Without *force* an existing path is kept untouched, so only a link that resolves to nothing,
-    which a create would follow, is refused; a link looping on itself is one of those.
+    which a create would follow, is refused; a link looping on itself is one of those. A missing
+    path whose directory cannot be made is refused in both modes, as deploy refuses it.
 
     Raises:
         GenerateDestinationError: One line per refused path.
@@ -340,9 +343,29 @@ def _example_problem(path: Path, *, force: bool) -> str | None:
         if force or kind_or_raise(path) is PathKind.MISSING:
             return f"{path} {_LINK_REFUSAL}"
         return None
-    if not force or kind_or_raise(path) in (PathKind.MISSING, PathKind.FILE):
+    kind = kind_or_raise(path)
+    if kind is PathKind.MISSING:
+        return _blocked_directory_problem(path)
+    if not force or kind is PathKind.FILE:
         return None
     return f"{path} {_NOT_REGULAR_REFUSAL}"
+
+
+def _blocked_directory_problem(path: Path) -> str | None:
+    """Why the missing *path* cannot be created, or ``None`` when its nearest existing ancestor is a directory.
+
+    The same walk as deploy's (``deploy`` and ``generate`` are sibling layers, so neither imports the
+    other): a path below a regular file stats as missing (ENOTDIR), so without it the run would write
+    the examples it reaches first and then fail at the ``mkdir`` for this one. The first ancestor
+    that exists decides: a directory (a link to one included) can take the missing levels, anything
+    else cannot; when none exists (a Windows drive that is not mapped) nothing can.
+    """
+    for ancestor in path.parents:
+        if kind_or_raise(ancestor) is PathKind.DIRECTORY:
+            return None
+        if lexists_or_raise(ancestor):
+            return f"{path} {_BLOCKED_DIRECTORY_REFUSAL.format(ancestor=ancestor)}"
+    return f"{path} {_NO_ANCESTOR_REFUSAL}"
 
 
 def _should_write(path: Path, *, force: bool) -> bool:

@@ -264,7 +264,8 @@ class Config(MappingABC[str, Any]):
         A key below a masked section is masked too, so a single key never shows what the
         whole view hides; declared not-sensitive paths stay visible as they do there. Only the
         key's path and value are redacted, so one call costs that key, not a copy of the whole
-        configuration, and a value nested too deep elsewhere does not refuse it.
+        configuration, and a value nested too deep elsewhere does not refuse it. The result shares
+        no mutable container with the configuration.
 
         Args:
             key: Dotted path identifying nested entries.
@@ -281,7 +282,11 @@ class Config(MappingABC[str, Any]):
         value = _follow_path(self._data, key, _MISSING)
         if value is _MISSING:
             return default
-        return redact_value_at(tuple(key.split(".")), _clone_value(value), not_sensitive=self._not_sensitive)
+        # Copied after redacting, not before: the redactor rebuilds mappings, lists and tuples but
+        # hands a set (and anything else it does not walk) back as given, so the copy is still
+        # needed, while a path masked whole now skips copying a value it never shows.
+        redacted = redact_value_at(tuple(key.split(".")), value, not_sensitive=self._not_sensitive)
+        return _clone_value(redacted)
 
     def origin(self, key: str) -> SourceInfo | None:
         """Return provenance metadata for *key* when available.

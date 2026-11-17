@@ -15,7 +15,7 @@ import pytest
 from lib_layered_config.deploy import deploy_config
 from lib_layered_config.domain.errors import DeployDestinationError
 from tests.support import LayeredSandbox, create_layered_sandbox
-from tests.support.os_markers import os_agnostic
+from tests.support.os_markers import os_agnostic, unmapped_drive_root, windows_only
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -126,3 +126,20 @@ def test_a_dangling_link_where_the_layer_directory_belongs_is_a_destination_refu
 
     assert message.splitlines()[0] == f"{user_root / 'config.toml'} cannot be created: {user_root} is not a directory"
     assert not (tmp_path / "nowhere").exists()
+
+
+@windows_only
+def test_a_layer_root_on_a_drive_that_is_not_there_is_refused_before_the_first_target(
+    sandbox: LayeredSandbox, source: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_roaming = f"{unmapped_drive_root()}nowhere\\Roaming"
+    monkeypatch.setenv("LIB_LAYERED_CONFIG_APPDATA", missing_roaming)
+    app_root = sandbox.roots["app"]
+
+    message = _refusal(source, targets=["app", "user"])
+
+    lines = message.splitlines()
+    assert len(lines) == 2, lines  # the user file and its one .d copy
+    assert all(line.startswith(missing_roaming) for line in lines)
+    assert all(line.endswith(" cannot be created: no directory above it exists") for line in lines)
+    assert _tree(app_root) == []

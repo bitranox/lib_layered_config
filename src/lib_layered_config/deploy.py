@@ -103,6 +103,8 @@ _LINK_REFUSAL = "is a symbolic link; deploy neither writes through nor replaces 
 _NOT_REGULAR_REFUSAL = "is not a regular file; deploy writes only regular files"
 #: Why a destination below a file, FIFO or dangling link is refused: its directory cannot be made.
 _BLOCKED_DIRECTORY_REFUSAL = "cannot be created: {ancestor} is not a directory"
+#: Why a destination with nothing above it is refused: a Windows root on a drive or share that is not there.
+_NO_ANCESTOR_REFUSAL = "cannot be created: no directory above it exists"
 #: How much of a file deploy holds at a time while copying or comparing it.
 _CHUNK_BYTES = 64 * 1024
 
@@ -483,7 +485,8 @@ def _refuse_unusable_destinations(destinations: Sequence[_Destination], *, dot_d
     followed it), and replacing it breaks a link someone made on purpose; deploy does neither. A
     FIFO would block the comparison forever, and a device, socket or directory cannot be a config.
     A missing destination whose nearest existing ancestor is not a directory (a regular file where
-    the layer or ``.d`` directory belongs) could never be written.
+    the layer or ``.d`` directory belongs), or that has no existing ancestor at all (a Windows layer
+    root on a drive that is not mapped), could never be written.
 
     Raises:
         DeployDestinationError: One line per refused destination, ``.d`` copies included.
@@ -513,14 +516,16 @@ def _blocked_directory_problem(path: Path) -> str | None:
     without this walk the deploy would write the destinations it reaches first and then fail at the
     ``mkdir`` for this one. The walk stops at the first ancestor that exists: a directory (a link to
     one included) can take the missing levels; anything else there - a file, a FIFO, a dangling or
-    looping link - cannot, and ``mkdir`` would raise ``FileExistsError``.
+    looping link - cannot, and ``mkdir`` would raise ``FileExistsError``. When no ancestor exists,
+    not even the root, ``mkdir`` would raise ``FileNotFoundError``: on POSIX ``/`` always exists, on
+    Windows a drive or share that is not there leaves nothing to create the path in.
     """
     for ancestor in path.parents:
         if kind_or_raise(ancestor) is PathKind.DIRECTORY:
             return None
         if lexists_or_raise(ancestor):
             return f"{path} {_BLOCKED_DIRECTORY_REFUSAL.format(ancestor=ancestor)}"
-    return None
+    return f"{path} {_NO_ANCESTOR_REFUSAL}"
 
 
 def _describe_load_failure(exc: Exception) -> str:
@@ -835,9 +840,11 @@ def deploy_config(
         PermissionError: The source, a file in its ``.d`` directory, or a destination cannot be
             read or sits behind a permission wall (an ``OSError`` in general); the same on every
             Python, and for the source in every mode before anything is written. An existing
-            destination that cannot be read raises this only with ``force=True``; otherwise it is
-            reported as a conflict (``CONFLICT``, or kept with a ``.ucf`` beside it under *batch* or
-            a resolver that keeps it), since its content cannot be compared.
+            destination that cannot be read raises this whenever it is to be overwritten: with
+            ``force=True``, or when a conflict_resolver answers ``OVERWRITTEN`` (the CLI's prompt is
+            one), files deployed before it staying written. Otherwise it is a conflict, since its
+            content cannot be compared: ``CONFLICT`` by default, or ``KEPT`` with a ``.ucf`` beside
+            it under *batch* or a resolver answering ``KEPT``.
         ValidationError: An invalid vendor, app, slug or profile, an unknown target, *targets*
             given as a single str, or force and batch both set (one overwrites an existing file,
             the other keeps it), refused before anything is written; or a conflict_resolver
@@ -851,7 +858,8 @@ def deploy_config(
         DeployDestinationError: A destination or one of its ``.d`` copies is a symbolic link
             (dangling or not), is not a regular file (a directory, FIFO, device or socket), or
             cannot be created because its nearest existing ancestor is not a directory (a regular
-            file where the layer or ``.d`` directory belongs); nothing has been written.
+            file where the layer or ``.d`` directory belongs) or because no ancestor exists (a
+            Windows layer root on a drive that is not mapped); nothing has been written.
     """
     if force and batch:
         raise ValidationError("force=True overwrites an existing file and batch=True keeps it; pass one")

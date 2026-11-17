@@ -148,3 +148,39 @@ def test_a_missing_key_returns_the_default() -> None:
 
     assert config.get_redacted("db.port", 7) == 7
     assert config.get_redacted("db.host.deeper") is None
+
+
+def _mutate_every_container(value: Any) -> None:
+    """Change every mutable container reachable from *value*: add to each dict, list and set."""
+    if isinstance(value, dict):
+        for item in list(cast("dict[str, Any]", value).values()):
+            _mutate_every_container(item)
+        cast("dict[str, Any]", value)["added"] = "by the caller"
+    elif isinstance(value, list):
+        for item in list(cast("list[Any]", value)):
+            _mutate_every_container(item)
+        cast("list[Any]", value).append("by the caller")
+    elif isinstance(value, set):
+        cast("set[Any]", value).add("by the caller")
+    elif isinstance(value, tuple):
+        for item in cast("tuple[Any, ...]", value):
+            _mutate_every_container(item)
+
+
+@os_agnostic
+@pytest.mark.parametrize("key", ["service", "service.hosts", "service.tags", "service.pairs"])
+def test_get_redacted_shares_no_container_with_the_configuration(key: str) -> None:
+    data = {
+        "service": {
+            "hosts": [{"name": "a", "ports": [1, 2]}],
+            "tags": {"blue", "green"},
+            "pairs": ({"left": [1]}, {"right"}),
+            "token": "t",
+        }
+    }
+    config = Config(data, {})
+    before = config.as_dict()
+
+    _mutate_every_container(config.get_redacted(key))
+
+    assert config.as_dict() == before

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeVar
 
 import pytest
@@ -23,6 +24,7 @@ __all__ = [
     "mac_only",
     "os_agnostic",
     "posix_only",
+    "unmapped_drive_root",
     "windows_only",
 ]
 
@@ -52,3 +54,16 @@ def windows_only(test: F) -> F:
 
     decorated = pytest.mark.skipif(not IS_WINDOWS, reason="Windows-only behaviour")(test)
     return pytest.mark.windows_only(decorated)
+
+
+def unmapped_drive_root() -> str:
+    """Return the root of a Windows drive letter that is not mapped here, skipping the test when none is free.
+
+    A layer root or destination on such a drive has no existing ancestor at all, the one case where
+    a missing path cannot be created although nothing is in its way.
+    """
+    for letter in "QRSTUVWXYZJKLMNOP":
+        root = f"{letter}:\\"
+        if not Path(root).exists():
+            return root
+    pytest.skip("every drive letter tried is mapped on this machine")

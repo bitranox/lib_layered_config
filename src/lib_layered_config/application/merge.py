@@ -402,8 +402,21 @@ def _list_index(key: str) -> int:
         >>> _list_index('1' + '0' * 5000) == _INDEX_BEYOND_ANY_LIST
         True
     """
-    digits = key.lstrip("0") or "0"
+    digits = _index_digits(key)
     return int(digits) if len(digits) <= _MAX_INDEX_DIGITS else _INDEX_BEYOND_ANY_LIST
+
+
+def _index_digits(key: str) -> str:
+    """Return the ASCII digit *key* without leading zeros: the spelling a slot's paths use.
+
+    ``DS__00__K`` and ``DS__0__K`` address the same slot, so both record provenance under
+    ``ds.0.k``; keeping ``00`` left an entry a later ``0`` override never replaced.
+
+    Examples:
+        >>> _index_digits('007'), _index_digits('000'), _index_digits('10')
+        ('7', '0', '10')
+    """
+    return key.lstrip("0") or "0"
 
 
 def _merge_mapping_into_list(
@@ -429,9 +442,10 @@ def _merge_mapping_into_list(
     Side Effects:
         Mutates *existing*, *provenance*, and *segments* while overlaying elements.
     """
-    for index_key in sorted(incoming, key=_list_index):
-        override = incoming[index_key]
-        index = _list_index(index_key)
+    for given_key in sorted(incoming, key=_list_index):
+        override = incoming[given_key]
+        index = _list_index(given_key)
+        index_key = _index_digits(given_key)
         dotted = _join_segments(segments, index_key)
         if index < len(existing):
             existing[index] = _merge_list_element(
@@ -475,8 +489,9 @@ def _merge_list_element(
     A nested list element with a numeric-key override recurses by index too, so
     ``matrix.0.0`` overrides one cell without flattening the inner list. Otherwise the
     slot is rebuilt from the override, and the entries of what a replaced table or list
-    held go with it. Provenance follows the table rule: an element table has an entry
-    of its own only while it is empty.
+    held go with it; a table replaced by a value or a list, or a value or a list replaced by
+    a table, logs ``type_conflict`` as the same change on a table key does. Provenance
+    follows the table rule: an element table has an entry of its own only while it is empty.
 
     Args:
         element: Current value occupying the slot.
@@ -490,7 +505,8 @@ def _merge_list_element(
     Returns:
         The merged element (the same mutated container, or a freshly built value).
     """
-    holds_keys = _kind_of(element) is not ValueKind.SCALAR  # read before the checks below narrow *element*
+    old_kind = _kind_of(element)  # read before the checks below narrow *element*
+    held_value = element is not None
     if _looks_like_mapping(element) and _looks_like_mapping(override):
         table = cast("MutableMapping[str, object]", element)
         segments.append(index_key)
@@ -504,11 +520,27 @@ def _merge_list_element(
         _merge_mapping_into_list(nested, provenance, override, snapshot, segments)
         segments.pop()
         return nested
-    if holds_keys:
+    new_kind = _kind_of(override)
+    if held_value and _swaps_table_kind(old_kind, new_kind):
+        _warn_type_conflict(dotted, snapshot, old_kind, new_kind)
+    if old_kind is not ValueKind.SCALAR:
         _forget_below(provenance, dotted)  # the keys the replaced container held are gone with it
     return _build_new_element(
         override, provenance=provenance, dotted=dotted, snapshot=snapshot, segments=segments, index_key=index_key
     )
+
+
+def _swaps_table_kind(old_kind: ValueKind, new_kind: ValueKind) -> bool:
+    """Whether a table is replaced by a value or a list, or a value or a list by a table.
+
+    The key-level ``type_conflict`` rule (:func:`_store_scalar`, :func:`_ensure_branch`), applied to
+    a list slot too; a slot holding ``None`` warns as little as an absent key does.
+
+    Examples:
+        >>> _swaps_table_kind(ValueKind.MAPPING, ValueKind.LIST), _swaps_table_kind(ValueKind.LIST, ValueKind.SCALAR)
+        (True, False)
+    """
+    return (old_kind is ValueKind.MAPPING) != (new_kind is ValueKind.MAPPING)
 
 
 def _build_new_element(
@@ -847,8 +879,9 @@ def _looks_like_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
 def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: ValueKind, new_type: ValueKind) -> None:
     """Emit a warning when a type conflict occurs during merge.
 
-    This indicates a potential configuration schema mismatch where one layer
-    defines a key as a scalar and another defines it as a mapping.
+    This indicates a potential configuration schema mismatch: one layer holds a mapping at a key or
+    list slot and another a scalar or a list there. *old_type* and *new_type* name the kinds,
+    ``mapping``, ``scalar`` or ``list``.
     """
     log_warn(
         "type_conflict",
