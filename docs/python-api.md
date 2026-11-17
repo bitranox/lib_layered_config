@@ -783,8 +783,9 @@ print(f"Final configuration: {data}")
 
 `is_sensitive(name)` decides by key name alone, so a size such as `max_token_bytes` is masked like a token.
 The names it masks include `password`, `passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`,
-`apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id` and any `_key` suffix, as
-whole words. Besides key names, every redacted view masks the password of a value that is a URL, under any key:
+`apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id`, `authorization` and any
+`_key` suffix, as whole words. Besides key names, every redacted view masks the password of a value that is a URL,
+under any key:
 `postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`. The authority is read as
 `urllib.parse` reads it (up to the first `/`, `?` or `#`, the password up to its last `@`), so
 `smtp://alice@example.com:hunter2@mail.example.com` is masked and an `@` in the query leaves the host shown.

@@ -57,7 +57,7 @@ _PATH_DELIMITER: Final[str] = "."
 _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r"(?:^|_)(?:"
     r"password|passwd|passphrase|pwd|pass|secret|token|credential|apikey|privatekey|privkey|bearer|cookie|jwt"
-    r"|signature|session_id|sessionid"
+    r"|signature|session_id|sessionid|authorization"
     r")s?(?:_|$)"
     # `_key` requires a leading underscore so compound names (api_key, access_key,
     # aws_access_key_id, signing_key) match while a field literally named "key" - a
@@ -84,8 +84,8 @@ def is_sensitive(key: str) -> bool:
 
     Patterns are matched case-insensitively at word boundaries. Supported stems include
     ``password``, ``passwd``, ``passphrase``, ``pwd``, ``pass``, ``secret``, ``token``, ``credential``,
-    ``apikey``, ``privatekey``, ``privkey``, ``bearer``, ``cookie``, ``jwt``, ``signature``, and
-    ``session_id``, with optional plural
+    ``apikey``, ``privatekey``, ``privkey``, ``bearer``, ``cookie``, ``jwt``, ``signature``,
+    ``session_id`` and ``authorization`` (an HTTP header value), with optional plural
     suffix and other words around them. A ``_key`` suffix also matches (``api_key`` /
     ``access_key`` / ``signing_key``), but a field literally named ``key`` does not, so benign
     names like ``keyboard``, ``monkey``, and a plain ``key`` map field are not treated as

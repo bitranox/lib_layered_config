@@ -38,6 +38,12 @@ _MASKED_PASSWORD = f"postgres://alice:{REDACTED_PLACEHOLDER}@db.example:5432/app
         "bearer",
         "auth_bearer",
         "bearer_tokens",
+        # An HTTP Authorization header value ("Bearer ...", "Basic <base64 user:password>").
+        "authorization",
+        "Authorization",
+        "http_authorization",
+        "proxyAuthorization",
+        "authorizations",
     ],
 )
 def test_the_short_secret_names_are_sensitive(key: str) -> None:
@@ -45,7 +51,9 @@ def test_the_short_secret_names_are_sensitive(key: str) -> None:
 
 
 @os_agnostic
-@pytest.mark.parametrize("key", ["passenger", "bypass", "passport", "compass", "passthrough", "pwdx"])
+@pytest.mark.parametrize(
+    "key", ["passenger", "bypass", "passport", "compass", "passthrough", "pwdx", "authority", "author", "auth"]
+)
 def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
     assert is_sensitive(key) is False
 
