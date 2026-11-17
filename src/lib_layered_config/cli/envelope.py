@@ -86,13 +86,17 @@ def run_in_envelope(
     """
     try:
         data = produce()
+        left_out = list(skipped(data)) if skipped is not None else []
+        # Written inside the try: the envelope puts data one level below its top, so a config as deep
+        # as the command's plain JSON output can write is too deep here, and that refusal must print
+        # the failure envelope like any other.
+        text = json_codec.dumps({"ok": True, "command": command, "data": data, "skipped": left_out}, indent=True)
     except (click.Abort, CliSignalError):
         # An interrupt is not a command result: lib_cli_exit_tools maps it to the signal's exit code.
         raise
     except Exception as exc:
         raise SystemExit(_print_failure(command, exc, detail=detail)) from exc
-    left_out = list(skipped(data)) if skipped is not None else []
-    emit_json(json_codec.dumps({"ok": True, "command": command, "data": data, "skipped": left_out}, indent=True))
+    emit_json(text)
 
 
 class EnvelopeCommand(click.RichCommand):
