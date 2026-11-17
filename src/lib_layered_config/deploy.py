@@ -32,6 +32,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ._platform import normalise_resolver_platform
@@ -62,7 +63,7 @@ from .domain.deploy_permissions import (
     parse_deploy_permissions,
 )
 from .domain.errors import ConfigError, DeployDestinationError, ValidationError
-from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
+from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, DEPLOY_LAYERS, Layer
 from .domain.permissions import apply_mode, modes_apply
 from .domain.printable import escape_controls
 from .observability import log_warn
@@ -91,10 +92,12 @@ _WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_deployed_before_failure"
 _PARTIAL_RESULT: Final = "_lib_layered_config_failed_overwrite"
 
 #: The layers a deploy writes, by the target name a caller spells (case-insensitively).
-_TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in (Layer.APP, Layer.HOST, Layer.USER)}
+_TARGET_LAYERS: Final[Mapping[str, Layer]] = MappingProxyType({layer.value: layer for layer in DEPLOY_LAYERS})
 
 #: The deploy_config parameter each kind of explicit mode comes from, named in its refusal.
-_MODE_PARAMETERS: Mapping[ModeKind, str] = {ModeKind.DIRECTORY: "dir_mode", ModeKind.FILE: "file_mode"}
+_MODE_PARAMETERS: Final[Mapping[ModeKind, str]] = MappingProxyType(
+    {ModeKind.DIRECTORY: "dir_mode", ModeKind.FILE: "file_mode"}
+)
 
 #: How to deploy when the configured modes cannot be read. Both modes come first: turning permission
 #: setting off leaves every mode to the umask, which can make a user file that holds secrets readable
@@ -362,23 +365,43 @@ def _same_content(first: Path, second: Path) -> bool:
                 return True
 
 
-def _validate_target(target: str) -> Layer:
+def _validate_target(target: Layer | str) -> Layer:
     """Return the layer a caller-spelled *target* names (any case), refusing any other name."""
-    layer = _TARGET_LAYERS.get(target.lower())
+    name = _target_text(target)
+    layer = _TARGET_LAYERS.get(name.lower())
     if layer is None:
-        raise ValidationError(f"Unsupported deployment target: {target}")
+        raise ValidationError(f"Unsupported deployment target: {name}")
     return layer
 
 
-def _checked_mode(value: int | None, *, kind: ModeKind) -> _CheckedMode:
-    """Return the mode when *value* is safe (None when not given), or one refusal line when it is not."""
+def _target_text(target: Layer | str) -> str:
+    """Return *target* as the text a message names: a member by its value, a str as given.
+
+    An f-string over a ``(str, Enum)`` member reads ``Layer.ENV`` on Python 3.11 and later.
+    """
+    return target.value if isinstance(target, Layer) else target
+
+
+def _checked_mode(value: int | DeployMode | None, *, kind: ModeKind) -> _CheckedMode:
+    """Return the mode when *value* is safe (None when not given), or one refusal line when it is not.
+
+    A DeployMode was validated when it was built, so only its kind is checked: a file mode's rules
+    say nothing about a directory, and the other way round.
+    """
+    parameter = _MODE_PARAMETERS[kind]
+    if isinstance(value, DeployMode):
+        if value.kind is kind:
+            return _CheckedMode(value, None)
+        return _CheckedMode(
+            None, f"{parameter}: got a {value.kind.value} mode ({value}); {parameter} takes a {kind.value} mode"
+        )
     try:
         return _CheckedMode(None if value is None else DeployMode(value, kind), None)
     except DeployModeError as exc:
-        return _CheckedMode(None, f"{_MODE_PARAMETERS[kind]}: {exc}")
+        return _CheckedMode(None, f"{parameter}: {exc}")
 
 
-def _explicit_modes(*, dir_mode: int | None, file_mode: int | None) -> _ExplicitModes:
+def _explicit_modes(*, dir_mode: int | DeployMode | None, file_mode: int | DeployMode | None) -> _ExplicitModes:
     """Validate the caller-given modes, one refusal line per bad parameter, both checked first."""
     directory = _checked_mode(dir_mode, kind=ModeKind.DIRECTORY)
     file = _checked_mode(file_mode, kind=ModeKind.FILE)
@@ -411,8 +434,8 @@ def _override_source(_key: str) -> str:
 def _mode_request(
     *,
     set_permissions: bool | None,
-    dir_mode: int | None,
-    file_mode: int | None,
+    dir_mode: int | DeployMode | None,
+    file_mode: int | DeployMode | None,
     permissions: DeployPermissions | None,
     permission_overrides: Mapping[str, object] | None,
 ) -> _ModeRequest:
@@ -655,7 +678,7 @@ def deploy_config(
     *,
     vendor: str,
     app: str,
-    targets: Sequence[str],
+    targets: Sequence[Layer | str],
     slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
@@ -664,8 +687,8 @@ def deploy_config(
     conflict_resolver: ConflictResolver | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     set_permissions: bool | None = None,
-    dir_mode: int | None = None,
-    file_mode: int | None = None,
+    dir_mode: int | DeployMode | None = None,
+    file_mode: int | DeployMode | None = None,
     permissions: DeployPermissions | None = None,
     permission_overrides: Mapping[str, object] | None = None,
 ) -> list[DeployResult]:
@@ -681,7 +704,7 @@ def deploy_config(
             its contents are also deployed.
         vendor: Vendor namespace.
         app: Application name.
-        targets: Layer targets to deploy to (app, host, user), a sequence such as ``["user"]``. An
+        targets: Layer targets to deploy to (app, host, user), a sequence such as ``["user"]`` or ``[Layer.USER]``. An
             empty sequence deploys nothing and returns ``[]``, as iterating it does; a single str is
             refused, because it would be read character by character.
         slug: Slug identifying the configuration set.
@@ -702,8 +725,10 @@ def deploy_config(
             the configured ``[lib_layered_config.default_permissions].enabled`` (true when unset).
             An explicit dir_mode or file_mode means modes are set; giving one together with
             False is refused. Skipped on Windows (ACLs).
-        dir_mode: Directory mode for every target, overriding the configured and built-in ones.
-        file_mode: File mode for every target, overriding the configured and built-in ones.
+        dir_mode: Directory mode for every target, overriding the configured and built-in ones: an
+            int (``0o750``) or a ``DeployMode`` of kind ``ModeKind.DIRECTORY``.
+        file_mode: File mode for every target, overriding the configured and built-in ones: an
+            int (``0o640``) or a ``DeployMode`` of kind ``ModeKind.FILE``.
         permissions: A complete settings object to use instead of reading the configuration, for a
             caller that builds one on purpose. One built from an application's normal read_config
             includes ``.env``, every deployed destination and a user file's ``app_*``/``host_*``
@@ -748,8 +773,8 @@ def deploy_config(
             the other keeps it), refused before anything is written; or a conflict_resolver
             answer other than OVERWRITTEN or KEPT, raised when that destination is reached, so
             files deployed before it stay written.
-        DeployModeError: dir_mode or file_mode is out of range or unsafe, or a mode was given
-            with set_permissions=False.
+        DeployModeError: dir_mode or file_mode is out of range or unsafe, is a ``DeployMode`` of
+            the other kind (a file mode as dir_mode), or a mode was given with set_permissions=False.
         DeployPermissionsError: The configuration cannot be loaded, its permission section is
             invalid, a permission_overrides value is refused, or permission_overrides came with
             permissions; nothing has been written.
@@ -894,7 +919,7 @@ def deploy_config_paths(
     *,
     vendor: str,
     app: str,
-    targets: Sequence[str],
+    targets: Sequence[Layer | str],
     slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
@@ -914,7 +939,7 @@ def deploy_config_paths(
             there is one, adds the paths of its copies.
         vendor: Vendor namespace.
         app: Application name.
-        targets: Layer targets (app, host, user), a sequence such as ``["user"]``; an empty
+        targets: Layer targets (app, host, user), a sequence such as ``["user"]`` or ``[Layer.USER]``; an empty
             sequence gives an empty set.
         slug / profile / platform / max_profile_length: As for :func:`deploy_config`; *platform*
             chooses whose layer paths are returned.
@@ -1024,11 +1049,13 @@ def read_deploy_config(
 
 #: What a deploy says of a source that is not a regular file, by what is there. Every one is a
 #: ``FileNotFoundError``, so a caller's ``except`` and the CLI's exit code do not depend on the kind.
-_SOURCE_REFUSALS: Final[dict[PathKind, str]] = {
-    PathKind.MISSING: "Configuration source not found: {path}",
-    PathKind.DIRECTORY: "Configuration source is a directory, not a file: {path}",
-    PathKind.OTHER: "Configuration source is not a regular file: {path}",
-}
+_SOURCE_REFUSALS: Final[Mapping[PathKind, str]] = MappingProxyType(
+    {
+        PathKind.MISSING: "Configuration source not found: {path}",
+        PathKind.DIRECTORY: "Configuration source is a directory, not a file: {path}",
+        PathKind.OTHER: "Configuration source is not a regular file: {path}",
+    }
+)
 
 
 def _existing_source(source: str | Path) -> Path:
@@ -1272,7 +1299,7 @@ def _prepare_resolver(
     )
 
 
-def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> Iterator[_Destination]:
+def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[Layer | str]) -> Iterator[_Destination]:
     """Yield the destination of each valid target, with the layer it deploys to.
 
     Args:
@@ -1290,7 +1317,7 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
     # TypeError prefer= raises: a non-empty str was already refused with this type.
     if isinstance(targets, str):
         raise ValidationError(
-            f"targets takes a sequence of layer names, not a single str: {_str_targets_remedy(targets)}"
+            f"targets takes a sequence of layer names, not a single str: {_str_targets_remedy(_target_text(targets))}"
         )
     for raw_target in targets:
         layer = _validate_target(raw_target)

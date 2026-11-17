@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, TypedDict
 import pytest
 
 from lib_layered_config.deploy import deploy_config
-from lib_layered_config.domain.deploy_mode import DeployModeError
+from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only
 
@@ -137,3 +137,52 @@ def test_dot_d_files_get_the_same_modes(sandbox: LayeredSandbox, source: Path) -
     deployed = _destination(sandbox, "user").with_suffix(".d") / "10-extra.toml"
     assert (deployed.parent.stat().st_mode & 0o7777) == 0o750
     assert (deployed.stat().st_mode & 0o7777) == 0o640
+
+
+@posix_only
+def test_a_deploy_mode_object_is_applied_like_the_int_it_holds(sandbox: LayeredSandbox, source: Path) -> None:
+    deploy_config(
+        source,
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        targets=["user"],
+        dir_mode=DeployMode(0o750, ModeKind.DIRECTORY),
+        file_mode=DeployMode(0o640, ModeKind.FILE),
+    )
+    destination = _destination(sandbox, "user")
+    assert (destination.parent.stat().st_mode & 0o7777) == 0o750
+    assert (destination.stat().st_mode & 0o7777) == 0o640
+
+
+@os_agnostic
+def test_a_deploy_mode_object_beside_an_int_is_accepted(sandbox: LayeredSandbox, source: Path) -> None:
+    results = deploy_config(
+        source,
+        vendor=VENDOR,
+        app=APP,
+        slug=SLUG,
+        targets=["user"],
+        dir_mode=0o700,
+        file_mode=DeployMode.from_text("600", ModeKind.FILE),
+    )
+    assert [result.destination for result in results] == [_destination(sandbox, "user")]
+
+
+@os_agnostic
+def test_a_deploy_mode_of_the_wrong_kind_is_refused_naming_both_kinds(sandbox: LayeredSandbox, source: Path) -> None:
+    with pytest.raises(DeployModeError) as caught:
+        deploy_config(
+            source,
+            vendor=VENDOR,
+            app=APP,
+            slug=SLUG,
+            targets=["user"],
+            dir_mode=DeployMode(0o600, ModeKind.FILE),
+            file_mode=DeployMode(0o700, ModeKind.DIRECTORY),
+        )
+    assert str(caught.value).splitlines() == [
+        "dir_mode: got a file mode (0o600); dir_mode takes a directory mode",
+        "file_mode: got a directory mode (0o700); file_mode takes a file mode",
+    ]
+    assert not _destination(sandbox, "user").parent.exists()

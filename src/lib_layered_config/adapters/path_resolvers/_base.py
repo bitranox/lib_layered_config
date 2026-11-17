@@ -170,7 +170,7 @@ class PlatformContext:
     app: str
     slug: str
     cwd: Path | None
-    env: dict[str, str]
+    env: Mapping[str, str]
     host_file_name: str | None
     profile: str | None = None
 

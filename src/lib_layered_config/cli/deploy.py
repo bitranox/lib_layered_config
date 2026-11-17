@@ -62,14 +62,14 @@ def _prompt_for_action(destination: Path) -> DeployAction:
     return DeployAction.KEPT
 
 
-def _mode_option(kind: ModeKind) -> Callable[[click.Context, click.Parameter, str | None], int | None]:
+def _mode_option(kind: ModeKind) -> Callable[[click.Context, click.Parameter, str | None], DeployMode | None]:
     """Build a click callback that parses an octal mode for *kind* and refuses an unsafe one."""
 
-    def parse(_ctx: click.Context, param: click.Parameter, value: str | None) -> int | None:
+    def parse(_ctx: click.Context, param: click.Parameter, value: str | None) -> DeployMode | None:
         if value is None:
             return None
         try:
-            return DeployMode.from_text(value, kind).value
+            return DeployMode.from_text(value, kind)
         except DeployModeError as exc:
             raise click.BadParameter(str(exc), param=param) from exc
 
@@ -248,8 +248,8 @@ def deploy_command(
     force: bool,
     batch: bool,
     permissions: bool | None,
-    dir_mode: int | None,
-    file_mode: int | None,
+    dir_mode: DeployMode | None,
+    file_mode: DeployMode | None,
     json_envelope: bool,
 ) -> None:
     """Copy a source file into the requested layered directories.

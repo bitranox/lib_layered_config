@@ -348,7 +348,7 @@ def redact_value_at(
     return _Redactor(not_sensitive).node(value, path=tuple(path), depth=len(path))
 
 
-def redact_mapping(data: dict[str, Any], *, not_sensitive: Iterable[str] | None = None) -> dict[str, Any]:
+def redact_mapping(data: Mapping[str, Any], *, not_sensitive: Iterable[str] | None = None) -> dict[str, Any]:
     """Return a deep copy of *data* with sensitive values replaced.
 
     Creates a new dictionary without mutating the input.  Recurses into every
