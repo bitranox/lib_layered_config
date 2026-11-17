@@ -274,22 +274,29 @@ def _declared_path(entry: object) -> tuple[str, ...]:
     return segments
 
 
-def is_sensitive_at(path: Sequence[str], *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> bool:
+def is_sensitive_at(
+    path: Sequence[str], *, not_sensitive: NotSensitiveKeys | Iterable[str] | None = NotSensitiveKeys.NONE
+) -> bool:
     """Return whether the key at *path* is masked: its own name looks secret and nothing declared it.
 
     Args:
         path: The key's segments from the root, its own name last.
-        not_sensitive: Paths the application declared not sensitive.
+        not_sensitive: Paths the application declared not sensitive: dotted paths, as
+            :func:`redact_mapping` and ``read_config`` take them, or a built :class:`NotSensitiveKeys`
+            (build it once with :meth:`NotSensitiveKeys.of` when asking about many keys).
 
     Returns:
         Whether the value at *path* must be treated as a secret.
 
     Raises:
-        TypeError: *path* is a ``str``; a dotted name is not a path, split it first.
+        TypeError: *path* is a ``str``; a dotted name is not a path, split it first. Or
+            *not_sensitive* is a single ``str``, as on the other functions.
 
     Examples:
         >>> declared = NotSensitiveKeys.of(["performance.max_token_bytes"])
         >>> is_sensitive_at(("performance", "max_token_bytes"), not_sensitive=declared)
+        False
+        >>> is_sensitive_at(("performance", "max_token_bytes"), not_sensitive=["performance.max_token_bytes"])
         False
         >>> is_sensitive_at(("db", "password"), not_sensitive=declared)
         True
@@ -299,7 +306,8 @@ def is_sensitive_at(path: Sequence[str], *, not_sensitive: NotSensitiveKeys = No
         TypeError: path is a sequence of segments, not a dotted str: write tuple('db.password'.split('.'))
     """
     _refuse_str_path(path)
-    return bool(path) and is_sensitive(path[-1]) and not not_sensitive.covers(path)
+    keys = not_sensitive if isinstance(not_sensitive, NotSensitiveKeys) else NotSensitiveKeys.of(not_sensitive)
+    return bool(path) and is_sensitive(path[-1]) and not keys.covers(path)
 
 
 def redact_value_at(

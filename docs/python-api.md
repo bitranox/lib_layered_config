@@ -848,7 +848,9 @@ Return whether the key at `path` is masked: its own name looks secret and nothin
 **Parameters:**
 - `path` (Sequence[str], required): The key's segments from the root, its own name last. A dotted `str` raises
   `TypeError`; write `tuple("db.password".split("."))`.
-- `not_sensitive` (NotSensitiveKeys, optional): Declared paths. Default: `NotSensitiveKeys.NONE`.
+- `not_sensitive` (NotSensitiveKeys | Iterable[str] | None, optional): Declared paths, as dotted paths the way
+  `redact_mapping` and `read_config` take them (a single `str` raises `TypeError`), or a `NotSensitiveKeys`
+  built once with `NotSensitiveKeys.of` when asking about many keys. Default: `NotSensitiveKeys.NONE`.
 
 **Returns:** `bool`.
 

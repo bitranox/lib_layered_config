@@ -197,6 +197,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `is_sensitive_at(path, not_sensitive=["db.password"])` raised `AttributeError: 'list' object has no attribute
+  'covers'`: it took only a built `NotSensitiveKeys`, while `read_config`, `read_config_json`, `read_config_raw`
+  and `redact_mapping` take a list of dotted paths. It now takes both, and a single `str` is refused with the
+  same `TypeError` the other four give.
 - A deploy source, or a generate destination, holding a NUL character raised a bare `ValueError`
   (`stat: embedded null character in path`). A deploy (`deploy_config`, `deploy_config_paths`,
   `read_deploy_config`) now refuses it as `FileNotFoundError` with `Configuration source not found`, as it
