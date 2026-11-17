@@ -32,7 +32,7 @@ from ...domain.identifiers import (
 )
 from ...observability import log_debug, log_warn
 from .._path_probe import current_directory
-from ._base import HomeDirectoryUnknownError, PlatformContext, PlatformStrategy
+from ._base import HomeDirectoryUnknownError, PlatformContext, PlatformStrategy, deploy_destination
 from ._dotenv import DotenvPathFinder
 from ._linux import LinuxStrategy
 from ._macos import MacOSStrategy
@@ -133,6 +133,22 @@ class DefaultPathResolver:
         if self.host_file_name is None:
             raise ValidationError(self._host_refusal)
         return self.host_file_name
+
+    def destination_for(self, layer: Layer) -> Path:
+        """Return the file a deploy writes for *layer*, in the layout the reads of this resolver use.
+
+        Args:
+            layer: ``Layer.APP``, ``Layer.HOST`` or ``Layer.USER``.
+
+        Returns:
+            ``config.toml`` in the layer's directory, or ``hosts/<hostname>.toml``.
+
+        Raises:
+            ValidationError: *layer* is the host layer and the machine's hostname cannot name a file.
+            KeyError: *layer* is not one a deploy writes.
+            LayerRootNotAbsoluteError, HomeDirectoryUnknownError: The layer's root cannot be used.
+        """
+        return deploy_destination(self._strategy, layer, host_file_name=self.require_host_file_name)
 
     @property
     def strategy(self) -> PlatformStrategy:

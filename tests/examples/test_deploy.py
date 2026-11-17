@@ -9,7 +9,6 @@ import socket
 import sys
 import threading
 import tracemalloc
-from pathlib import Path
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
@@ -26,11 +25,11 @@ from tests.support.os_markers import os_agnostic, posix_only, windows_only
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 # Private helpers pinned one by one: deploy_config reaches them only in combination, so a
 # failure there would not say which helper broke.
 _validate_target = deploy_module._validate_target  # pyright: ignore[reportPrivateUsage] - pins target-name normalisation and its exact refusal text
-_strategy_for = deploy_module._strategy_for  # pyright: ignore[reportPrivateUsage] - pins which layout each platform string selects
 _destinations_for = deploy_module._destinations_for  # pyright: ignore[reportPrivateUsage] - pins the layer carried by each destination
 _prepare_resolver = deploy_module._prepare_resolver  # pyright: ignore[reportPrivateUsage] - pins the resolver built from the platform and profile overrides
 _copy_file = deploy_module._copy_file  # pyright: ignore[reportPrivateUsage] - pins the file write primitive on its own
@@ -332,40 +331,6 @@ def test_an_identifier_longer_than_a_file_name_is_refused_before_anything_is_wri
 
 
 @os_agnostic
-def test_strategy_for_selects_windows_strategy() -> None:
-    resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="win32")
-    strategy = _strategy_for(resolver)
-    assert strategy.__class__.__name__ == "WindowsDeployment"
-
-
-@os_agnostic
-def test_strategy_for_selects_mac_strategy() -> None:
-    resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="darwin")
-    strategy = _strategy_for(resolver)
-    assert strategy.__class__.__name__ == "MacDeployment"
-
-
-@os_agnostic
-def test_strategy_for_defaults_to_linux_strategy() -> None:
-    resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    strategy = _strategy_for(resolver)
-    assert strategy.__class__.__name__ == "LinuxDeployment"
-
-
-@os_agnostic
-def test_strategy_for_selects_windows_for_any_win_platform() -> None:
-    resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform="win64")
-    assert isinstance(_strategy_for(resolver), deploy_module.WindowsDeployment)
-
-
-@os_agnostic
-@pytest.mark.parametrize("platform", ["freebsd", "macos", "sunos5"])
-def test_strategy_for_deploys_the_linux_layout_for_a_platform_with_no_layout(platform: str) -> None:
-    resolver = DefaultPathResolver(vendor=VENDOR, app=APP, slug=SLUG, platform=platform)
-    assert type(_strategy_for(resolver)) is deploy_module.LinuxDeployment
-
-
-@os_agnostic
 def test_destinations_carry_the_layer_each_target_names(tmp_path: Path) -> None:
     sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
     resolver = DefaultPathResolver(
@@ -580,42 +545,6 @@ def test_prepare_resolver_with_profile_sets_profile(tmp_path: Path) -> None:
         platform="linux",
     )
     assert resolver.profile == "test"
-
-
-@os_agnostic
-def test_deploy_strategy_profile_segment_returns_path_when_set(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR,
-        app=APP,
-        slug=SLUG,
-        profile="test",
-        env=sandbox.env,
-        platform="linux",
-        hostname="host",
-    )
-    strategy = deploy_module.LinuxDeployment(resolver)
-
-    segment = strategy._profile_segment()  # pyright: ignore[reportPrivateUsage] - pins the profile segment every layout path is built from
-    assert segment == Path("profile/test")
-
-
-@os_agnostic
-def test_deploy_strategy_profile_segment_returns_empty_when_none(tmp_path: Path) -> None:
-    sandbox = create_layered_sandbox(tmp_path, vendor=VENDOR, app=APP, slug=SLUG, platform="linux")
-    resolver = DefaultPathResolver(
-        vendor=VENDOR,
-        app=APP,
-        slug=SLUG,
-        profile=None,
-        env=sandbox.env,
-        platform="linux",
-        hostname="host",
-    )
-    strategy = deploy_module.LinuxDeployment(resolver)
-
-    segment = strategy._profile_segment()  # pyright: ignore[reportPrivateUsage] - pins the profile segment every layout path is built from
-    assert segment == Path()
 
 
 @os_agnostic

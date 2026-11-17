@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING
 
 from ...domain.errors import LayerRootNotAbsoluteError
 from ...domain.printable import escape_controls
-from ._base import PlatformStrategy, collect_layer, config_path_present, home_directory
+from .._path_probe import PathKind, kind_or_raise
+from ._base import PlatformStrategy, collect_layer, home_directory
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -150,52 +151,48 @@ class WindowsStrategy(PlatformStrategy):
         """
         return localappdata_root(self.ctx.env)
 
-    def app_paths(self) -> Iterable[str]:
-        """Yield Windows application-default configuration paths.
+    def _vendor_app(self, root: Path) -> Path:
+        return root / self.ctx.vendor / self.ctx.app / self._profile_segment()
 
-        Mirror ``%ProgramData%/<Vendor>/<App>`` layouts with override support.
-
-        Returns:
-            Application-level Windows configuration paths.
-        """
-        profile_seg = self._profile_segment()
-        base = self._program_data_root() / self.ctx.vendor / self.ctx.app / profile_seg
-        yield from collect_layer(base)
-
-    def host_paths(self) -> Iterable[str]:
-        """Yield Windows host-specific configuration paths.
-
-        Enable host overrides within ``%ProgramData%/<Vendor>/<App>/hosts``.
+    def app_dirs(self) -> tuple[Path, ...]:
+        """Return ``%ProgramData%/<Vendor>/<App>`` (or its overridden root, a UNC path included).
 
         Returns:
-            Host-level Windows configuration paths.
+            The one directory, the profile segment included.
         """
-        host_file = self.ctx.host_file_name
-        if host_file is None:
-            return
-        profile_seg = self._profile_segment()
-        base = self._program_data_root() / self.ctx.vendor / self.ctx.app / profile_seg
-        candidate = base / "hosts" / host_file
-        if config_path_present(candidate):
-            yield str(candidate)
+        return (self._vendor_app(self._program_data_root()),)
+
+    def user_dir(self) -> Path:
+        """Return the user directory a deploy writes: ``%APPDATA%/<Vendor>/<App>``.
+
+        ``%LOCALAPPDATA%`` stands in when the APPDATA directory does not exist and no
+        ``LIB_LAYERED_CONFIG_APPDATA`` override names it; a named override is used as given.
+        :meth:`user_paths` reads the same two places, so the file a deploy writes is read back.
+
+        Returns:
+            The directory, the profile segment included.
+        """
+        appdata = self._appdata_root()
+        if "LIB_LAYERED_CONFIG_APPDATA" not in self.ctx.env and kind_or_raise(appdata) is PathKind.MISSING:
+            return self._vendor_app(self._localappdata_root())
+        return self._vendor_app(appdata)
 
     def user_paths(self) -> Iterable[str]:
         """Yield Windows user-specific configuration paths.
 
-        Honour ``%APPDATA%`` with a fallback to ``%LOCALAPPDATA%`` for portable setups.
+        The files under ``%APPDATA%/<Vendor>/<App>`` when it holds any, else those under
+        ``%LOCALAPPDATA%/<Vendor>/<App>``. This asks what is THERE, where :meth:`user_dir` asks
+        whether the APPDATA directory exists: a file deployed to either place is read back, and
+        a roaming file the user added later wins over a local one.
 
         Returns:
             User-level Windows configuration paths.
         """
-        profile_seg = self._profile_segment()
-        roaming_base = self._appdata_root() / self.ctx.vendor / self.ctx.app / profile_seg
-        roaming_paths = list(collect_layer(roaming_base))
+        roaming_paths = list(collect_layer(self._vendor_app(self._appdata_root())))
         if roaming_paths:
             yield from roaming_paths
             return
-
-        local_base = self._localappdata_root() / self.ctx.vendor / self.ctx.app / profile_seg
-        yield from collect_layer(local_base)
+        yield from collect_layer(self._vendor_app(self._localappdata_root()))
 
     def dotenv_path(self) -> Path | None:
         """Return Windows-specific ``.env`` fallback path.

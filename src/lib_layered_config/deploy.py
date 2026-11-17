@@ -9,8 +9,8 @@ Contents:
     - ``deploy_config``: public entry point that resolves destinations and deploys each.
     - ``deploy_config_paths`` / ``read_deploy_config``: the files a deploy writes and the
       configuration it reads for its modes, for a caller that must see what the deploy sees.
-    - ``DeploymentStrategy`` and its ``Linux`` / ``Mac`` / ``Windows`` subclasses: compute
-      per-platform destination paths.
+    - ``DeploymentStrategy`` and its ``Linux`` / ``Mac`` / ``Windows`` subclasses: one platform's
+      destination paths, asked of that platform's path resolver strategy, whose layout the reads use.
     - Conflict handling (``_handle_conflict`` / ``_execute_action``): backup-and-overwrite
       (``force``), keep-and-write-``.ucf`` (``batch``), or an interactive resolver, with
       identical-content smart-skip.
@@ -44,9 +44,10 @@ from .adapters._path_probe import (
     uncreatable_reason,
 )
 from .adapters.file_loaders._dot_d import in_dot_d_order
-from .adapters.path_resolvers._linux import etc_root, xdg_config_home
-from .adapters.path_resolvers._macos import mac_app_root, mac_home_root
-from .adapters.path_resolvers._windows import appdata_root, localappdata_root, program_data_root
+from .adapters.path_resolvers._base import PlatformStrategy, deploy_destination
+from .adapters.path_resolvers._linux import LinuxStrategy
+from .adapters.path_resolvers._macos import MacOSStrategy
+from .adapters.path_resolvers._windows import WindowsStrategy
 from .adapters.path_resolvers.default import DefaultPathResolver
 from .core import read_config_for_deploy, refuse_an_unusable_deploy_source
 from .domain.deploy_mode import DeployMode, DeployModeError, ModeKind
@@ -61,7 +62,7 @@ from .domain.deploy_permissions import (
     parse_deploy_permissions,
 )
 from .domain.errors import ConfigError, DeployDestinationError, ValidationError
-from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer, PlatformFamily, platform_family
+from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer
 from .domain.permissions import apply_mode, modes_apply
 from .domain.printable import escape_controls
 from .observability import log_warn
@@ -556,132 +557,45 @@ def _load_configured_permissions(
 
 
 class DeploymentStrategy:
-    """Base class for computing deployment destinations on a specific platform."""
+    """Where a deploy writes each layer in one platform's layout.
+
+    The layout lives in the path resolvers (``adapters/path_resolvers``), the same one the reads
+    use, so a file deployed here is a file ``read_config`` reads; these classes only pick which
+    platform's layout to ask. ``deploy_config`` itself asks the resolver for its own platform
+    (:meth:`DefaultPathResolver.destination_for`).
+    """
 
     def __init__(self, resolver: DefaultPathResolver) -> None:
         """Initialise strategy with a path resolver providing identifiers."""
         self.resolver = resolver
 
-    def _profile_segment(self) -> Path:
-        """Return the profile path segment or an empty path."""
-        if self.resolver.profile:
-            return Path("profile") / self.resolver.profile
-        return Path()
-
-    def destination_for(self, target: Layer) -> Path:  # pragma: no cover - abstract
-        """Return the destination path for *target*, one of the deploy layers app, host and user."""
+    def _layout(self) -> PlatformStrategy:  # pragma: no cover - abstract
         raise NotImplementedError
+
+    def destination_for(self, target: Layer) -> Path:
+        """Return the destination path for *target*, one of the deploy layers app, host and user."""
+        return deploy_destination(self._layout(), target, host_file_name=self.resolver.require_host_file_name)
 
 
 class LinuxDeployment(DeploymentStrategy):
-    """Linux deployment using XDG Base Directory paths."""
+    """Linux deployment using XDG Base Directory paths, whatever the resolver's platform."""
 
-    def destination_for(self, target: Layer) -> Path:
-        """Return Linux-specific destination path for *target*."""
-        mapping = {
-            Layer.APP: self._app_path,
-            Layer.HOST: self._host_path,
-            Layer.USER: self._user_path,
-        }
-        return mapping[target]()
-
-    # The resolver's own lookups, so a deploy writes exactly where read_config reads.
-    def _etc_root(self) -> Path:
-        return etc_root(self.resolver.env)
-
-    def _app_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        return self._etc_root() / "xdg" / self.resolver.slug / profile_seg / "config.toml"
-
-    def _host_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        return (
-            self._etc_root()
-            / "xdg"
-            / self.resolver.slug
-            / profile_seg
-            / "hosts"
-            / self.resolver.require_host_file_name()
-        )
-
-    def _user_path(self) -> Path:
-        base = xdg_config_home(self.resolver.env)
-        profile_seg = self._profile_segment()
-        return base / self.resolver.slug / profile_seg / "config.toml"
+    def _layout(self) -> PlatformStrategy:
+        return LinuxStrategy(self.resolver.context)
 
 
 class MacDeployment(DeploymentStrategy):
-    """macOS deployment using Application Support paths."""
+    """macOS deployment using Application Support paths, whatever the resolver's platform."""
 
-    def destination_for(self, target: Layer) -> Path:
-        """Return macOS-specific destination path for *target*."""
-        mapping = {
-            Layer.APP: self._app_path,
-            Layer.HOST: self._host_path,
-            Layer.USER: self._user_path,
-        }
-        return mapping[target]()
-
-    def _app_root(self) -> Path:
-        return mac_app_root(self.resolver.env) / self.resolver.vendor / self.resolver.application
-
-    def _home_root(self) -> Path:
-        return mac_home_root(self.resolver.env)
-
-    def _app_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        return self._app_root() / profile_seg / "config.toml"
-
-    def _host_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        return self._app_root() / profile_seg / "hosts" / self.resolver.require_host_file_name()
-
-    def _user_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        return self._home_root() / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
+    def _layout(self) -> PlatformStrategy:
+        return MacOSStrategy(self.resolver.context)
 
 
 class WindowsDeployment(DeploymentStrategy):
-    """Windows deployment using ProgramData and AppData paths."""
+    """Windows deployment using ProgramData and AppData paths, whatever the resolver's platform."""
 
-    def destination_for(self, target: Layer) -> Path:
-        """Return Windows-specific destination path for *target*."""
-        mapping = {
-            Layer.APP: self._app_path,
-            Layer.HOST: self._host_path,
-            Layer.USER: self._user_path,
-        }
-        return mapping[target]()
-
-    # The resolver's own lookups, so a deploy writes exactly where read_config reads; resolver.env
-    # already holds os.environ.
-    def _program_data_root(self) -> Path:
-        return program_data_root(self.resolver.env)
-
-    def _appdata_root(self) -> Path:
-        return appdata_root(self.resolver.env)
-
-    def _localappdata_root(self) -> Path:
-        return localappdata_root(self.resolver.env)
-
-    def _app_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        return (
-            self._program_data_root() / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
-        )
-
-    def _host_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        host_root = self._program_data_root() / self.resolver.vendor / self.resolver.application / profile_seg / "hosts"
-        return host_root / self.resolver.require_host_file_name()
-
-    def _user_path(self) -> Path:
-        profile_seg = self._profile_segment()
-        appdata_root = self._appdata_root()
-        chosen_root = appdata_root
-        if "LIB_LAYERED_CONFIG_APPDATA" not in self.resolver.env and kind_or_raise(appdata_root) is PathKind.MISSING:
-            chosen_root = self._localappdata_root()
-        return chosen_root / self.resolver.vendor / self.resolver.application / profile_seg / "config.toml"
+    def _layout(self) -> PlatformStrategy:
+        return WindowsStrategy(self.resolver.context)
 
 
 def _deploy_to_destination(
@@ -1358,16 +1272,6 @@ def _prepare_resolver(
     )
 
 
-def _strategy_for(resolver: DefaultPathResolver) -> DeploymentStrategy:
-    """Pick the layout for the resolver's platform, the one its reads use (``platform_family``)."""
-    family = platform_family(resolver.platform)
-    if family == PlatformFamily.WINDOWS:
-        return WindowsDeployment(resolver)
-    if family == PlatformFamily.MACOS:
-        return MacDeployment(resolver)
-    return LinuxDeployment(resolver)
-
-
 def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> Iterator[_Destination]:
     """Yield the destination of each valid target, with the layer it deploys to.
 
@@ -1390,7 +1294,7 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
         )
     for raw_target in targets:
         layer = _validate_target(raw_target)
-        yield _Destination(_strategy_for(resolver).destination_for(layer), layer)
+        yield _Destination(resolver.destination_for(layer), layer)
 
 
 def _str_targets_remedy(targets: str) -> str:

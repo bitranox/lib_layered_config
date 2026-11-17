@@ -353,6 +353,9 @@ def test_an_unknown_platform_offers_the_linux_paths(tmp_path: Path) -> None:
         ("win64", WindowsStrategy),
         ("cygwin", LinuxStrategy),
         ("freebsd14", LinuxStrategy),
+        ("freebsd", LinuxStrategy),
+        ("macos", LinuxStrategy),
+        ("sunos5", LinuxStrategy),
     ],
 )
 def test_resolver_selects_the_strategy_of_the_platform_family(

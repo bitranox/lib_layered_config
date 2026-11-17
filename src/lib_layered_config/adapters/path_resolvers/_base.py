@@ -9,7 +9,9 @@ environment variable overrides and handled natively by ``pathlib``.
 
 Contents:
     - ``PlatformContext``: dataclass holding resolution context (vendor, app, etc.)
-    - ``PlatformStrategy``: abstract base for platform-specific resolvers
+    - ``PlatformStrategy``: abstract base for platform-specific resolvers; each platform names its
+      layer directories once, and both the reads and a deploy's destinations are built from them
+    - ``deploy_destination``: the one file a deploy writes for a layer
     - ``_collect_layer``: shared helper for enumerating config files
     - ``override_root``: a ``LIB_LAYERED_CONFIG_*`` root override, refused when it is not rooted
     - ``_ALLOWED_EXTENSIONS``: supported config file extensions
@@ -25,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...domain.errors import HomeDirectoryUnknownError, LayerRootNotAbsoluteError
+from ...domain.identifiers import Layer
 from ...domain.printable import escape_controls
 from .._path_probe import PathKind, checked_kind
 
@@ -37,6 +40,7 @@ __all__ = [
     "PlatformStrategy",
     "collect_layer",
     "config_path_present",
+    "deploy_destination",
     "home_directory",
     "override_root",
 ]
@@ -205,28 +209,74 @@ class PlatformStrategy(abc.ABC):
         return Path()
 
     @abc.abstractmethod
+    def app_dirs(self) -> tuple[Path, ...]:
+        """Return the app layer's directories, in read order; a deploy writes to the first.
+
+        Each holds a ``hosts/`` directory for the host layer.
+
+        Returns:
+            One directory or more, the profile segment included.
+        """
+
+    @abc.abstractmethod
+    def user_dir(self) -> Path:
+        """Return the user-layer directory a deploy writes to.
+
+        Returns:
+            The directory, the profile segment included.
+        """
+
     def app_paths(self) -> Iterable[str]:
-        """Yield application-default configuration paths.
+        """Yield application-default configuration paths: each of :meth:`app_dirs`, in order.
 
         Returns:
             Paths for the app layer (lowest precedence system-wide defaults).
         """
+        for directory in self.app_dirs():
+            yield from collect_layer(directory)
 
-    @abc.abstractmethod
     def host_paths(self) -> Iterable[str]:
-        """Yield host-specific configuration paths.
+        """Yield ``hosts/<hostname>.toml`` under each of :meth:`app_dirs` that holds one.
 
         Returns:
-            Paths for the host layer (machine-specific overrides).
+            Paths for the host layer (empty when missing, or when the hostname cannot name a file).
         """
+        host_file = self.ctx.host_file_name
+        if host_file is None:
+            return
+        for directory in self.app_dirs():
+            candidate = directory / "hosts" / host_file
+            if config_path_present(candidate):
+                yield str(candidate)
 
-    @abc.abstractmethod
     def user_paths(self) -> Iterable[str]:
-        """Yield user-specific configuration paths.
+        """Yield user-specific configuration paths: those under :meth:`user_dir`.
 
         Returns:
             Paths for the user layer (per-user preferences).
         """
+        yield from collect_layer(self.user_dir())
+
+    def deploy_dir(self, layer: Layer) -> Path:
+        """Return the directory a deploy writes *layer*'s file into.
+
+        Args:
+            layer: ``Layer.APP``, ``Layer.HOST`` or ``Layer.USER``.
+
+        Returns:
+            The first app directory, its ``hosts/`` directory, or :meth:`user_dir`.
+
+        Raises:
+            KeyError: *layer* is not one a deploy writes, keyed by the layer (the error the deploy
+                strategies' ``destination_for`` has always raised for it).
+        """
+        if layer is Layer.APP:
+            return self.app_dirs()[0]
+        if layer is Layer.HOST:
+            return self.app_dirs()[0] / "hosts"
+        if layer is Layer.USER:
+            return self.user_dir()
+        raise KeyError(layer)
 
     @abc.abstractmethod
     def dotenv_path(self) -> Path | None:
@@ -235,6 +285,27 @@ class PlatformStrategy(abc.ABC):
         Returns:
             Fallback ``.env`` location or ``None`` if unsupported.
         """
+
+
+def deploy_destination(strategy: PlatformStrategy, layer: Layer, *, host_file_name: Callable[[], str]) -> Path:
+    """Return the file a deploy writes for *layer* in *strategy*'s layout.
+
+    Args:
+        strategy: The platform layout, the one the reads use.
+        layer: ``Layer.APP``, ``Layer.HOST`` or ``Layer.USER``.
+        host_file_name: Gives ``<hostname>.toml``; called only for the host layer, after its
+            directory is resolved, so an unusable hostname is refused only where it is needed.
+
+    Returns:
+        ``config.toml`` in the layer's directory, or the host file in ``hosts/``.
+
+    Raises:
+        KeyError: *layer* is not one a deploy writes.
+    """
+    directory = strategy.deploy_dir(layer)
+    if layer is Layer.HOST:
+        return directory / host_file_name()
+    return directory / "config.toml"
 
 
 def config_path_present(path: Path) -> bool:

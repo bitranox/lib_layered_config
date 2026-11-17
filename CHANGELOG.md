@@ -89,6 +89,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   (CLI `--env-file`), which loads the named file whoever owns it. Windows is unchanged.
 
 ### Changed
+- Where a deploy writes each layer is now worked out by the path resolvers, from the same directories the reads
+  use, instead of a second copy of every platform's layout in `deploy.py`; a layout change can no longer reach
+  one side only. Every destination is unchanged (compared on all three layouts, with and without a profile,
+  for every layer). `DefaultPathResolver.destination_for(layer)` gives the file a deploy writes;
+  `LinuxDeployment`, `MacDeployment` and `WindowsDeployment` keep working and still give their own
+  platform's layout whatever the resolver's platform.
 - `env-prefix` prints a note on stderr when the prefix is not a name a POSIX shell can `export`, which a dot
   in the slug (`my.app` gives `MY.APP___`) or a leading digit (`2app` gives `2APP___`) causes. The prefix
   itself, stdout and the `--json` data are unchanged, and such variables are still read; the note says to
