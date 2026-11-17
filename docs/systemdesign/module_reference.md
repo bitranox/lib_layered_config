@@ -14,8 +14,9 @@ The library follows Clean Architecture: dependencies point inward only. Two impo
 contracts in `pyproject.toml` (run by `lint-imports`, and in CI) fail the build if either is
 violated:
 
-- **Layered:** `cli` -> `examples` -> `adapters` -> `application` -> `domain`. A layer may import
-  only from the layers below it.
+- **Layered:** `cli` -> `examples` -> `deploy` | `generate` -> `adapters` -> `application` ->
+  `domain`. A layer may import only from the layers below it; `deploy` and `generate` share one
+  layer and may not import each other.
 - **Domain is pure:** `domain` may not import `adapters`, `application`, or `core`.
 
 The root modules (`core.py`, `_layers.py`, `_platform.py`, `observability.py`, `testing.py`,

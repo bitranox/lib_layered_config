@@ -18,6 +18,22 @@ overview and installation see the [README](../README.md).
 | `lib_layered_config info`              | Print package metadata                                |
 | `lib_layered_config fail`              | Intentionally raise a `RuntimeError` (for testing)    |
 
+### Global options and exit codes
+
+Given before the command (`lib_layered_config --traceback read ...`):
+
+| Option                           | Effect                                                                     |
+|----------------------------------|----------------------------------------------------------------------------|
+| `--version`                      | Print `lib_layered_config version <version>` and exit 0                    |
+| `--traceback` / `--no-traceback` | On an error, print the full Python traceback on stderr instead of one line |
+| `-h`, `--help`                   | Print the usage and exit 0                                                 |
+
+A command exits 0 on success and with the error's code on failure (a usage error is 2; the codes for
+library and operating-system errors are listed with each command). When the reader of stdout goes away
+first (`lib_layered_config info | head -0`), the command exits 141 and prints nothing more. That holds
+for every output a command writes to stdout, so under `--json` a failure, whose envelope goes to stdout,
+exits 141 too; without `--json` a failure is printed on stderr and keeps its own code.
+
 ### Machine-readable output: `--json`
 
 Every command accepts `--json`. It replaces the command's normal output with one JSON document on
@@ -76,8 +92,11 @@ warning: type_conflict key=database layer=app path=/etc/xdg/myapp/config.toml ol
 ```
 
 The events are `dotenv_skipped_foreign_owner`, `deploy_setting_ignored`, `type_conflict`,
-`list_index_out_of_range` and `case_folded_key_ambiguous`. Their fields are key names, paths, layers,
-types and owners, never configuration values, so a warning line cannot print a secret. A control
+`list_index_out_of_range`, `case_folded_key_ambiguous`, `user_layer_skipped_no_home` and
+`host_layer_skipped_invalid_hostname`. Their fields are key names, paths, layers, types, owners, a
+hostname and the reason it was refused, never configuration values, so a warning line cannot print a
+secret. A field's value is printed as it is, spaces included (a `reason` holds several words), so read
+a line by its field names rather than by splitting on spaces. A control
 character in a key or path (a newline, an ESC) is printed as a `\uXXXX` escape, so a warning is always
 one line and never sends a terminal sequence; a backslash prints as it is. A program that
 calls the Python API instead gets the same events as WARNING records on the `lib_layered_config`

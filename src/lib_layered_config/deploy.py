@@ -767,7 +767,7 @@ def deploy_config(
             first: with either set, the resolver is never called. With neither force, batch
             nor a resolver, a differing file is left unchanged and reported as ``CONFLICT``.
         max_profile_length: Maximum allowed profile name length (default: 64).
-            A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
+            A value above 255, or 0 or negative, uses the absolute maximum of 255 characters.
         set_permissions: True sets modes, False leaves them to the umask, None (default) follows
             the configured ``[lib_layered_config.default_permissions].enabled`` (true when unset).
             An explicit dir_mode or file_mode means modes are set; giving one together with

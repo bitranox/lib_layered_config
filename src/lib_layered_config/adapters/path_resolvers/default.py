@@ -90,7 +90,7 @@ class DefaultPathResolver:
                 the host layer off (``host_file_name`` is ``None``) and logs
                 ``host_layer_skipped_invalid_hostname`` instead of refusing.
             max_profile_length: Maximum allowed profile name length (default: 64).
-                A value above 256, or 0 or negative, uses the absolute maximum of 256 characters.
+                A value above 255, or 0 or negative, uses the absolute maximum of 255 characters.
 
         Raises:
             ValueError: When vendor, app, slug, profile, or an explicit hostname contain invalid
