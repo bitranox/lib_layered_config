@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lib_layered_config.deploy import DeployAction, deploy_config
-from tests.support.os_markers import posix_only
+from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -84,3 +84,20 @@ def test_a_backup_is_never_wider_than_the_file_it_copies(
     assert backups, "no chmod of the backup was observed, so the check saw nothing"
     assert [(name, oct(mode)) for name, mode in backups if mode & ~0o600] == []
     assert stat.S_IMODE(destination.with_name("config.toml.bak").stat().st_mode) == 0o600
+
+
+@os_agnostic
+def test_a_backup_keeps_the_replaced_file_s_times(
+    sandbox: LayeredSandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The backup is copied with copystat, not copymode: it keeps the old file's times (and on Linux
+    # and macOS its POSIX ACL), so a backup reads as the version it holds, not as the moment of the deploy.
+    sandbox.apply_env(monkeypatch)
+    destination = sandbox.write("user", "config.toml", content="old = 1\n")
+    os.utime(destination, (1_000_000_000, 1_000_000_000))
+    source = tmp_path / "source.toml"
+    source.write_text("old = 2\n", encoding="utf-8")
+
+    deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], force=True)
+
+    assert destination.with_name("config.toml.bak").stat().st_mtime == 1_000_000_000
