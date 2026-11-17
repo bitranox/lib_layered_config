@@ -11,20 +11,16 @@ Contents:
     - ``SourceInfoPayload``: type alias for domain ``SourceInfo`` TypedDict.
     - Type aliases (``ConfigData``, ``ProvenanceData``) for consistent signatures.
     - Protocols for each adapter type (path resolver, file loader, dotenv loader,
-      environment loader), each checked by the contract tests, plus ``Merger``, the shape of a
-      merge step, which no class implements and no test checks.
+      environment loader), each checked by the contract tests.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from ..domain.config import SourceInfo
-
-if TYPE_CHECKING:
-    from .merge import LayerSnapshot, MergeResult
 
 
 class OutputFormat(str, Enum):
@@ -111,21 +107,11 @@ class EnvLoader(Protocol):
         ...  # pragma: no cover - protocol
 
 
-@runtime_checkable
-class Merger(Protocol):
-    """Combine ordered layers into merged data and provenance structures."""
-
-    def merge(self, layers: Iterable[LayerSnapshot]) -> MergeResult:
-        """Merge *layers*, lowest precedence first, into unified configuration data with provenance."""
-        ...  # pragma: no cover - protocol
-
-
 __all__ = [
     "ConfigData",
     "DotEnvLoader",
     "EnvLoader",
     "FileLoader",
-    "Merger",
     "OutputFormat",
     "PathResolver",
     "ProvenanceData",

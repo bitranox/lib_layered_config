@@ -47,7 +47,7 @@ Use this checklist as a living reference; extend it as the solution grows.
    - Error hierarchy `ConfigError`, `InvalidFormatError`, `ValidationError`, `NotFoundError`.
 
 2. **Application Layer**
-   - Ports (Protocols) for `PathResolver`, `FileLoader`, `DotEnvLoader`, `EnvLoader`, `Merger`.
+   - Ports (Protocols) for `PathResolver`, `FileLoader`, `DotEnvLoader`, `EnvLoader`.
    - Merge use case (`merge_layers`) with provenance tracking and helper functions for scalar/branch merging.
 
 3. **Adapters**
