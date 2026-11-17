@@ -37,8 +37,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `?` or `#` reads as a port and is shown, a password holding an `@` and then a `/` is masked only up to
   the `@` the authority ends at, and a password holding a `://` after a `/`, `?`, `#`, `[`, white space, `,`
   or `;`, or with white space, `,` or `;` between such a `://` and its `@`, is shown. URLs joined by a
-  character other than white space, `,` or `;` (`redis://h1|redis://u:pw@h2`) can be read as one URL, which
-  masks more than the password.
+  character that does not end a user info, such as `|` (`redis://h1|redis://u:pw@h2`), can be read as one
+  URL, which masks more than the password.
 - On Windows, a deploy that replaces a file keeps the file's access list. A forced or confirmed deploy
   writes a new file and renames it over the old one, and backs the old one up with a copy; on Windows a
   new file takes the access list its directory passes down, so a `config.toml` restricted to its user

@@ -51,8 +51,10 @@ def test_a_long_run_before_a_url_is_scanned_in_linear_time(prefix: str) -> None:
     assert elapsed < _LIMIT_SECONDS, f"{len(prefix)} characters took {elapsed:.2f}s"
 
 
-# At 40,000 a scan that searches again for an '@' or a list separator it already knows is missing takes
-# about 8 s, against a few milliseconds for the linear scan.
+# At 40,000 a scan that searches again for a list separator it already knows is missing takes about 8 s,
+# against a few milliseconds for the linear scan. Searching again for a missing '@' is quadratic too but
+# stays under the bound (str.find: 0.07 s here, 0.7 s at 800,000 characters); a growth-ratio test that
+# would catch it was left out as too noisy on a loaded CI runner.
 _COUNT = 40_000
 
 

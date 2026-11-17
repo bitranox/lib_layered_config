@@ -174,7 +174,11 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("(http://[::1]:8080)(https://u:pw@h)", f"(http://[::1]:8080)(https://u:{REDACTED_PLACEHOLDER}@h)"),
         ('"http://[::1]"+"https://u:pw@h2"', f'"http://[::1]"+"https://u:{REDACTED_PLACEHOLDER}@h2"'),
         ("[docs](http://h1)[db](https://u:pw@h2)", f"[docs](http://h1)[db](https://u:{REDACTED_PLACEHOLDER}@h2)"),
-        # A '?', '#', ';' or '@' ends the user info too.
+        # A '[' ends it even in the middle of a host; a ']' does not.
+        ("http://h[x://u:pw@h2", f"http://h[x://u:{REDACTED_PLACEHOLDER}@h2"),
+        # A '/', '?', '#', ',', ';' or '@' ends the user info too.
+        ("https://h/path|x://u:pw@h2", f"https://h/path|x://u:{REDACTED_PLACEHOLDER}@h2"),
+        ("amqp://h1,amqp://u:pw@h2", f"amqp://h1,amqp://u:{REDACTED_PLACEHOLDER}@h2"),
         (
             "https://example.com?redirect=https://u:pw@h2",
             f"https://example.com?redirect=https://u:{REDACTED_PLACEHOLDER}@h2",

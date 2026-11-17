@@ -458,7 +458,7 @@ def _url_starts(value: str) -> list[tuple[int, int]]:
     Each ``://`` closes a scheme, found by walking back from it; the walk stops at the previous ``://``
     (a ``/`` is not a scheme character), so the whole scan reads each character a bounded number of
     times. A ``://`` that sits in the user info of the URL before it belongs to that URL, not to a URL of
-    its own: one whose stretch since that URL's authority start holds none of ``/ ? # @``, white space,
+    its own: one whose stretch since that URL's authority start holds none of ``/ ? # @ [``, white space,
     ``,`` and ``;`` (the ``://`` already taken as user info aside), and that an ``@`` follows before any
     white space, ``,`` or ``;`` (``postgresql://svc_user://8xK3pQ@db``, ``https://app://x://y@h``). A
     ``://`` with no scheme in front of it belongs to no URL, so it is no "previous URL" for the scheme
