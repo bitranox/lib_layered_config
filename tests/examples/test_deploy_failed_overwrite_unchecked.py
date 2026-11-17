@@ -118,6 +118,9 @@ def _deploy_and_fail_the_compare(tmp_path: Path, how: str) -> tuple[dict[str, ob
 def test_a_failed_overwrite_that_cannot_be_compared_keeps_and_reports_its_backup(
     tmp_path: Path, how: str, error: str, hook: list[str]
 ) -> None:
+    # posix_only skips this test on Windows; the assert narrows sys.platform for pyright, which does not
+    # read pytest.skip (a callable object) as ending the path.
+    assert sys.platform != "win32"
     if os.geteuid() == 0:
         pytest.skip("root passes every permission wall, so the comparison would not fail")
     report, destination = _deploy_and_fail_the_compare(tmp_path, how)

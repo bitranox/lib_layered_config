@@ -165,8 +165,9 @@ def test_an_empty_home_is_refused_rather_than_read_as_the_filesystem_root(
 def test_an_empty_passwd_home_is_refused_like_an_empty_home(
     work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
 ) -> None:
-    if sys.platform == "win32":
-        pytest.skip("pwd is POSIX-only")
+    # posix_only skips this test on Windows; the assert narrows sys.platform for pyright, which does not
+    # read pytest.skip (a callable object) as ending the path.
+    assert sys.platform != "win32"
     import pwd
 
     # With HOME unset, Path.home() reads the account's passwd home field, and an empty one also comes back as
@@ -176,7 +177,12 @@ def test_an_empty_passwd_home_is_refused_like_an_empty_home(
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("LIB_LAYERED_CONFIG_MAC_HOME_ROOT", raising=False)
     entry = pwd.struct_passwd(("nohome", "x", os.getuid(), os.getgid(), "", "", "/bin/sh"))
-    monkeypatch.setattr(pwd, "getpwuid", lambda uid: entry)
+
+    def fake_getpwuid(uid: int, /) -> pwd.struct_passwd:
+        del uid
+        return entry
+
+    monkeypatch.setattr(pwd, "getpwuid", fake_getpwuid)
     expected = "^The HOME root '' is not an absolute path; set HOME to an absolute path$"
 
     with pytest.raises(LayerRootNotAbsoluteError, match=expected):
@@ -188,8 +194,9 @@ def test_an_empty_passwd_home_is_refused_like_an_empty_home(
 
 @posix_only
 def test_a_passwd_home_is_used_when_home_is_unset(work: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    if sys.platform == "win32":
-        pytest.skip("pwd is POSIX-only")
+    # posix_only skips this test on Windows; the assert narrows sys.platform for pyright, which does not
+    # read pytest.skip (a callable object) as ending the path.
+    assert sys.platform != "win32"
     import pwd
 
     # The control: a non-empty passwd home still answers, so only the empty field is refused.
@@ -197,7 +204,12 @@ def test_a_passwd_home_is_used_when_home_is_unset(work: Path, monkeypatch: pytes
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     home = work / "account-home"
     entry = pwd.struct_passwd(("withhome", "x", os.getuid(), os.getgid(), "", str(home), "/bin/sh"))
-    monkeypatch.setattr(pwd, "getpwuid", lambda uid: entry)
+
+    def fake_getpwuid(uid: int, /) -> pwd.struct_passwd:
+        del uid
+        return entry
+
+    monkeypatch.setattr(pwd, "getpwuid", fake_getpwuid)
 
     assert list(_resolver({}, platform="linux", cwd=work).user()) == []
     assert home_directory() == home
