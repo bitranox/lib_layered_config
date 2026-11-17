@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Final, cast
 from ._platform import normalise_examples_platform
 from .adapters._file_write import write_data
 from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise
+from .adapters.env.default import default_env_prefix
 from .domain.errors import GenerateDestinationError
 from .domain.identifiers import ExamplePlatform, validate_identifier, validate_vendor_app
 
@@ -527,15 +528,25 @@ retry = 3
 def _env_secrets_body(slug: str) -> str:
     """Describe .env secrets guidance.
 
+    A ``.env`` key takes no environment prefix (``SERVICE__PASSWORD``), so the template writes the key
+    bare and names the prefixed variable only in a comment, for setting the same value in the
+    environment instead.
+
     Args:
-        slug: Configuration slug converted into an uppercase environment prefix.
+        slug: Configuration slug converted into the uppercase environment prefix the comment names.
 
     Returns:
         str: `.env` template content reminding users to provide secrets.
+
+    Examples:
+        >>> print(_env_secrets_body("my-app"), end="")
+        # Copy to .env to provide secrets and local overrides.
+        # A .env key takes no prefix; in the environment this one is MY_APP___SERVICE__PASSWORD.
+        SERVICE__PASSWORD=changeme
     """
-    key = slug.replace("-", "_").upper()
-    return f"""# Copy to .env to provide secrets and local overrides
-{key}___SERVICE__PASSWORD=changeme
+    return f"""# Copy to .env to provide secrets and local overrides.
+# A .env key takes no prefix; in the environment this one is {default_env_prefix(slug)}SERVICE__PASSWORD.
+SERVICE__PASSWORD=changeme
 """
 
 

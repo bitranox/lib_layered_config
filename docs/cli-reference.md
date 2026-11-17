@@ -1271,7 +1271,7 @@ cd ./examples && find . -type f | sort
 
 **Output:**
 ```
-./.env.example                            # environment variable template
+./.env.example                            # .env template: copy to .env (keys take no prefix)
 ./home/myapp/config.d/10-override.toml    # user layer: split overrides, applied in lexical order
 ./home/myapp/config.toml                  # user layer: belongs in ~/.config/myapp/
 ./xdg/myapp/config.toml                   # app layer: belongs in /etc/xdg/myapp/

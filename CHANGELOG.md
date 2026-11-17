@@ -186,6 +186,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- The `.env.example` that `generate_examples` and `generate-examples` write sets the setting it names once
+  copied to `.env`, as its first line tells you to. It wrote `MYAPP___SERVICE__PASSWORD=changeme`; a `.env` key
+  takes no prefix, so the copy set `myapp._service.password` and left `service.password`, the key the generated
+  `config.toml` files hold, unset. It now writes `SERVICE__PASSWORD=changeme` and names the environment variable
+  for the same setting in a comment.
 - A `Config` is now immutable below its top level too. `config["db"]["host"] = ...`, an `append` to a list
   read with `config.get(...)`, or a change to the mapping the `Config` was built from used to change what
   every later read returned. The `Config` now owns a deep copy and hands out a copy of each nested table,
