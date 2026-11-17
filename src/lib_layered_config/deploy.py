@@ -101,6 +101,8 @@ _DEPLOY_ANYWAY_HINT = (
 _LINK_REFUSAL = "is a symbolic link; deploy neither writes through nor replaces one"
 #: Why a FIFO, device, socket or directory at a destination is refused; reading a FIFO would block.
 _NOT_REGULAR_REFUSAL = "is not a regular file; deploy writes only regular files"
+#: Why a destination below a file, FIFO or dangling link is refused: its directory cannot be made.
+_BLOCKED_DIRECTORY_REFUSAL = "cannot be created: {ancestor} is not a directory"
 #: How much of a file deploy holds at a time while copying or comparing it.
 _CHUNK_BYTES = 64 * 1024
 
@@ -475,11 +477,13 @@ def _paths_written(destinations: Sequence[_Destination], *, dot_d_files: Sequenc
 
 
 def _refuse_unusable_destinations(destinations: Sequence[_Destination], *, dot_d_files: Sequence[Path]) -> None:
-    """Refuse every destination that is a symbolic link or not a regular file, before anything is written.
+    """Refuse every destination that is a link, not a regular file, or cannot be created, before any write.
 
     Writing through a link changes the file it points at (with modes left to the umask the write
     followed it), and replacing it breaks a link someone made on purpose; deploy does neither. A
     FIFO would block the comparison forever, and a device, socket or directory cannot be a config.
+    A missing destination whose nearest existing ancestor is not a directory (a regular file where
+    the layer or ``.d`` directory belongs) could never be written.
 
     Raises:
         DeployDestinationError: One line per refused destination, ``.d`` copies included.
@@ -491,12 +495,32 @@ def _refuse_unusable_destinations(destinations: Sequence[_Destination], *, dot_d
 
 
 def _destination_problem(path: Path) -> str | None:
-    """Why *path* cannot be deployed to, or ``None`` when it is missing or a regular file."""
+    """Why *path* cannot be deployed to, or ``None`` when it is a regular file or can be created."""
     if is_symlink_or_raise(path):
         return f"{path} {_LINK_REFUSAL}"
-    if kind_or_raise(path) in (PathKind.MISSING, PathKind.FILE):
+    kind = kind_or_raise(path)
+    if kind is PathKind.FILE:
         return None
+    if kind is PathKind.MISSING:
+        return _blocked_directory_problem(path)
     return f"{path} {_NOT_REGULAR_REFUSAL}"
+
+
+def _blocked_directory_problem(path: Path) -> str | None:
+    """Why the missing *path* cannot be created, or ``None`` when its nearest existing ancestor is a directory.
+
+    A path below a regular file stats as missing (ENOTDIR reads as absent, as pathlib reads it), so
+    without this walk the deploy would write the destinations it reaches first and then fail at the
+    ``mkdir`` for this one. The walk stops at the first ancestor that exists: a directory (a link to
+    one included) can take the missing levels; anything else there - a file, a FIFO, a dangling or
+    looping link - cannot, and ``mkdir`` would raise ``FileExistsError``.
+    """
+    for ancestor in path.parents:
+        if kind_or_raise(ancestor) is PathKind.DIRECTORY:
+            return None
+        if lexists_or_raise(ancestor):
+            return f"{path} {_BLOCKED_DIRECTORY_REFUSAL.format(ancestor=ancestor)}"
+    return None
 
 
 def _describe_load_failure(exc: Exception) -> str:
@@ -822,8 +846,9 @@ def deploy_config(
             invalid, a permission_overrides value is refused, or permission_overrides came with
             permissions; nothing has been written.
         DeployDestinationError: A destination or one of its ``.d`` copies is a symbolic link
-            (dangling or not) or not a regular file (a directory, FIFO, device or socket); nothing
-            has been written.
+            (dangling or not), is not a regular file (a directory, FIFO, device or socket), or
+            cannot be created because its nearest existing ancestor is not a directory (a regular
+            file where the layer or ``.d`` directory belongs); nothing has been written.
     """
     if force and batch:
         raise ValidationError("force=True overwrites an existing file and batch=True keeps it; pass one")
