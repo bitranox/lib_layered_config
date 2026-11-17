@@ -134,3 +134,22 @@ def test_a_relative_home_is_refused_and_a_user_deploy_writes_nothing_into_the_cw
     with pytest.raises(LayerRootNotAbsoluteError, match=expected):
         deploy_config(source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform=platform)
     assert sorted(p.relative_to(work) for p in work.rglob("*")) == before
+
+
+@os_agnostic
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_an_empty_home_is_refused_rather_than_read_as_the_filesystem_root(
+    work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    # Path.home() answers "/" for HOME="" (3.10 to 3.15), which has a root, so a user deploy went to /.config/<slug>.
+    for name in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(name, "")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    variable = "USERPROFILE" if os.name == "nt" else "HOME"
+    expected = f"^The {variable} root '' is not an absolute path; set {variable} to an absolute path$"
+
+    with pytest.raises(LayerRootNotAbsoluteError, match=expected):
+        list(_resolver({}, platform=platform, cwd=work).user())
+    source = _plant(tmp_path / "source.toml", "a = 1\n")
+    with pytest.raises(LayerRootNotAbsoluteError, match=expected):
+        deploy_config(source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform=platform)

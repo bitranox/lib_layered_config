@@ -47,23 +47,33 @@ def home_directory() -> Path:
     Raises:
         HomeDirectoryUnknownError: ``Path.home()`` cannot answer: HOME unset and the uid has no
             passwd entry, or on Windows USERPROFILE, HOMEDRIVE and HOMEPATH all unset.
-        LayerRootNotAbsoluteError: The home directory is a relative path (``HOME=rel``).
+        LayerRootNotAbsoluteError: The home directory is a relative path (``HOME=rel``) or empty.
     """
+    if os.environ.get(_home_variable()) == "":
+        # Checked before Path.home(): for an empty HOME it answers "/" (3.10 to 3.15 measured), which has a root, so the
+        # user layer and every user deploy would land under /.config instead of being refused.
+        raise _not_absolute("")
     try:
         home = Path.home()
     except RuntimeError as exc:
         raise HomeDirectoryUnknownError(
-            f"cannot determine the home directory for the user layer: set {_home_variable()}, or the variable "
+            f"cannot determine the home directory for the user layer: set {_home_variable()} to an absolute path, "
+            "or the variable "
             "naming the user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, "
             "LIB_LAYERED_CONFIG_APPDATA)"
         ) from exc
     if not home.root:
         # A relative HOME would put the user layer, and every user deploy, under the current directory.
-        raise LayerRootNotAbsoluteError(
-            f"The {_home_variable()} root '{escape_controls(str(home))}' is not an absolute path; set "
-            f"{_home_variable()} to an absolute path"
-        )
+        raise _not_absolute(str(home))
     return home
+
+
+def _not_absolute(home: str) -> LayerRootNotAbsoluteError:
+    """The refusal for a home directory that is empty or relative, naming the variable to set."""
+    return LayerRootNotAbsoluteError(
+        f"The {_home_variable()} root '{escape_controls(home)}' is not an absolute path; set "
+        f"{_home_variable()} to an absolute path"
+    )
 
 
 def _home_variable() -> str:

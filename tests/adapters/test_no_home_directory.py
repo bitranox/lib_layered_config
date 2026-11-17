@@ -103,8 +103,9 @@ def test_a_user_deploy_with_no_home_is_refused_naming_the_remedy(work: Path, tmp
     # Path.home() reads USERPROFILE on Windows and ignores HOME there, so the remedy names what it reads.
     home_variable = "USERPROFILE" if os.name == "nt" else "HOME"
     assert str(caught.value) == (
-        f"cannot determine the home directory for the user layer: set {home_variable}, or the variable naming "
-        "the user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, LIB_LAYERED_CONFIG_APPDATA)"
+        f"cannot determine the home directory for the user layer: set {home_variable} to an absolute path, "
+        "or the variable naming the user-layer root "
+        "(XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, LIB_LAYERED_CONFIG_APPDATA)"
     )
     assert list(work.iterdir()) == []
 
