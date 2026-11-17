@@ -516,6 +516,30 @@ class _ObjectPairs(list[tuple[str, object]]):
     """One JSON object as its pairs in file order, so a repeated key is still there to see."""
 
 
+def _repeats_a_key(text: str) -> bool:
+    """Return whether any object in *text* repeats a key, without building a position for anything.
+
+    The pair-keeping parse in :func:`duplicate_keys` and its walk over every pair cost more than the
+    file's own parse; this one keeps plain dicts and only compares each object's pair count with its
+    key count, so the positions are built only for a file that will be refused. It parses with the
+    same ``parse_int``, so it trips on nothing the positioned parse would not.
+
+    Examples:
+        >>> _repeats_a_key('{"a": {"x": 1}, "b": [{"x": 1, "x": 2}]}'), _repeats_a_key('{"a": 1, "b": {"a": 2}}')
+        (True, False)
+    """
+    repeated = False
+
+    def count(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        nonlocal repeated
+        table = dict(pairs)
+        repeated = repeated or len(table) != len(pairs)
+        return table
+
+    json.loads(text, object_pairs_hook=count, parse_int=_orjson_int)
+    return repeated
+
+
 def duplicate_keys(text: str) -> list[str]:
     """Return the dotted position of every key *text* repeats within one object, sorted.
 
@@ -530,6 +554,8 @@ def duplicate_keys(text: str) -> list[str]:
         >>> duplicate_keys('{"a": {"x": 1}, "b": {"x": 2}}')
         []
     """
+    if not _repeats_a_key(text):
+        return []
     root: object = json.loads(text, object_pairs_hook=_ObjectPairs, parse_int=_orjson_int)
     found: list[str] = []
     pending: list[tuple[object, str]] = [(root, "")]

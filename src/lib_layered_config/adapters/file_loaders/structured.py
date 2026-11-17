@@ -49,7 +49,7 @@ from ._toml_backend import PARSER, TomlLoadError, TomlParser
 from ._yaml_facade import as_yaml_module, safe_loader
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from typing import BinaryIO
 
     from ._yaml_facade import YAMLModule, YAMLNode
@@ -625,8 +625,9 @@ class TOMLFileLoader(BaseFileLoader):
         if outcome.failure is not None:
             raise _log_and_build_invalid_format(path, FileFormat.TOML, outcome.failure)
         result = self._ensure_mapping(outcome.value, path=path)
-        _refuse_integers_json_cannot_carry(result, path=path, file_format=FileFormat.TOML)
-        _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.TOML)
+        if _may_be_refused_for_json(result, wide_ints=True):
+            _refuse_integers_json_cannot_carry(result, path=path, file_format=FileFormat.TOML)
+            _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.TOML)
         _log_file_loaded(path, FileFormat.TOML)
         return result
 
@@ -677,7 +678,8 @@ class JSONFileLoader(BaseFileLoader):
         if outcome.failure is not None:
             raise _log_and_build_invalid_format(path, FileFormat.JSON, outcome.failure)
         result = self._ensure_mapping(outcome.value, path=path)
-        _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.JSON)
+        if _may_be_refused_for_json(result, wide_ints=False):
+            _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.JSON)
         _refuse_repeated_keys(duplicate_keys(decoded), path=path, file_format=FileFormat.JSON)
         _log_file_loaded(path, FileFormat.JSON)
         return result
@@ -1219,6 +1221,42 @@ def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, 
     )
     _log_file_invalid(path, file_format, message)
     raise InvalidFormatError(message)
+
+
+def _may_be_refused_for_json(data: Mapping[str, object], *, wide_ints: bool) -> bool:
+    """Return whether *data* nests past :data:`CONFIG_MAX_DEPTH` or (with *wide_ints*) holds a wide integer.
+
+    The positioned checks (:func:`_refuse_integers_json_cannot_carry`, :func:`_refuse_nesting_json_cannot_write`)
+    build a dotted position for every node so that a refusal can name it, which cost more than the
+    parse itself; this walk asks the same two questions without positions, so they run only for a
+    document they will refuse. It walks what they walk - mappings and lists, the top-level table at
+    depth 1 - with an explicit stack for the reason :func:`_non_string_keys` gives.
+
+    Examples:
+        >>> _may_be_refused_for_json({"a": [1, {"b": 2**64 - 1}]}, wide_ints=True)
+        False
+        >>> _may_be_refused_for_json({"a": [1, {"b": 2**64}]}, wide_ints=True)
+        True
+        >>> _may_be_refused_for_json({"a": [1, {"b": 2**64}]}, wide_ints=False)
+        False
+    """
+    pending: list[tuple[object, int]] = [(data, 1)]
+    while pending:
+        node, depth = pending.pop()
+        if depth > CONFIG_MAX_DEPTH:
+            return True
+        if isinstance(node, Mapping):
+            children: Iterable[object] = cast("Mapping[object, object]", node).values()
+        elif isinstance(node, list):
+            children = cast("list[object]", node)
+        else:
+            continue
+        for child in children:
+            if _is_container(child):
+                pending.append((child, depth + 1))
+            elif wide_ints and type(child) is int and not JSON_INT_MIN <= child <= JSON_INT_MAX:
+                return True
+    return False
 
 
 def _first_position_past_the_json_depth(data: Mapping[str, object]) -> str | None:
