@@ -52,6 +52,8 @@ DEFAULT_MAX_PROFILE_LENGTH: int = 64
 #: Longest file or directory name a path segment may have: NAME_MAX, 255 bytes on Linux, macOS
 #: and Windows. Identifiers are ASCII-only, so characters are bytes. A longer segment fails only
 #: when the filesystem is asked (ENAMETOOLONG), as a different error on read and on deploy.
+#: It caps one segment, not the whole path: Windows without long-path support also refuses a
+#: whole path over 260 characters, which depends on the layer root as well (docs/identifiers.md).
 _NAME_MAX: Final = 255
 
 #: A host file is ``<hostname>.toml``, so the hostname leaves room for the suffix.

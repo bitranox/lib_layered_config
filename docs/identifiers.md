@@ -402,6 +402,13 @@ reserved name such as `con`) turns off only the host layer: reads skip it and lo
 | **Cannot end with dot/space**    | Windows restriction                                 | `app.`, `name `                   |
 | **Fits a file name**             | At most 255 characters; a hostname 250 (`.toml`)    | 256 characters                    |
 
+The length rule caps each name as one path segment. It cannot cap the whole path, which also holds the
+layer's root (`%APPDATA%`, `/etc/xdg`, a home directory) and the other identifiers. On Windows without
+long-path support (`LongPathsEnabled` 0), a whole path over 260 characters fails when the file is
+written: a deploy then raises the operating system's `FileNotFoundError` (`WinError 3`), as for any other
+write the system refuses, and a read finds no file there. How long a profile still fits depends on
+how long the root is: the 260 characters count from the drive letter.
+
 #### Examples
 
 ```python
