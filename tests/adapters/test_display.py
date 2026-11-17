@@ -79,6 +79,16 @@ def test_display_config_raises_for_nonexistent_section(
         display_config(config, output_format=OutputFormat.HUMAN, section="nonexistent")
 
 
+def test_a_missing_section_prints_nothing_in_the_human_format(capsys: pytest.CaptureFixture[str]) -> None:
+    """A missing section raises before any line is printed, as the JSON format does.
+
+    The human format used to print its header note first, so a caller saw output followed by an error.
+    """
+    with pytest.raises(ValueError, match="not found"):
+        display_config(Config({"a": {"b": 2}}, {}), output_format=OutputFormat.HUMAN, section="zz")
+    assert capsys.readouterr().out == ""
+
+
 def test_display_config_raises_for_nonexistent_section_json(
     config_factory: Callable[[dict[str, Any]], Config],
 ) -> None:

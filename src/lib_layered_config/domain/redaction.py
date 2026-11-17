@@ -2,7 +2,8 @@
 
 Provide a recursive redaction mechanism that replaces values associated with
 sensitive key names (passwords, tokens, secrets, API keys) with a placeholder
-string.  This prevents accidental exposure of secrets in logs, CLI output,
+string, and masks the password of every URL in a string value under any key.
+This prevents accidental exposure of secrets in logs, CLI output,
 debug dumps, or JSON exports.
 
 Contents:
@@ -11,6 +12,7 @@ Contents:
       sensitive patterns.
     - ``NotSensitiveKeys``: dotted paths an application declares as not secret.
     - ``is_sensitive_at``: predicate combining the name rule with those declarations.
+    - ``redact_value_at``: the value at one dotted path as the redacted view shows it.
     - ``redact_mapping``: recursive function that creates a redacted copy of a
       configuration mapping.
 
@@ -343,7 +345,8 @@ def redact_mapping(data: dict[str, Any], *, not_sensitive: Iterable[str] | None 
 
     Creates a new dictionary without mutating the input.  Recurses into every
     nested mapping, list and tuple, however they nest, to redact sensitive keys at
-    any depth.
+    any depth, and masks the password of every URL in a string value whatever its key
+    (``scheme://user:pw@host``), unless its path is declared not sensitive.
 
     Args:
         data: Configuration mapping to redact.

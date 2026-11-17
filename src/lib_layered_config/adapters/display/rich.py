@@ -274,6 +274,11 @@ def _display_human(
     Walks the redacted mapping itself rather than re-parsing serialised TOML, so every key is shown
     whatever its name and keeps its provenance.
     """
+    # The section is looked up before anything is printed, so a missing one leaves the output empty, as the
+    # JSON format does, instead of a header followed by an error.
+    redacted_value = config.get_redacted(section, _ABSENT) if section else _ABSENT
+    if section and redacted_value is _ABSENT:
+        raise ValueError(f"Section '{section}' not found")
     con = console or _build_console()
     con.print(_OUTPUT_HEADER, style="bright_red")
     con.print()
@@ -282,9 +287,6 @@ def _display_human(
     if not section:
         _render_table(config.as_dict(redact=True), (), view)
         return
-    redacted_value = config.get_redacted(section, _ABSENT)
-    if redacted_value is _ABSENT:
-        raise ValueError(f"Section '{section}' not found")
     if is_table(redacted_value):
         _render_table(redacted_value, tuple(section.split(".")), view)
     else:

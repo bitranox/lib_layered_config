@@ -9,6 +9,7 @@ file with the same bytes already is.
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -39,7 +40,15 @@ def _read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Config:
     return read_config(vendor=VENDOR, app=APP, slug=SLUG, start_dir=str(tmp_path))
 
 
+# Undecodable bytes reach Python as surrogate escapes only when the filesystem encoding is UTF-8; under
+# another locale (LC_ALL=de_AT.iso88591 with PYTHONUTF8=0) the same bytes decode as ordinary text.
+_NEEDS_UTF8_FILESYSTEM = pytest.mark.skipif(
+    sys.getfilesystemencoding().lower() != "utf-8", reason="needs a UTF-8 filesystem encoding"
+)
+
+
 @posix_only
+@_NEEDS_UTF8_FILESYSTEM
 def test_a_value_with_undecodable_bytes_is_refused_naming_the_variable_and_offset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -54,6 +63,7 @@ def test_a_value_with_undecodable_bytes_is_refused_naming_the_variable_and_offse
 
 
 @posix_only
+@_NEEDS_UTF8_FILESYSTEM
 def test_a_name_with_undecodable_bytes_is_refused_with_the_byte_escaped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -66,6 +76,7 @@ def test_a_name_with_undecodable_bytes_is_refused_with_the_byte_escaped(
 
 
 @posix_only
+@_NEEDS_UTF8_FILESYSTEM
 def test_a_variable_outside_the_prefix_is_not_looked_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SOME_OTHER_TOOL", _UNDECODABLE)
     monkeypatch.setenv(f"{PREFIX}DB__NAME", "app")
@@ -76,6 +87,7 @@ def test_a_variable_outside_the_prefix_is_not_looked_at(tmp_path: Path, monkeypa
 
 
 @os_agnostic
+@_NEEDS_UTF8_FILESYSTEM
 def test_valid_non_ascii_text_still_loads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(f"{PREFIX}DB__NAME", "Gr\u00fc\u00dfe \U0001f600")
 

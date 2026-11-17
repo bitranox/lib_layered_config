@@ -39,10 +39,11 @@ def coerce_value(raw_key: str, value: str, *, not_sensitive: NotSensitiveKeys = 
 
     A JSON array or object is parsed, ``true``/``false`` become a bool, ``null``/``none`` become
     None, and a number becomes an int or float only when it reads back as the same text; anything
-    else stays the text it is. A sensitive key (one ``redact=True`` masks) keeps ``null``/``none``
-    as text: None would mean "no credential", and a consumer would then proceed without one
-    instead of failing to log in. A key the application declared not sensitive reads them as None
-    like any other key.
+    else stays the text it is. A key whose own last segment is sensitive (``SMTP__PASSWORD``) keeps
+    ``null``/``none`` as text: None would mean "no credential", and a consumer would then proceed without one
+    instead of failing to log in. Only that last segment is looked at: a key below a sensitive table
+    (``API_KEY__PRIMARY``) reads them as None, although ``redact=True`` masks it with its table. A key
+    the application declared not sensitive reads them as None like any other key.
 
     Args:
         raw_key: Variable name with the prefix removed, segments separated by ``__``.

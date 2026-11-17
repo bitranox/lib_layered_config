@@ -437,7 +437,9 @@ from lib_layered_config import deploy_config, generate_examples
 
 # copy one file into the system/user layers
 # If ./myapp/config.d/ exists, those files are also deployed to each destination's config.d/
-paths = deploy_config("./myapp/config.toml", vendor="Acme", app="ConfigKit", targets=("app", "user"))
+results = deploy_config(
+    "./myapp/config.toml", vendor="Acme", app="ConfigKit", slug="config-kit", targets=("app", "user")
+)
 
 # scaffold an example tree for documentation
 examples = generate_examples(Path("./examples"), slug="config-kit", vendor="Acme", app="ConfigKit")

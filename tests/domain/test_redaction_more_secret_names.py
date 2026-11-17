@@ -176,6 +176,10 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("[docs](http://h1)[db](https://u:pw@h2)", f"[docs](http://h1)[db](https://u:{REDACTED_PLACEHOLDER}@h2)"),
         # A '[' ends it even in the middle of a host; a ']' does not.
         ("http://h[x://u:pw@h2", f"http://h[x://u:{REDACTED_PLACEHOLDER}@h2"),
+        # An '@' or a list separator BEFORE the URL is found once and remembered; the URL's own '@' and the
+        # missing separator after it must still be searched for.
+        ("me@example.com https://svc:pa://ss@db", f"me@example.com https://svc:{REDACTED_PLACEHOLDER}@db"),
+        ("x,y https://u:pa://ss@h", f"x,y https://u:{REDACTED_PLACEHOLDER}@h"),
         # A '/', '?', '#', ',', ';' or '@' ends the user info too.
         ("https://h/path|x://u:pw@h2", f"https://h/path|x://u:{REDACTED_PLACEHOLDER}@h2"),
         ("amqp://h1,amqp://u:pw@h2", f"amqp://h1,amqp://u:{REDACTED_PLACEHOLDER}@h2"),

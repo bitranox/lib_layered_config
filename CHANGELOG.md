@@ -28,13 +28,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   it with `read_config(not_sensitive=[...])` to keep it visible.
 - Redaction masks the password of every URL in a string value, under any key:
   `postgres://alice:hunter2@db/app` under `db.url` now shows as `postgres://alice:***REDACTED***@db/app`. That
-  holds when the user name holds an `@`, when the password holds an unencoded `/`, `?`, `#` or `@`
+  holds when the user name holds an `@`, when the password holds an unencoded `/`, `?`, `#` or `@` (but not an `@`
+  followed later by `/`, `?` or `#`, below)
   (`postgresql://app:Ab/9+x@db/prod`) or starts with `/`, for a scheme with a sub-scheme
   (`jdbc:mysql://alice:hunter2@db/app`), for a scheme after other text (`12:https://u:pw@h`), when the
   user name or password holds a `://` (`https://app://8xK3pQ@db`, `postgresql://svc_user://8xK3pQ@db/prod`), and for each URL of a list in one value
   (`amqp://u:p1@h1//;amqp://u:p2@h2//`); an `@` in the query leaves the host shown. Three shapes no parser reads
   one way stay as documented in the Python API reference: a password of digits followed by an unencoded `/`,
-  `?` or `#` reads as a port and is shown, a password holding an `@` and then a `/` is masked only up to
+  `?` or `#` reads as a port and is shown, a password holding an `@` and then a `/`, `?` or `#` is masked only up to
   the `@` the authority ends at, and a password holding a `://` after a `/`, `?`, `#`, `[`, white space, `,`
   or `;`, or with white space, `,` or `;` between such a `://` and its `@`, is shown. URLs joined by a
   character that does not end a user info, such as `|` (`redis://h1|redis://u:pw@h2`), can be read as one
@@ -190,6 +191,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- `display_config(section=...)` with a section that does not exist raises `ValueError` before printing
+  anything in the human format too; it used to print its header note first.
 - The `.env.example` that `generate_examples` and `generate-examples` write sets the setting it names once
   copied to `.env`, as its first line tells you to. It wrote `MYAPP___SERVICE__PASSWORD=changeme`; a `.env` key
   takes no prefix, so the copy set `myapp._service.password` and left `service.password`, the key the generated

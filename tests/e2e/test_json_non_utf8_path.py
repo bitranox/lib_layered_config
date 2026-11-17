@@ -11,6 +11,7 @@ byte as the four characters ``\\xff``.
 from __future__ import annotations
 
 import json
+import sys
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -18,6 +19,13 @@ import pytest
 from lib_layered_config import cli, read_config_json
 from tests.support import create_layered_sandbox
 from tests.support.os_markers import posix_only
+
+# Undecodable bytes reach Python as surrogate escapes only when the filesystem encoding is UTF-8; under
+# another locale (LC_ALL=de_AT.iso88591 with PYTHONUTF8=0) the same bytes decode as ordinary text.
+_NEEDS_UTF8_FILESYSTEM = pytest.mark.skipif(
+    sys.getfilesystemencoding().lower() != "utf-8", reason="needs a UTF-8 filesystem encoding"
+)
+pytestmark = _NEEDS_UTF8_FILESYSTEM
 
 if TYPE_CHECKING:
     from pathlib import Path

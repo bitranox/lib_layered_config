@@ -106,6 +106,13 @@ Return the value for a dotted key path or a default when the path is missing.
 
 **Returns:** The resolved value or `default` when missing.
 
+`get` splits the path at every dot, so a key whose own name holds a dot (a TOML quoted key such as
+`[hosts] "db1.example.com" = {port = 5432}`) is not reached by its dotted spelling: read it through the
+tables, `config["hosts"]["db1.example.com"]["port"]`. `origin()` and the provenance of `read_config_json`
+list it under the names joined by dots (`hosts.db1.example.com.port`), so that path is a label, not a
+`get` path. `config["a.b"]` is a single key, not a path: beside `[a] b = 2` and a top-level `"a.b" = 1`,
+`config["a.b"]` is `1` and `config.get("a.b")` is `2`.
+
 **Examples:**
 
 **Example 1: Basic dotted-path lookup**
@@ -291,7 +298,7 @@ print(config.get_redacted("db.port", 0))  # 0
 Serialize the configuration as JSON.
 
 **Parameters:**
-- `indent` (int | None, optional): Indentation level for pretty-printing. `None` produces compact output. Default: `None`.
+- `indent` (int | None, optional): Any value but `None` (`0` and `False` included) pretty-prints with a fixed 2-space indent; it is not a level. `None` produces compact output. Default: `None`.
 - `redact` (bool, optional): Replace the values of sensitive keys with `***REDACTED***`; keys declared through `read_config(not_sensitive=...)` stay visible. Default: `False`.
 
 **Returns:** JSON string containing the configuration data.
@@ -320,7 +327,7 @@ print(pretty_json)
 #   }
 # }
 ```
-**Explanation:** Use `indent=2` or `indent=4` for human-readable JSON output, perfect for logging or debugging.
+**Explanation:** Pass `indent=2` (any value but `None` gives the same 2-space indent) for human-readable JSON output, perfect for logging or debugging.
 
 **Example 2: Compact JSON for APIs or storage**
 ```python
@@ -598,7 +605,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
-- `indent` (int | None, optional): JSON indentation level. `None` for compact output. Default: `None`.
+- `indent` (int | None, optional): Any value but `None` gives a fixed 2-space indent; `None` for compact output. Default: `None`.
 - `redact` (bool, optional): Replace the values of sensitive keys (`password`, `token`, `secret`, `*_key`, ...) with `***REDACTED***` in the config data. Default: `False`.
 - `not_sensitive` (Iterable[str] | None, optional): Dotted key paths you declare as not secret although their name looks like one (e.g. `["performance.max_token_bytes"]`). Redaction leaves them visible, and an unquoted `null`/`none` in the environment or `.env` reads as `None` for them. Declared keys stay visible when `redact` is set. A bare `str` or a non-`str` entry raises `TypeError`; an empty segment (`"a..b"`) raises `ValueError`. Default: `None`.
 
@@ -809,8 +816,9 @@ can therefore be read as one URL, and then more than the password is masked:
 `redis://h1|redis://u:pw@h2` shows as `redis://h1|redis:***REDACTED***@h2`. A `:` in the path or an IPv6 literal, a
 drive letter in a `file` URL (`file://C:/...`) and a port followed by an `@` in the path or query (`https://example.com:8443/?to=a@b`) are
 not a password and are left as they are; so is a password of digits followed by an unencoded `/`, `?` or `#`,
-which reads as a port. A password holding an `@` and then a `/` (`mysql://u:p@ss/w@h/db`) is masked up to the
-`@` the first reading ends at, so `ss/w` is shown: encode such a password (`p%40ss%2Fw`). A `://` after a `/`, `?`, `#`, `[`, white
+which reads as a port. A password holding an `@` and then a `/`, `?` or `#` (`mysql://u:p@ss/w@h/db`,
+`postgresql://app:Xk@9#mQ2@db/prod`) is masked up to the `@` the first reading ends at, so `ss/w` and `9#mQ2` are
+shown: encode such a password (`p%40ss%2Fw`). A `://` after a `/`, `?`, `#`, `[`, white
 space, `,` or `;` in a password (`https://u:pa/ss://x@h`) starts a URL of its own, and so does one followed
 by white space, `,` or `;` before the password's `@` (`https://u:pa://x y@h`), so the password before it is
 shown: encode it (`pa%2Fss%3A%2F%2Fx`). A path declared not
@@ -842,7 +850,7 @@ Return whether the key at `path` is masked: its own name looks secret and nothin
 
 ##### `redact_mapping(data, *, not_sensitive=None)`
 
-Return a deep copy of `data` with sensitive values replaced by `REDACTED_PLACEHOLDER` (`"***REDACTED***"`).
+Return a deep copy of `data` with the values of sensitive keys replaced by `REDACTED_PLACEHOLDER` (`"***REDACTED***"`), and the password of every URL in a string value masked whatever its key (`scheme://user:pw@host`), unless its path is declared not sensitive.
 
 **Parameters:**
 - `data` (dict[str, Any], required): Configuration mapping to redact.
@@ -1321,7 +1329,9 @@ about to replace no longer parses.
 - `deploy_config_paths` returns every file a `deploy_config` of `source` to `targets` writes, resolved,
   whether or not it exists yet: each target's configuration file and, in its companion `.d` directory, a
   copy of every file in the source's own `.d` directory. It is computed by the code the deploy runs, so
-  it cannot drift from what the deploy reports writing.
+  it cannot drift from what the deploy writes. Compare it with `result.destination.resolve()`: a
+  `DeployResult` names its destination as the layer root spells it, so under a symlinked
+  `XDG_CONFIG_HOME` the two spellings differ.
 - `read_deploy_config` returns the configuration the deploy reads for its modes: `source` as the defaults
   layer, then the app, host and user files not in `skip`, then the environment. It reads no `.env` file,
   and a user-layer file keeps only its `user_*` and `enabled` permission settings. Each `skip` entry is

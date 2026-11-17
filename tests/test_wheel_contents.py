@@ -35,8 +35,10 @@ def _tracked_files() -> list[str]:
     if git is None or not (_ROOT / ".git").exists():
         pytest.skip("needs a git checkout (an unpacked sdist has none)")
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    # The tests redirect HOME, so the user's global safe.directory is not read; a checkout another user owns
+    # (an elevated clone on Windows, a shared mount) would make git refuse with exit 128.
     listed = subprocess.run(  # noqa: S603 - argv is the resolved git binary and constants, no shell
-        [git, "-C", str(_ROOT), "ls-files", "-z"],
+        [git, "-c", f"safe.directory={_ROOT.as_posix()}", "-C", str(_ROOT), "ls-files", "-z"],
         capture_output=True,
         check=True,
         env=env,

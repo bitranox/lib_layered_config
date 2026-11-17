@@ -262,7 +262,7 @@ verify = true
 ```
 **Access:**
 - Python: `config.get("database.pool.size")` → `10`
-- Python: `config.get("database.ssl.enabled")` → `true`
+- Python: `config.get("database.ssl.enabled")` → `True`
 - Environment: `MYAPP___DATABASE__POOL__SIZE=20`
 - Environment: `MYAPP___DATABASE__SSL__ENABLED=false`
 
@@ -273,7 +273,7 @@ verify = true
         "host": "localhost",
         "port": 5432,
         "pool": {"size": 10, "timeout": 30},
-        "ssl": {"enabled": true, "verify": true},
+        "ssl": {"enabled": True, "verify": True},
     }
 }
 ```
@@ -431,7 +431,7 @@ MYAPP___DATASET__0__DSN=postgres://new-host/db
 
 - The numeric segment (`0`, `1`, ...) is the list position.
 - An index equal to the current length appends a new element. An index past that is
-  ignored with a `type_conflict` warning, so the array is never silently replaced.
+  ignored with a `list_index_out_of_range` warning, so the array is never silently replaced.
 - This only kicks in when the target is already an array. With no underlying array the
   numeric segments stay ordinary string keys (`{"0": ...}`), same as normal nesting.
 - Read the merged element back through the list, e.g. `config.get("dataset")[0]["dsn"]`.

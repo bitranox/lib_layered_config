@@ -49,6 +49,11 @@ def _host_layers_isolated(tmp_path_factory: pytest.TempPathFactory, monkeypatch:
         monkeypatch.setenv(name, str(roots / name.lower()))
     for name in _LAYER_ROOT_OVERRIDES:
         monkeypatch.delenv(name, raising=False)
+    # The env layer reads `<PREFIX>___<KEY>` variables, so one exported in the developer's shell (the
+    # README's CONFIG_KIT___API__KEY) would reach every read of a test using that slug. No variable outside
+    # the env layer's naming holds three underscores, so deleting every one leaves the rest of the shell alone.
+    for name in [name for name in os.environ if "___" in name]:
+        monkeypatch.delenv(name)
     if os.name == "nt":
         monkeypatch.setenv("ProgramData", str(roots / "programdata"))
         return

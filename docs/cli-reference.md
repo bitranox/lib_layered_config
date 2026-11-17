@@ -32,7 +32,7 @@ A command exits 0 on success and with the error's code on failure:
 
 | Failure                                                                                                                                                                     | Linux and macOS                                                                  | Windows                           |
 |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-----------------------------------|
-| A usage error: an unknown option, a missing or refused argument (`--target`, `--platform`, `--dir-mode`, `--file-mode`, `env-prefix`'s SLUG)                                              | 2                                                                                | 2                                 |
+| A usage error: an unknown option, a missing or refused argument (`--target`, `--platform`, `--dir-mode`, `--file-mode`, `env-prefix`'s SLUG)                                | 2                                                                                | 2                                 |
 | `ValidationError` or a subclass: a refused vendor, app, slug or profile option, a mode from the configuration; a linked deploy destination; an empty or relative layer root | 22                                                                               | 87                                |
 | Any other library error: a file that cannot be read or parsed (`LayerLoadError`), no home directory (`HomeDirectoryUnknownError`)                                           | 1                                                                                | 1                                 |
 | An operating-system error                                                                                                                                                   | its errno: 13 permission denied, 27 file too large, 28 disk full, 2 no such file | its Windows code: 5 access denied |
@@ -146,7 +146,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 | `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (TOML with `# source:` comments), `json` (structured JSON)                                                                     |
 | `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                                        |
 | `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output: with `--format json`, and in the `--json` envelope, where `--no-provenance` gives `"provenance": null`                  |
-| `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask sensitive values (passwords, tokens, `*_key`) as `***REDACTED***` in every format; `--no-redact` prints them                                                   |
+| `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask the values of sensitive keys (passwords, tokens, `*_key`) and the password of every URL as `***REDACTED***` in every format; `--no-redact` prints them         |
 
 **Examples:**
 
