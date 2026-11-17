@@ -83,8 +83,11 @@ if origin and origin["layer"] == Layer.ENV:
 Immutable configuration value object with provenance tracking and dotted-path lookups.
 
 A `Config` owns a deep copy of the data it was built from, and `config["db"]`, `config.get(...)`, `items()`,
-`values()` and `origin(...)` return a nested table, list or provenance record as a copy of the same type: changing
-what you read never changes the `Config`. Scalars are returned as they are. A `Config` works with `copy.copy`,
+`values()` and `origin(...)` return a nested table, list or provenance record as a copy: changing what you read
+never changes the `Config`. A table comes back as a `dict` (a hand-built `OrderedDict` or other mapping too), a
+list, tuple or set as the same type, and scalars as they are. Each read of a table copies it, so in a loop read a
+leaf with `config.get("servers.web.port")`, or take the section once (`servers = config["servers"]`) and index
+that, rather than `config["servers"][name]["port"]`, which copies the whole section for every leaf. A `Config` works with `copy.copy`,
 `copy.deepcopy` and `pickle` (every protocol), and the copy keeps its provenance and its declared `not_sensitive`
 paths. Like a `dict`, it is not hashable.
 
@@ -1633,8 +1636,9 @@ Exception
         +-- DeployPermissionsError  unusable permission settings
         +-- DeployDestinationError  a deploy destination is a symbolic link or not a regular file
         +-- GenerateDestinationError  an example path generate would write through is a link or not a regular file
-        +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, or an empty or relative
-                                       LIB_LAYERED_CONFIG_ETC / _MAC_APP_ROOT / _MAC_HOME_ROOT)
+        +-- LayerRootNotAbsoluteError  a layer root that is not absolute (a Windows root, a relative HOME or
+                                       USERPROFILE, or an empty or relative LIB_LAYERED_CONFIG_ETC /
+                                       _MAC_APP_ROOT / _MAC_HOME_ROOT)
 ```
 
 - When the home directory cannot be determined (HOME unset and the uid has no passwd entry; on Windows

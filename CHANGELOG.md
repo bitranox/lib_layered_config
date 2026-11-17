@@ -178,8 +178,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - A `Config` is now immutable below its top level too. `config["db"]["host"] = ...`, an `append` to a list
   read with `config.get(...)`, or a change to the mapping the `Config` was built from used to change what
   every later read returned. The `Config` now owns a deep copy and hands out a copy of each nested table,
-  list or provenance record, of the same type, so `json.dumps(config["db"])` and `isinstance(..., dict)`
-  keep working.
+  list or provenance record: a table as a `dict`, a list, tuple or set as the same type, so
+  `json.dumps(config["db"])` and `isinstance(..., dict)` keep working. Each read of a table copies it; in a
+  loop, read a leaf with `config.get("a.b.c")` or take the section once.
 - `deploy_config`, `deploy_config_paths`, `read_deploy_config` and `deploy --slug ""` refuse an empty slug
   with `ValidationError: slug cannot be empty` (exit code 22), as `read_config` and `generate_examples`
   always did. They read `""` as no slug and deployed under the app name, a directory no read with the
@@ -189,8 +190,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   passes (a lookup in a table of 128 000 keys took about 120 times as long as in one of 1 000). A
   `Config` built by hand from a table holding a non-string key now finds that table's string keys
   through `get`, where it used to return the default.
-- `copy.deepcopy`, `copy.copy` and `pickle` of a `Config` used to raise `cannot pickle 'mappingproxy'
-  object`; they now work and keep its provenance and declared `not_sensitive` paths.
+- `copy.deepcopy` and `pickle` of a `Config` used to raise `cannot pickle 'mappingproxy' object`; they now
+  work and keep its provenance and declared `not_sensitive` paths (`copy.copy` already worked).
 - A relative home directory (`HOME=rel` on Linux and macOS, a relative `USERPROFILE` on Windows) is refused
   with `LayerRootNotAbsoluteError` naming that variable, as a relative `LIB_LAYERED_CONFIG_ETC` is. Before,
   the Linux and macOS user layer, and a deploy to it, resolved under the current directory.

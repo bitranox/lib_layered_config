@@ -61,8 +61,9 @@ class ValidationError(ConfigError, ValueError):
 class LayerRootNotAbsoluteError(ValidationError):
     """Raised when a layer root is not an absolute path.
 
-    A Windows root (ProgramData, APPDATA, LOCALAPPDATA), or an empty or relative
-    ``LIB_LAYERED_CONFIG_ETC``, ``LIB_LAYERED_CONFIG_MAC_APP_ROOT`` or ``LIB_LAYERED_CONFIG_MAC_HOME_ROOT``.
+    A Windows root (ProgramData, APPDATA, LOCALAPPDATA), a relative home directory (``HOME`` on
+    Linux and macOS, ``USERPROFILE`` on Windows), or an empty or relative ``LIB_LAYERED_CONFIG_ETC``,
+    ``LIB_LAYERED_CONFIG_MAC_APP_ROOT`` or ``LIB_LAYERED_CONFIG_MAC_HOME_ROOT``.
 
     Its own type because a deploy's permission read treats exactly this case as an absent layer:
     no file can sit under a root that has no absolute path on this machine, so there are no modes

@@ -283,10 +283,12 @@ def test_validate_target_refuses_a_layer_deploy_does_not_write(name: str) -> Non
     ("targets", "remedy"),
     [
         ("user", "write ['user']"),
+        # A target name is matched in any case, so ['User'] is accepted and is the right remedy.
+        ("User", "write ['User']"),
         ("", "write a list of app, host and user"),
         ("x", "write a list of app, host and user"),
     ],
-    ids=["layer-name", "empty", "unknown"],
+    ids=["layer-name", "layer-name-capitalised", "empty", "unknown"],
 )
 def test_a_single_str_targets_is_refused_naming_the_mistake(
     sandbox: LayeredSandbox, source_config: Path, deploy: Callable[..., object], targets: str, remedy: str
