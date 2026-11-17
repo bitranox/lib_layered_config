@@ -981,7 +981,8 @@ not readable, the section is invalid, a refused `permission_overrides` value, or
 combined with `permissions`; nothing is written), `DeployDestinationError` (a destination or one of its `.d`
 copies is a symbolic link, dangling or not, or not a regular file - a directory, FIFO, device or socket;
 deploy neither writes through a link nor replaces it, and nothing is written). A layer directory that is a link
-is written through, but its target keeps its mode (logged as `deploy_directory_mode_skipped`).
+is written through, but its target keeps its mode (logged as `deploy_directory_mode_skipped`); a directory
+below it that the deploy writes into (`config.d/`, `hosts/`, `profile/<name>/`) still gets the layer's mode.
 
 **Partial failure:** targets are deployed in the order given, each one's `.d` files after its main file.
 An error raised partway is the same exception, re-raised, and carries the results already written:

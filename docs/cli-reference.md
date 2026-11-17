@@ -91,8 +91,8 @@ warning: dotenv_skipped_foreign_owner layer=dotenv path=/tmp/.env owner_uid=1001
 warning: type_conflict key=database layer=app path=/etc/xdg/myapp/config.toml old_type=scalar new_type=mapping
 ```
 
-The events are `dotenv_skipped_foreign_owner`, `deploy_setting_ignored`, `type_conflict`,
-`list_index_out_of_range`, `case_folded_key_ambiguous`, `user_layer_skipped_no_home` and
+The events are `dotenv_skipped_foreign_owner`, `deploy_setting_ignored`, `deploy_directory_mode_skipped`,
+`type_conflict`, `list_index_out_of_range`, `case_folded_key_ambiguous`, `user_layer_skipped_no_home` and
 `host_layer_skipped_invalid_hostname`. Their fields are key names, paths, layers, types, owners, a
 hostname and the reason it was refused, never configuration values, so a warning line cannot print a
 secret. A field's value is printed as it is, spaces included (a `reason` holds several words), so read
@@ -476,7 +476,10 @@ on purpose. Remove the link, or deploy its target yourself. Every linked destina
 line. A linked parent directory (`~/.config` itself a link) is followed as usual. A layer directory that is
 a link (`~/.config/myapp` linked to a dotfiles checkout) is written through too, but deploy does not set the
 layer's directory mode on the directory it links to, which it neither made nor owns at that path; it logs
-`deploy_directory_mode_skipped` instead. The files still get their modes.
+`deploy_directory_mode_skipped` instead. The files still get their modes. Only the linked directory itself is
+skipped: a directory deploy writes into below it (`config.d/`, `hosts/`, `profile/<name>/`) still gets the
+layer's directory mode, inside the link's target, so a shared `config.d/` at 0755 becomes 0700 on the user
+layer.
 
 A destination that exists but is not a regular file (a directory, FIFO, device or socket) is refused
 the same way, with `is not a regular file; deploy writes only regular files`.

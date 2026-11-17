@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   links to. With `~/.config/myapp` linked to a shared 0755 directory, deploy set that directory to 0700 (and on
   the app and host layers could widen a 0750 one to 0755). The file is still written through the link with
   its mode; the target directory keeps its own, and the skip is logged as `deploy_directory_mode_skipped`.
+  Only the linked directory itself is skipped: a directory below it that the deploy writes into
+  (`config.d/`, `hosts/`, `profile/<name>/`) still gets the layer's mode.
 - Redaction masks more secrets. Keys named `pwd`, `pass`, `privatekey`, `privkey`, `bearer` or `authorization`
   (`smtp_pass`, `db_pwd`, `auth_bearer`, `smtpPass`, an `Authorization = "Bearer ..."` header) came back in
   clear from `as_dict(redact=True)`, `to_json(redact=True)`, `get_redacted` and the display; they are now
