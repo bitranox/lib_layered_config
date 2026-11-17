@@ -167,7 +167,7 @@ def test_an_empty_passwd_home_is_refused_like_an_empty_home(
 ) -> None:
     if sys.platform == "win32":
         pytest.skip("pwd is POSIX-only")
-    import pwd  # noqa: PLC0415 - POSIX-only module: a module-level import breaks collection on Windows
+    import pwd
 
     # With HOME unset, Path.home() reads the account's passwd home field, and an empty one also comes back as
     # "/" (CPython's posixpath.expanduser), so a user deploy went to /.config/<slug> (user decision 2026-11-17,
@@ -190,7 +190,7 @@ def test_an_empty_passwd_home_is_refused_like_an_empty_home(
 def test_a_passwd_home_is_used_when_home_is_unset(work: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     if sys.platform == "win32":
         pytest.skip("pwd is POSIX-only")
-    import pwd  # noqa: PLC0415 - POSIX-only module: a module-level import breaks collection on Windows
+    import pwd
 
     # The control: a non-empty passwd home still answers, so only the empty field is refused.
     monkeypatch.delenv("HOME", raising=False)

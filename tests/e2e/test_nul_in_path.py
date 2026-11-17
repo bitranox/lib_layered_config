@@ -9,7 +9,6 @@ caller can pass straight from user input, unlike a wrong type, which pyright fla
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -28,6 +27,7 @@ from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from tests.support import LayeredSandbox
 

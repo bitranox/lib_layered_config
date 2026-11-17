@@ -13,13 +13,16 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from lib_layered_config import read_config
 from lib_layered_config.adapters.dotenv.default import DefaultDotEnvLoader
 from tests.support.os_markers import os_agnostic, posix_only
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 def _linked_dotenv(directory: Path, content: str = "KEY=linked\n") -> Path:
