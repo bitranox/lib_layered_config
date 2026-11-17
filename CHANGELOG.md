@@ -391,7 +391,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `deploy_config` and `deploy_config_paths` refuse `targets` given as a single str with
   `ValidationError: targets takes a sequence of layer names, not a single str: write ['user']`.
   `targets="user"` was read as the targets u, s, e, r and refused naming `u`; `targets=""` deployed
-  nothing and returned an empty list without a word.
+  nothing and returned an empty list without a word. A str that is not a layer name (`""`, `"x"`) is told
+  to `write a list of app, host and user` instead. An empty list still deploys nothing and returns `[]`.
 - `deploy_permissions_from_config` refuses anything but a `Config` with `TypeError:
   deploy_permissions_from_config takes a Config (from read_config), not dict`. A plain mapping has no
   dotted-key lookup, so a configured `[lib_layered_config.default_permissions]` in it was ignored

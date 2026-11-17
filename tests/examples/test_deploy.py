@@ -279,15 +279,24 @@ def test_validate_target_refuses_a_layer_deploy_does_not_write(name: str) -> Non
 
 @os_agnostic
 @pytest.mark.parametrize("deploy", [deploy_config, deploy_config_paths], ids=["deploy_config", "deploy_config_paths"])
-@pytest.mark.parametrize("targets", ["user", ""], ids=["layer-name", "empty"])
+@pytest.mark.parametrize(
+    ("targets", "remedy"),
+    [
+        ("user", "write ['user']"),
+        ("", "write a list of app, host and user"),
+        ("x", "write a list of app, host and user"),
+    ],
+    ids=["layer-name", "empty", "unknown"],
+)
 def test_a_single_str_targets_is_refused_naming_the_mistake(
-    sandbox: LayeredSandbox, source_config: Path, deploy: Callable[..., object], targets: str
+    sandbox: LayeredSandbox, source_config: Path, deploy: Callable[..., object], targets: str, remedy: str
 ) -> None:
     """A str is itself a sequence of str: "user" was read as the targets u, s, e, r, and "" deployed
-    nothing. Both are refused with the type a bad target name raises."""
+    nothing. Both are refused with the type a bad target name raises. The remedy wraps the value in a
+    list only when that list would be accepted: [''] or ['x'] would be refused next."""
     with pytest.raises(ValidationError) as caught:
         deploy(source_config, vendor=VENDOR, app=APP, slug=SLUG, targets=targets)
-    assert str(caught.value) == f"targets takes a sequence of layer names, not a single str: write [{targets!r}]"
+    assert str(caught.value) == f"targets takes a sequence of layer names, not a single str: {remedy}"
     assert not (sandbox.roots["user"] / "config.toml").exists()
 
 

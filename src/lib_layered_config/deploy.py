@@ -753,7 +753,9 @@ def deploy_config(
             its contents are also deployed.
         vendor: Vendor namespace.
         app: Application name.
-        targets: Layer targets to deploy to (app, host, user).
+        targets: Layer targets to deploy to (app, host, user), a sequence such as ``["user"]``. An
+            empty sequence deploys nothing and returns ``[]``, as iterating it does; a single str is
+            refused, because it would be read character by character.
         slug: Slug identifying the configuration set.
         profile: Configuration profile name.
         platform: Override the auto-detected platform. Takes the CLI's ``--platform`` names
@@ -1298,10 +1300,29 @@ def _destinations_for(resolver: DefaultPathResolver, targets: Sequence[str]) -> 
     # read as the targets u, s, e, r, and "" as no target at all. ValidationError, not the
     # TypeError prefer= raises: a non-empty str was already refused with this type.
     if isinstance(targets, str):
-        raise ValidationError(f"targets takes a sequence of layer names, not a single str: write [{targets!r}]")
+        raise ValidationError(
+            f"targets takes a sequence of layer names, not a single str: {_str_targets_remedy(targets)}"
+        )
     for raw_target in targets:
         layer = _validate_target(raw_target)
         yield _Destination(_strategy_for(resolver).destination_for(layer), layer)
+
+
+def _str_targets_remedy(targets: str) -> str:
+    """The way out for a str *targets*: the one-item list when it names a layer, else the layer names.
+
+    ``['']`` or ``['x']`` would only be refused next, so they are never suggested.
+
+    Examples:
+        >>> _str_targets_remedy("user")
+        "write ['user']"
+        >>> _str_targets_remedy("")
+        'write a list of app, host and user'
+    """
+    if targets.lower() in _TARGET_LAYERS:
+        return f"write [{targets!r}]"
+    *first, last = _TARGET_LAYERS
+    return f"write a list of {', '.join(first)} and {last}"
 
 
 def _copy_file(destination: Path, source: Path, *, modes: LayerModes | None) -> None:
