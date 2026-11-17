@@ -182,8 +182,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `lib_layered_config.examples` moved: `deploy_config`, `deploy_config_paths`, `read_deploy_config`,
   `DeployAction`, `DeployResult` and the deployment strategies now live in `lib_layered_config.deploy`,
   and `generate_examples` with its plan and spec types in `lib_layered_config.generate`. The root package
-  still exports `deploy_config`, `deploy_config_paths`, `read_deploy_config`, `DeployAction`,
-  `DeployResult` and `generate_examples`, as before. The old paths
+  still exports `deploy_config`, `deploy_config_paths`, `read_deploy_config` and `generate_examples`, and
+  from this release `DeployAction` and `DeployResult` too (see Added), so code importing those two from
+  `lib_layered_config.examples` needs this release or later to switch to the root import. The old paths
   (`lib_layered_config.examples`, `.examples.deploy`, `.examples.generate`) still work and re-export the
   same objects, but importing them raises a `DeprecationWarning`; they are removed in the next major
   release.
