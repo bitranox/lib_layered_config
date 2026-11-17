@@ -13,7 +13,7 @@ names' language does not matter.
 
 from __future__ import annotations
 
-import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -36,9 +36,11 @@ SLUG = "demo"
 
 
 def _tool(name: str) -> str:
-    found = shutil.which(name)
-    assert found is not None, f"{name} not found on PATH"
-    return found
+    # From System32, never PATH: the windows-latest runner puts Git Bash's coreutils first on PATH,
+    # so a PATH lookup of "whoami" found /usr/bin/whoami, which refuses "/user".
+    found = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / f"{name}.exe"
+    assert found.is_file(), f"{found} not found"
+    return str(found)
 
 
 def _run(*argv: str) -> str:
