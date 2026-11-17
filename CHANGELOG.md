@@ -207,6 +207,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   index (`ds.0.k`), so a later `PREFIX___DS__0` override no longer leaves a stale `ds.00.k` entry behind;
   `list_index_out_of_range` names the plain index too.
 - `Config.get_redacted` no longer copies a value whose path is masked whole.
+- `deploy_config` and `deploy_config_paths` document `HomeDirectoryUnknownError` for a user target when the home
+  directory cannot be determined, and `read_deploy_config` that it leaves the user layer out instead;
+  `generate_examples` documents its arguments, return value and per-platform layout with a runnable example, and
+  `deploy_config_paths` its arguments. The README Development section and `DEVELOPMENT.md` no longer describe pinned
+  tool versions, pre-commit, a pipx wheel step or a journald step, and name the docs the test suite executes.
 - The docs describe every `DeployDestinationError` refusal; say that an unreadable existing destination raises
   `PermissionError` only when it is to be overwritten (`force=True`, or a `conflict_resolver` or the CLI prompt
   answering overwrite) and is a conflict otherwise; that `read_deploy_config` raises `LayerLoadError` for a
