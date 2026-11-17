@@ -790,7 +790,8 @@ print(f"Final configuration: {data}")
 `is_sensitive(name)` decides by key name alone, so a size such as `max_token_bytes` is masked like a token.
 The names it masks include `password`, `passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`,
 `apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id`, `authorization` and any
-`_key` suffix, as whole words, also when digits follow (`password2`, `api_key1`). A table under such a name is
+`_key` suffix, as whole words, also when digits follow (`password2`, `api_key1`); a word continuing `_keys`
+(`signing_keyset`, `api_keystore`) is masked too. A table under such a name is
 masked as a whole. Besides key names, every redacted view masks the password of each URL in a string value,
 under any key: `postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`, and each
 URL of a list such as `amqp://u:p1@h1//;amqp://u:p2@h2//` is masked on its own (a URL runs to the next
@@ -800,7 +801,8 @@ leaves the host shown. When that reading finds no password, the URL is read as p
 unencoded `/`, `?` or `#` in a password read it (SQLAlchemy): the user name up to the first `:`, the password
 up to the last `@` before the query, so `postgresql://app:Ab/9+x@db/prod`, `postgresql://app:/x9Kq@db/prod` and
 `smtp://alice@example.com:Ab/9@mail.example.com` are masked whole and an `@` in the query still leaves the host
-shown. A scheme may carry sub-schemes (`jdbc:mysql://`). A `:` in the path or an IPv6 literal, a drive letter
+shown. A scheme may carry sub-schemes (`jdbc:mysql://`) and may follow other text (`12:https://u:pw@h`); a
+`://` inside a password (`https://app://8xK3pQ@db`) does not start another URL. A `:` in the path or an IPv6 literal, a drive letter
 (`file://C:/...`) and a port followed by an `@` in the path or query (`https://example.com:8443/?to=a@b`) are
 not a password and are left as they are; so is a password of digits followed by an unencoded `/`, `?` or `#`,
 which reads as a port. A password holding an `@` and then a `/` (`mysql://u:p@ss/w@h/db`) is masked up to the
@@ -1319,9 +1321,12 @@ about to replace no longer parses.
   resolved before it is compared, so any spelling of a path matches; a single `str` or `Path` given as
   `skip` raises `TypeError`.
 
-**Raises:** `FileNotFoundError` for a source that does not exist or is not a regular file (worded as for `deploy_config`), `ValueError` for an invalid profile, `ValidationError`
-for an unknown target (`deploy_config_paths`), and `LayerLoadError` for a file not left out that cannot be
-read or parsed (`read_deploy_config`).
+**Raises:** `FileNotFoundError` for a source that does not exist or is not a regular file (worded as for `deploy_config`);
+`ValidationError` for an invalid vendor, app, slug, profile or platform; for `deploy_config_paths` also for
+`targets` given as a single string, an unknown target, or a requested target whose layer root is not absolute
+(`LayerRootNotAbsoluteError`); for `read_deploy_config` `TypeError` for a `skip` given as a single `str` or
+`Path`, and `LayerLoadError` for a file not left out that cannot be read or parsed. `read_deploy_config` leaves
+a layer whose root is not absolute out of its read instead of raising.
 
 ```python
 from lib_layered_config import deploy_config_paths, deploy_permissions_from_config, read_deploy_config
@@ -1401,7 +1406,7 @@ for file_path in created_files:
 #   - xdg/myapp/hosts/your-hostname.toml (host overrides)
 #   - home/myapp/config.toml (user preferences, for ~/.config/myapp/)
 #   - home/myapp/config.d/10-override.toml (split overrides)
-#   - .env.example (environment variables)
+#   - .env.example (a .env template: its keys take no environment prefix)
 ```
 **Explanation:** Perfect for generating example configurations to include in your documentation or repository. Users can copy these examples to get started quickly.
 

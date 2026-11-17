@@ -963,8 +963,9 @@ def deploy_config_paths(
             directory, or something else (a FIFO, device or socket).
         PermissionError: The source or its ``.d`` directory sits behind a permission wall.
         ValidationError: An invalid vendor, app, slug, profile or platform; *targets* is a single str, or a
-            target is not one of app, host and user; or a layer root that is not absolute
-            (``LayerRootNotAbsoluteError``, an empty or relative ``HOME`` included).
+            target is not one of app, host and user; or the layer root a requested target needs is not
+            absolute (``LayerRootNotAbsoluteError``: an empty or relative ``HOME`` for ``user``, the app
+            root for ``app`` and ``host``). A root no requested target needs is not checked.
 
     Examples:
         >>> from tempfile import TemporaryDirectory
@@ -1021,8 +1022,9 @@ def read_deploy_config(
         FileNotFoundError: The source is not a regular file; the message says whether it is missing, a
             directory, or something else (a FIFO, device or socket).
         LayerLoadError: A file not left out cannot be read, decoded or parsed.
-        ValidationError: An invalid vendor, app, slug, profile or platform, or a layer root that is not absolute
-            (``LayerRootNotAbsoluteError``, an empty or relative ``HOME`` included).
+        ValidationError: An invalid vendor, app, slug, profile or platform. A layer whose root is not
+            absolute (an empty or relative ``HOME``, say) is left out of the read, not refused, as the
+            deploy's own read does.
 
     Examples:
         >>> from tempfile import TemporaryDirectory
