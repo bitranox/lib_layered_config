@@ -63,6 +63,7 @@ from .domain.deploy_permissions import (
 from .domain.errors import ConfigError, DeployDestinationError, ValidationError
 from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, Layer, PlatformFamily, platform_family
 from .domain.permissions import apply_mode, modes_apply
+from .domain.printable import escape_controls
 from .observability import log_warn
 
 if TYPE_CHECKING:
@@ -1106,7 +1107,14 @@ _SOURCE_REFUSALS: Final[dict[PathKind, str]] = {
 def _existing_source(source: str | Path) -> Path:
     """Return *source* as a path, refusing one that is not a regular file with what is there instead."""
     source_path = Path(source)
-    kind = kind_or_raise(source_path)
+    try:
+        kind = kind_or_raise(source_path)
+    except ValueError:
+        # A NUL character (or a name the OS cannot encode): no file can have it, so it is not found,
+        # like every other source that is not there; escaped, so the message holds no NUL itself.
+        raise FileNotFoundError(
+            _SOURCE_REFUSALS[PathKind.MISSING].format(path=escape_controls(str(source_path)))
+        ) from None
     if kind is not PathKind.FILE:
         raise FileNotFoundError(_SOURCE_REFUSALS[kind].format(path=source_path))
     return source_path

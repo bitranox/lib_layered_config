@@ -998,7 +998,8 @@ Copy a source configuration file into one or more layer directories with conflic
 refusal rule.
 
 **Raises:** `FileNotFoundError` (the source is not a regular file; the message says what is there:
-`"Configuration source not found: <path>"` for a missing path or a dangling link,
+`"Configuration source not found: <path>"` for a missing path, a dangling link or a path holding a NUL
+character (shown as `\u0000`),
 `"Configuration source is a directory, not a file: <path>"`, or `"Configuration source is not a regular file:
 <path>"` for a FIFO, device or socket), `LayerLoadError`
 (the source is not a `.toml` file, or does not parse as TOML: `"<path> is not valid TOML (line N, column M)"`;
@@ -1402,7 +1403,7 @@ line per path: with `force=True`, an example path that is a symbolic link (dangl
 regular file (a directory, FIFO, device or socket); without it, an example path that is a link
 resolving to nothing, which a create would write through; in both modes, a missing example path that
 cannot be created (a regular file, FIFO or dangling link where `destination` or an example's directory
-belongs, or no directory above it at all), worded as `deploy_config` words it. Without `force` anything else
+belongs, no directory above it at all, or a path holding a NUL character), worded as `deploy_config` words it. Without `force` anything else
 already at an example path is kept. A written example replaces the old one through a temporary file, except that a
 file with other hard links, another owner or its own extended attributes is rewritten in place, as
 `deploy_config` does with permission setting off.
@@ -1976,8 +1977,8 @@ Exported from the package root, used to configure or override `deploy_config`'s 
   created because its nearest existing ancestor is not a directory or no ancestor exists; one line each,
   nothing written.
 - `GenerateDestinationError`: An example path `generate_examples` would write through is a symbolic link or not a
-  regular file (without `force`, only a link resolving to nothing), or a missing one cannot be created; one line
-  each, nothing written.
+  regular file (without `force`, only a link resolving to nothing), or a missing one cannot be created (a path
+  holding a NUL character included); one line each, nothing written.
 - `DeployPermissionsError`: The permission settings cannot be used; `.problems` lists one `PermissionProblem`
   per bad value, and `.hint` (optional) suggests a way to deploy anyway.
 - `PermissionProblem`: One refused setting: its dotted key, why, and (`.source`) where it was set, when known.

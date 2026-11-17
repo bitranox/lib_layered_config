@@ -197,6 +197,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A deploy source, or a generate destination, holding a NUL character raised a bare `ValueError`
+  (`stat: embedded null character in path`). A deploy (`deploy_config`, `deploy_config_paths`,
+  `read_deploy_config`) now refuses it as `FileNotFoundError` with `Configuration source not found`, as it
+  refuses every other source that is not there, and generate as `GenerateDestinationError`, the path shown
+  with the NUL as `\u0000`. The read functions already refused such a path with `LayerLoadError`.
 - `deploy_config` refuses a destination it could never create, because a regular file, FIFO or dangling link
   sits where its layer or `.d` directory belongs, or because no directory above it exists at all (a Windows
   layer root on a drive or share that is not there), with `DeployDestinationError` before anything is written.

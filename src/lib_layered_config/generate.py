@@ -36,6 +36,7 @@ from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, 
 from .adapters.env.default import default_env_prefix
 from .domain.errors import GenerateDestinationError
 from .domain.identifiers import ExamplePlatform, validate_identifier, validate_vendor_app
+from .domain.printable import escape_controls
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -358,6 +359,16 @@ def _refuse_unwritable_examples(paths: list[Path], *, force: bool) -> None:
 
 def _example_problem(path: Path, *, force: bool) -> str | None:
     """Why this run cannot write *path*, or ``None`` when it may write or keep it."""
+    try:
+        return _checked_example_problem(path, force=force)
+    except ValueError as error:
+        # A NUL character (or a name the OS cannot encode): no file can have it. The OS's own reason
+        # names the case; the path is escaped so the message holds no NUL itself.
+        return f"{escape_controls(str(path))} cannot be created: {error}"
+
+
+def _checked_example_problem(path: Path, *, force: bool) -> str | None:
+    """:func:`_example_problem` for a path the OS can name."""
     if is_symlink_or_raise(path):
         # A loop reads as missing too (ELOOP); a target behind a permission wall raises the OS error.
         if force or kind_or_raise(path) is PathKind.MISSING:
