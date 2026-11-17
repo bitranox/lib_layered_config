@@ -37,18 +37,30 @@ def _section(payload: Mapping[str, object], key: str) -> Mapping[str, object]:
     return value
 
 
-def _never_composed(*_args: object) -> object:
-    raise AssertionError("_parse_yaml_text never calls compose")
-
-
 class _FakeYAML:
-    """A ``YAMLModule`` double: ``_parse_yaml_text`` reads only ``safe_load`` and ``YAMLError``."""
+    """A ``YAMLModule`` double: ``_parse_yaml_text`` reads only ``SafeLoader`` and ``YAMLError``.
 
-    def __init__(self, *, safe_load: Callable[[str], object], yaml_error: type[Exception]) -> None:
-        self.safe_load = safe_load
+    Its loader's ``get_single_node`` returns what *compose* returns for the document (``None``: an
+    empty document) or raises what *compose* raises; nothing here builds a node to construct.
+    """
+
+    def __init__(self, *, compose: Callable[[str], None], yaml_error: type[Exception]) -> None:
         self.YAMLError = yaml_error
-        self.compose: Callable[..., object] = _never_composed
-        self.SafeLoader: type[object] = object
+
+        class _Loader:
+            def __init__(self, document: str) -> None:
+                self._document = document
+
+            def get_single_node(self) -> None:
+                return compose(self._document)
+
+            def construct_document(self, _node: object) -> object:
+                raise AssertionError("the fake composes no node to construct")
+
+            def dispose(self) -> None:
+                return None
+
+        self.SafeLoader: type[object] = _Loader
 
 
 @os_agnostic
@@ -154,8 +166,8 @@ def test_yaml_parser_returns_empty_dict_when_document_is_none(monkeypatch: pytes
     def load_nothing(_: str) -> None:
         return None
 
-    fake_yaml = _FakeYAML(safe_load=load_nothing, yaml_error=Exception)
-    empty_mapping = structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
+    fake_yaml = _FakeYAML(compose=load_nothing, yaml_error=Exception)
+    empty_mapping = structured_module._parse_yaml_text("", fake_yaml, "memory.yaml").data  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert empty_mapping == {}
 
 
@@ -167,7 +179,7 @@ def test_yaml_parser_wraps_yaml_errors_with_context(monkeypatch: pytest.MonkeyPa
     def explode(_: str) -> None:
         raise BoomError("boom")
 
-    fake_yaml = _FakeYAML(safe_load=explode, yaml_error=BoomError)
+    fake_yaml = _FakeYAML(compose=explode, yaml_error=BoomError)
     with pytest.raises(InvalidFormatError) as exc:
         structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert "memory.yaml" in str(exc.value)
@@ -185,7 +197,7 @@ def test_yaml_parser_wraps_a_bare_value_error_as_invalid_format() -> None:
     def explode(_: str) -> None:
         raise ValueError("month must be in 1..12, not 13")
 
-    fake_yaml = _FakeYAML(safe_load=explode, yaml_error=YAMLError)
+    fake_yaml = _FakeYAML(compose=explode, yaml_error=YAMLError)
     with pytest.raises(InvalidFormatError) as exc:
         structured_module._parse_yaml_text("a: 2020-13-01", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     message = str(exc.value)
@@ -204,7 +216,7 @@ def test_yaml_parser_reports_a_recursion_error_as_too_deep() -> None:
     def explode(_: str) -> None:
         raise RecursionError("maximum recursion depth exceeded")
 
-    fake_yaml = _FakeYAML(safe_load=explode, yaml_error=YAMLError)
+    fake_yaml = _FakeYAML(compose=explode, yaml_error=YAMLError)
     with pytest.raises(InvalidFormatError) as exc:
         structured_module._parse_yaml_text("[[[[[[", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert str(exc.value) == "memory.yaml nests deeper than the YAML parser allows"
