@@ -56,7 +56,8 @@ _PATH_DELIMITER: Final[str] = "."
 
 _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r"(?:^|_)(?:"
-    r"password|passwd|passphrase|secret|token|credential|apikey|cookie|jwt|signature|session_id|sessionid"
+    r"password|passwd|passphrase|pwd|pass|secret|token|credential|apikey|privatekey|privkey|bearer|cookie|jwt"
+    r"|signature|session_id|sessionid"
     r")s?(?:_|$)"
     # `_key` requires a leading underscore so compound names (api_key, access_key,
     # aws_access_key_id, signing_key) match while a field literally named "key" - a
@@ -71,13 +72,23 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _CAMEL_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _SEPARATORS: re.Pattern[str] = re.compile(r"[-\s.]+")
 
+#: A value that is a URL with a password in its authority: ``scheme://user:password@host...``.
+#: The password cannot run past the first ``/``, ``?`` or ``#`` (where the authority ends), and it
+#: is matched greedily, so the host follows the LAST ``@`` of the authority, as ``urllib.parse`` reads
+#: it: an unescaped ``@`` inside the password is masked with the rest.
+_URL_WITH_PASSWORD: re.Pattern[str] = re.compile(
+    r"(?P<head>[A-Za-z][A-Za-z0-9+.-]*://[^/?#:@]*:)(?P<password>[^/?#]*)(?P<tail>@.*)",
+    re.DOTALL,
+)
+
 
 def is_sensitive(key: str) -> bool:
     """Return ``True`` when *key* matches a known sensitive name pattern.
 
     Patterns are matched case-insensitively at word boundaries. Supported stems include
-    ``password``, ``passwd``, ``passphrase``, ``secret``, ``token``, ``credential``,
-    ``apikey``, ``cookie``, ``jwt``, ``signature``, and ``session_id``, with optional plural
+    ``password``, ``passwd``, ``passphrase``, ``pwd``, ``pass``, ``secret``, ``token``, ``credential``,
+    ``apikey``, ``privatekey``, ``privkey``, ``bearer``, ``cookie``, ``jwt``, ``signature``, and
+    ``session_id``, with optional plural
     suffix and other words around them. A ``_key`` suffix also matches (``api_key`` /
     ``access_key`` / ``signing_key``), but a field literally named ``key`` does not, so benign
     names like ``keyboard``, ``monkey``, and a plain ``key`` map field are not treated as
@@ -102,6 +113,8 @@ def is_sensitive(key: str) -> bool:
         False
         >>> is_sensitive("dbPassword"), is_sensitive("client-secret"), is_sensitive("keyBinding")
         (True, True, False)
+        >>> is_sensitive("smtp_pass"), is_sensitive("passenger")
+        (True, False)
     """
     words = _SEPARATORS.sub("_", _CAMEL_BOUNDARY.sub("_", key))
     return _SENSITIVE_PATTERN.search(words) is not None
@@ -379,8 +392,9 @@ class _Redactor:
         """Return *value* (found at *path*) redacted, whatever container holds the secret.
 
         A mapping of any type is walked by its keys, and a list or tuple item by item keeping its
-        type, so a secret inside a list inside a list, or inside a tuple, is reached too. Anything
-        else passes through.
+        type, so a secret inside a list inside a list, or inside a tuple, is reached too. A string
+        that is a URL with a password keeps everything but the password, unless *path* is declared
+        not sensitive. Anything else passes through.
 
         Raises:
             InvalidFormatError: When nesting exceeds :data:`_MAX_REDACT_DEPTH`.
@@ -389,6 +403,8 @@ class _Redactor:
             return self.mapping(cast("Mapping[str, Any]", value), path=path, depth=depth)
         if isinstance(value, (list, tuple)):
             return self.items(cast("list[Any] | tuple[Any, ...]", value), path=path, depth=depth)
+        if isinstance(value, str) and not self.not_sensitive.covers(path):
+            return _mask_url_password(value)
         return value
 
     def items(
@@ -405,6 +421,21 @@ class _Redactor:
         _ensure_depth(depth)
         redacted = [self.node(item, path=path, depth=depth + 1) for item in items]
         return tuple(redacted) if isinstance(items, tuple) else redacted
+
+
+def _mask_url_password(value: str) -> str:
+    """Return *value* with the password of a URL replaced by :data:`REDACTED_PLACEHOLDER`.
+
+    Examples:
+        >>> _mask_url_password("postgres://alice:hunter2@db/app")
+        'postgres://alice:***REDACTED***@db/app'
+        >>> _mask_url_password("postgres://alice@db/app")
+        'postgres://alice@db/app'
+    """
+    match = _URL_WITH_PASSWORD.fullmatch(value)
+    if match is None:
+        return value
+    return f"{match['head']}{REDACTED_PLACEHOLDER}{match['tail']}"
 
 
 def _ensure_depth(depth: int) -> None:

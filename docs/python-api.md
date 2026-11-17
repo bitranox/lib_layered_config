@@ -782,6 +782,11 @@ print(f"Final configuration: {data}")
 ### Redaction helpers
 
 `is_sensitive(name)` decides by key name alone, so a size such as `max_token_bytes` is masked like a token.
+The names it masks include `password`, `passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`,
+`apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id` and any `_key` suffix, as
+whole words. Besides key names, every redacted view masks the password of a value that is a URL, under any key:
+`postgres://alice:hunter2@db/app` shows as `postgres://alice:***REDACTED***@db/app`. A path declared not
+sensitive shows its value as it is, URL included.
 `NotSensitiveKeys` lets an application declare such keys; the helpers below are importable from `lib_layered_config`.
 
 ##### `NotSensitiveKeys.of(declared)`
