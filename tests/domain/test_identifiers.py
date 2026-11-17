@@ -957,3 +957,30 @@ class TestFileNameLength:
         with pytest.raises(ValidationError) as caught:
             validate_hostname("a" * 251)
         assert str(caught.value) == "hostname exceeds maximum length of 250: 251 characters"
+
+
+def _slug(value: str) -> str:
+    return validate_path_segment(value, "slug")
+
+
+def _vendor(value: str) -> str:
+    return validate_vendor_app(value, "vendor")
+
+
+@pytest.mark.parametrize(
+    ("validate", "value", "message"),
+    [
+        (_slug, "a" * 300 + ".", "slug cannot end with a dot"),
+        (_vendor, "a" * 300 + " ", "vendor cannot end with a dot"),
+        (validate_hostname, "a" * 260 + "/", "hostname contains invalid characters"),
+    ],
+    ids=["slug", "vendor", "hostname"],
+)
+def test_an_overlong_value_another_rule_refuses_gets_that_rule_s_message(
+    validate: Callable[[str], str], value: str, message: str
+) -> None:
+    # The length check runs last: a value broken in a way its owner can fix is told what is wrong
+    # with it, not only that it is long.
+    with pytest.raises(ValidationError) as caught:
+        validate(value)
+    assert str(caught.value).startswith(message)
