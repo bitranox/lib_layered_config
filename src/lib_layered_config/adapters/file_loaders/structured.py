@@ -1,7 +1,7 @@
 """Structured configuration file loaders.
 
 Convert on-disk artifacts into Python mappings that the merge layer understands.
-Adapters are small wrappers around the TOML parser, the JSON codec and ``yaml.safe_load`` so
+Adapters are small wrappers around the TOML parser, the JSON codec and PyYAML's safe loader so
 error handling, observability, and immutability policies live in one place.
 
 Contents:
@@ -46,10 +46,10 @@ from ...observability import log_debug
 from .._path_probe import PathKind, checked_kind, config_path_unreadable
 from .._text_decoding import decode_utf8, decode_yaml_text
 from ._toml_backend import PARSER, TomlLoadError, TomlParser
-from ._yaml_facade import as_yaml_module, compose_document
+from ._yaml_facade import as_yaml_module, safe_loader
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from typing import BinaryIO
 
     from ._yaml_facade import YAMLModule, YAMLNode
@@ -625,8 +625,9 @@ class TOMLFileLoader(BaseFileLoader):
         if outcome.failure is not None:
             raise _log_and_build_invalid_format(path, FileFormat.TOML, outcome.failure)
         result = self._ensure_mapping(outcome.value, path=path)
-        _refuse_integers_json_cannot_carry(result, path=path, file_format=FileFormat.TOML)
-        _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.TOML)
+        if _may_be_refused_for_json(result, wide_ints=True):
+            _refuse_integers_json_cannot_carry(result, path=path, file_format=FileFormat.TOML)
+            _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.TOML)
         _log_file_loaded(path, FileFormat.TOML)
         return result
 
@@ -677,7 +678,8 @@ class JSONFileLoader(BaseFileLoader):
         if outcome.failure is not None:
             raise _log_and_build_invalid_format(path, FileFormat.JSON, outcome.failure)
         result = self._ensure_mapping(outcome.value, path=path)
-        _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.JSON)
+        if _may_be_refused_for_json(result, wide_ints=False):
+            _refuse_nesting_json_cannot_write(result, path=path, file_format=FileFormat.JSON)
         _refuse_repeated_keys(duplicate_keys(decoded), path=path, file_format=FileFormat.JSON)
         _log_file_loaded(path, FileFormat.JSON)
         return result
@@ -688,7 +690,7 @@ class YAMLFileLoader(BaseFileLoader):
 
     Support teams that rely on YAML without imposing a mandatory dependency.
 
-    Guards on PyYAML availability before delegating to :func:`yaml.safe_load`.
+    Guards on PyYAML availability before composing and constructing with its pure-Python ``SafeLoader``.
     """
 
     def load(self, path: str) -> Mapping[str, object]:
@@ -730,7 +732,7 @@ class YAMLFileLoader(BaseFileLoader):
             _log_file_invalid(path, FileFormat.YAML, str(exc))
             raise
         parsed = _parse_yaml_text(decoded, yaml_module, path)
-        mapping = self._ensure_mapping(parsed, path=path)
+        mapping = self._ensure_mapping(parsed.data, path=path)
         # First: every check below walks the document as a tree, which never ends on an alias cycle.
         refuse_yaml_alias_blowup(mapping, path=path)
         _refuse_non_string_keys(mapping, path=path)
@@ -738,24 +740,41 @@ class YAMLFileLoader(BaseFileLoader):
         _refuse_values_json_cannot_carry(mapping, path=path)
         _refuse_integers_json_cannot_carry(mapping, path=path, file_format=FileFormat.YAML)
         _refuse_nesting_json_cannot_write(mapping, path=path, file_format=FileFormat.YAML)
-        _refuse_repeated_keys(_yaml_repeated_keys(decoded, yaml_module), path=path, file_format=FileFormat.YAML)
+        # Last, as before the document was composed only once: every refusal above keeps its precedence.
+        _refuse_repeated_keys(parsed.repeated_keys, path=path, file_format=FileFormat.YAML)
         _log_file_loaded(path, FileFormat.YAML)
         return mapping
 
 
-def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
+class _ParsedYAML(NamedTuple):
+    """A YAML document's value and the keys it repeats, both read from one composition.
+
+    Attributes:
+        data: The constructed value; an empty dict for an empty document.
+        repeated_keys: ``"<position> (line L, column C)"`` for every repeated key (see
+            :func:`_yaml_repeated_keys`), for the loader to refuse after its other checks.
+    """
+
+    data: object
+    repeated_keys: list[str]
+
+
+def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> _ParsedYAML:
     """Turn a decoded YAML document into a Python shape that mirrors the file.
 
-    Normalise the PyYAML parsing contract so callers always receive a mapping,
-    raising a domain-specific error when the parser signals invalid syntax.
+    The document is composed once with the safe loader: the repeated keys are read from that node
+    graph before it is constructed (constructing rewrites merge-key mappings in place), then the
+    same graph is constructed, which is what ``yaml.safe_load`` does. A parse refusal is raised here;
+    the repeated keys are only returned, so the loader refuses them after its other checks.
 
     Args:
         document: Decoded YAML document.
-        module: PyYAML module providing ::func:`safe_load` and the ``YAMLError`` base class.
+        module: PyYAML module providing ``SafeLoader`` and the ``YAMLError`` base class.
         path: Source identifier used to enrich error messages.
 
     Returns:
-        Parsed document; an empty dict when the YAML payload evaluates to ``None``.
+        The parsed document (an empty dict when the YAML payload evaluates to ``None``) and its
+        repeated keys.
 
     Raises:
         InvalidFormatError: When PyYAML raises ``YAMLError`` while parsing the document, or when a
@@ -765,20 +784,30 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> object:
             are caught separately, with no reported position.
 
     Examples:
-        >>> from types import SimpleNamespace
-        >>> fake = SimpleNamespace(safe_load=lambda data: {"key": data}, YAMLError=Exception)
-        >>> _parse_yaml_text("value", fake, "memory.yaml")  # doctest: +ELLIPSIS
-        {'key': 'value'}
+        >>> module = _load_yaml_module()
+        >>> module is None or _parse_yaml_text("a: 1\\na: 2\\n", module, "memory.yaml") == (
+        ...     {"a": 2}, ["a (line 2, column 1)"])
+        True
     """
 
     def _describe(exc: BaseException) -> _ParseFailure:
         position = _yaml_position(exc) if isinstance(exc, module.YAMLError) else None
         return _ParseFailure(position, too_deep=isinstance(exc, RecursionError))
 
-    outcome = _run_parser(lambda: module.safe_load(document), (module.YAMLError, ValueError, RecursionError), _describe)
+    def _compose_once() -> _ParsedYAML:
+        loader = safe_loader(module, document)
+        try:
+            root = loader.get_single_node()
+            repeated = _yaml_repeated_keys(root)
+            data: object = {} if root is None else loader.construct_document(root)
+        finally:
+            loader.dispose()
+        return _ParsedYAML({} if data is None else data, repeated)
+
+    outcome = _run_parser(_compose_once, (module.YAMLError, ValueError, RecursionError), _describe)
     if outcome.failure is not None:
         raise _log_and_build_invalid_format(path, FileFormat.YAML, outcome.failure)
-    return {} if outcome.value is None else outcome.value
+    return cast("_ParsedYAML", outcome.value)
 
 
 class _AliasGraphSize(NamedTuple):
@@ -904,21 +933,22 @@ def _refuse_repeated_keys(positions: list[str], *, path: str, file_format: FileF
     raise InvalidFormatError(message)
 
 
-def _yaml_repeated_keys(document: str, module: YAMLModule) -> list[str]:
-    """Return ``"<position> (line L, column C)"`` for every key *document* repeats in one mapping.
+def _yaml_repeated_keys(root: YAMLNode | None) -> list[str]:
+    """Return ``"<position> (line L, column C)"`` for every key the document at *root* repeats in one mapping.
 
-    ``safe_load`` keeps only the last of two equal keys, so the check reads the composed node
-    graph, where both are still there. Two keys are equal when their resolved tag and text are, so
-    ``a`` and ``"a"`` are one key. A merge key (``<<``) is not a setting and may appear more than once
-    in a mapping, so it is skipped as a key; its value is still checked. Every node is visited once: an alias is
-    the same node as its anchor, and a document may alias a node into itself.
+    Constructing keeps only the last of two equal keys, so the check reads the composed node
+    graph, where both are still there, before it is constructed. Two keys are equal when their
+    resolved tag and text are, so ``a`` and ``"a"`` are one key. A merge key (``<<``) is not a
+    setting and may appear more than once in a mapping, so it is skipped as a key; its value is still
+    checked. Every node is visited once: an alias is the same node as its anchor, and a document may
+    alias a node into itself.
 
     Examples:
         >>> module = _load_yaml_module()
-        >>> module is None or _yaml_repeated_keys("a: 1\\nb: {c: 1, c: 2}\\n", module) == ["b.c (line 2, column 11)"]
+        >>> module is None or _yaml_repeated_keys(
+        ...     safe_loader(module, "a: 1\\nb: {c: 1, c: 2}\\n").get_single_node()) == ["b.c (line 2, column 11)"]
         True
     """
-    root = compose_document(module, document)
     found: list[tuple[int, int, str]] = []
     visited: set[int] = set()
     pending: list[tuple[YAMLNode, str]] = [] if root is None else [(root, "")]
@@ -1191,6 +1221,42 @@ def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, 
     )
     _log_file_invalid(path, file_format, message)
     raise InvalidFormatError(message)
+
+
+def _may_be_refused_for_json(data: Mapping[str, object], *, wide_ints: bool) -> bool:
+    """Return whether *data* nests past :data:`CONFIG_MAX_DEPTH` or (with *wide_ints*) holds a wide integer.
+
+    The positioned checks (:func:`_refuse_integers_json_cannot_carry`, :func:`_refuse_nesting_json_cannot_write`)
+    build a dotted position for every node so that a refusal can name it, which cost more than the
+    parse itself; this walk asks the same two questions without positions, so they run only for a
+    document they will refuse. It walks what they walk - mappings and lists, the top-level table at
+    depth 1 - with an explicit stack for the reason :func:`_non_string_keys` gives.
+
+    Examples:
+        >>> _may_be_refused_for_json({"a": [1, {"b": 2**64 - 1}]}, wide_ints=True)
+        False
+        >>> _may_be_refused_for_json({"a": [1, {"b": 2**64}]}, wide_ints=True)
+        True
+        >>> _may_be_refused_for_json({"a": [1, {"b": 2**64}]}, wide_ints=False)
+        False
+    """
+    pending: list[tuple[object, int]] = [(data, 1)]
+    while pending:
+        node, depth = pending.pop()
+        if depth > CONFIG_MAX_DEPTH:
+            return True
+        if isinstance(node, Mapping):
+            children: Iterable[object] = cast("Mapping[object, object]", node).values()
+        elif isinstance(node, list):
+            children = cast("list[object]", node)
+        else:
+            continue
+        for child in children:
+            if _is_container(child):
+                pending.append((child, depth + 1))
+            elif wide_ints and type(child) is int and not JSON_INT_MIN <= child <= JSON_INT_MAX:
+                return True
+    return False
 
 
 def _first_position_past_the_json_depth(data: Mapping[str, object]) -> str | None:

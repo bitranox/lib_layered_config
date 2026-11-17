@@ -26,12 +26,13 @@ from enum import Enum
 from itertools import accumulate
 from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
+from ..domain.config import OVERRIDE_LAYER
 from ..domain.errors import InvalidFormatError
 from ..domain.identifiers import Layer
 from ..observability import log_warn
 
 if TYPE_CHECKING:
-    from .ports import SourceInfoPayload
+    from ..domain.config import SourceInfo
 
 #: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
 #: recurse until Python raises an opaque ``RecursionError``; this bound turns that into a
@@ -84,7 +85,7 @@ class MergeResult:
     """
 
     data: dict[str, object]
-    provenance: dict[str, SourceInfoPayload]
+    provenance: dict[str, SourceInfo]
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -118,7 +119,10 @@ class LayerSnapshot:
         """Build a snapshot from a layer member or its plain name.
 
         ``Config.origin(...)["layer"]`` hands callers the plain string, so a caller rebuilding
-        snapshots from provenance holds ``"user"``, not the member.
+        snapshots from provenance holds ``"user"``, not the member. Provenance also holds values
+        that name no layer, and this refuses them: :data:`~lib_layered_config.domain.config.OVERRIDE_LAYER`
+        (``"override"``, every key :meth:`Config.with_overrides` set) and any source a caller
+        names itself (such as ``"cli"``).
 
         Args:
             name: The layer, as a member or its plain name.
@@ -129,13 +133,22 @@ class LayerSnapshot:
             The snapshot, holding the :class:`Layer` member.
 
         Raises:
-            ValueError: *name* names no layer.
+            ValueError: *name* names no layer, ``"override"`` and a caller's own source included.
 
         Examples:
             >>> LayerSnapshot.of("user", {}, None).name is Layer.USER
             True
         """
-        return cls(Layer(name), payload, origin)
+        try:
+            layer = Layer(name)
+        except ValueError:
+            layers = ", ".join(repr(member.value) for member in Layer)
+            raise ValueError(
+                f"{name!r} is not a valid Layer: LayerSnapshot.of takes {layers}; provenance also records "
+                f"{OVERRIDE_LAYER!r} for a key Config.with_overrides set and a caller's own source such as 'cli', "
+                "and neither can be rebuilt into a snapshot"
+            ) from None
+        return cls(layer, payload, origin)
 
 
 def _refuse_a_non_layer(name: object) -> None:
@@ -581,7 +594,7 @@ def _build_new_element(
     return _clone_leaf(override)
 
 
-def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfoPayload:
+def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfo:
     """Return the provenance record for a value contributed by *snapshot* at *dotted*.
 
     The record stores the layer's plain ``.value``, not the member: provenance is handed to
@@ -748,7 +761,7 @@ def _store_branch_provenance(
     provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=parents)
 
 
-class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
+class _Provenance(MutableMapping[str, "SourceInfo"]):
     """Provenance entries plus the tree of paths below each container.
 
     A container replaced by a later layer must take the entries of every key below it along.
@@ -770,14 +783,14 @@ class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
     """
 
     def __init__(self) -> None:
-        self._entries: dict[str, SourceInfoPayload] = {}
+        self._entries: dict[str, SourceInfo] = {}
         self._children: dict[str, set[str]] = {}
         self._parent: dict[str, str] = {}
 
-    def __getitem__(self, key: str) -> SourceInfoPayload:
+    def __getitem__(self, key: str) -> SourceInfo:
         return self._entries[key]
 
-    def __setitem__(self, key: str, value: SourceInfoPayload) -> None:
+    def __setitem__(self, key: str, value: SourceInfo) -> None:
         """Refused: an entry is filed by its parent segments, which only :meth:`record` takes."""
         raise TypeError(f"provenance for {key!r} is written with record(dotted, entry, parents=...)")
 
@@ -791,7 +804,7 @@ class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
     def __len__(self) -> int:
         return len(self._entries)
 
-    def record(self, dotted: str, entry: SourceInfoPayload, *, parents: Sequence[str]) -> None:
+    def record(self, dotted: str, entry: SourceInfo, *, parents: Sequence[str]) -> None:
         """Store *entry* for *dotted*, which is *parents* plus one key, filed under its parents."""
         self._link(dotted, parents)
         self._entries[dotted] = entry
@@ -805,7 +818,7 @@ class _Provenance(MutableMapping[str, "SourceInfoPayload"]):
             del self._parent[path]
             stack.extend(self._children.pop(path, ()))
 
-    def as_dict(self) -> dict[str, SourceInfoPayload]:
+    def as_dict(self) -> dict[str, SourceInfo]:
         """Return the entries as the plain dict :class:`MergeResult` carries."""
         return self._entries
 

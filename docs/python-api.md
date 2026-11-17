@@ -90,6 +90,9 @@ leaf with `config.get("servers.web.port")`, or take the section once (`servers =
 that, rather than `config["servers"][name]["port"]`, which copies the whole section for every leaf. A `Config` works with `copy.copy`,
 `copy.deepcopy` and `pickle` (every protocol), and the copy keeps its provenance and its declared `not_sensitive`
 paths. Like a `dict`, it is not hashable.
+`Config(data, provenance)` checks every provenance entry when it is built: each must be a mapping with exactly
+`layer` (text), `path` (text or `None`) and `key` (the entry's own dotted key, so `{"db.host": {..., "key":
+"db.host"}}`); anything else raises `ValidationError` naming the entry.
 Its text form (`repr`, `str`, an f-string, a log call's `%s`) shows the redacted view and a count of the provenance
 entries, `Config({'db': {'host': 'h', 'password': '***REDACTED***'}}, provenance for 2 keys)`, so printing or
 logging a `Config` never writes a secret; use `as_dict()` for the values themselves.
@@ -164,7 +167,7 @@ Return provenance metadata for a dotted key when available.
 **Parameters:**
 - `key` (str, required): Dotted key in the metadata map (e.g., `"service.timeout"`).
 
-**Returns:** Dictionary with keys `layer` (str), `path` (str | None), and `key` (str), or `None` if the key was never observed. A table that holds values has no entry of its own (its values carry theirs), so `origin()` returns `None` for it; an empty table reports where it was last declared.
+**Returns:** Dictionary with keys `layer` (str), `path` (str | None), and `key` (str), or `None` if the key was never observed. A table that holds values has no entry of its own (its values carry theirs), so `origin()` returns `None` for it; an empty table reports where it was last declared. `layer` is always text: an entry built with an enum member (`Layer.USER`, or a caller's own str-valued enum) is stored as its value (`"user"`). Besides the six layer names it can be `"override"` (`OVERRIDE_LAYER`) or a source a caller names itself (`"cli"`); `Layer(...)` and `LayerSnapshot.of(...)` refuse those two with a `ValueError`.
 
 **Examples:**
 
@@ -1593,7 +1596,11 @@ display_config(
 - `profile` (str | None, optional): Profile name shown in the provenance comments. Default: `None`
   (`profile:none`).
 
-Both formats replace sensitive values with `***REDACTED***`.
+Both formats replace sensitive values with `***REDACTED***`. The human format prints its note line and then
+the whole body in one `Console.print`, so the output appears when the call finishes rather than line by line.
+`import lib_layered_config` does not import Rich or rich-click: the package imports the display adapter the
+first time `display_config` is used (`from lib_layered_config import display_config`, the attribute, or
+`import *`), so a missing or broken Rich shows there rather than at the package import.
 
 A character stdout cannot encode (CJK or an emoji on a Windows pipe, which uses the cp1252 code page) is
 written as an escape instead of raising `UnicodeEncodeError`, the way the CLI's `read` writes it: `\uXXXX`

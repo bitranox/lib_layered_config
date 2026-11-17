@@ -8,7 +8,7 @@ adapter satisfies its protocol.
 
 Contents:
     - ``OutputFormat``: enum for CLI/adapter output format selection.
-    - ``SourceInfoPayload``: type alias for domain ``SourceInfo`` TypedDict.
+    - ``SourceInfoPayload``: another name for domain ``SourceInfo``, kept for importers.
     - Type aliases (``ConfigData``, ``ProvenanceData``) for consistent signatures.
     - Protocols for each adapter type (path resolver, file loader, dotenv loader,
       environment loader), each checked by the contract tests.
@@ -34,19 +34,17 @@ class OutputFormat(str, Enum):
     JSON = "json"
 
 
-# Re-export domain SourceInfo as SourceInfoPayload for adapter contracts
 SourceInfoPayload = SourceInfo
-"""Alias for :class:`~lib_layered_config.domain.config.SourceInfo`.
+"""Another name for :class:`~lib_layered_config.domain.config.SourceInfo`, kept for code that imports it.
 
-Provides a stable name for the provenance payload used across adapter and
-application boundaries without duplicating the TypedDict definition.
+The library itself names ``SourceInfo``; this alias is removed in 9.0.0.
 """
 
 # Type aliases for clarity in function signatures
 ConfigData = Mapping[str, object]
 """Type alias for merged configuration data."""
 
-ProvenanceData = Mapping[str, SourceInfoPayload]
+ProvenanceData = Mapping[str, SourceInfo]
 """Type alias for provenance metadata keyed by dotted path."""
 
 

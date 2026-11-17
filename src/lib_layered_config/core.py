@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from .application.merge import MergeResult
-    from .application.ports import SourceInfoPayload
+    from .domain.config import SourceInfo
 
 
 class LayerLoadError(ConfigError):
@@ -403,7 +403,7 @@ def refuse_an_unusable_deploy_source(source: Path) -> None:
 
 def _compose_config(
     data: dict[str, object],
-    raw_meta: dict[str, SourceInfoPayload],
+    raw_meta: dict[str, SourceInfo],
     *,
     not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE,
 ) -> Config:

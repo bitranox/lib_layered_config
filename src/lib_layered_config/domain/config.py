@@ -28,10 +28,11 @@ from collections.abc import Iterator, Mapping
 from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping as MappingType
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Final, TypedDict, TypeVar, cast
 
 from . import json_codec
-from .errors import InvalidFormatError
+from .errors import InvalidFormatError, ValidationError
 from .redaction import NotSensitiveKeys, redact_mapping, redact_value_at
 
 __all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo"]
@@ -55,7 +56,9 @@ class SourceInfo(TypedDict):
 
     Attributes:
         layer: Name of the logical layer (``"defaults"``, ``"app"``, ``"host"``,
-            ``"user"``, ``"dotenv"``, or ``"env"``).
+            ``"user"``, ``"dotenv"``, or ``"env"``), :data:`OVERRIDE_LAYER` for a key
+            :meth:`Config.with_overrides` set, or a source a caller names itself (such as
+            ``"cli"``). Always text: ``Config`` stores an enum member as its value.
         path: Absolute filesystem path when known; ``None`` for ephemeral sources
             such as environment variables.
         key: Fully-qualified dotted key corresponding to the stored value.
@@ -95,8 +98,15 @@ class Config(MappingABC[str, Any]):
     def __post_init__(self) -> None:
         """Freeze internal mappings immediately after construction.
 
+        A provenance entry's ``layer`` is stored as text: an enum member (a ``Layer``, or a caller's own
+        str-valued enum) is stored as its value, so it reads and prints as ``"user"``, not ``Layer.USER``.
+        Each entry is checked here, so a malformed one fails where it was built rather than at a later
+        :meth:`origin` call.
+
         Raises:
             TypeError: ``_not_sensitive`` is not a :class:`NotSensitiveKeys`.
+            ValidationError: A provenance entry is not a mapping with exactly ``layer`` (text), ``path``
+                (text or ``None``) and ``key`` equal to its own dotted key; the message names the entry.
         """
         if not isinstance(cast("object", self._not_sensitive), NotSensitiveKeys):
             raise TypeError(
@@ -104,7 +114,7 @@ class Config(MappingABC[str, Any]):
                 "use NotSensitiveKeys.of([...])"
             )
         object.__setattr__(self, "_data", _freeze(self._data))
-        object.__setattr__(self, "_meta", _freeze(self._meta))
+        object.__setattr__(self, "_meta", _ReadOnlyMap(_own_provenance(self._meta)))
 
     def __getitem__(self, key: str) -> Any:
         """Return the value stored under a top-level key.
@@ -485,6 +495,60 @@ def _freeze(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
         'real'
     """
     return _ReadOnlyMap(_clone_map(mapping))
+
+
+_ENTRY_KEYS: Final[frozenset[str]] = frozenset({"layer", "path", "key"})
+
+
+def _own_provenance(meta: Mapping[str, SourceInfo]) -> dict[str, Any]:
+    """Return a checked deep copy of *meta* in which every entry's ``layer`` is plain text.
+
+    Raises:
+        ValidationError: An entry is not ``SourceInfo``-shaped (see :func:`_own_entry`).
+
+    Examples:
+        >>> from lib_layered_config.domain.identifiers import Layer
+        >>> _own_provenance({"a": {"layer": Layer.USER, "path": None, "key": "a"}})
+        {'a': {'layer': 'user', 'path': None, 'key': 'a'}}
+    """
+    return {dotted: _own_entry(dotted, info) for dotted, info in meta.items()}
+
+
+def _own_entry(dotted: str, info: object) -> dict[str, Any]:
+    """Return a copy of the provenance entry under *dotted*, an enum member ``layer`` replaced by its value.
+
+    Raises:
+        ValidationError: *info* is not a mapping with exactly ``layer`` (text), ``path`` (text or
+            ``None``) and ``key`` equal to *dotted*.
+    """
+    if not isinstance(info, MappingABC):
+        raise ValidationError(
+            f"provenance entry {dotted!r} must be a mapping with the keys layer, path and key, "
+            f"got {type(info).__name__}"
+        )
+    entry = _clone_map(cast("MappingType[str, Any]", info))
+    if frozenset(entry) != _ENTRY_KEYS:
+        got = ", ".join(sorted(repr(name) for name in entry))
+        raise ValidationError(f"provenance entry {dotted!r} must have exactly the keys layer, path and key, got {got}")
+    layer = entry["layer"]
+    if isinstance(layer, Enum):
+        entry["layer"] = layer = layer.value
+    _refuse_a_wrong_field(dotted, entry, layer=layer)
+    return entry
+
+
+def _refuse_a_wrong_field(dotted: str, entry: Mapping[str, Any], *, layer: object) -> None:
+    """Raise :class:`ValidationError` when a field of the entry under *dotted* has the wrong type or key."""
+    if not isinstance(layer, str):
+        raise ValidationError(f"provenance entry {dotted!r}: layer must be text, got {type(layer).__name__}")
+    path: object = entry["path"]
+    if path is not None and not isinstance(path, str):
+        raise ValidationError(f"provenance entry {dotted!r}: path must be text or None, got {type(path).__name__}")
+    key: object = entry["key"]
+    if key != dotted:
+        raise ValidationError(
+            f"provenance entry {dotted!r}: key must be {dotted!r}, its own key in the provenance, got {key!r}"
+        )
 
 
 def _deep_merge(
