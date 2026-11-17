@@ -11,6 +11,7 @@ from __future__ import annotations
 import pprint
 from typing import Any, cast
 
+import pytest
 from rich.pretty import pretty_repr
 
 from lib_layered_config import Config, NotSensitiveKeys
@@ -82,3 +83,16 @@ def test_a_hand_built_config_with_a_key_that_is_not_text_still_has_a_text_form()
 
     assert "s3cret" not in text
     assert text == "Config(<1 top-level key, not shown: a key is not a string>, provenance for 0 keys)"
+
+
+class _UnprintableValue:
+    def __repr__(self) -> str:
+        raise TypeError("this value cannot be printed")
+
+
+@os_agnostic
+def test_a_value_whose_own_repr_fails_is_not_reported_as_a_key_that_is_not_text() -> None:
+    config = Config({"a": _UnprintableValue()}, {})
+
+    with pytest.raises(TypeError, match="this value cannot be printed"):
+        repr(config)

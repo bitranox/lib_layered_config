@@ -459,7 +459,8 @@ def _url_starts(value: str) -> list[tuple[int, int]]:
     (a ``/`` is not a scheme character), so the whole scan reads each character a bounded number of
     times. A scheme that starts exactly where the previous URL's authority starts belongs to that URL:
     it is a password beginning with ``//`` (``https://app://8xK3pQ@db``) or holding ``:`` and ``//``,
-    not a URL of its own.
+    not a URL of its own. A ``://`` with no scheme in front of it belongs to no URL, so it is no
+    "previous URL" for the scheme after it (``1://https://u:pw@h``).
 
     Examples:
         >>> _url_starts("amqp://u:p@h1//;amqp://u:p@h2//")
@@ -468,17 +469,20 @@ def _url_starts(value: str) -> list[tuple[int, int]]:
         [(0, 8)]
         >>> _url_starts("12:https://u:pw@h")
         [(3, 11)]
+        >>> _url_starts("1://https://u:pw@h")
+        [(4, 12)]
     """
     starts: list[tuple[int, int]] = []
-    floor = 0
+    authority = 0  # where the authority of the last ``://`` that belongs to a URL starts
     end = value.find(_SCHEME_END)
     while end >= 0:
         begin = _scheme_start(value, end)
-        nested = floor > 0 and begin == floor
-        if begin is not None and not nested:
-            starts.append((begin, end + len(_SCHEME_END)))
-        floor = end + len(_SCHEME_END)
-        end = value.find(_SCHEME_END, floor)
+        after = end + len(_SCHEME_END)
+        if begin is not None:
+            if not (authority > 0 and begin == authority):
+                starts.append((begin, after))
+            authority = after
+        end = value.find(_SCHEME_END, after)
     return starts
 
 

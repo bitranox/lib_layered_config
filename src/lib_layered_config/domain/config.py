@@ -162,12 +162,15 @@ class Config(MappingABC[str, Any]):
             Config({'db': {'host': 'h', 'password': '***REDACTED***'}}, provenance for 0 keys)
         """
         try:
-            shown = repr(self.as_dict(redact=True))
+            redacted = self.as_dict(redact=True)
         except InvalidFormatError:
             shown = f"<{_count(len(self._data), 'top-level key')}, too deeply nested to show>"
         except TypeError:
-            # Only a hand-built Config reaches this: every loader refuses a key that is not a string.
+            # Only a hand-built Config reaches this: every loader refuses a key that is not a string. The
+            # repr below stays outside the try, so a value's own failing __repr__ is not reported as this.
             shown = f"<{_count(len(self._data), 'top-level key')}, not shown: a key is not a string>"
+        else:
+            shown = repr(redacted)
         return f"Config({shown}, provenance for {_count(len(self._meta), 'key')})"
 
     def as_dict(self, *, redact: bool = False) -> dict[str, Any]:

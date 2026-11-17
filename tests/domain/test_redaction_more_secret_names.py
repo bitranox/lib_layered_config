@@ -147,6 +147,12 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         ("postgresql://app://Zm9vYmFy@db/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db/prod"),
         ("https://app:ab://cd@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
         ("https://app:a+b://cd@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
+        ("https://app://x://y@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
+        # A '://' with no scheme in front of it does not hide the URL that follows it.
+        ("1://https://u:pw@h", f"1://https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("://https://u:pw@h", f"://https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("*://https://u:pw@h", f"*://https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("-://redis://u:pw@h", f"-://redis://u:{REDACTED_PLACEHOLDER}@h"),
         # A URL after text that is not a scheme: digits, a '-', a number list.
         ("12:https://u:pw@h/x", f"12:https://u:{REDACTED_PLACEHOLDER}@h/x"),
         ("-https://u:pw@h", f"-https://u:{REDACTED_PLACEHOLDER}@h"),
