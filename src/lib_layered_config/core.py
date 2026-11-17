@@ -32,7 +32,7 @@ from .adapters.dotenv.default import DefaultDotEnvLoader
 from .adapters.env.default import DefaultEnvLoader, default_env_prefix
 from .adapters.path_resolvers.default import DefaultPathResolver
 from .domain import json_codec
-from .domain.config import EMPTY_CONFIG, Config
+from .domain.config import EMPTY_CONFIG, Config, adopt_merged
 from .domain.errors import (
     ConfigError,
     InvalidFormatError,
@@ -413,8 +413,10 @@ def _compose_config(
     value object explicit so provenance typing stays consistent.
 
     Args:
-        data: Mutable mapping returned by :func:`merge_layers`.
-        raw_meta: Provenance mapping keyed by dotted path as produced by the merge policy.
+        data: Mutable mapping returned by :func:`merge_layers`; adopted, not copied, so the caller
+            must hold no other reference to it.
+        raw_meta: Provenance mapping keyed by dotted path as produced by the merge policy; adopted the
+            same way.
         not_sensitive: Paths the application declared not sensitive; carried on the result.
 
     Returns:
@@ -422,7 +424,7 @@ def _compose_config(
         empty and nothing was declared, so a later ``with_overrides`` keeps the declaration.
 
     Side Effects:
-        None beyond constructing the dataclass instance.
+        The returned :class:`Config` takes over *data* and *raw_meta*.
 
     Examples:
         >>> cfg = _compose_config({'debug': True}, {'debug': {'layer': 'env', 'path': None, 'key': 'debug'}})
@@ -431,7 +433,7 @@ def _compose_config(
     """
     if not data and not_sensitive == NotSensitiveKeys.NONE:
         return EMPTY_CONFIG
-    return Config(data, raw_meta, not_sensitive)
+    return adopt_merged(data, raw_meta, not_sensitive)
 
 
 def _build_resolver(

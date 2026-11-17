@@ -6,6 +6,46 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- `read --json`, `read-json --json` and `read --no-provenance --json` print the failure envelope
+  (`TypeError`, "Recursion limit reached", exit 22) for a configuration nested as deep as the plain JSON
+  output allows. They printed nothing on stdout: the envelope nests the data one level deeper, and its final
+  serialisation ran outside the command's failure handler.
+- `Config` stores a provenance `layer` given as an enum member (a `Layer`, or a caller's own str-valued enum)
+  as its value, so `origin()`, `display_config` and every other view show `user`, not `Layer.USER`.
+- `Config(...)` refuses a malformed provenance entry with `ValidationError` naming the entry, where it was
+  built, instead of failing later in `origin()`. An entry is a mapping with exactly `layer` (text), `path`
+  (text or `None`) and `key` (its own dotted key).
+- `DefaultPathResolver(platform=...)` accepts the platform aliases `deploy_config` takes (`macos`, `mac`,
+  `Darwin`, `Windows`, `WIN32`, any case); they selected the Linux layout. A `sys.platform` value with no
+  alias is accepted as before.
+- A `Layer` member given as a deploy target is named by its value in the refusal
+  (`Unsupported deployment target: env`, not `Layer.ENV`).
+
+### Added
+- `deploy_config`'s `dir_mode` and `file_mode` accept a `DeployMode` of the matching kind as well as an int; a
+  `DeployMode` of the other kind raises `DeployModeError` naming both kinds. `deploy --dir-mode/--file-mode`
+  pass their parsed mode through unchanged.
+
+### Changed
+- `LayerSnapshot.of`'s refusal names `override` and caller-defined sources such as `cli` as layers it cannot
+  rebuild a snapshot for.
+- `redact_mapping` accepts any `Mapping` (a `Config`, a `MappingProxyType`); `DefaultPathResolver(env=)`,
+  `DefaultEnvLoader(environ=)` and `PlatformContext(env=)` accept any `Mapping[str, str]`. `deploy_config` and
+  `deploy_config_paths` type `targets` as `Sequence[Layer | str]`.
+- `display_config`'s human format prints its output when the call finishes instead of line by line; the bytes
+  are unchanged.
+
+### Performance
+- `display_config`'s human format is about 2.9x faster (1155 keys: 160 ms to 56 ms).
+- `import lib_layered_config` no longer imports Rich or click; `display_config` loads them on first use
+  (import about 46-54 ms to 31-37 ms).
+- `read_config` no longer deep-copies the merged result a second time when it builds the `Config`.
+- A YAML file is parsed once instead of twice.
+- TOML and JSON files build the position strings of their post-parse checks only when a refusal is coming.
+- `read --json` / `read-json --json` build the envelope without writing and re-parsing the configuration as
+  JSON (40,000 sections: 1.1 s to 0.65 s); the output is byte-identical.
+
 ## [8.0.0] - 2026-11-17
 
 ### Security

@@ -35,7 +35,7 @@ from . import json_codec
 from .errors import InvalidFormatError, ValidationError
 from .redaction import NotSensitiveKeys, redact_mapping, redact_value_at
 
-__all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo"]
+__all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo", "adopt_merged"]
 
 #: Marks "not found" where None is a legitimate stored value.
 _MISSING: Final[object] = object()
@@ -495,6 +495,38 @@ def _freeze(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
         'real'
     """
     return _ReadOnlyMap(_clone_map(mapping))
+
+
+def adopt_merged(data: dict[str, Any], provenance: dict[str, SourceInfo], not_sensitive: NotSensitiveKeys) -> Config:
+    """Wrap a merge result's own dicts in a :class:`Config` without copying or checking them again.
+
+    For the library's read path only (``read_config`` and the deploy read), which hands over the
+    merge's fresh containers and keeps no reference to them: the merge clones every container it takes
+    from a layer and builds each provenance entry itself, in the checked shape with a text ``layer``.
+    The result is the same read-only ``Config`` the public constructor builds (reads hand out copies;
+    ``copy`` and ``pickle`` work), without its second deep copy. Anything else builds with
+    ``Config(...)``, which copies and checks. A module function rather than a private classmethod:
+    pyright strict refuses a call to a protected member from outside the class.
+
+    Args:
+        data: The merged configuration, owned by nobody else.
+        provenance: The merge's provenance, one well-formed entry per leaf, owned by nobody else.
+        not_sensitive: The caller's declared not-sensitive paths.
+
+    Returns:
+        A :class:`Config` over *data* and *provenance*.
+
+    Examples:
+        >>> entry = {"layer": "env", "path": None, "key": "a.b"}
+        >>> cfg = adopt_merged({"a": {"b": 1}}, {"a.b": dict(entry)}, NotSensitiveKeys.NONE)
+        >>> cfg == Config({"a": {"b": 1}}, {"a.b": dict(entry)})
+        True
+    """
+    adopted = object.__new__(Config)
+    object.__setattr__(adopted, "_data", _ReadOnlyMap(data))
+    object.__setattr__(adopted, "_meta", _ReadOnlyMap(cast("dict[str, Any]", provenance)))
+    object.__setattr__(adopted, "_not_sensitive", not_sensitive)
+    return adopted
 
 
 _ENTRY_KEYS: Final[frozenset[str]] = frozenset({"layer", "path", "key"})
