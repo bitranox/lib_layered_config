@@ -256,9 +256,11 @@ def _known_format(output_format: OutputFormat) -> OutputFormat:
 def _display_json(config: Config, section: str | None) -> None:
     """Render configuration as JSON to stdout."""
     if section:
-        if config.get(section, default=_ABSENT) is _ABSENT:
+        # One read answers both "is it there" and "what does it show": a separate presence check copied the section too.
+        section_value = config.get_redacted(section, _ABSENT)
+        if section_value is _ABSENT:
             raise ValueError(f"Section '{section}' not found")
-        redacted = {section: config.get_redacted(section)}
+        redacted = {section: section_value}
         click.echo(fit_json(json_codec.dumps(redacted, indent=True), sys.stdout))
     else:
         click.echo(fit_json(config.to_json(indent=2, redact=True), sys.stdout))
@@ -280,9 +282,9 @@ def _display_human(
     if not section:
         _render_table(config.as_dict(redact=True), (), view)
         return
-    if config.get(section, default=_ABSENT) is _ABSENT:
+    redacted_value = config.get_redacted(section, _ABSENT)
+    if redacted_value is _ABSENT:
         raise ValueError(f"Section '{section}' not found")
-    redacted_value = config.get_redacted(section)
     if is_table(redacted_value):
         _render_table(redacted_value, tuple(section.split(".")), view)
     else:
