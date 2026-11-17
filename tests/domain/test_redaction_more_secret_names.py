@@ -44,6 +44,15 @@ _MASKED_PASSWORD = f"postgres://alice:{REDACTED_PLACEHOLDER}@db.example:5432/app
         "http_authorization",
         "proxyAuthorization",
         "authorizations",
+        # A stem followed directly by digits, as numbered secrets are often named.
+        "password2",
+        "PASSWORD1",
+        "token2",
+        "secret1",
+        "api_key2",
+        "apiKey2",
+        "PrivateKey2",
+        "db_password_2",
     ],
 )
 def test_the_short_secret_names_are_sensitive(key: str) -> None:
@@ -52,7 +61,20 @@ def test_the_short_secret_names_are_sensitive(key: str) -> None:
 
 @os_agnostic
 @pytest.mark.parametrize(
-    "key", ["passenger", "bypass", "passport", "compass", "passthrough", "pwdx", "authority", "author", "auth"]
+    "key",
+    [
+        "passenger",
+        "bypass",
+        "passport",
+        "compass",
+        "passthrough",
+        "pwdx",
+        "authority",
+        "author",
+        "auth",
+        "pass2go",
+        "md5",
+    ],
 )
 def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
     assert is_sensitive(key) is False
@@ -82,6 +104,25 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
             "https://alice:hunter2@example.com/p?email=bob@example.com",
             f"https://alice:{REDACTED_PLACEHOLDER}@example.com/p?email=bob@example.com",
         ),
+        # A password starting with '/', which SQLAlchemy reads (a base64 password does about once in 64).
+        ("postgresql://app:/x9Kq@db.example/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod"),
+        # A user holding an '@' and a password holding a '/'.
+        (
+            "smtp://alice@example.com:Ab/9@mail.example.com",
+            f"smtp://alice@example.com:{REDACTED_PLACEHOLDER}@mail.example.com",
+        ),
+        # A password holding a '/' and an '@' in the query: the host and database stay shown.
+        (
+            "postgresql://app:Ab/9+x@db.example/prod?sslrootcert=a@b",
+            f"postgresql://app:{REDACTED_PLACEHOLDER}@db.example/prod?sslrootcert=a@b",
+        ),
+        # A path holding an '@' after a password urllib finds: the host and path stay shown.
+        (
+            "https://alice:hunter2@example.com/users/bob@example.com",
+            f"https://alice:{REDACTED_PLACEHOLDER}@example.com/users/bob@example.com",
+        ),
+        # A JDBC URL, whose scheme has a sub-scheme.
+        ("jdbc:mysql://alice:hunter2@db.example/app", f"jdbc:mysql://alice:{REDACTED_PLACEHOLDER}@db.example/app"),
     ],
 )
 def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: str) -> None:

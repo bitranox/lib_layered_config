@@ -16,12 +16,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Redaction masks more secrets. Keys named `pwd`, `pass`, `privatekey`, `privkey`, `bearer` or `authorization`
   (`smtp_pass`, `db_pwd`, `auth_bearer`, `smtpPass`, an `Authorization = "Bearer ..."` header) came back in
   clear from `as_dict(redact=True)`, `to_json(redact=True)`, `get_redacted` and the display; they are now
-  masked like `password`. Like every sensitive key, they also keep a `none` or `null` from an environment
+  masked like `password`, and so are numbered names (`password2`, `api_key1`, `apiKey2`). Like every sensitive key, they also keep a `none` or `null` from an environment
   variable or `.env` line as that string instead of reading it as no value (`MYAPP___DB__PWD=none` was
   `None` before). A value that is a URL with a password
   (`postgres://alice:hunter2@db/app` under `db.url` or any other key) now shows as
-  `postgres://alice:***REDACTED***@db/app`, also when the user name holds an `@` or the password an unencoded
-  `/`, `?`, `#` or `@` (`postgresql://app:Ab/9+x@db/prod`); an `@` in the query leaves the host shown. A key
+  `postgres://alice:***REDACTED***@db/app`, also when the user name holds an `@`, the password an unencoded
+  `/`, `?`, `#` or `@` (`postgresql://app:Ab/9+x@db/prod`), or both, when the password starts with `/`, and
+  for a scheme with a sub-scheme (`jdbc:mysql://alice:hunter2@db/app`); an `@` in the query leaves the host
+  shown. A key
   that only looks secret, such as `pass_through`, is masked too;
   declare it with `read_config(not_sensitive=[...])` to keep it visible.
 - On Windows, a deploy that replaces a file keeps the file's access list. A forced or confirmed deploy

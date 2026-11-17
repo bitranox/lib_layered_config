@@ -58,11 +58,12 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r"(?:^|_)(?:"
     r"password|passwd|passphrase|pwd|pass|secret|token|credential|apikey|privatekey|privkey|bearer|cookie|jwt"
     r"|signature|session_id|sessionid|authorization"
-    r")s?(?:_|$)"
+    r")s?\d*(?:_|$)"
     # `_key` requires a leading underscore so compound names (api_key, access_key,
     # aws_access_key_id, signing_key) match while a field literally named "key" - a
-    # common non-secret map/identifier field - does not get swept up.
-    r"|_key(?:s|_|$)",
+    # common non-secret map/identifier field - does not get swept up. Digits may follow either
+    # form (password2, api_key1), as numbered secrets are commonly named.
+    r"|_keys?\d*(?:_|$)",
     re.IGNORECASE,
 )
 
@@ -72,8 +73,9 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _CAMEL_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _SEPARATORS: re.Pattern[str] = re.compile(r"[-\s.]+")
 
-#: The scheme that opens a URL value, ``scheme://``; what follows is split by :func:`_mask_url_password`.
-_URL_SCHEME: re.Pattern[str] = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+#: The scheme that opens a URL value, ``scheme://``, with any sub-schemes (``jdbc:mysql://``); what follows
+#: is split by :func:`_mask_url_password`.
+_URL_SCHEME: re.Pattern[str] = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*(?::[A-Za-z][A-Za-z0-9+.-]*)*://")
 
 #: Where a URL's authority ends when nothing in it is unescaped.
 _AUTHORITY_END = "/?#"
@@ -85,8 +87,8 @@ def is_sensitive(key: str) -> bool:
     Patterns are matched case-insensitively at word boundaries. Supported stems include
     ``password``, ``passwd``, ``passphrase``, ``pwd``, ``pass``, ``secret``, ``token``, ``credential``,
     ``apikey``, ``privatekey``, ``privkey``, ``bearer``, ``cookie``, ``jwt``, ``signature``,
-    ``session_id`` and ``authorization`` (an HTTP header value), with optional plural
-    suffix and other words around them. A ``_key`` suffix also matches (``api_key`` /
+    ``session_id`` and ``authorization`` (an HTTP header value), with an optional plural
+    suffix, optional digits (``password2``) and other words around them. A ``_key`` suffix also matches (``api_key`` /
     ``access_key`` / ``signing_key``), but a field literally named ``key`` does not, so benign
     names like ``keyboard``, ``monkey``, and a plain ``key`` map field are not treated as
     sensitive. Words may be separated by underscores, hyphens, dots or spaces, or by a change of
@@ -112,6 +114,8 @@ def is_sensitive(key: str) -> bool:
         (True, True, False)
         >>> is_sensitive("smtp_pass"), is_sensitive("passenger")
         (True, False)
+        >>> is_sensitive("password2"), is_sensitive("apiKey1"), is_sensitive("pass2go")
+        (True, True, False)
     """
     words = _SEPARATORS.sub("_", _CAMEL_BOUNDARY.sub("_", key))
     return _SENSITIVE_PATTERN.search(words) is not None
@@ -423,20 +427,18 @@ class _Redactor:
 def _mask_url_password(value: str) -> str:
     """Return *value* with the password of a URL replaced by :data:`REDACTED_PLACEHOLDER`.
 
-    The authority is read first as ``urllib.parse`` reads it: up to the first ``/``, ``?`` or ``#``,
-    with the password up to its last ``@``, so a user name holding ``@`` is masked right and an ``@``
-    later in the query leaves the host shown. Only when that authority holds no ``@`` is the password
-    taken up to the LAST ``@`` of the value, because URL parsers that accept a password with an
-    unescaped ``/``, ``?`` or ``#`` (SQLAlchemy) read it that way and a mask stopping earlier shows the
-    rest in clear. That second reading needs the ``:`` inside the authority, not in an IPv6 literal
-    (``[``), and is not taken for a drive letter (a "password" starting with ``/``) or for digits up
-    to the end of the authority (a port, ``https://example.com:8443/?to=a@b``).
+    Two readings of the URL are tried in turn. The first is the one ``urllib.parse`` uses
+    (:func:`_urllib_password`); when it finds no password, the second is the one URL parsers that accept
+    an unescaped ``/``, ``?`` or ``#`` in a password use (SQLAlchemy; :func:`_dsn_password`), because a
+    mask stopping where ``urllib`` stops shows the rest of such a password in clear.
 
     Examples:
         >>> _mask_url_password("postgres://alice:hunter2@db/app")
         'postgres://alice:***REDACTED***@db/app'
         >>> _mask_url_password("postgresql://app:Ab/9+x@db/prod")
         'postgresql://app:***REDACTED***@db/prod'
+        >>> _mask_url_password("jdbc:mysql://alice:hunter2@db/app")
+        'jdbc:mysql://alice:***REDACTED***@db/app'
         >>> _mask_url_password("postgres://alice@db/app")
         'postgres://alice@db/app'
     """
@@ -444,38 +446,70 @@ def _mask_url_password(value: str) -> str:
     if scheme is None:
         return value
     start = scheme.end()
-    ends = [index for index in (value.find(char, start) for char in _AUTHORITY_END) if index >= 0]
-    authority_end = min(ends) if ends else len(value)
-    at = value.rfind("@", start, authority_end)
-    if at >= 0:
-        return _mask_between(value, value.find(":", start, at), at)
-    return _mask_past_authority(value, start, authority_end)
+    span = _urllib_password(value, start) or _dsn_password(value, start)
+    if span is None:
+        return value
+    colon, at = span
+    return f"{value[: colon + 1]}{REDACTED_PLACEHOLDER}{value[at:]}"
 
 
-def _mask_past_authority(value: str, start: int, authority_end: int) -> str:
-    """Mask a password holding ``/``, ``?`` or ``#``: from the first ``:`` to the value's last ``@``.
+def _urllib_password(value: str, start: int) -> tuple[int, int] | None:
+    """Return the ``(colon, at)`` around the password as ``urllib.parse`` reads it, or ``None``.
+
+    The authority runs to the first ``/``, ``?`` or ``#``; the password runs from the first ``:`` to the
+    authority's LAST ``@``, so a password holding ``@`` is masked whole and an ``@`` later in the path or
+    query leaves the host shown. An authority whose only ``:`` comes after its ``@`` holds no password in
+    this reading.
 
     Examples:
-        >>> _mask_past_authority("x://app:a/b@db", 4, 9)
-        'x://app:***REDACTED***@db'
-        >>> _mask_past_authority("http://[::1]/?n=a@b", 7, 12)
-        'http://[::1]/?n=a@b'
+        >>> _urllib_password("amqp://alice:p@ss@mq/vh", 7)
+        (12, 17)
+        >>> _urllib_password("smtp://alice@example.com:Ab/9@mail", 7) is None
+        True
     """
-    at = value.rfind("@", authority_end)
-    colon = value.find(":", start, authority_end)
-    if at < 0 or "[" in value[start:colon]:
-        return value
-    after_colon = value[colon + 1 : at]
-    if after_colon.startswith("/") or _is_port(after_colon):
-        return value
-    return _mask_between(value, colon, at)
+    authority_end = _first_of(value, _AUTHORITY_END, start)
+    at = value.rfind("@", start, authority_end)
+    colon = value.find(":", start, at) if at >= 0 else -1
+    return (colon, at) if colon >= 0 else None
 
 
-def _mask_between(value: str, colon: int, at: int) -> str:
-    """Replace what lies between *colon* and *at* with the placeholder; no ``:`` (-1) leaves *value* as it is."""
-    if colon < 0:
-        return value
-    return f"{value[: colon + 1]}{REDACTED_PLACEHOLDER}{value[at:]}"
+def _dsn_password(value: str, start: int) -> tuple[int, int] | None:
+    """Return the ``(colon, at)`` around a password holding ``/``, ``?`` or ``#``, or ``None``.
+
+    The user name runs to the first ``:``, which must come before any ``/``; the password runs to the
+    last ``@`` before the query (a ``?`` or ``#`` after the first ``@`` following the ``:``), so an ``@``
+    in the query leaves the host shown. Not read as a password: a ``:`` inside an IPv6 literal (``[``),
+    a drive letter (a one-letter user name and a "password" starting with ``/``, as in
+    ``file://C:/data``), and digits up to the end of the authority (a port,
+    ``https://example.com:8443/?to=a@b``).
+
+    Examples:
+        >>> _dsn_password("x://app:a/b@db", 4)
+        (7, 11)
+        >>> _dsn_password("http://[::1]/?n=a@b", 7) is None
+        True
+        >>> _dsn_password("file://C:/data/alice@example.toml", 7) is None
+        True
+    """
+    colon = value.find(":", start)
+    slash = value.find("/", start)
+    if colon < 0 or 0 <= slash < colon or "[" in value[start:colon]:
+        return None
+    first_at = value.find("@", colon + 1)
+    if first_at < 0:
+        return None
+    at = value.rfind("@", colon + 1, _first_of(value, "?#", first_at))
+    password = value[colon + 1 : at]
+    is_drive = colon - start == 1 and value[start].isascii() and value[start].isalpha() and password.startswith("/")
+    if is_drive or _is_port(password):
+        return None
+    return colon, at
+
+
+def _first_of(value: str, chars: str, start: int) -> int:
+    """Return the index of the first of *chars* in *value* from *start*, or ``len(value)`` when none occurs."""
+    found = [index for index in (value.find(char, start) for char in chars) if index >= 0]
+    return min(found) if found else len(value)
 
 
 def _is_port(after_colon: str) -> bool:

@@ -30,7 +30,9 @@ def test_a_sensitive_key_spelled_null_or_none_stays_text(spelling: str) -> None:
 
 
 @os_agnostic
-@pytest.mark.parametrize("name", ["DB__PWD", "SMTP__PASS", "HTTP__AUTHORIZATION", "SSH__PRIVKEY", "API__BEARER"])
+@pytest.mark.parametrize(
+    "name", ["DB__PWD", "SMTP__PASS", "HTTP__AUTHORIZATION", "SSH__PRIVKEY", "API__BEARER", "DB__PASSWORD2"]
+)
 def test_the_short_secret_names_keep_null_as_text_too(name: str) -> None:
     # The rule follows is_sensitive, so the stems added after the first release follow it as well.
     loader = DefaultEnvLoader(environ={f"DEMO___{name}": "none"})
