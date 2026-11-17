@@ -104,8 +104,8 @@ def test_a_failed_overwrite_leaves_the_old_config_whole(
 
     assert outcome == "refused 27"
     assert destination.read_text(encoding="utf-8") == _OLD
-    # The backup --force took is whole, and no temp file is left beside the destination.
-    assert sorted(p.name for p in destination.parent.iterdir()) == ["config.toml", "config.toml.bak"]
+    # The destination is unchanged, so the backup --force took is removed, and no temp file is left.
+    assert sorted(p.name for p in destination.parent.iterdir()) == ["config.toml"]
 
 
 @posix_only

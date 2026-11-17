@@ -78,6 +78,8 @@ __all__ = [
 
 #: The attribute deploy_config sets on an exception it lets through: the results written before it.
 _WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_deployed_before_failure"
+#: The attribute a failed overwrite sets on its error: the result naming the backup it had to keep.
+_PARTIAL_RESULT: Final = "_lib_layered_config_failed_overwrite"
 
 #: The layers a deploy writes, by the target name a caller spells (case-insensitively).
 _TARGET_LAYERS: Mapping[str, Layer] = {layer.value: layer for layer in (Layer.APP, Layer.HOST, Layer.USER)}
@@ -272,6 +274,27 @@ def _backup_file(path: Path) -> Path:
         backup.unlink(missing_ok=True)
         raise
     return backup
+
+
+def _failed_overwrite(destination: Path, backup: Path, error: BaseException) -> None:
+    """Settle the backup of an overwrite whose write raised *error*, before it is raised on.
+
+    A destination still identical to its backup was not changed: the backup is deleted, so nothing is
+    left behind and a retry does not pile up copies. Otherwise an in-place rewrite stopped part-way and
+    the backup is the only intact copy: it stays, and *error* carries the result that names it.
+    """
+    try:
+        unchanged = _content_matches(destination, backup)
+    except OSError:
+        unchanged = False
+    if unchanged:
+        # A failed cleanup must not replace the error that stopped the write.
+        with contextlib.suppress(OSError):
+            backup.unlink()
+        return
+    partial = DeployResult(destination=destination, action=DeployAction.OVERWRITTEN, backup_path=backup)
+    with contextlib.suppress(AttributeError, TypeError):
+        setattr(error, _PARTIAL_RESULT, partial)
 
 
 def _write_ucf(destination: Path, source: Path, *, modes: LayerModes | None) -> Path:
@@ -677,7 +700,8 @@ def _deploy_to_destination(
     if destination.resolve() == source_path.resolve():
         return
 
-    result = _deploy_single(
+    result = _deploy_recorded(
+        written,
         destination=destination,
         source=source_path,
         force=force,
@@ -685,7 +709,6 @@ def _deploy_to_destination(
         conflict_resolver=conflict_resolver,
         modes=modes,
     )
-    written.append(result)
 
     if dot_d_files:
         _deploy_dot_d_files(
@@ -1052,7 +1075,8 @@ def _deploy_dot_d_files(
         if dest_file.resolve() == source_file.resolve():
             continue
 
-        result = _deploy_single(
+        _deploy_recorded(
+            written,
             destination=dest_file,
             source=source_file,
             force=force,
@@ -1060,7 +1084,6 @@ def _deploy_dot_d_files(
             conflict_resolver=conflict_resolver,
             modes=modes,
         )
-        written.append(result)
 
 
 def _handle_conflict(
@@ -1132,6 +1155,39 @@ def _checked_resolver_answer(answer: object, destination: Path) -> DeployAction:
     )
 
 
+def _deploy_recorded(
+    written: list[DeployResult],
+    *,
+    destination: Path,
+    source: Path,
+    force: bool,
+    batch: bool,
+    conflict_resolver: ConflictResolver | None,
+    modes: LayerModes | None,
+) -> DeployResult:
+    """Run :func:`_deploy_single` and append its result to *written*, a partial one included.
+
+    A failed overwrite whose backup is the only intact copy left carries that result on the error
+    (``_failed_overwrite``); it goes into *written* before the error is raised on.
+    """
+    try:
+        result = _deploy_single(
+            destination=destination,
+            source=source,
+            force=force,
+            batch=batch,
+            conflict_resolver=conflict_resolver,
+            modes=modes,
+        )
+    except BaseException as error:
+        partial = getattr(error, _PARTIAL_RESULT, None)
+        if isinstance(partial, DeployResult):
+            written.append(partial)
+        raise
+    written.append(result)
+    return result
+
+
 def _deploy_single(
     *,
     destination: Path,
@@ -1167,7 +1223,11 @@ def _execute_action(
         if _content_matches(destination, source):
             return DeployResult(destination=destination, action=DeployAction.SKIPPED)
         backup_path = _backup_file(destination)
-        _copy_file(destination, source, modes=modes)
+        try:
+            _copy_file(destination, source, modes=modes)
+        except BaseException as error:
+            _failed_overwrite(destination, backup_path, error)
+            raise
         return DeployResult(
             destination=destination,
             action=DeployAction.OVERWRITTEN,

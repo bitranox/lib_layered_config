@@ -92,7 +92,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - `deployed_before_failure(error)`, exported, returns the `DeployResult` items a `deploy_config` call
   wrote before it raised `error`, in the order written (`[]` for an error no deploy raised). The deploy
-  still raises the same exception; the results ride on it.
+  still raises the same exception; the results ride on it. A `--force` overwrite whose new content
+  fails to write (a full disk, a size limit) leaves no unnamed `.bak`: when the destination is still the
+  old file, the backup is removed; when a rewrite in place stopped part-way, the backup is the only whole
+  copy, so it stays and is listed as an `overwritten` result with its `backup_path`.
 - `deploy --json` puts a `written` list into the failure envelope's `error` object when a deploy stops
   after writing something: every path it created, overwrote, backed up (`.bak`) or kept as `.ucf`, in
   write order. The field is absent when nothing was written, so the other envelopes are unchanged.
