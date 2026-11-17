@@ -120,6 +120,8 @@ def test_a_relative_home_is_refused_and_a_user_deploy_writes_nothing_into_the_cw
     # Path.home() reads HOME on POSIX and USERPROFILE on Windows; the refusal names the one it read.
     for name in ("HOME", "USERPROFILE"):
         monkeypatch.setenv(name, "relhome")
+    # On Linux an absolute XDG_CONFIG_HOME (set on GitHub's ubuntu image) wins over HOME, so HOME is never read.
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     _plant(work / "relhome" / ".config" / _SLUG / "config.toml")
     _plant(work / "relhome" / "Library" / "Application Support" / "Acme" / "Demo" / "config.toml")
     variable = "USERPROFILE" if os.name == "nt" else "HOME"
