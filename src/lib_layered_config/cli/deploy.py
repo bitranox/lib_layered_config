@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 import rich_click as click
+from lib_cli_exit_tools import CliSignalError
 
 from ..deploy import DeployAction, DeployResult, deployed_before_failure
 from ..deploy import deploy_config as deploy_config_impl
@@ -296,7 +297,13 @@ def deploy_command(
             raise DeployPermissionsError(exc.problems, hint=_CLI_DEPLOY_ANYWAY_HINT) from None
 
     if json_envelope:
-        run_in_envelope("deploy", lambda: _full_report(deploy()), skipped=_skipped_in, detail=_written_detail)
+        try:
+            run_in_envelope("deploy", lambda: _full_report(deploy()), skipped=_skipped_in, detail=_written_detail)
+        except (click.Abort, CliSignalError) as interrupt:
+            # The envelope passes an interrupt through unprinted, so this is the only place it can still
+            # say what the deploy wrote; a failure envelope already carries that as error.written.
+            _report_written(interrupt)
+            raise
         return
     try:
         results = deploy()

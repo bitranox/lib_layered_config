@@ -15,7 +15,10 @@ import os
 import sys
 from typing import TYPE_CHECKING, cast
 
+import click
+import click.termui
 import pytest
+from lib_cli_exit_tools import SigIntInterrupt
 
 from lib_layered_config import cli
 from lib_layered_config.deploy import DeployAction, DeployResult, deploy_config, deployed_before_failure
@@ -23,6 +26,7 @@ from tests.support import create_layered_sandbox
 from tests.support.os_markers import os_agnostic, posix_only
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from tests.support import LayeredSandbox
@@ -227,3 +231,40 @@ def test_a_control_character_in_a_written_path_is_escaped(
     escaped = str(_config(created, "user")).replace("\n", "\\u000a")
     assert code == 2
     assert f"deploy stopped after writing:\n  {escaped}\n" in err
+
+
+def _interrupting(error: BaseException) -> Callable[..., str]:
+    def read(*_args: object, **_kwargs: object) -> str:
+        raise error
+
+    return read
+
+
+# click reads the prompt's answer through its module-level ``visible_prompt_func``: the one seam
+# that reaches an interrupt at the conflict prompt without a terminal. A KeyboardInterrupt there
+# becomes click.Abort (exit 1); lib_cli_exit_tools' SIGINT handler raises SigIntInterrupt (130).
+@os_agnostic
+@pytest.mark.parametrize("mode", [[], ["--json"]], ids=["human", "json"])
+@pytest.mark.parametrize(
+    ("interrupt", "expected_code"),
+    [(KeyboardInterrupt(), 1), (SigIntInterrupt(), 130)],
+    ids=["ctrl-c-at-prompt", "sigint"],
+)
+def test_a_deploy_interrupted_at_the_prompt_names_what_it_wrote(
+    sandbox: LayeredSandbox,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mode: list[str],
+    interrupt: BaseException,
+    expected_code: int,
+) -> None:
+    _existing(_config(sandbox, "app"))
+    monkeypatch.setattr(click.termui, "visible_prompt_func", _interrupting(interrupt))
+
+    code, out, err = _cli(capsys, monkeypatch, *_deploy_argv(_source(tmp_path), "user", "app"), *mode)
+
+    # stdout stays empty in both modes: an interrupt is not a command result.
+    assert (code, out) == (expected_code, "")
+    assert f"deploy stopped after writing:\n  {_config(sandbox, 'user')}\n" in err

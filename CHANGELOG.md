@@ -99,6 +99,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `deploy --json` puts a `written` list into the failure envelope's `error` object when a deploy stops
   after writing something: every path it created, overwrote, backed up (`.bak`) or kept as `.ucf`, in
   write order. The field is absent when nothing was written, so the other envelopes are unchanged.
+  An interrupt (Ctrl-C at the conflict prompt, SIGINT) prints no envelope; under `--json` too, the
+  files it had written are then named on stderr (`deploy stopped after writing:`), as without it.
 - `GenerateDestinationError`, a `ValidationError` raised by `generate_examples` and `generate-examples`
   for an example path it would write through (see Fixed).
 - Every CLI command accepts `--json`, which prints one JSON document on stdout instead of the normal
