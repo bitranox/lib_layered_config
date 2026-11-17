@@ -165,6 +165,9 @@ class Config(MappingABC[str, Any]):
             shown = repr(self.as_dict(redact=True))
         except InvalidFormatError:
             shown = f"<{_count(len(self._data), 'top-level key')}, too deeply nested to show>"
+        except TypeError:
+            # Only a hand-built Config reaches this: every loader refuses a key that is not a string.
+            shown = f"<{_count(len(self._data), 'top-level key')}, not shown: a key is not a string>"
         return f"Config({shown}, provenance for {_count(len(self._meta), 'key')})"
 
     def as_dict(self, *, redact: bool = False) -> dict[str, Any]:

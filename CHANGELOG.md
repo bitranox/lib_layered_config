@@ -30,7 +30,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `postgres://alice:hunter2@db/app` under `db.url` now shows as `postgres://alice:***REDACTED***@db/app`. That
   holds when the user name holds an `@`, when the password holds an unencoded `/`, `?`, `#` or `@`
   (`postgresql://app:Ab/9+x@db/prod`) or starts with `/`, for a scheme with a sub-scheme
-  (`jdbc:mysql://alice:hunter2@db/app`), and for each URL of a list in one value
+  (`jdbc:mysql://alice:hunter2@db/app`), for a scheme after other text (`12:https://u:pw@h`), when the
+  password holds a `://` (`https://app://8xK3pQ@db`), and for each URL of a list in one value
   (`amqp://u:p1@h1//;amqp://u:p2@h2//`); an `@` in the query leaves the host shown. Two shapes no parser reads
   one way stay as documented in the Python API reference: a password of digits followed by an unencoded `/`,
   `?` or `#` reads as a port and is shown, and a password holding an `@` and then a `/` is masked only up to

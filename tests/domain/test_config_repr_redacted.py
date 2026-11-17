@@ -9,7 +9,7 @@ the redacted view, as ``as_dict(redact=True)`` does, and only a count of the pro
 from __future__ import annotations
 
 import pprint
-from typing import Any
+from typing import Any, cast
 
 from rich.pretty import pretty_repr
 
@@ -72,3 +72,13 @@ def test_a_config_too_deep_to_redact_still_has_a_text_form_without_its_values() 
 
     assert "s3cret" not in text
     assert text == "Config(<1 top-level key, too deeply nested to show>, provenance for 0 keys)"
+
+
+@os_agnostic
+def test_a_hand_built_config_with_a_key_that_is_not_text_still_has_a_text_form() -> None:
+    config = Config(cast("dict[str, Any]", {1: "s3cret"}), {})
+
+    text = repr(config)
+
+    assert "s3cret" not in text
+    assert text == "Config(<1 top-level key, not shown: a key is not a string>, provenance for 0 keys)"

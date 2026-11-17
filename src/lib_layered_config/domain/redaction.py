@@ -23,6 +23,7 @@ System Role:
 from __future__ import annotations
 
 import re
+import string
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Final, cast
@@ -61,9 +62,10 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r")s?\d*(?:_|$)"
     # `_key` requires a leading underscore so compound names (api_key, access_key,
     # aws_access_key_id, signing_key) match while a field literally named "key" - a
-    # common non-secret map/identifier field - does not get swept up. Digits may follow either
-    # form (password2, api_key1), as numbered secrets are commonly named.
-    r"|_keys?\d*(?:_|$)",
+    # common non-secret map/identifier field - does not get swept up. More letters may follow it
+    # (keyset, keysecret: key material) and so may digits, here and after every stem above
+    # (password2, api_key1), as numbered secrets are commonly named.
+    r"|_key(?:s|\d*(?:_|$))",
     re.IGNORECASE,
 )
 
@@ -73,13 +75,12 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _CAMEL_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _SEPARATORS: re.Pattern[str] = re.compile(r"[-\s.]+")
 
-#: A URL's ``scheme://``, with any sub-schemes (``jdbc:mysql://``), anywhere in a value; what follows is
-#: split by :func:`_mask_url_password`. The lookbehind lets a match start only where a run of scheme
-#: characters starts: without it a long run with no ``://`` after it is rescanned from every one of its
-#: positions, which is quadratic in the value's length.
-_URL_SCHEME: re.Pattern[str] = re.compile(
-    r"(?<![A-Za-z0-9+.:-])[A-Za-z][A-Za-z0-9+.-]*(?::[A-Za-z][A-Za-z0-9+.-]*)*://"
-)
+#: What closes a URL's scheme; each one in a value is where :func:`_url_starts` looks for a URL.
+_SCHEME_END: Final[str] = "://"
+
+#: Characters of a scheme after its first letter (RFC 3986, 3.1), plus the ``:`` between sub-schemes
+#: (``jdbc:mysql``): the run :func:`_scheme_start` walks back over.
+_SCHEME_RUN: Final[frozenset[str]] = frozenset(string.ascii_letters + string.digits + "+.-:")
 
 #: Where a URL's authority ends when nothing in it is unescaped.
 _AUTHORITY_END = "/?#"
@@ -397,9 +398,9 @@ class _Redactor:
         """Return *value* (found at *path*) redacted, whatever container holds the secret.
 
         A mapping of any type is walked by its keys, and a list or tuple item by item keeping its
-        type, so a secret inside a list inside a list, or inside a tuple, is reached too. A string
-        that is a URL with a password keeps everything but the password, unless *path* is declared
-        not sensitive. Anything else passes through.
+        type, so a secret inside a list inside a list, or inside a tuple, is reached too. In a string
+        every URL with a password keeps everything but the password, unless *path* is declared not
+        sensitive. Anything else passes through.
 
         Raises:
             InvalidFormatError: When nesting exceeds :data:`_MAX_REDACT_DEPTH`.
@@ -441,15 +442,79 @@ def _mask_url_password(value: str) -> str:
         >>> _mask_url_password("plain text")
         'plain text'
     """
-    schemes = list(_URL_SCHEME.finditer(value))
-    if not schemes:
+    starts = _url_starts(value)
+    if not starts:
         return value
-    ends = [match.start() for match in schemes[1:]] + [len(value)]
+    ends = [begin for begin, _ in starts[1:]] + [len(value)]
     masked = (
-        _mask_one_url(value[match.start() : end], match.end() - match.start())
-        for match, end in zip(schemes, ends, strict=True)
+        _mask_one_url(value[begin:end], authority - begin) for (begin, authority), end in zip(starts, ends, strict=True)
     )
-    return value[: schemes[0].start()] + "".join(masked)
+    return value[: starts[0][0]] + "".join(masked)
+
+
+def _url_starts(value: str) -> list[tuple[int, int]]:
+    """Return where each URL in *value* starts and where its authority starts.
+
+    Each ``://`` closes a scheme, found by walking back from it; the walk stops at the previous ``://``
+    (a ``/`` is not a scheme character), so the whole scan reads each character a bounded number of
+    times. A scheme that starts exactly where the previous URL's authority starts belongs to that URL:
+    it is a password beginning with ``//`` (``https://app://8xK3pQ@db``) or holding ``:`` and ``//``,
+    not a URL of its own.
+
+    Examples:
+        >>> _url_starts("amqp://u:p@h1//;amqp://u:p@h2//")
+        [(0, 7), (16, 23)]
+        >>> _url_starts("https://app://8xK3pQ@db")
+        [(0, 8)]
+        >>> _url_starts("12:https://u:pw@h")
+        [(3, 11)]
+    """
+    starts: list[tuple[int, int]] = []
+    floor = 0
+    end = value.find(_SCHEME_END)
+    while end >= 0:
+        begin = _scheme_start(value, end)
+        nested = floor > 0 and begin == floor
+        if begin is not None and not nested:
+            starts.append((begin, end + len(_SCHEME_END)))
+        floor = end + len(_SCHEME_END)
+        end = value.find(_SCHEME_END, floor)
+    return starts
+
+
+def _scheme_start(value: str, end: int) -> int | None:
+    """Return where the scheme closed by the ``://`` at *end* starts, or ``None``.
+
+    A scheme is a letter followed by letters, digits, ``+``, ``.`` or ``-``, with any sub-schemes after
+    a ``:`` (``jdbc:mysql``). Walking back from *end*, each sub-scheme that starts with a letter is
+    taken; the first one that does not ends the scheme at its first letter (``1https`` gives
+    ``https``), or just after it when it has none (``12:https`` gives ``https``).
+
+    Examples:
+        >>> _scheme_start("jdbc:mysql://h", 10), _scheme_start("x=12:https://h", 10)
+        (0, 5)
+        >>> _scheme_start("-1://h", 2) is None
+        True
+    """
+    low = end
+    while low > 0 and value[low - 1] in _SCHEME_RUN:
+        low -= 1
+    begin: int | None = None
+    part_end = end
+    while True:
+        colon = value.rfind(":", low, part_end)
+        part_start = low if colon < 0 else colon + 1
+        letter = _first_letter(value, part_start, part_end)
+        if letter is None:
+            return begin
+        if letter > part_start or colon < 0:
+            return letter
+        begin, part_end = part_start, colon
+
+
+def _first_letter(value: str, start: int, stop: int) -> int | None:
+    """Return the index of the first ASCII letter in ``value[start:stop]``, or ``None``."""
+    return next((index for index in range(start, stop) if value[index] in string.ascii_letters), None)
 
 
 def _mask_one_url(url: str, start: int) -> str:
@@ -500,7 +565,7 @@ def _urllib_password(value: str, start: int) -> tuple[int, int] | None:
 def _dsn_password(value: str, start: int) -> tuple[int, int] | None:
     """Return the ``(colon, at)`` around a password holding ``/``, ``?`` or ``#``, or ``None``.
 
-    The user name runs to the first ``:``, which must come before any ``/``; the password runs to the
+    The user name runs to the first ``:``, which must come before any ``/``, ``?`` or ``#``; the password runs to the
     last ``@`` before the query (a ``?`` or ``#`` after the first ``@`` following the ``:``), so an ``@``
     in the query leaves the host shown. Not read as a password: a ``:`` inside an IPv6 literal (``[``),
     a drive letter (a one-letter user name and a "password" starting with ``/``, as in
@@ -516,8 +581,7 @@ def _dsn_password(value: str, start: int) -> tuple[int, int] | None:
         True
     """
     colon = value.find(":", start)
-    slash = value.find("/", start)
-    if colon < 0 or 0 <= slash < colon or "[" in value[start:colon]:
+    if colon < 0 or _first_of(value, _AUTHORITY_END, start) < colon or "[" in value[start:colon]:
         return None
     first_at = value.find("@", colon + 1)
     if first_at < 0:

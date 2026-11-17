@@ -53,6 +53,11 @@ _MASKED_PASSWORD = f"postgres://alice:{REDACTED_PLACEHOLDER}@db.example:5432/app
         "apiKey2",
         "PrivateKey2",
         "db_password_2",
+        # A `_key` followed by more letters, as key material is often named.
+        "encryption_keyset",
+        "tink_keyset",
+        "encryptionKeyset",
+        "primary_keysecret",
     ],
 )
 def test_the_short_secret_names_are_sensitive(key: str) -> None:
@@ -133,6 +138,14 @@ def test_words_that_only_contain_a_short_name_stay_visible(key: str) -> None:
         # A URL that does not open the value: after a space, or inside another URL's query.
         (" postgres://u:s3cret@h/db", f" postgres://u:{REDACTED_PLACEHOLDER}@h/db"),
         ("http://h/?redirect=http://u:pw@other", f"http://h/?redirect=http://u:{REDACTED_PLACEHOLDER}@other"),
+        # A password that starts with '//' or holds letters, ':' and '//', which reads like a scheme of its own.
+        ("https://app://8xK3pQ@db.example.com/app", f"https://app:{REDACTED_PLACEHOLDER}@db.example.com/app"),
+        ("postgresql://app://Zm9vYmFy@db/prod", f"postgresql://app:{REDACTED_PLACEHOLDER}@db/prod"),
+        ("https://app:ab://cd@h/x", f"https://app:{REDACTED_PLACEHOLDER}@h/x"),
+        # A URL after text that is not a scheme: digits, a '-', a number list.
+        ("12:https://u:pw@h/x", f"12:https://u:{REDACTED_PLACEHOLDER}@h/x"),
+        ("-https://u:pw@h", f"-https://u:{REDACTED_PLACEHOLDER}@h"),
+        ("abc:123:https://u:pw@h", f"abc:123:https://u:{REDACTED_PLACEHOLDER}@h"),
         # A JDBC URL, whose scheme has a sub-scheme.
         ("jdbc:mysql://alice:hunter2@db.example/app", f"jdbc:mysql://alice:{REDACTED_PLACEHOLDER}@db.example/app"),
     ],
@@ -160,6 +173,10 @@ def test_the_password_of_a_url_value_is_masked_under_any_key(value: str, shown: 
         "http://[::1]/?next=alice@example.com",
         "file://C:/data/alice@example.toml",
         "https://example.com:8443/users/bob@example.com?tab=1",
+        # A ':' in the query or fragment of a URL with no path is not a password's.
+        "https://example.com?redirect=mailto:bob@example.com",
+        "https://example.com?t=12:30&to=bob@example.com",
+        "https://example.com#a:b@c",
         "not a url at all",
     ],
 )

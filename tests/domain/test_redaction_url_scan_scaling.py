@@ -23,12 +23,17 @@ _LIMIT_SECONDS = 1.0
 
 
 @pytest.mark.os_agnostic
-def test_a_long_run_of_letters_before_a_url_is_scanned_in_linear_time() -> None:
-    value = "a" * _LETTERS + "! x://u:pw@h"
+@pytest.mark.parametrize(
+    "prefix",
+    ["a" * _LETTERS + "! ", "a:" * (_LETTERS // 2), "x://" * (_LETTERS // 4) + " "],
+    ids=["letters", "scheme-like-chain", "many-schemes"],
+)
+def test_a_long_run_before_a_url_is_scanned_in_linear_time(prefix: str) -> None:
+    value = prefix + "x://u:pw@h"
 
     started = time.perf_counter()
     redacted = redact_mapping({"note": value})
     elapsed = time.perf_counter() - started
 
-    assert redacted == {"note": "a" * _LETTERS + f"! x://u:{REDACTED_PLACEHOLDER}@h"}
-    assert elapsed < _LIMIT_SECONDS, f"{_LETTERS} letters took {elapsed:.2f}s"
+    assert redacted["note"].endswith(f"x://u:{REDACTED_PLACEHOLDER}@h")
+    assert elapsed < _LIMIT_SECONDS, f"{len(prefix)} characters took {elapsed:.2f}s"
