@@ -174,6 +174,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   every later read returned. The `Config` now owns a deep copy and hands out a copy of each nested table,
   list or provenance record, of the same type, so `json.dumps(config["db"])` and `isinstance(..., dict)`
   keep working.
+- `"db" in config` answers from the keys instead of reading `config["db"]`, so it no longer copies the
+  whole table to say yes or no. `config.get("db.host")` no longer checks every key of each table it
+  passes (a lookup in a table of 128 000 keys took about 120 times as long as in one of 1 000). A
+  `Config` built by hand from a table holding a non-string key now finds that table's string keys
+  through `get`, where it used to return the default.
 - `copy.deepcopy`, `copy.copy` and `pickle` of a `Config` used to raise `cannot pickle 'mappingproxy'
   object`; they now work and keep its provenance and declared `not_sensitive` paths.
 - A relative home directory (`HOME=rel` on Linux and macOS, a relative `USERPROFILE` on Windows) is refused

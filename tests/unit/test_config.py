@@ -246,9 +246,9 @@ def test_clone_map_returns_new_dictionary_instance() -> None:
 
 
 @os_agnostic
-def test_looks_like_mapping_rejects_non_string_keys() -> None:
-    weird_mapping = {1: "value"}
-    assert config_module._looks_like_mapping(weird_mapping) is False  # pyright: ignore[reportPrivateUsage] - the helper's own contract, isolated from the Config methods that wrap it
+def test_a_non_string_key_never_matches_a_dotted_fragment() -> None:
+    cfg = Config({"a": {1: "one", "2": "two"}}, {})
+    assert (cfg.get("a.1"), cfg.get("a.2")) == (None, "two")
 
 
 # ---------------------------------------------------------------------------

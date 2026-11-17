@@ -24,11 +24,11 @@ System Role:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from collections.abc import Mapping as MappingABC
 from collections.abc import Mapping as MappingType
 from dataclasses import dataclass, field
-from typing import Any, Final, TypedDict, TypeGuard, TypeVar, cast
+from typing import Any, Final, TypedDict, TypeVar, cast
 
 from . import json_codec
 from .redaction import NotSensitiveKeys, redact_mapping, redact_value_at
@@ -126,6 +126,19 @@ class Config(MappingABC[str, Any]):
             True
         """
         return _clone_value(self._data[key])
+
+    def __contains__(self, key: object) -> bool:
+        """Return ``True`` when *key* is a top-level key.
+
+        Answered from the stored keys: the inherited ``Mapping`` test goes through
+        :meth:`__getitem__` and so would copy the whole section to answer yes or no.
+
+        Examples:
+            >>> cfg = Config({"db": {"host": "localhost"}}, {})
+            >>> "db" in cfg, "cache" in cfg
+            (True, False)
+        """
+        return key in self._data
 
     def __iter__(self) -> Iterator[str]:
         """Iterate over top-level keys in insertion order."""
@@ -479,12 +492,29 @@ def _follow_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:
     """
     current: object = source
     for fragment in dotted.split("."):
-        if not _looks_like_mapping(current):
+        table = _as_table(current)
+        if table is None or fragment not in table:
             return default
-        if fragment not in current:
-            return default
-        current = current[fragment]
+        current = table[fragment]
     return cast("Any", current)
+
+
+def _as_table(value: object) -> MappingType[str, Any] | None:
+    """Return *value* as a table to walk into, or ``None`` when it is not a mapping.
+
+    A mapping-type check only: a loaded configuration's keys are all strings (every loader refuses
+    any other key), so checking each key of every table passed would cost the table's size on every
+    lookup for nothing. A dotted fragment is a string, so a non-string key never matches it anyway.
+
+    Examples:
+        >>> _as_table({"host": "db"})
+        {'host': 'db'}
+        >>> _as_table(["not", "a", "table"]) is None
+        True
+    """
+    if isinstance(value, MappingABC):
+        return cast("MappingType[str, Any]", value)
+    return None
 
 
 def _clone_map(mapping: MappingType[str, Any]) -> dict[str, Any]:
@@ -540,25 +570,6 @@ def _clone_value(value: Any) -> Any:
         items = cast("tuple[Any, ...]", value)
         return tuple(_clone_value(item) for item in items)
     return value
-
-
-def _looks_like_mapping(value: object) -> TypeGuard[MappingType[str, Any]]:
-    """Return ``True`` when *value* is a mapping with string keys.
-
-    Dotted traversal should stop when encountering scalars or non-string-keyed
-    mappings to avoid surprising behaviour.
-
-    Examples:
-        >>> _looks_like_mapping({"key": 1})
-        True
-        >>> _looks_like_mapping({1: "value"})
-        False
-        >>> _looks_like_mapping(["not", "mapping"])
-        False
-    """
-    if not isinstance(value, MappingABC):
-        return False
-    return all(isinstance(key, str) for key in cast("Iterable[object]", value.keys()))
 
 
 EMPTY_CONFIG = Config({}, {})
