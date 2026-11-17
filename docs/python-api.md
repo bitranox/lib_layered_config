@@ -976,8 +976,8 @@ Copy a source configuration file into one or more layer directories with conflic
 - `batch` (bool, optional): Non-interactive mode - keeps existing files and writes new config as `.ucf` for review (CI/CD). Default: `False`. Together with `force=True` it raises `ValidationError` before anything is written: one overwrites an existing file, the other keeps it.
 - `conflict_resolver` (Callable[[Path], DeployAction] | None, optional): Called with the destination of each file whose content differs; returns `DeployAction.OVERWRITTEN` or `DeployAction.KEPT`. Any other answer raises `ValidationError` naming the two, and nothing is written for that destination. `force` and `batch` decide first: with either set, the resolver is never called. Default: `None` (with neither `force` nor `batch`, a differing file is left unchanged and reported as `CONFLICT`).
 - `set_permissions` (bool | None, optional): `True` sets modes, `False` leaves them to the umask, `None` follows the configured `[lib_layered_config.default_permissions].enabled` (true when unset). An explicit `dir_mode` or `file_mode` means modes are set; one given with `False` is refused. Skipped on Windows. Default: `None`.
-- `dir_mode` (int | None, optional): Directory mode for every target, overriding the configured and built-in ones. Default: `None`.
-- `file_mode` (int | None, optional): File mode for every target, overriding the configured and built-in ones. Default: `None`.
+- `dir_mode` (int | DeployMode | None, optional): Directory mode for every target, overriding the configured and built-in ones: an int (`0o750`) or a `DeployMode` of kind `ModeKind.DIRECTORY`. Default: `None`.
+- `file_mode` (int | DeployMode | None, optional): File mode for every target, overriding the configured and built-in ones: an int (`0o640`) or a `DeployMode` of kind `ModeKind.FILE`. Default: `None`.
 - `permissions` (DeployPermissions | None, optional): A complete settings object to use instead of reading the configuration, for a caller that builds one on purpose. One built with `deploy_permissions_from_config(read_config(...))` includes `.env`, the deployed files and a user file's `app_*`/`host_*` modes, which the deploy's own read leaves out; use `permission_overrides` for runtime overrides. Default: `None`.
 - `permission_overrides` (Mapping[str, object] | None, optional): Runtime values for keys of `[lib_layered_config.default_permissions]`, by setting name (`{"user_file": "0o640"}`), laid over the deploy's own read and validated like configured values; a refusal names `(source: override)`. Validated on every call. `{"enabled": False}` with `set_permissions=None` and no mode turns permission setting off without reading the configuration. Cannot be combined with `permissions`. Default: `None`.
 
@@ -1014,7 +1014,8 @@ resolver answering `KEPT`), `ValidationError` (an invalid `vendor`, `app`,
 `slug` or `profile`, an unknown target, or `force` with `batch`, before anything is written; a `conflict_resolver`
 answer other than `OVERWRITTEN` or `KEPT`, when that destination is reached, so the files deployed before it stay
 written), `DeployModeError` (a refused `dir_mode` /
-`file_mode`, or one given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
+`file_mode`, a `DeployMode` of the other kind: `dir_mode: got a file mode (0o600); dir_mode takes a directory
+mode`, or a mode given with `set_permissions=False`), `DeployPermissionsError` (the permission settings are
 not readable, the section is invalid, a refused `permission_overrides` value, or `permission_overrides`
 combined with `permissions`; nothing is written), `DeployDestinationError` (a destination or one of its `.d`
 copies is a symbolic link, dangling or not, or not a regular file - a directory, FIFO, device or socket - or does
@@ -1962,6 +1963,7 @@ Exported from the package root, used to configure or override `deploy_config`'s 
 
 - `DeployMode`: An immutable, validated Unix permission mode; an unsafe one cannot be constructed. `kind` must
   be a `ModeKind` member (`ModeKind.FILE`, `ModeKind.DIRECTORY`); a str such as `"file"` raises `DeployModeError`.
+  `deploy_config` takes one as `dir_mode` (kind `DIRECTORY`) or `file_mode` (kind `FILE`), as it takes an int.
 - `ModeKind`: Whether a mode applies to a directory or a file (`DIRECTORY`, `FILE`).
 - `LayerModes`: The directory mode and the file mode one layer is deployed with.
 - `DeployPermissions`: Directory and file modes per deployment layer, plus whether to set them at all;

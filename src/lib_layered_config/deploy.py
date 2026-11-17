@@ -370,15 +370,26 @@ def _validate_target(target: str) -> Layer:
     return layer
 
 
-def _checked_mode(value: int | None, *, kind: ModeKind) -> _CheckedMode:
-    """Return the mode when *value* is safe (None when not given), or one refusal line when it is not."""
+def _checked_mode(value: int | DeployMode | None, *, kind: ModeKind) -> _CheckedMode:
+    """Return the mode when *value* is safe (None when not given), or one refusal line when it is not.
+
+    A DeployMode was validated when it was built, so only its kind is checked: a file mode's rules
+    say nothing about a directory, and the other way round.
+    """
+    parameter = _MODE_PARAMETERS[kind]
+    if isinstance(value, DeployMode):
+        if value.kind is kind:
+            return _CheckedMode(value, None)
+        return _CheckedMode(
+            None, f"{parameter}: got a {value.kind.value} mode ({value}); {parameter} takes a {kind.value} mode"
+        )
     try:
         return _CheckedMode(None if value is None else DeployMode(value, kind), None)
     except DeployModeError as exc:
-        return _CheckedMode(None, f"{_MODE_PARAMETERS[kind]}: {exc}")
+        return _CheckedMode(None, f"{parameter}: {exc}")
 
 
-def _explicit_modes(*, dir_mode: int | None, file_mode: int | None) -> _ExplicitModes:
+def _explicit_modes(*, dir_mode: int | DeployMode | None, file_mode: int | DeployMode | None) -> _ExplicitModes:
     """Validate the caller-given modes, one refusal line per bad parameter, both checked first."""
     directory = _checked_mode(dir_mode, kind=ModeKind.DIRECTORY)
     file = _checked_mode(file_mode, kind=ModeKind.FILE)
@@ -411,8 +422,8 @@ def _override_source(_key: str) -> str:
 def _mode_request(
     *,
     set_permissions: bool | None,
-    dir_mode: int | None,
-    file_mode: int | None,
+    dir_mode: int | DeployMode | None,
+    file_mode: int | DeployMode | None,
     permissions: DeployPermissions | None,
     permission_overrides: Mapping[str, object] | None,
 ) -> _ModeRequest:
@@ -664,8 +675,8 @@ def deploy_config(
     conflict_resolver: ConflictResolver | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
     set_permissions: bool | None = None,
-    dir_mode: int | None = None,
-    file_mode: int | None = None,
+    dir_mode: int | DeployMode | None = None,
+    file_mode: int | DeployMode | None = None,
     permissions: DeployPermissions | None = None,
     permission_overrides: Mapping[str, object] | None = None,
 ) -> list[DeployResult]:
@@ -702,8 +713,10 @@ def deploy_config(
             the configured ``[lib_layered_config.default_permissions].enabled`` (true when unset).
             An explicit dir_mode or file_mode means modes are set; giving one together with
             False is refused. Skipped on Windows (ACLs).
-        dir_mode: Directory mode for every target, overriding the configured and built-in ones.
-        file_mode: File mode for every target, overriding the configured and built-in ones.
+        dir_mode: Directory mode for every target, overriding the configured and built-in ones: an
+            int (``0o750``) or a ``DeployMode`` of kind ``ModeKind.DIRECTORY``.
+        file_mode: File mode for every target, overriding the configured and built-in ones: an
+            int (``0o640``) or a ``DeployMode`` of kind ``ModeKind.FILE``.
         permissions: A complete settings object to use instead of reading the configuration, for a
             caller that builds one on purpose. One built from an application's normal read_config
             includes ``.env``, every deployed destination and a user file's ``app_*``/``host_*``
@@ -748,8 +761,8 @@ def deploy_config(
             the other keeps it), refused before anything is written; or a conflict_resolver
             answer other than OVERWRITTEN or KEPT, raised when that destination is reached, so
             files deployed before it stay written.
-        DeployModeError: dir_mode or file_mode is out of range or unsafe, or a mode was given
-            with set_permissions=False.
+        DeployModeError: dir_mode or file_mode is out of range or unsafe, is a ``DeployMode`` of
+            the other kind (a file mode as dir_mode), or a mode was given with set_permissions=False.
         DeployPermissionsError: The configuration cannot be loaded, its permission section is
             invalid, a permission_overrides value is refused, or permission_overrides came with
             permissions; nothing has been written.

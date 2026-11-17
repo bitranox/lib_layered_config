@@ -741,7 +741,8 @@ The `deploy` command automatically sets appropriate Unix file permissions based 
 
 For each target layer and each side (directory, file), the first of these wins:
 
-1. `--dir-mode` / `--file-mode` (Python: `dir_mode` / `file_mode`);
+1. `--dir-mode` / `--file-mode` (Python: `dir_mode` / `file_mode`, each an int or a `DeployMode` of the
+   matching `ModeKind`);
 2. the configured `[lib_layered_config.default_permissions]` setting for that layer;
 3. the built-in layer mode:
 
