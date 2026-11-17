@@ -35,6 +35,10 @@
 4. `pytest` with doctests, coverage reports, and `--cov-fail-under=90`.
 5. Optional Codecov upload (requires `CODECOV_TOKEN` or running in CI).
 
+`git add` a new file under `src/`, `tests/`, `docs/` or `notebooks/` before running `make test` or
+`make push`. A locally built sdist ships every file there that the root `.gitignore` does not exclude,
+tracked or not, so `tests/test_sdist_contents.py` fails on an untracked one and names it.
+
 Coverage data is written to `.coverage`/`coverage.xml`. The harness creates an allow-empty commit named `test: auto commit before Codecov upload` before uploading so Codecov can associate the report with a SHA. Drop it afterwards with `git reset --soft HEAD~1` if undesired.
 
 ## Recommended Workflow
