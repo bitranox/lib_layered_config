@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Security
+- `repr(config)` and `str(config)` no longer print secrets. They were the dataclass default, which showed the
+  whole stored tree, so `logger.debug("loaded %s", config)`, an f-string or a failing assertion's message wrote
+  every password and token in clear. The text form is now `Config(<the redacted view>, provenance for N keys)`,
+  the view `as_dict(redact=True)` returns, with declared not-sensitive paths shown.
 - A deploy into a layer directory that is a symbolic link no longer changes the mode of the directory it
   links to. With `~/.config/myapp` linked to a shared 0755 directory, deploy set that directory to 0700 (and on
   the app and host layers could widen a 0750 one to 0755). The file is still written through the link with

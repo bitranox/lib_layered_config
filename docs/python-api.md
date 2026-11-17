@@ -90,6 +90,9 @@ leaf with `config.get("servers.web.port")`, or take the section once (`servers =
 that, rather than `config["servers"][name]["port"]`, which copies the whole section for every leaf. A `Config` works with `copy.copy`,
 `copy.deepcopy` and `pickle` (every protocol), and the copy keeps its provenance and its declared `not_sensitive`
 paths. Like a `dict`, it is not hashable.
+Its text form (`repr`, `str`, an f-string, a log call's `%s`) shows the redacted view and a count of the provenance
+entries, `Config({'db': {'host': 'h', 'password': '***REDACTED***'}}, provenance for 2 keys)`, so printing or
+logging a `Config` never writes a secret; use `as_dict()` for the values themselves.
 
 #### Methods
 

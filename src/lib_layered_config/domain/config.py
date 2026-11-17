@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final, TypedDict, TypeVar, cast
 
 from . import json_codec
+from .errors import InvalidFormatError
 from .redaction import NotSensitiveKeys, redact_mapping, redact_value_at
 
 __all__ = ["EMPTY_CONFIG", "OVERRIDE_LAYER", "Config", "SourceInfo"]
@@ -147,6 +148,24 @@ class Config(MappingABC[str, Any]):
     def __len__(self) -> int:
         """Return the number of stored top-level keys."""
         return len(self._data)
+
+    def __repr__(self) -> str:
+        """Return the redacted view and a count of the provenance entries, never a secret.
+
+        ``str(config)``, an f-string and a log call's ``%s`` all use this text, so it shows what
+        ``as_dict(redact=True)`` shows (declared not-sensitive paths stay visible). Provenance appears only as a
+        count: its keys and paths are in :meth:`origin` and ``read_config_json``. A hand-built configuration too
+        deeply nested to redact shows its top-level key count instead of its values.
+
+        Examples:
+            >>> Config({"db": {"host": "h", "password": "pw"}}, {})
+            Config({'db': {'host': 'h', 'password': '***REDACTED***'}}, provenance for 0 keys)
+        """
+        try:
+            shown = repr(self.as_dict(redact=True))
+        except InvalidFormatError:
+            shown = f"<{_count(len(self._data), 'top-level key')}, too deeply nested to show>"
+        return f"Config({shown}, provenance for {_count(len(self._meta), 'key')})"
 
     def as_dict(self, *, redact: bool = False) -> dict[str, Any]:
         """Return a deep, mutable copy of the configuration tree.
@@ -497,6 +516,11 @@ def _follow_path(source: Mapping[str, Any], dotted: str, default: Any) -> Any:
             return default
         current = table[fragment]
     return cast("Any", current)
+
+
+def _count(number: int, noun: str) -> str:
+    """Return *number* with *noun*, plural unless it is one: ``1 key``, ``0 keys``."""
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
 
 
 def _as_table(value: object) -> MappingType[str, Any] | None:
