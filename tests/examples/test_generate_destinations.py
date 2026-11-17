@@ -152,7 +152,7 @@ def test_without_force_what_is_already_there_is_kept(tmp_path: Path, kind: str) 
     assert outside.read_text(encoding="utf-8") == "ORIGINAL\n"
 
 
-@posix_only
+@os_agnostic
 def test_force_rewrites_a_hard_linked_example_in_place_as_deploy_does(tmp_path: Path) -> None:
     destination, target = _first_example(tmp_path)
     target.write_text("OLD\n", encoding="utf-8")
@@ -165,7 +165,7 @@ def test_force_rewrites_a_hard_linked_example_in_place_as_deploy_does(tmp_path: 
     assert other.read_text(encoding="utf-8") == target.read_text(encoding="utf-8") != "OLD\n"
 
 
-@posix_only
+@os_agnostic
 def test_force_replaces_a_plain_example_by_rename_rather_than_rewriting_it(tmp_path: Path) -> None:
     """A rename, so a write that fails half-way leaves the old example whole; it shows as a new inode."""
     destination, target = _first_example(tmp_path)
