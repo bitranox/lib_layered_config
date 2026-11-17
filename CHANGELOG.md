@@ -147,6 +147,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   since nested-key placement moved to its case index.
 
 ### Fixed
+- A relative home directory (`HOME=rel` on Linux and macOS, a relative `USERPROFILE` on Windows) is refused
+  with `LayerRootNotAbsoluteError` naming that variable, as a relative `LIB_LAYERED_CONFIG_ETC` is. Before,
+  the Linux and macOS user layer, and a deploy to it, resolved under the current directory.
 - A command whose stdout reader went away (`lib_layered_config info | head -0`) exits with 141 and
   prints nothing. It exited 1, or 120 with an "Exception ignored ... BrokenPipeError" line. A command
   that fails on its own keeps its exit code, unless `--json` sends its failure envelope to the gone

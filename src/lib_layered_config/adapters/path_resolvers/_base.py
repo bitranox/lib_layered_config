@@ -47,17 +47,28 @@ def home_directory() -> Path:
     Raises:
         HomeDirectoryUnknownError: ``Path.home()`` cannot answer: HOME unset and the uid has no
             passwd entry, or on Windows USERPROFILE, HOMEDRIVE and HOMEPATH all unset.
+        LayerRootNotAbsoluteError: The home directory is a relative path (``HOME=rel``).
     """
     try:
-        return Path.home()
+        home = Path.home()
     except RuntimeError as exc:
-        # Path.home() reads USERPROFILE on Windows and ignores HOME there, so name what it reads.
-        home_variable = "USERPROFILE" if os.name == "nt" else "HOME"
         raise HomeDirectoryUnknownError(
-            f"cannot determine the home directory for the user layer: set {home_variable}, or the variable "
+            f"cannot determine the home directory for the user layer: set {_home_variable()}, or the variable "
             "naming the user-layer root (XDG_CONFIG_HOME, LIB_LAYERED_CONFIG_MAC_HOME_ROOT, "
             "LIB_LAYERED_CONFIG_APPDATA)"
         ) from exc
+    if not home.root:
+        # A relative HOME would put the user layer, and every user deploy, under the current directory.
+        raise LayerRootNotAbsoluteError(
+            f"The {_home_variable()} root '{escape_controls(str(home))}' is not an absolute path; set "
+            f"{_home_variable()} to an absolute path"
+        )
+    return home
+
+
+def _home_variable() -> str:
+    """The variable ``Path.home()`` reads here: USERPROFILE on Windows, which ignores HOME, else HOME."""
+    return "USERPROFILE" if os.name == "nt" else "HOME"
 
 
 def override_root(env: Mapping[str, str], name: str, default: Callable[[], Path]) -> Path:

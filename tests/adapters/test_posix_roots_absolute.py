@@ -9,6 +9,7 @@ specification instead: empty means ``$HOME/.config``, and a relative value is ig
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -109,3 +110,25 @@ def test_a_linux_user_deploy_with_a_relative_xdg_config_home_writes_under_home_c
 
     assert [r.destination.resolve() for r in results] == [(Path.home() / ".config" / _SLUG / "config.toml").resolve()]
     assert list(work.iterdir()) == []
+
+
+@os_agnostic
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_a_relative_home_is_refused_and_a_user_deploy_writes_nothing_into_the_cwd(
+    work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    # Path.home() reads HOME on POSIX and USERPROFILE on Windows; the refusal names the one it read.
+    for name in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(name, "relhome")
+    _plant(work / "relhome" / ".config" / _SLUG / "config.toml")
+    _plant(work / "relhome" / "Library" / "Application Support" / "Acme" / "Demo" / "config.toml")
+    variable = "USERPROFILE" if os.name == "nt" else "HOME"
+    expected = f"^The {variable} root 'relhome' is not an absolute path; set {variable} to an absolute path$"
+
+    with pytest.raises(LayerRootNotAbsoluteError, match=expected):
+        list(_resolver({}, platform=platform, cwd=work).user())
+    before = sorted(p.relative_to(work) for p in work.rglob("*"))
+    source = _plant(tmp_path / "source.toml", "a = 1\n")
+    with pytest.raises(LayerRootNotAbsoluteError, match=expected):
+        deploy_config(source, vendor="Acme", app="Demo", slug=_SLUG, targets=["user"], platform=platform)
+    assert sorted(p.relative_to(work) for p in work.rglob("*")) == before
