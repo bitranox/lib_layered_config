@@ -411,9 +411,21 @@ lets `FileNotFoundError` and `PermissionError` through as themselves. Wrong-argu
   `deploy_config_paths` raise it for the `user` target; a read skips the user layer and warns.
 
 **Redaction helpers.** `is_sensitive("smtp_password")` -> `True` checks one key NAME against the
-built-in patterns (a field named just `key` is not sensitive). `is_sensitive_at(("performance",
-"max_token_bytes"), not_sensitive=NotSensitiveKeys.of([...]))` checks a key PATH and honours a
-declaration; pass a tuple of segments, never a dotted `str` (refused with `TypeError`).
+built-in patterns (a field named just `key` is not sensitive). The patterns are `password`,
+`passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`, `apikey`, `privatekey`,
+`privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id`, `authorization` and any `_key`
+suffix, matched per word after splitting at `_`, `-`, `.`, whitespace and a change of case, with
+plurals and trailing digits: `db_pwd`, `smtpPass`, `client-secret`, `apiKey2` and `password2` are
+sensitive, and a table under such a name is masked whole. A name that only looks secret
+(`pass_through`, `token_url`) is masked too; keep it visible by its dotted path with
+`read_config(not_sensitive=["features.pass_through"])`, a Python-only declaration (no CLI flag or
+config key can unmask a value). A declared path shows its whole value, a URL password in it
+included, so declare only a path that holds no secret.
+`str(config)` and `repr(config)` print the redacted view, so `logger.debug("loaded %s", config)`
+shows no secret.
+`is_sensitive_at(("performance", "max_token_bytes"), not_sensitive=NotSensitiveKeys.of([...]))`
+checks a key PATH and honours a declaration; pass a tuple of segments, never a dotted `str`
+(refused with `TypeError`).
 `redact_mapping(data, not_sensitive=["performance.max_token_bytes"])` returns a masked deep copy
 of a plain dict; `not_sensitive` takes dotted paths or a `NotSensitiveKeys`. Use it on
 `read_config_raw(...).data`, which does not carry the declaration. `config.get_redacted("db.password")`
@@ -429,7 +441,8 @@ password wrapped in a list (`'["postgresql://user:pw@db.example/app"]'`) straigh
 output mode. Mask by KEY, whatever the value's shape: `redact_mapping` and `redact=True` already
 mask a sensitive-named key whatever its value and recurse into nested mappings, lists and tuples.
 A URL's password (`scheme://user:pw@host`) in a string value is masked under any key, a `url`
-included, by `redact_mapping` and every `redact=True` view (`as_dict`, `to_json`, the CLI).
+included, by `redact_mapping` and every `redact=True` view (`as_dict`, `to_json`, the CLI), for
+every URL the string holds (`amqp://u:p1@h1//;amqp://u:p2@h2//` masks both).
 A bare secret under a key whose name matches no built-in pattern (a `conn` holding a password:
 `is_sensitive("conn")` is `False`) is masked by neither, so your own mask must name it and mask
 every shape; only None, which carries no secret, may show. Such a key reads an unquoted
