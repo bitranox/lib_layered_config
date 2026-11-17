@@ -17,7 +17,7 @@ from .common import (
     resolve_indent,
     wants_json,
 )
-from .constants import CLICK_CONTEXT_SETTINGS
+from .constants import CLICK_CONTEXT_SETTINGS, OUTPUT_FORMAT_CHOICES
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
 from .output import emit_json, emit_text
 from .typed_click import option
@@ -113,7 +113,7 @@ def _envelope_data(query: ReadQuery, *, include_provenance: bool, redact: bool) 
 @option(
     "--format",
     "output_format",
-    type=click.Choice(["human", "json"], case_sensitive=False),
+    type=click.Choice(OUTPUT_FORMAT_CHOICES, case_sensitive=False),
     default="human",
     show_default=True,
     help="Choose between TOML annotated with each value's source (human) or JSON",
