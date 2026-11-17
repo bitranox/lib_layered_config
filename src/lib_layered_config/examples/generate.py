@@ -9,6 +9,7 @@ from ..generate import (
     ExamplesReport,
     generate_examples,
     generate_examples_report,
+    generated_before_failure,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "ExamplesReport",
     "generate_examples",
     "generate_examples_report",
+    "generated_before_failure",
 ]

@@ -21,6 +21,7 @@ from lib_layered_config import (
     DeployResult,  # what deploy_config returns, one per file
     DeployAction,
     generate_examples,
+    generated_before_failure,  # what a failed generate_examples wrote first
     i_should_fail,
     # Profile validation
     DEFAULT_MAX_PROFILE_LENGTH,
@@ -1331,6 +1332,12 @@ resolving to nothing, which a create would write through. Without `force` anythi
 example path is kept. A written example replaces the old one through a temporary file, except that a
 file with other hard links, another owner or its own extended attributes is rewritten in place, as
 `deploy_config` does with permission setting off.
+
+**Partial failure:** the examples are written one after another in a fixed order. An error raised
+partway (a regular file where a directory must go, a permission wall, a full disk) is the same
+exception, re-raised, and carries the paths already written: `generated_before_failure(error)` returns
+them in write order, and `[]` for an error that carries none, as `deployed_before_failure` does for
+`deploy_config`.
 
 **Examples:**
 

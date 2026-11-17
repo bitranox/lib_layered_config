@@ -5,12 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import rich_click as click
+from lib_cli_exit_tools import CliSignalError
 
-from ..generate import ExamplesReport, generate_examples_report
+from ..domain.printable import escape_controls
+from ..generate import ExamplesReport, generate_examples_report, generated_before_failure
 from .common import json_paths, normalise_examples_platform_option
 from .constants import CLICK_CONTEXT_SETTINGS
 from .envelope import EnvelopeCommand, json_envelope_option, run_in_envelope
-from .output import emit_json
+from .output import emit_json, emit_text
 from .typed_click import option
 
 __all__ = [
@@ -64,9 +66,43 @@ def generate_examples_command(
         )
 
     if json_envelope:
-        run_in_envelope("generate-examples", lambda: _envelope_data(generate()), skipped=_skipped_in)
+        try:
+            run_in_envelope(
+                "generate-examples", lambda: _envelope_data(generate()), skipped=_skipped_in, detail=_written_detail
+            )
+        except (click.Abort, CliSignalError) as interrupt:
+            # The envelope passes an interrupt through unprinted, so this is the only place it can still
+            # say what the run wrote; a failure envelope already carries that as error.written.
+            _report_written(interrupt)
+            raise
         return
-    emit_json(json_paths(generate().created))
+    try:
+        report = generate()
+    except BaseException as error:
+        _report_written(error)
+        raise
+    emit_json(json_paths(report.created))
+
+
+def _written_detail(error: Exception) -> dict[str, object]:
+    """The failure envelope's ``written`` list, present only when the run wrote something first."""
+    written = [str(path) for path in generated_before_failure(error)]
+    return {"written": written} if written else {}
+
+
+def _report_written(error: BaseException) -> None:
+    """Name on stderr the example files a failed run had already written, before the error itself prints.
+
+    As deploy does (user decision 2026-11-16, R2-F2): the failure leaves them written, and the error
+    alone does not say so.
+    """
+    written = generated_before_failure(error)
+    if written:
+        emit_text(
+            "generate-examples stopped after writing:\n"
+            + "\n".join(f"  {escape_controls(str(path))}" for path in written),
+            err=True,
+        )
 
 
 def _envelope_data(report: ExamplesReport) -> dict[str, list[str]]:

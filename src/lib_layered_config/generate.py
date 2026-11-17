@@ -24,10 +24,11 @@ System Role:
 
 from __future__ import annotations
 
+import contextlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from ._platform import normalise_examples_platform
 from .adapters._file_write import write_data
@@ -45,6 +46,7 @@ __all__ = [
     "ExamplesReport",
     "generate_examples",
     "generate_examples_report",
+    "generated_before_failure",
 ]
 
 
@@ -54,6 +56,9 @@ DEFAULT_HOST_PLACEHOLDER = "your-hostname"
 # Deploy's refusals, worded for generate: a reader of either error sees the same two rules.
 _LINK_REFUSAL: Final = "is a symbolic link; generate neither writes through nor replaces one"
 _NOT_REGULAR_REFUSAL: Final = "is not a regular file; generate writes only regular files"
+
+# The attribute a failed run attaches its written paths under, read by generated_before_failure.
+_WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_generated_before_failure"
 
 
 @dataclass(slots=True)
@@ -132,6 +137,9 @@ def generate_examples(
             example path is kept.
         NotADirectoryError: When *destination*, or a directory an example path needs, is a
             regular file.
+
+    Any error raised after the first write carries the examples already written, read back with
+    :func:`generated_before_failure`.
     """
     return generate_examples_report(
         destination, slug=slug, vendor=vendor, app=app, force=force, platform=platform
@@ -182,6 +190,37 @@ def generate_examples_report(
     )
     specs = _build_specs(plan)
     return _write_examples(plan.destination, specs, force=plan.force)
+
+
+def generated_before_failure(error: BaseException) -> list[Path]:
+    """Return the example files a :func:`generate_examples` run that raised *error* had already written.
+
+    The examples are written one after another in a fixed order, so a failure part-way (a regular
+    file where a directory must go, a permission wall, a full disk, an interrupt) leaves the earlier
+    ones written. ``generate_examples`` and ``generate_examples_report`` raise the original exception
+    unchanged and attach those paths to it, as ``deploy_config`` does (user decision 2026-11-16,
+    R2-F2, for deploy).
+
+    Args:
+        error: An exception, normally one ``generate_examples`` raised.
+
+    Returns:
+        The paths in the order they were written; empty when nothing was written, or when *error*
+        did not come out of ``generate_examples`` (a refusal before the first write, for one).
+
+    Examples:
+        >>> generated_before_failure(ValueError("not from generate_examples"))
+        []
+    """
+    return list(cast("list[Path]", getattr(error, _WRITTEN_BEFORE_FAILURE, [])))
+
+
+def _record_written(error: BaseException, written: list[Path]) -> None:
+    """Attach a copy of *written* to *error*, read back by :func:`generated_before_failure`."""
+    # An exception class that refuses new attributes (a custom __setattr__) must not have its own
+    # error replaced by ours; it then simply carries no list.
+    with contextlib.suppress(AttributeError, TypeError):
+        setattr(error, _WRITTEN_BEFORE_FAILURE, list(written))
 
 
 def _build_example_plan(
@@ -244,13 +283,18 @@ def _write_examples(destination: Path, specs: Iterator[ExampleSpec], *, force: b
     _refuse_unwritable_examples([path for path, _ in planned], force=force)
     written: list[Path] = []
     kept: list[Path] = []
-    for path, spec in planned:
-        if not _should_write(path, force=force):
-            kept.append(path)
-            continue
-        _ensure_parent(path)
-        _write_spec(path, spec)
-        written.append(path)
+    try:
+        for path, spec in planned:
+            if not _should_write(path, force=force):
+                kept.append(path)
+                continue
+            _ensure_parent(path)
+            _write_spec(path, spec)
+            written.append(path)
+    except BaseException as error:
+        # Any failure, an interrupt included: the examples written so far stay written, so say which.
+        _record_written(error, written)
+        raise
     return ExamplesReport(created=written, kept=kept)
 
 

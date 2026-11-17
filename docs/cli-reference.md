@@ -49,16 +49,16 @@ lib_layered_config fail --json
 #  "error": {"type": "RuntimeError", "message": "i should fail", "exit_code": 1}}
 ```
 
-| Field             | Meaning                                                                                                      |
-|-------------------|--------------------------------------------------------------------------------------------------------------|
-| `ok`              | `true` when the command succeeded                                                                            |
-| `command`         | the command that ran                                                                                         |
-| `data`            | on success, the command's result (see the table below)                                                       |
-| `skipped`         | on success, what the command deliberately left alone; `[]` for most commands                                 |
-| `error.type`      | on failure, the exception class (`LayerLoadError`, `UsageError`, ...)                                        |
-| `error.message`   | on failure, the message the command prints without `--json`, in full (printed, it is cut at 4000 characters) |
-| `error.exit_code` | on failure, the process exit code, the same one the command returns                                          |
-| `error.written`   | `deploy` only, on a failure after it wrote something: every path written, in order (see below)               |
+| Field             | Meaning                                                                                                          |
+|-------------------|------------------------------------------------------------------------------------------------------------------|
+| `ok`              | `true` when the command succeeded                                                                                |
+| `command`         | the command that ran                                                                                             |
+| `data`            | on success, the command's result (see the table below)                                                           |
+| `skipped`         | on success, what the command deliberately left alone; `[]` for most commands                                     |
+| `error.type`      | on failure, the exception class (`LayerLoadError`, `UsageError`, ...)                                            |
+| `error.message`   | on failure, the message the command prints without `--json`, in full (printed, it is cut at 4000 characters)     |
+| `error.exit_code` | on failure, the process exit code, the same one the command returns                                              |
+| `error.written`   | `deploy` and `generate-examples`, on a failure after writing something: every path written, in order (see below) |
 
 | Command             | `data`                                                                                                   |
 |---------------------|----------------------------------------------------------------------------------------------------------|
@@ -1174,7 +1174,11 @@ safe path segment (`../x`, an absolute path, a control character) is refused wit
 example path that is a symbolic link or not a regular file (a directory, FIFO, device or socket) is
 refused with `GenerateDestinationError` (exit code 22 on Linux and macOS, 87 on Windows), one line per path, before anything is
 written; without `--force` only a link that resolves to nothing is refused, and anything else already
-there is kept.
+there is kept. A run that stops on any error after writing some examples (a regular file where a
+directory must go, a permission wall, a full disk, an interrupt) prints `generate-examples stopped after
+writing:` on stderr before the error, then each example it wrote, one per line, in write order, a
+control character in a path printed as `\uXXXX`. With `--json` the same paths are the failure envelope's
+`error.written`, absent when nothing was written.
 
 **Examples:**
 

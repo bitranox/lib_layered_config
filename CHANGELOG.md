@@ -101,6 +101,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   write order. The field is absent when nothing was written, so the other envelopes are unchanged.
   An interrupt (Ctrl-C at the conflict prompt, SIGINT) prints no envelope; under `--json` too, the
   files it had written are then named on stderr (`deploy stopped after writing:`), as without it.
+- `generated_before_failure(error)`, exported, returns the example paths a `generate_examples` (or
+  `generate_examples_report`) call wrote before it raised `error`, in write order (`[]` for an error no
+  run raised), as `deployed_before_failure` does for a deploy. `generate-examples` names them on stderr
+  (`generate-examples stopped after writing:`) before the error, and `--json` puts them into the
+  failure envelope as `error.written`, absent when nothing was written. Before, a run that failed
+  part-way named none of the examples it had already written.
 - `GenerateDestinationError`, a `ValidationError` raised by `generate_examples` and `generate-examples`
   for an example path it would write through (see Fixed).
 - `HomeDirectoryUnknownError` and `LayerRootNotAbsoluteError` can be imported from `lib_layered_config`,

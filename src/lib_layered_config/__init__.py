@@ -77,7 +77,7 @@ from .domain.permissions import (
     DEFAULT_USER_FILE_MODE,
 )
 from .domain.redaction import REDACTED_PLACEHOLDER, NotSensitiveKeys, is_sensitive, is_sensitive_at, redact_mapping
-from .generate import generate_examples
+from .generate import generate_examples, generated_before_failure
 from .observability import bind_trace_id, get_logger
 from .testing import i_should_fail
 
@@ -120,6 +120,7 @@ __all__ = [
     "deployed_before_failure",
     "display_config",
     "generate_examples",
+    "generated_before_failure",
     "get_logger",
     "i_should_fail",
     "is_sensitive",
