@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Security
+- The upward `.env` search passes over a `.env` with more than one hard link, logs the warning
+  `dotenv_skipped_hard_link` with its path and link count, and goes on searching. A hard link keeps its file's
+  owner, so the owner check let another user who can write some file you own (a group- or world-writable one
+  on the same filesystem) link it as `.env` into a directory on your search path and put settings into it. A
+  legitimate `.env` with a second link (a `cp -al` backup tree, say) is skipped too: name it with `--env-file`
+  or `dotenv_path`, which loads a file whatever its link count.
 - `repr(config)` and `str(config)` no longer print secrets. They were the dataclass default, which showed the
   whole stored tree, so `logger.debug("loaded %s", config)`, an f-string or a failing assertion's message wrote
   every password and token in clear. The text form is now `Config(<the redacted view>, provenance for N keys)`,

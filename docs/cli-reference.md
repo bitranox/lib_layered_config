@@ -101,16 +101,17 @@ warning: dotenv_skipped_foreign_owner layer=dotenv path=/tmp/.env owner_uid=1001
 warning: type_conflict key=database layer=app path=/etc/xdg/myapp/config.toml old_type=scalar new_type=mapping
 ```
 
-The events are `dotenv_skipped_foreign_owner`, `deploy_setting_ignored`, `deploy_directory_mode_skipped`,
-`type_conflict`, `list_index_out_of_range`, `case_folded_key_ambiguous`, `user_layer_skipped_no_home` and
-`host_layer_skipped_invalid_hostname`. Their fields are key names, paths, layers, types, owners, a
-hostname and the reason it was refused, never configuration values, so a warning line cannot print a
-secret. A field's value is printed as it is, spaces included (a `reason` holds several words), so read
-a line by its field names rather than by splitting on spaces. A control
-character in a key or path (a newline, an ESC) is printed as a `\uXXXX` escape, so a warning is always
-one line and never sends a terminal sequence; a backslash prints as it is. A program that
-calls the Python API instead gets the same events as WARNING records on the `lib_layered_config`
-logger, which prints nothing until the application configures logging.
+The events are `dotenv_skipped_foreign_owner`, `dotenv_skipped_hard_link`, `deploy_setting_ignored`,
+`deploy_directory_mode_skipped`, `type_conflict`, `list_index_out_of_range`,
+`case_folded_key_ambiguous`, `user_layer_skipped_no_home` and `host_layer_skipped_invalid_hostname`.
+Their fields are key names, paths, layers, types, owners, link counts, a hostname and the reason it
+was refused, never configuration values, so a warning line cannot print a secret. A field's value is
+printed as it is, spaces included (a `reason` holds several words), so read a line by its field
+names rather than by splitting on spaces. A control character in a key or path (a newline, an ESC)
+is printed as a `\uXXXX` escape, so a warning is always one line and never sends a terminal
+sequence; a backslash prints as it is. A program that calls the Python API instead gets the same
+events as WARNING records on the `lib_layered_config` logger, which prints nothing until the
+application configures logging.
 
 ---
 
@@ -253,7 +254,7 @@ lib_layered_config read \
   --format human
 ```
 
-**Explanation:** Use `--default-file` to provide application defaults that ship with your app, and `--start-dir` to specify where to start searching for `.env` files (useful when running from a different directory). On Linux and macOS the search passes over a `.env` that neither you nor root owns, so a `.env` another user left in a parent directory such as `/tmp` is not loaded; the warning `dotenv_skipped_foreign_owner` names it.
+**Explanation:** Use `--default-file` to provide application defaults that ship with your app, and `--start-dir` to specify where to start searching for `.env` files (useful when running from a different directory). On Linux and macOS the search passes over a `.env` that neither you nor root owns, so a `.env` another user left in a parent directory such as `/tmp` is not loaded; the warning `dotenv_skipped_foreign_owner` names it. A `.env` with more than one hard link is passed over too (`dotenv_skipped_hard_link`), on every system: pass it with `--env-file` to load it.
 
 **Example 6: Explicit .env file (skip directory search)**
 ```bash

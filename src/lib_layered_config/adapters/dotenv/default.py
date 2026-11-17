@@ -8,6 +8,7 @@ Contents:
     - ``DefaultDotEnvLoader``: public loader that composes the helpers.
     - ``_iter_candidates`` / ``_build_search_list``: gather candidate paths.
     - ``_foreign_owner`` / ``_owner_is_trusted``: pass over a searched file another user owns.
+    - ``_link_count_if_shared``: pass over a searched file with more than one hard link.
     - ``_parse_dotenv``: strict parser converting dotenv files into nested dicts. An unquoted
       value is converted by ``.._value_coercion.coerce_value``, exactly as the environment layer
       converts it; a quoted value is always the literal text.
@@ -106,6 +107,10 @@ class DefaultDotEnvLoader:
             foreign_owner = _foreign_owner(candidate)
             if foreign_owner is not None:
                 _log_dotenv_skipped(candidate, foreign_owner)
+                continue
+            link_count = _link_count_if_shared(candidate)
+            if link_count is not None:
+                _log_dotenv_skipped_hard_link(candidate, link_count)
                 continue
             self.last_loaded_path = str(candidate)
             data = _parse_dotenv(candidate, not_sensitive=self._not_sensitive)
@@ -210,6 +215,32 @@ def _foreign_owner(path: Path) -> int | None:
 def _log_dotenv_skipped(path: Path, owner_uid: int) -> None:
     """Warn that a searched dotenv file was passed over because another user owns it."""
     log_warn("dotenv_skipped_foreign_owner", layer=DOTENV_LAYER, path=str(path), owner_uid=owner_uid)
+
+
+def _link_count_if_shared(path: Path) -> int | None:
+    """Return the hard-link count of a searched *path* when it is above one, else ``None``.
+
+    A hard link keeps its file's owner, so the owner check cannot see one: another user who can write
+    some file the reader owns (a group- or world-writable one, on the same filesystem) can link it as
+    ``.env`` into a directory on the search path and then write settings into it. The second link is
+    the one trace that leaves. A legitimate ``.env`` with two links (a ``cp -al`` backup tree on the
+    search path) is skipped too and must be named with ``dotenv_path`` (user decision 2026-11-17,
+    rs-R4-F1). The count is read through a symlink, from the file the search would read.
+
+    Returns:
+        The link count when it is above one, or ``None`` when the file may be loaded. A path that
+        cannot be stat'ed here is ``None`` too: reading it then raises the usual unreadable-file error.
+    """
+    try:
+        count = path.stat().st_nlink
+    except OSError:
+        return None
+    return count if count > 1 else None
+
+
+def _log_dotenv_skipped_hard_link(path: Path, link_count: int) -> None:
+    """Warn that a searched dotenv file was passed over because it has more than one hard link."""
+    log_warn("dotenv_skipped_hard_link", layer=DOTENV_LAYER, path=str(path), link_count=link_count)
 
 
 def _parse_dotenv(path: Path, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> Mapping[str, object]:
