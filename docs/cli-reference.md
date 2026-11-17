@@ -28,8 +28,18 @@ Given before the command (`lib_layered_config --traceback read ...`):
 | `--traceback` / `--no-traceback` | On an error, print the full Python traceback on stderr instead of one line |
 | `-h`, `--help`                   | Print the usage and exit 0                                                 |
 
-A command exits 0 on success and with the error's code on failure (a usage error is 2; the codes for
-library and operating-system errors are listed with each command). When the reader of stdout goes away
+A command exits 0 on success and with the error's code on failure:
+
+| Failure                                                                                                                                   | Linux and macOS                                                                  | Windows                           |
+|-------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-----------------------------------|
+| A usage error: an unknown option, a missing or refused argument                                                                           | 2                                                                                | 2                                 |
+| `ValidationError` or a subclass: a refused vendor, app, slug, profile, target or mode; a linked deploy destination; a relative layer root | 22                                                                               | 87                                |
+| Any other library error: a file that cannot be read or parsed (`LayerLoadError`), no home directory (`HomeDirectoryUnknownError`)         | 1                                                                                | 1                                 |
+| An operating-system error                                                                                                                 | its errno: 13 permission denied, 27 file too large, 28 disk full, 2 no such file | its Windows code: 5 access denied |
+
+A path option naming a file that does not exist is a usage error (2), checked before the command runs. A file
+that disappears while the command runs exits with its errno, also 2 on Linux and macOS; `--json` tells the two
+apart by `error.type` (`BadParameter` against `FileNotFoundError`). When the reader of stdout goes away
 first (`lib_layered_config info | head -0`), the command exits 141 and prints nothing more. That holds
 for every output a command writes to stdout, so under `--json` a failure, whose envelope goes to stdout,
 exits 141 too; without `--json` a failure is printed on stderr and keeps its own code.
@@ -135,7 +145,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 | `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat`               |
 | `--format`                         | choice | No       | `human`        | Output format. Valid values: `human` (TOML with `# source:` comments), `json` (structured JSON)                                                                     |
 | `--indent` / `--no-indent`         | flag   | No       | `--indent`     | Pretty-print JSON output with indentation. Only applies when `--format json`                                                                                        |
-| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output. Only applies when `--format json`                                                                                       |
+| `--provenance` / `--no-provenance` | flag   | No       | `--provenance` | Include provenance metadata in JSON output: with `--format json`, and in the `--json` envelope, where `--no-provenance` gives `"provenance": null`                  |
 | `--redact` / `--no-redact`         | flag   | No       | `--redact`     | Mask sensitive values (passwords, tokens, `*_key`) as `***REDACTED***` in every format; `--no-redact` prints them                                                   |
 
 **Examples:**
