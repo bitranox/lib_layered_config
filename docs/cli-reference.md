@@ -755,6 +755,10 @@ For each target layer and each side (directory, file), the first of these wins:
 `--permissions` / `--no-permissions` turns permission setting on or off; without either, a mode option turns it
 on, and otherwise the configured `enabled` decides (on when unset).
 
+The directory mode goes on the folder each file is written into and on every directory `deploy` creates for
+it: on a first profile deploy into the user layer, `myapp/`, `profile/` and `profile/<name>/` all get `700`,
+whatever the umask. A directory above the file's own folder that already existed keeps its mode.
+
 #### Which modes are refused
 
 A deployed file can hold credentials, so a mode may widen read access but nothing else. Refused, with every

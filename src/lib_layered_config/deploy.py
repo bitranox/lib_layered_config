@@ -354,9 +354,7 @@ def _write_ucf(destination: Path, source: Path, *, modes: LayerModes | None) -> 
         Path to the created .ucf file.
     """
     ucf_path = _next_available_path(destination, _Sidecar.UCF)
-    ucf_path.parent.mkdir(parents=True, exist_ok=True)
-    if modes is not None:
-        _harden_directory(ucf_path.parent, modes.directory)
+    _prepare_directory(ucf_path.parent, modes)
     _write_from(ucf_path, source, restrict=modes is not None, acl_from=destination)
     if modes is not None:
         apply_mode(ucf_path, modes.file)
@@ -1329,13 +1327,55 @@ def _str_targets_remedy(targets: str) -> str:
 
 
 def _copy_file(destination: Path, source: Path, *, modes: LayerModes | None) -> None:
-    """Copy *source* to destination; with *modes*, harden the directory and then the file."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if modes is not None:
-        _harden_directory(destination.parent, modes.directory)
+    """Copy *source* to destination; with *modes*, harden the directories and then the file."""
+    _prepare_directory(destination.parent, modes)
     _write_from(destination, source, restrict=modes is not None)
     if modes is not None:
         apply_mode(destination, modes.file)
+
+
+def _prepare_directory(directory: Path, modes: LayerModes | None) -> None:
+    """Create *directory* and its missing parents; with *modes*, set the layer's mode on them.
+
+    Every directory this call creates gets the mode, and so does *directory* itself, which may
+    have existed before. A parent that already existed keeps its mode: it can be a directory the
+    user set up (a group-readable layer root) or one reached through a link (user decision
+    2026-11-18, "Created dirs only"). Left to ``mkdir(parents=True)``, the parents a deploy
+    creates would keep the umask's mode, so a first profile deploy under umask 0002 left the
+    user layer's ``profile/`` group-writable.
+    """
+    created = _make_directories(directory)
+    if modes is None:
+        return
+    for path in created:
+        if path != directory:
+            _harden_directory(path, modes.directory)
+    _harden_directory(directory, modes.directory)
+
+
+def _make_directories(directory: Path) -> list[Path]:
+    """Create *directory* and every missing parent, returning the ones this call created, top first.
+
+    One ``mkdir`` per level, so a directory another process creates at the same moment
+    (``FileExistsError``) is not counted as this deploy's. Any other failure stops the walk, and the
+    final ``mkdir(parents=True, exist_ok=True)`` raises the error it raised before this helper.
+    """
+    missing: list[Path] = []
+    current = directory
+    while kind_or_raise(current) is PathKind.MISSING and current.parent != current:
+        missing.append(current)
+        current = current.parent
+    created: list[Path] = []
+    for path in reversed(missing):
+        try:
+            path.mkdir()
+        except FileExistsError:
+            continue
+        except OSError:
+            break
+        created.append(path)
+    directory.mkdir(parents=True, exist_ok=True)
+    return created
 
 
 def _harden_directory(directory: Path, mode: DeployMode) -> None:

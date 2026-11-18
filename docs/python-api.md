@@ -999,7 +999,9 @@ Building one by hand (a test double, say) refuses a state no deploy produces wit
 
 **Permissions:** Each side (directory, file) resolves as `dir_mode`/`file_mode`, else the configured
 `[lib_layered_config.default_permissions]` setting for that layer, else the built-in layer mode (app/host
-755/644, user 700/600); an unsafe mode is refused before anything is written. A user-layer file decides only
+755/644, user 700/600); an unsafe mode is refused before anything is written. The directory mode goes on
+each file's own folder and on every directory the deploy creates for it; a directory above that folder that
+already existed keeps its mode. A user-layer file decides only
 `user_*` and `enabled`: its `app_*`/`host_*` values are ignored (logged, never refused). See
 [cli-reference.md#-file-permissions](cli-reference.md#-file-permissions) for the full resolution order and the
 refusal rule.

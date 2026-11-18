@@ -6,6 +6,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A deploy sets the layer's directory mode on every directory it creates, not only on the folder the file is
+  written into. A first `deploy --target user --profile <name>` under umask 0002 left the layer directory and
+  `profile/` at `775`, group-writable, around a `600` file. A directory above the file's folder that already
+  existed keeps its mode, as before.
+
 ## [9.0.0] - 2026-11-18
 
 ### Changed (breaking)
