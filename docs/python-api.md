@@ -971,7 +971,7 @@ Copy a source configuration file into one or more layer directories with conflic
 - `vendor` (str, required): Vendor namespace.
 - `app` (str, required): Application name.
 - `targets` (Sequence[Layer | str], required): Layer targets to deploy to. Valid values: `"app"`, `"host"`, `"user"` (any case), or the members `Layer.APP`, `Layer.HOST`, `Layer.USER`. A single str (`targets="user"`) raises `ValidationError`: write `["user"]`. A refused target is named by its value (`Unsupported deployment target: env` for `Layer.ENV`).
-- `slug` (str | None, optional): Configuration slug. Default: `None` (uses `app` as slug).
+- `slug` (str, required): The configuration folder name every layer path uses (`<root>/<slug>/`), the same value `read_config` takes. Leaving it out raises `TypeError`; there is no fallback to `app`.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to deployment paths. Default: `None`.
 - `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 255, or `0` or negative, uses the absolute maximum of 255 characters (the longest file name), so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
 - `platform` (str | None, optional): Override the auto-detected platform. Takes the CLI's `--platform` names: `"linux"`/`"posix"`, `"darwin"`/`"macos"`/`"mac"`, `"win32"`/`"windows"`/`"win"`/`"wine"`, in any case. Any other name raises `ValidationError` listing them. A Windows layout off Windows needs an absolute `LIB_LAYERED_CONFIG_PROGRAMDATA` (or `ProgramData`) for the `app` and `host` targets: the built-in `C:\ProgramData` is relative there and raises `ValidationError` before anything is written, as does a relative value in any Windows root variable on every platform. Default: `None` (auto-detects from current platform).
@@ -1320,8 +1320,8 @@ def deploy_config_paths(
     *,
     vendor: str,
     app: str,
+    slug: str,
     targets: Sequence[str],
-    slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
@@ -1332,8 +1332,8 @@ def read_deploy_config(
     *,
     vendor: str,
     app: str,
+    slug: str,
     skip: Iterable[str | Path],
-    slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,

@@ -34,7 +34,8 @@ config = read_config(vendor="Acme", app="DatabaseTool", slug="db-tool")
 - **macOS:** Combined with vendor in paths: `/Library/Application Support/Acme/MyApp/`
 - **Windows:** Combined with vendor: `C:\ProgramData\Acme\MyApp\`
 - **Linux:** Not used (Linux uses the slug directly)
-- **Default slug:** If you don't specify a slug, the app name is used as the slug
+- **Not a slug:** every API that reads or writes a layer takes the slug separately and requires it; the app
+  name is never used in its place
 
 **Example:**
 ```python

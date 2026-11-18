@@ -626,8 +626,8 @@ def deploy_config(
     *,
     vendor: str,
     app: str,
+    slug: str,
     targets: Sequence[Layer | str],
-    slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
     force: bool = False,
@@ -655,7 +655,8 @@ def deploy_config(
         targets: Layer targets to deploy to (app, host, user), a sequence such as ``["user"]`` or ``[Layer.USER]``. An
             empty sequence deploys nothing and returns ``[]``, as iterating it does; a single str is
             refused, because it would be read character by character.
-        slug: Slug identifying the configuration set.
+        slug: The configuration folder name every layer path uses (``<root>/<slug>/``), the
+            same value ``read_config`` takes. Required: there is no fallback to *app*.
         profile: Configuration profile name.
         platform: Override the auto-detected platform. Takes the CLI's ``--platform`` names
             (``linux``, ``darwin``/``macos``/``mac``, ``win32``/``windows``/``win``, ...); any other
@@ -769,7 +770,7 @@ def deploy_config(
     resolver = _prepare_resolver(
         vendor=vendor,
         app=app,
-        slug=_slug_or_app(slug, app),
+        slug=slug,
         profile=profile,
         platform=platform,
         max_profile_length=max_profile_length,
@@ -848,27 +849,13 @@ def _record_written(error: BaseException, results: list[DeployResult]) -> None:
         setattr(error, _WRITTEN_BEFORE_FAILURE, list(results))
 
 
-def _slug_or_app(slug: str | None, app: str) -> str:
-    """Return *slug*, or *app* when no slug was given.
-
-    Only ``None`` means "not given". An empty string is a value, which the resolver then refuses as
-    ``read_config`` does; reading it as falsy deployed under the app name, where no read of the same
-    arguments looks.
-
-    Examples:
-        >>> _slug_or_app(None, "Demo"), _slug_or_app("demo", "Demo"), _slug_or_app("", "Demo")
-        ('Demo', 'demo', '')
-    """
-    return app if slug is None else slug
-
-
 def deploy_config_paths(
     source: str | Path,
     *,
     vendor: str,
     app: str,
+    slug: str,
     targets: Sequence[Layer | str],
-    slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
@@ -914,7 +901,9 @@ def deploy_config_paths(
         >>> with TemporaryDirectory() as tmp:
         ...     source = Path(tmp) / "config.toml"
         ...     _ = source.write_text("[service]\nport = 1\n", encoding="utf-8")
-        ...     paths = deploy_config_paths(source, vendor="Acme", app="Demo", targets=["user"], platform="linux")
+        ...     paths = deploy_config_paths(
+        ...         source, vendor="Acme", app="Demo", slug="demo", targets=["user"], platform="linux"
+        ...     )
         ...     [path.name for path in paths]
         ['config.toml']
     """
@@ -922,7 +911,7 @@ def deploy_config_paths(
     resolver = _prepare_resolver(
         vendor=vendor,
         app=app,
-        slug=_slug_or_app(slug, app),
+        slug=slug,
         profile=profile,
         platform=platform,
         max_profile_length=max_profile_length,
@@ -936,8 +925,8 @@ def read_deploy_config(
     *,
     vendor: str,
     app: str,
+    slug: str,
     skip: Iterable[str | Path],
-    slug: str | None = None,
     profile: str | None = None,
     platform: str | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
@@ -977,7 +966,8 @@ def read_deploy_config(
         >>> with TemporaryDirectory() as tmp:
         ...     source = Path(tmp) / "config.toml"
         ...     _ = source.write_text("[service]\nport = 1\n", encoding="utf-8")
-        ...     read_deploy_config(source, vendor="Acme", app="Demo", skip=(), platform="linux").get("service.port")
+        ...     config = read_deploy_config(source, vendor="Acme", app="Demo", slug="demo", skip=(), platform="linux")
+        ...     config.get("service.port")
         1
     """
     if isinstance(skip, (str, Path)):
@@ -986,7 +976,7 @@ def read_deploy_config(
     resolver = _prepare_resolver(
         vendor=vendor,
         app=app,
-        slug=_slug_or_app(slug, app),
+        slug=slug,
         profile=profile,
         platform=platform,
         max_profile_length=max_profile_length,
