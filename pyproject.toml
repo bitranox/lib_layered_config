@@ -263,8 +263,6 @@ type = "layers"
 containers = ["lib_layered_config"]
 layers = [
   "cli",
-  # Deprecated shim re-exporting deploy and generate; removed in 9.0.0.
-  "examples",
   "deploy | generate",
   "adapters",
   "application",

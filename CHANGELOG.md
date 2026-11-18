@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed (breaking)
+- The deprecated `lib_layered_config.examples` package, with `lib_layered_config.examples.deploy` and
+  `lib_layered_config.examples.generate`. Import from `lib_layered_config` (`deploy_config`, `DeployAction`,
+  `DeployResult`, `generate_examples`, ...) or from `lib_layered_config.deploy` / `lib_layered_config.generate`.
+
 ## [8.1.0] - 2026-11-18
 
 ### Fixed
