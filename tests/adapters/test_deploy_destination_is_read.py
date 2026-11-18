@@ -53,7 +53,7 @@ def _resolver(tmp_path: Path, *, platform: str, profile: str | None, env: dict[s
     )
 
 
-def _read_list(resolver: DefaultPathResolver, layer: Layer) -> Iterable[str]:
+def _read_list(resolver: DefaultPathResolver, layer: Layer) -> Iterable[Path]:
     reads = {Layer.APP: resolver.app, Layer.HOST: resolver.host, Layer.USER: resolver.user}
     return reads[layer]()
 
@@ -78,7 +78,7 @@ def test_a_deployed_file_is_one_the_reads_find(
 
     _plant(destination)
 
-    assert list(_read_list(resolver, layer)) == [str(destination)]
+    assert list(_read_list(resolver, layer)) == [destination]
 
 
 @os_agnostic
@@ -91,4 +91,4 @@ def test_a_windows_user_file_deployed_without_appdata_is_read_back(tmp_path: Pat
 
     _plant(destination)
 
-    assert list(resolver.user()) == [str(destination)]
+    assert list(resolver.user()) == [destination]

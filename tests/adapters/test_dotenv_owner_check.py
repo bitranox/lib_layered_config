@@ -49,7 +49,7 @@ def test_upward_search_skips_a_dotenv_another_user_owns(tmp_path: Path, monkeypa
 
     loader = DefaultDotEnvLoader()
 
-    assert loader.load(str(start)) == DotEnvLoad({}, None)
+    assert loader.load(start) == DotEnvLoad({}, None)
 
 
 @posix_only
@@ -61,7 +61,7 @@ def test_skipped_dotenv_is_logged_as_a_warning_naming_file_and_owner(
     _become_another_user(monkeypatch, owner)
 
     with caplog.at_level(logging.DEBUG, logger="lib_layered_config"):
-        DefaultDotEnvLoader().load(str(start))
+        DefaultDotEnvLoader().load(start)
 
     skipped = [record for record in caplog.records if record.message == "dotenv_skipped_foreign_owner"]
     assert [record.levelno for record in skipped] == [logging.WARNING]
@@ -79,7 +79,7 @@ def test_a_dotenv_in_both_the_walk_and_the_extras_is_checked_and_reported_once(
     _become_another_user(monkeypatch, planted.stat().st_uid)
 
     with caplog.at_level(logging.WARNING, logger="lib_layered_config"):
-        DefaultDotEnvLoader(extras=[str(planted)]).load(str(start))
+        DefaultDotEnvLoader(extras=[planted]).load(start)
 
     skipped = [record for record in caplog.records if record.message == "dotenv_skipped_foreign_owner"]
     assert len(skipped) == 1
@@ -90,7 +90,7 @@ def test_explicit_dotenv_path_loads_whoever_owns_it(tmp_path: Path, monkeypatch:
     planted, _start = _plant_dotenv(tmp_path)
     _become_another_user(monkeypatch, planted.stat().st_uid)
 
-    assert DefaultDotEnvLoader().load(dotenv_path=str(planted)).data == {"key": "planted"}
+    assert DefaultDotEnvLoader().load(dotenv_path=planted).data == {"key": "planted"}
 
 
 @posix_only
@@ -114,14 +114,14 @@ def test_a_symlink_the_user_does_not_own_is_passed_over_even_when_its_target_is_
 
     loader = DefaultDotEnvLoader()
 
-    assert loader.load(str(start)) == DotEnvLoad({}, None)
+    assert loader.load(start) == DotEnvLoad({}, None)
 
 
 @posix_only
 def test_upward_search_loads_a_dotenv_the_current_user_owns(tmp_path: Path) -> None:
     _planted, start = _plant_dotenv(tmp_path)
 
-    assert DefaultDotEnvLoader().load(str(start)).data == {"key": "planted"}
+    assert DefaultDotEnvLoader().load(start).data == {"key": "planted"}
 
 
 @os_agnostic

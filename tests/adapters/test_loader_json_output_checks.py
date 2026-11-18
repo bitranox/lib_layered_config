@@ -58,17 +58,17 @@ def _tables(depth: int) -> dict[str, object]:
     return value
 
 
-def _toml(tmp_path: Path, document: dict[str, object]) -> tuple[str, TOMLFileLoader]:
+def _toml(tmp_path: Path, document: dict[str, object]) -> tuple[Path, TOMLFileLoader]:
     path = tmp_path / "config.toml"
     path.write_text("# parsed by the double\n", encoding="utf-8")
-    return str(path), TOMLFileLoader(_Parsed(document))
+    return path, TOMLFileLoader(_Parsed(document))
 
 
 def _toml_refusal(tmp_path: Path, document: dict[str, object]) -> str:
     path, loader = _toml(tmp_path, document)
     with pytest.raises(InvalidFormatError) as caught:
         loader.load(path)
-    return str(caught.value).replace(path, "<path>")
+    return str(caught.value).replace(str(path), "<path>")
 
 
 def _nesting(where: str, depth: int) -> str:
@@ -145,7 +145,7 @@ def test_a_json_document_at_the_bounds_loads(tmp_path: Path, codec: JsonCodec, t
     path = tmp_path / "config.json"
     path.write_text(text, encoding="utf-8")
 
-    assert JSONFileLoader(codec).load(str(path)) == codec.loads(text)
+    assert JSONFileLoader(codec).load(path) == codec.loads(text)
 
 
 @os_agnostic
@@ -170,6 +170,6 @@ def test_a_json_document_past_a_bound_is_refused_with_its_message(
     path.write_text(text, encoding="utf-8")
 
     with pytest.raises(InvalidFormatError) as caught:
-        JSONFileLoader(codec).load(str(path))
+        JSONFileLoader(codec).load(path)
 
     assert str(caught.value).replace(str(path), "<path>") == message

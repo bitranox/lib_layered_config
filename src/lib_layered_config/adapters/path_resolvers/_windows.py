@@ -177,7 +177,7 @@ class WindowsStrategy(PlatformStrategy):
             return self._vendor_app(self._localappdata_root())
         return self._vendor_app(appdata)
 
-    def user_paths(self) -> Iterable[str]:
+    def user_paths(self) -> Iterable[Path]:
         """Yield Windows user-specific configuration paths.
 
         The files under ``%APPDATA%/<Vendor>/<App>`` when it holds any, else those under

@@ -19,7 +19,6 @@ separate from adapters while remaining independent of the domain layer.
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
@@ -41,6 +40,7 @@ from .observability import log_debug, log_info, log_warn, make_event
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
+    from pathlib import Path
 
     from .adapters.dotenv.default import DefaultDotEnvLoader
     from .adapters.path_resolvers.default import DefaultPathResolver
@@ -63,12 +63,12 @@ __all__ = ["collect_deploy_layers", "collect_layers", "merge_or_empty", "parse_w
 def collect_layers(
     *,
     resolver: DefaultPathResolver,
-    default_file: str | None,
+    default_file: Path | None,
     dotenv_loader: DefaultDotEnvLoader,
     env_loader: DefaultEnvLoader,
     slug: str,
-    start_dir: str | None,
-    dotenv_path: str | None = None,
+    start_dir: Path | None,
+    dotenv_path: Path | None = None,
 ) -> Iterator[LayerSnapshot]:
     """Yield layer snapshots in precedence order (defaults -> app -> host -> user -> dotenv -> env).
 
@@ -90,7 +90,7 @@ def collect_layers(
 def collect_deploy_layers(
     *,
     resolver: DefaultPathResolver,
-    default_file: str,
+    default_file: Path,
     env_loader: DefaultEnvLoader,
     skip: frozenset[Path],
 ) -> Iterator[LayerSnapshot]:
@@ -154,12 +154,12 @@ def _without_user_layer_system_modes(snapshots: Iterable[LayerSnapshot]) -> Iter
 def _snapshots_in_merge_sequence(
     *,
     resolver: DefaultPathResolver,
-    default_file: str | None,
+    default_file: Path | None,
     dotenv_loader: DefaultDotEnvLoader,
     env_loader: DefaultEnvLoader,
     slug: str,
-    start_dir: str | None,
-    dotenv_path: str | None = None,
+    start_dir: Path | None,
+    dotenv_path: Path | None = None,
 ) -> Iterator[LayerSnapshot]:
     """Yield layer snapshots in the documented merge order.
 
@@ -218,13 +218,13 @@ class _CountedLayers:
             yield snapshot
 
 
-def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
+def _default_snapshots(default_file: Path | None) -> Iterator[LayerSnapshot]:
     """Yield defaults snapshots when *default_file* is supplied.
 
     The default file is expanded to include any companion ``.d`` directory files.
 
     Args:
-        default_file: Absolute path string to the optional defaults file.
+        default_file: Absolute path to the optional defaults file.
 
     Yields:
         LayerSnapshot: Snapshots describing the defaults layer.
@@ -232,9 +232,9 @@ def _default_snapshots(default_file: str | None) -> Iterator[LayerSnapshot]:
     Side Effects:
         Emits ``layer_loaded`` events when defaults files are parsed.
     """
-    if not default_file:
+    if default_file is None:
         return
-    _refuse_an_unloadable_default_file(Path(default_file))
+    _refuse_an_unloadable_default_file(default_file)
 
     for snapshot in _load_entry_with_dot_d(Layer.DEFAULTS, default_file):
         _note_layer_loaded(snapshot.name, snapshot.origin, {"keys": len(snapshot.payload)})
@@ -287,7 +287,7 @@ def _filesystem_snapshots(
             _note_layer_loaded(layer, None, {"files": files})
 
 
-def _filesystem_layer_paths(resolver: DefaultPathResolver) -> tuple[tuple[Layer, Callable[[], Iterable[str]]], ...]:
+def _filesystem_layer_paths(resolver: DefaultPathResolver) -> tuple[tuple[Layer, Callable[[], Iterable[Path]]], ...]:
     """Pair each filesystem layer, in precedence order, with the resolver call listing its candidate paths.
 
     The calls are returned unmade, so a caller decides where a resolver refusal lands.
@@ -297,9 +297,9 @@ def _filesystem_layer_paths(resolver: DefaultPathResolver) -> tuple[tuple[Layer,
 
 def _dotenv_snapshots(
     loader: DefaultDotEnvLoader,
-    start_dir: str | None,
+    start_dir: Path | None,
     *,
-    dotenv_path: str | None = None,
+    dotenv_path: Path | None = None,
 ) -> Iterator[LayerSnapshot]:
     """Yield a snapshot for dotenv-provided values when present.
 
@@ -314,9 +314,8 @@ def _dotenv_snapshots(
     loaded = loader.load(start_dir, dotenv_path=dotenv_path)
     if not loaded.data or loaded.path is None:
         return
-    origin = str(loaded.path)
-    _note_layer_loaded(Layer.DOTENV, origin, {"keys": len(loaded.data)})
-    yield LayerSnapshot(Layer.DOTENV, loaded.data, origin)
+    _note_layer_loaded(Layer.DOTENV, loaded.path, {"keys": len(loaded.data)})
+    yield LayerSnapshot(Layer.DOTENV, loaded.data, loaded.path)
 
 
 def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapshot]:
@@ -339,7 +338,7 @@ def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapsho
 
 def _snapshots_from_paths(
     layer: Layer,
-    paths: Iterable[str],
+    paths: Iterable[Path],
     *,
     skip: frozenset[Path] = frozenset(),
 ) -> Iterator[LayerSnapshot]:
@@ -359,7 +358,7 @@ def _snapshots_from_paths(
         yield from _load_entry_with_dot_d(layer, path, skip=skip)
 
 
-def _load_entry(layer: Layer, path: str) -> LayerSnapshot | None:
+def _load_entry(layer: Layer, path: Path) -> LayerSnapshot | None:
     """Load *path* using the configured file loaders and return a snapshot.
 
     Args:
@@ -373,7 +372,7 @@ def _load_entry(layer: Layer, path: str) -> LayerSnapshot | None:
         InvalidFormatError: When the loader encounters invalid content. The exception is logged
             and re-raised so callers can surface context to users.
     """
-    loader = _FILE_LOADERS.get(Path(path).suffix.lower())
+    loader = _FILE_LOADERS.get(path.suffix.lower())
     if loader is None:
         return None
     try:
@@ -388,7 +387,7 @@ def _load_entry(layer: Layer, path: str) -> LayerSnapshot | None:
     return LayerSnapshot(layer, data, path)
 
 
-def _load_entry_with_dot_d(layer: Layer, path: str, *, skip: frozenset[Path] = frozenset()) -> Iterator[LayerSnapshot]:
+def _load_entry_with_dot_d(layer: Layer, path: Path, *, skip: frozenset[Path] = frozenset()) -> Iterator[LayerSnapshot]:
     """Load *path* and any companion .d directory files as snapshots.
 
     For a file ``foo.toml``, checks for a ``foo.d/`` directory and yields
@@ -415,7 +414,7 @@ def _load_entry_with_dot_d(layer: Layer, path: str, *, skip: frozenset[Path] = f
         _note_dot_d_expanded(path, len(expanded_paths) - 1)
 
     for expanded_path in expanded_paths:
-        if skip and Path(expanded_path).resolve() in skip:
+        if skip and expanded_path.resolve() in skip:
             continue
         snapshot = _load_entry(layer, expanded_path)
         if snapshot is not None:
@@ -431,11 +430,11 @@ def parse_with_dot_d(path: Path) -> None:
     Raises:
         InvalidFormatError: A file does not parse; the message names it.
     """
-    for _ in _load_entry_with_dot_d(Layer.DEFAULTS, str(path)):
+    for _ in _load_entry_with_dot_d(Layer.DEFAULTS, path):
         pass
 
 
-def _note_layer_loaded(layer: Layer, path: str | None, details: Mapping[str, object]) -> None:
+def _note_layer_loaded(layer: Layer, path: Path | None, details: Mapping[str, object]) -> None:
     """Emit a debug event capturing successful layer discovery.
 
     Args:
@@ -449,7 +448,7 @@ def _note_layer_loaded(layer: Layer, path: str | None, details: Mapping[str, obj
     log_debug("layer_loaded", **make_event(layer, path, dict(details)))
 
 
-def _note_layer_error(layer: Layer, path: str, exc: Exception) -> None:
+def _note_layer_error(layer: Layer, path: Path, exc: Exception) -> None:
     """Emit a debug event describing a recoverable layer error.
 
     Args:
@@ -460,14 +459,14 @@ def _note_layer_error(layer: Layer, path: str, exc: Exception) -> None:
     log_debug("layer_error", **make_event(layer, path, {"error": str(exc)}))
 
 
-def _note_dot_d_expanded(base_path: str, dot_d_count: int) -> None:
+def _note_dot_d_expanded(base_path: Path, dot_d_count: int) -> None:
     """Emit a debug event when .d directory expansion occurs.
 
     Args:
         base_path: Path to the base configuration file.
         dot_d_count: Number of files found in the .d directory.
     """
-    log_debug("dot_d_expanded", layer="file", path=base_path, dot_d_files=dot_d_count)
+    log_debug("dot_d_expanded", layer="file", path=str(base_path), dot_d_files=dot_d_count)
 
 
 def _note_configuration_empty() -> None:

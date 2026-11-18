@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lib_layered_config._layers import (
@@ -16,8 +17,6 @@ from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
 
 
@@ -34,20 +33,20 @@ def test_load_entry_skips_unknown_extension(tmp_path: Path) -> None:
     tests/e2e/test_read_config.py)."""
     path = tmp_path / "config.ini"
     path.write_text("ignored", encoding="utf-8")
-    assert _load_entry(Layer.DEFAULTS, str(path)) is None
+    assert _load_entry(Layer.DEFAULTS, path) is None
 
 
 @os_agnostic
 def test_load_entry_returns_none_when_file_missing(tmp_path: Path) -> None:
     target = tmp_path / "absent.toml"
-    assert _load_entry(Layer.DEFAULTS, str(target)) is None
+    assert _load_entry(Layer.DEFAULTS, target) is None
 
 
 @os_agnostic
 def test_load_entry_ignores_empty_payload(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     path.write_text(json.dumps({}), encoding="utf-8")
-    assert _load_entry(Layer.DEFAULTS, str(path)) is None
+    assert _load_entry(Layer.DEFAULTS, path) is None
 
 
 @os_agnostic
@@ -55,7 +54,7 @@ def test_snapshots_from_paths_skip_entries_without_loaders(tmp_path: Path) -> No
     stray = tmp_path / "orphan.ini"
     stray.write_text("ignored", encoding="utf-8")
 
-    snapshots = list(_snapshots_from_paths(Layer.APP, [str(stray)]))
+    snapshots = list(_snapshots_from_paths(Layer.APP, [stray]))
 
     assert snapshots == []
 
@@ -64,7 +63,8 @@ def test_snapshots_from_paths_skip_entries_without_loaders(tmp_path: Path) -> No
 def test_note_layer_error_emits_event_with_exception(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG, logger="lib_layered_config")
 
-    _note_layer_error(Layer.USER, "/tmp/config.toml", RuntimeError("boom"))
+    path = Path("/tmp/config.toml")
+    _note_layer_error(Layer.USER, path, RuntimeError("boom"))
 
     [record] = [record for record in caplog.records if record.name == "lib_layered_config"]
     context = dict(record.__dict__["context"])
@@ -72,5 +72,5 @@ def test_note_layer_error_emits_event_with_exception(caplog: pytest.LogCaptureFi
     assert (record.levelno, record.getMessage(), context) == (
         logging.DEBUG,
         "layer_error",
-        {"layer": "user", "path": "/tmp/config.toml", "error": "boom"},
+        {"layer": "user", "path": str(path), "error": "boom"},
     )

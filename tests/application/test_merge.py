@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, TypeGuard, cast
 
 import pytest
@@ -75,7 +76,7 @@ MAPPING = st.dictionaries(st.text(min_size=1, max_size=5), VALUE, max_size=4)
 
 
 def snapshot(name: Layer, payload: Mapping[str, object], origin: str | None = None) -> LayerSnapshot:
-    return LayerSnapshot(name, payload, origin)
+    return LayerSnapshot(name, payload, None if origin is None else Path(origin))
 
 
 def merge_story(*layers: LayerSnapshot) -> MergeResult:
@@ -126,7 +127,8 @@ def test_provenance_records_the_layer_as_a_plain_string_not_the_member() -> None
     entry = result.provenance["db.host"]
     assert type(entry["layer"]) is str
     assert f"{entry['layer']}" == "app"
-    assert json.dumps(entry) == '{"layer": "app", "path": "/etc/app.toml", "key": "db.host"}'
+    path_text = json.dumps(str(Path("/etc/app.toml")))
+    assert json.dumps(entry) == '{"layer": "app", "path": ' + path_text + ', "key": "db.host"}'
 
 
 @os_agnostic
@@ -460,10 +462,10 @@ def test_a_snapshot_named_by_an_unknown_layer_string_is_refused_at_construction(
 
 @os_agnostic
 def test_the_factory_keeps_a_layer_member() -> None:
-    snapshot = LayerSnapshot.of(Layer.HOST, {"a": 1}, "host.toml")
+    snapshot = LayerSnapshot.of(Layer.HOST, {"a": 1}, Path("host.toml"))
 
     assert snapshot.name is Layer.HOST
-    assert (snapshot.payload, snapshot.origin) == ({"a": 1}, "host.toml")
+    assert (snapshot.payload, snapshot.origin) == ({"a": 1}, Path("host.toml"))
 
 
 @os_agnostic

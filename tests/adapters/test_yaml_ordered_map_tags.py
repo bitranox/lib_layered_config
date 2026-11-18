@@ -35,7 +35,7 @@ def _refusal(tmp_path: Path, text: str) -> tuple[str, str]:
     path = tmp_path / "config.yaml"
     path.write_text(text, encoding="utf-8")
     with pytest.raises(InvalidFormatError) as caught:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
     return str(path), str(caught.value)
 
 
@@ -76,7 +76,7 @@ def test_plain_lists_of_mappings_and_dates_still_load(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("hosts:\n  - name: a\n    password: p\nday: 2026-10-12\n", encoding="utf-8")
 
-    loaded = YAMLFileLoader().load(str(path))
+    loaded = YAMLFileLoader().load(path)
 
     assert loaded["hosts"] == [{"name": "a", "password": "p"}]
     assert str(loaded["day"]) == "2026-10-12"

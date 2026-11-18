@@ -34,7 +34,7 @@ def _refusal(tmp_path: Path, name: str, text: str, loader: FileLoader) -> tuple[
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
     with pytest.raises(InvalidFormatError) as caught:
-        loader.load(str(path))
+        loader.load(path)
     return str(path), str(caught.value)
 
 

@@ -37,7 +37,7 @@ def _load_env(pairs: list[tuple[str, str]]) -> dict[str, object]:
 def _load_dotenv(tmp_path: Path, pairs: list[tuple[str, str]]) -> object:
     path = tmp_path / "app.env"
     path.write_text("".join(f"{key}={value}\n" for key, value in pairs), encoding="utf-8")
-    return DefaultDotEnvLoader().load(dotenv_path=str(path)).data
+    return DefaultDotEnvLoader().load(dotenv_path=path).data
 
 
 @os_agnostic

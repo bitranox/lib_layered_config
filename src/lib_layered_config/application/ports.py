@@ -54,19 +54,19 @@ class PathResolver(Protocol):
     ``docs/systemdesign/concept.md``.
     """
 
-    def app(self) -> Iterable[str]:
+    def app(self) -> Iterable[Path]:
         """Return paths for application-level configuration."""
         ...  # pragma: no cover - protocol
 
-    def host(self) -> Iterable[str]:
+    def host(self) -> Iterable[Path]:
         """Return paths for host-specific configuration."""
         ...  # pragma: no cover - protocol
 
-    def user(self) -> Iterable[str]:
+    def user(self) -> Iterable[Path]:
         """Return paths for user-level configuration."""
         ...  # pragma: no cover - protocol
 
-    def dotenv(self) -> Iterable[str]:
+    def dotenv(self) -> Iterable[Path]:
         """Return candidate paths for `.env` file discovery."""
         ...  # pragma: no cover - protocol
 
@@ -75,7 +75,7 @@ class PathResolver(Protocol):
 class FileLoader(Protocol):
     """Parse a structured configuration file into a mapping."""
 
-    def load(self, path: str) -> ConfigData:
+    def load(self, path: Path) -> ConfigData:
         """Load and parse the file at *path* into a configuration mapping."""
         ...  # pragma: no cover - protocol
 
@@ -97,7 +97,7 @@ class DotEnvLoad:
 class DotEnvLoader(Protocol):
     """Convert `.env` files into nested mappings respecting prefix semantics."""
 
-    def load(self, start_dir: str | None = None, *, dotenv_path: str | None = None) -> DotEnvLoad:
+    def load(self, start_dir: Path | None = None, *, dotenv_path: Path | None = None) -> DotEnvLoad:
         """Load *dotenv_path* when given, else discover and parse a `.env` file upward from *start_dir*.
 
         The result names the file it read, so no loader state outlives the call: a load that

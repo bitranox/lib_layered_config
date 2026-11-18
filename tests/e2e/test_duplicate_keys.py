@@ -79,7 +79,7 @@ def test_a_json_file_repeating_a_key_is_refused_naming_each_position(
     path = _write(tmp_path, "config.json", text)
 
     with pytest.raises(InvalidFormatError) as caught:
-        JSONFileLoader(codec).load(str(path))
+        JSONFileLoader(codec).load(path)
 
     assert str(caught.value) == f"{path} {REPEATS}: {positions}"
 
@@ -90,7 +90,7 @@ def test_a_json_refusal_never_carries_a_value(tmp_path: Path, codec: JsonCodec) 
     path = _write(tmp_path, "config.json", '{"password": "hunter2", "password": "s3cret"}')
 
     with pytest.raises(InvalidFormatError) as caught:
-        JSONFileLoader(codec).load(str(path))
+        JSONFileLoader(codec).load(path)
 
     assert "hunter2" not in str(caught.value)
     assert "s3cret" not in str(caught.value)
@@ -101,7 +101,7 @@ def test_a_json_refusal_never_carries_a_value(tmp_path: Path, codec: JsonCodec) 
 def test_the_same_name_in_different_tables_or_case_still_loads(tmp_path: Path, codec: JsonCodec) -> None:
     path = _write(tmp_path, "config.json", '{"a": {"x": 1}, "b": {"x": 2}, "Key": 1, "key": 2}')
 
-    assert JSONFileLoader(codec).load(str(path)) == {"a": {"x": 1}, "b": {"x": 2}, "Key": 1, "key": 2}
+    assert JSONFileLoader(codec).load(path) == {"a": {"x": 1}, "b": {"x": 2}, "Key": 1, "key": 2}
 
 
 @os_agnostic
@@ -119,7 +119,7 @@ def test_a_yaml_file_repeating_a_key_is_refused_naming_each_position(tmp_path: P
     path = _write(tmp_path, "config.yaml", text)
 
     with pytest.raises(InvalidFormatError) as caught:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
 
     assert str(caught.value) == f"{path} {REPEATS}: {positions}"
 
@@ -130,7 +130,7 @@ def test_a_yaml_refusal_never_carries_a_value(tmp_path: Path) -> None:
     path = _write(tmp_path, "config.yaml", "password: hunter2\npassword: s3cret\n")
 
     with pytest.raises(InvalidFormatError) as caught:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
 
     assert "hunter2" not in str(caught.value)
     assert "s3cret" not in str(caught.value)
@@ -143,7 +143,7 @@ def test_yaml_merge_keys_are_not_repeated_keys(tmp_path: Path) -> None:
     text = "base: &base\n  x: 1\n  y: 1\nextra: &extra\n  z: 1\nderived:\n  <<: *base\n  <<: *extra\n  x: 2\n"
     path = _write(tmp_path, "config.yaml", text)
 
-    loaded = YAMLFileLoader().load(str(path))
+    loaded = YAMLFileLoader().load(path)
 
     assert _table(loaded["derived"])["x"] == 2
     assert _table(loaded["derived"])["y"] == 1

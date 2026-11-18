@@ -9,6 +9,7 @@ the stored spelling; file layers stay case-sensitive.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -19,8 +20,6 @@ from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from tests.support import LayeredSandbox
 
 
@@ -29,7 +28,7 @@ if TYPE_CHECKING:
 def test_a_case_folded_key_overrides_the_camel_case_file_key(layer: Layer) -> None:
     result = merge_layers(
         [
-            LayerSnapshot(Layer.APP, {"a": {"dbPassword": "x"}}, "app.toml"),
+            LayerSnapshot(Layer.APP, {"a": {"dbPassword": "x"}}, Path("app.toml")),
             LayerSnapshot(layer, {"a": {"dbpassword": "s3"}}, None),
         ]
     )
@@ -43,7 +42,7 @@ def test_a_case_folded_key_overrides_the_camel_case_file_key(layer: Layer) -> No
 def test_a_case_folded_table_name_reaches_the_camel_case_table() -> None:
     result = merge_layers(
         [
-            LayerSnapshot(Layer.APP, {"dbPool": {"maxSize": 1, "minSize": 1}}, "app.toml"),
+            LayerSnapshot(Layer.APP, {"dbPool": {"maxSize": 1, "minSize": 1}}, Path("app.toml")),
             LayerSnapshot(Layer.ENV, {"dbpool": {"maxsize": 5}}, None),
         ]
     )
@@ -55,8 +54,8 @@ def test_a_case_folded_table_name_reaches_the_camel_case_table() -> None:
 def test_file_layers_keep_keys_that_differ_only_by_case_apart() -> None:
     result = merge_layers(
         [
-            LayerSnapshot(Layer.APP, {"Key": 1}, "app.toml"),
-            LayerSnapshot(Layer.USER, {"key": 2}, "user.toml"),
+            LayerSnapshot(Layer.APP, {"Key": 1}, Path("app.toml")),
+            LayerSnapshot(Layer.USER, {"key": 2}, Path("user.toml")),
         ]
     )
 
@@ -69,7 +68,7 @@ def test_two_stored_spellings_leave_the_override_where_it_was_and_warn(caplog: p
 
     result = merge_layers(
         [
-            LayerSnapshot(Layer.APP, {"a": {"dbPassword": "x", "DBPASSWORD": "y"}}, "app.toml"),
+            LayerSnapshot(Layer.APP, {"a": {"dbPassword": "x", "DBPASSWORD": "y"}}, Path("app.toml")),
             LayerSnapshot(Layer.ENV, {"a": {"dbpassword": "s3"}}, None),
         ]
     )

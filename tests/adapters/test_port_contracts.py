@@ -66,8 +66,8 @@ def resolver_context(sandbox: LayeredSandbox) -> tuple[DefaultPathResolver, dict
     return resolver, written
 
 
-def _resolved(candidates: Iterable[str]) -> set[Path]:
-    return {Path(candidate).resolve() for candidate in candidates}
+def _resolved(candidates: Iterable[Path]) -> set[Path]:
+    return {candidate.resolve() for candidate in candidates}
 
 
 @os_agnostic
@@ -87,7 +87,7 @@ def test_default_path_resolver_finds_the_file_written_for_each_layer(
 
     candidates = list(getattr(resolver, layer)())
 
-    assert all(isinstance(candidate, str) for candidate in candidates)
+    assert all(isinstance(candidate, Path) for candidate in candidates)
     assert written[layer].resolve() in _resolved(candidates)
 
 
@@ -147,7 +147,7 @@ def test_default_dotenv_loader_implements_protocol(sandbox: LayeredSandbox) -> N
 @os_agnostic
 def test_default_dotenv_loader_reads_first_file(sandbox: LayeredSandbox) -> None:
     sandbox.write("user", ".env", content="SERVICE__TIMEOUT=15\n")
-    payload = DefaultDotEnvLoader().load(str(sandbox.roots["user"])).data
+    payload = DefaultDotEnvLoader().load(sandbox.roots["user"]).data
     assert _section(payload, "service")["timeout"] == 15
 
 
@@ -183,5 +183,5 @@ def test_structured_loader_decodes_value(tmp_path: Path, loader_cls: LoaderClass
     else:
         path = tmp_path / "config.yaml"
     _write_sample(path, loader_cls)
-    data = loader.load(str(path))
+    data = loader.load(path)
     assert _section(data, "service")["value"] == 1

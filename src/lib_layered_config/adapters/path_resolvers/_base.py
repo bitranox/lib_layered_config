@@ -226,7 +226,7 @@ class PlatformStrategy(abc.ABC):
             The directory, the profile segment included.
         """
 
-    def app_paths(self) -> Iterable[str]:
+    def app_paths(self) -> Iterable[Path]:
         """Yield application-default configuration paths: each of :meth:`app_dirs`, in order.
 
         Returns:
@@ -235,7 +235,7 @@ class PlatformStrategy(abc.ABC):
         for directory in self.app_dirs():
             yield from collect_layer(directory)
 
-    def host_paths(self) -> Iterable[str]:
+    def host_paths(self) -> Iterable[Path]:
         """Yield ``hosts/<hostname>.toml`` under each of :meth:`app_dirs` that holds one.
 
         Returns:
@@ -247,9 +247,9 @@ class PlatformStrategy(abc.ABC):
         for directory in self.app_dirs():
             candidate = directory / "hosts" / host_file
             if config_path_present(candidate):
-                yield str(candidate)
+                yield candidate
 
-    def user_paths(self) -> Iterable[str]:
+    def user_paths(self) -> Iterable[Path]:
         """Yield user-specific configuration paths: those under :meth:`user_dir`.
 
         Returns:
@@ -339,7 +339,7 @@ def config_path_present(path: Path) -> bool:
     return checked_kind(path) in (PathKind.FILE, PathKind.DIRECTORY)
 
 
-def collect_layer(base: Path) -> Iterable[str]:
+def collect_layer(base: Path) -> Iterable[Path]:
     """Yield canonical config file path under *base* for file-level expansion.
 
     Normalise discovery across operating systems while respecting preferred
@@ -366,7 +366,7 @@ def collect_layer(base: Path) -> Iterable[str]:
         >>> file_b.parent.mkdir(parents=True, exist_ok=True)
         >>> _ = file_a.write_text(os.linesep.join(['[settings]', 'value=1']), encoding='utf-8')
         >>> _ = file_b.write_text('{"value": 2}', encoding='utf-8')
-        >>> sorted(Path(p).name for p in collect_layer(root))
+        >>> sorted(p.name for p in collect_layer(root))
         ['config.toml']
         >>> tmp.cleanup()
     """
@@ -374,4 +374,4 @@ def collect_layer(base: Path) -> Iterable[str]:
     config_d_dir = base / "config.d"
 
     if config_path_present(config_file) or checked_kind(config_d_dir) is PathKind.DIRECTORY:
-        yield str(config_file)
+        yield config_file

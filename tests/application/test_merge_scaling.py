@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 import tracemalloc
+from pathlib import Path
 
 import pytest
 
@@ -37,7 +38,10 @@ def _best_merge_seconds(kind: str, count: int) -> float:
     timings: list[float] = []
     for _ in range(_RUNS):
         low, high = _shapes(kind, count)
-        layers = [LayerSnapshot(Layer.APP, low, "/opt/app.toml"), LayerSnapshot(Layer.USER, high, "/opt/user.toml")]
+        layers = [
+            LayerSnapshot(Layer.APP, low, Path("/opt/app.toml")),
+            LayerSnapshot(Layer.USER, high, Path("/opt/user.toml")),
+        ]
         started = time.perf_counter()
         result = merge_layers(layers)
         timings.append(time.perf_counter() - started)
@@ -85,7 +89,7 @@ def test_merge_result_provenance_is_a_plain_dict_in_merge_order() -> None:
 def _peak_bytes_merging_a_dotted_name(dots: int) -> int:
     """Peak traced memory of merging one key whose NAME holds *dots* dots (a quoted TOML key)."""
     name = ".".join(["a"] * (dots + 1))
-    layers = [LayerSnapshot(Layer.APP, {name: 1}, "/opt/app.toml")]
+    layers = [LayerSnapshot(Layer.APP, {name: 1}, Path("/opt/app.toml"))]
     merge_layers(layers)  # warm imports and caches outside the measurement
     tracemalloc.start()
     try:

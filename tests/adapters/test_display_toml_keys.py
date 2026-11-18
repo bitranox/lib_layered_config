@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import io
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -128,7 +129,10 @@ def test_a_dotted_section_view_shows_the_source_of_its_keys() -> None:
 # --- shapes the real merge produces -----------------------------------------------------------
 
 
-def _merged(*layers: tuple[Layer, dict[str, Any], str | None]) -> Config:
+_DEFAULTS_FILE = Path("/etc/app/defaults.toml")
+
+
+def _merged(*layers: tuple[Layer, dict[str, Any], Path | None]) -> Config:
     result = merge_layers([LayerSnapshot(name, payload, origin) for name, payload, origin in layers])
     return Config(result.data, result.provenance)
 
@@ -137,24 +141,24 @@ def _merged(*layers: tuple[Layer, dict[str, Any], str | None]) -> Config:
 def test_a_list_element_a_higher_layer_overrode_names_that_layer_too() -> None:
     # An indexed override (APP___HOSTS__0__NAME=x) records hosts.0.name, not hosts.
     config = _merged(
-        (Layer.DEFAULTS, {"hosts": [{"name": "a"}, {"name": "b"}]}, "/etc/app/defaults.toml"),
+        (Layer.DEFAULTS, {"hosts": [{"name": "a"}, {"name": "b"}]}, _DEFAULTS_FILE),
         (Layer.ENV, {"hosts": {"0": {"name": "x"}}}, None),
     )
 
     lines = _render(config)
 
     shown = lines.index('hosts = [{name = "x"}, {name = "b"}]')
-    assert lines[shown - 2] == "# layer:defaults profile:none (/etc/app/defaults.toml)"
+    assert lines[shown - 2] == f"# layer:defaults profile:none ({_DEFAULTS_FILE})"
     assert lines[shown - 1] == "# layer:env profile:none for hosts.0.name"
 
 
 @os_agnostic
 def test_an_empty_table_shows_its_source_above_its_header() -> None:
-    config = _merged((Layer.DEFAULTS, {"styles": {}}, "/etc/app/defaults.toml"))
+    config = _merged((Layer.DEFAULTS, {"styles": {}}, _DEFAULTS_FILE))
 
     lines = _render(config)
 
-    assert lines[lines.index("[styles]") - 1] == "# layer:defaults profile:none (/etc/app/defaults.toml)"
+    assert lines[lines.index("[styles]") - 1] == f"# layer:defaults profile:none ({_DEFAULTS_FILE})"
 
 
 @os_agnostic
@@ -217,7 +221,7 @@ def test_an_override_from_the_list_s_own_source_adds_no_line() -> None:
 @os_agnostic
 def test_an_override_under_a_dotted_key_names_its_path_quoted() -> None:
     config = _merged(
-        (Layer.DEFAULTS, {"a.b": [{"n": "a"}]}, "/etc/app/defaults.toml"),
+        (Layer.DEFAULTS, {"a.b": [{"n": "a"}]}, _DEFAULTS_FILE),
         (Layer.ENV, {"a.b": {"0": {"n": "x"}}}, None),
     )
 

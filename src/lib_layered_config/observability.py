@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
     from .domain.identifiers import Layer
 
@@ -134,7 +135,7 @@ def log_warn(message: str, **fields: object) -> None:
 
 def make_event(
     layer: Layer,
-    path: str | None,
+    path: str | Path | None,
     payload: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build a structured logging payload for configuration lifecycle events.
@@ -200,7 +201,7 @@ def _with_trace(fields: Mapping[str, object]) -> dict[str, object]:
     return context
 
 
-def _base_event(layer: Layer, path: str | None) -> dict[str, object]:
+def _base_event(layer: Layer, path: str | Path | None) -> dict[str, object]:
     """Create the minimal event payload containing layer and path information.
 
     Provide a consistent foundation for layer-related logging events.
@@ -213,7 +214,8 @@ def _base_event(layer: Layer, path: str | None) -> dict[str, object]:
     Returns:
         dict[str, object]: Base payload ready for augmentation.
     """
-    return {"layer": layer.value, "path": path}
+    # A log record carries text: a Path is stringified here, at the edge, so callers pass what they hold.
+    return {"layer": layer.value, "path": None if path is None else str(path)}
 
 
 def _merge_payload(event: dict[str, object], payload: Mapping[str, object] | None) -> dict[str, object]:

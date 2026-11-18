@@ -44,21 +44,21 @@ class DotenvPathFinder:
         self.cwd = cwd
         self.strategy = strategy
 
-    def find_paths(self) -> Iterable[str]:
+    def find_paths(self) -> Iterable[Path]:
         """Yield candidate ``.env`` paths in precedence order.
 
         Projects often co-locate ``.env`` files near the repository root;
         walking upward mirrors ``dotenv`` tooling semantics.
 
         Returns:
-            Ordered ``.env`` path strings.
+            Ordered ``.env`` paths.
         """
         yield from self._project_paths()
         extra = self._platform_path()
         if extra and checked_kind(extra) is PathKind.FILE:
-            yield str(extra)
+            yield extra
 
-    def _project_paths(self) -> Iterable[str]:
+    def _project_paths(self) -> Iterable[Path]:
         """Yield ``.env`` files discovered by walking upward from cwd.
 
         Returns:
@@ -75,7 +75,7 @@ class DotenvPathFinder:
             # The search cannot read a .env in a directory it cannot enter, so it holds none for it -
             # the same answer on every Python.
             if probe_path(candidate).kind is PathKind.FILE:
-                yield str(candidate)
+                yield candidate
 
     def _platform_path(self) -> Path | None:
         """Return the platform-specific ``.env`` fallback location.

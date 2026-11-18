@@ -58,7 +58,7 @@ def _linux_context(tmp_path: Path):
 def test_linux_resolver_first_app_path_points_to_config(tmp_path: Path) -> None:
     resolver, _ = _linux_context(tmp_path)
     first_path = next(iter(resolver.app()))
-    assert first_path.endswith("config.toml")
+    assert first_path.name == "config.toml"
 
 
 @posix_only
@@ -68,13 +68,13 @@ def test_linux_resolver_yields_config_toml_when_config_d_exists(tmp_path: Path) 
     app_paths = list(resolver.app())
     # config.toml is yielded because config.d exists; actual .d expansion happens in _layers
     assert len(app_paths) == 1
-    assert app_paths[0].endswith("config.toml")
+    assert app_paths[0].name == "config.toml"
 
 
 @posix_only
 def test_linux_resolver_host_paths_include_hostname(tmp_path: Path) -> None:
     resolver, _ = _linux_context(tmp_path)
-    host_paths = [path.replace("\\", "/") for path in resolver.host()]
+    host_paths = [path.as_posix() for path in resolver.host()]
     assert host_paths[0].endswith("hosts/test-host.toml")
 
 
@@ -131,7 +131,7 @@ def test_resolver_context_carries_the_validated_identity(tmp_path: Path) -> None
 def test_linux_resolver_user_path_points_to_config(tmp_path: Path) -> None:
     resolver, _ = _linux_context(tmp_path)
     user_paths = list(resolver.user())
-    assert user_paths[0].endswith("config.toml")
+    assert user_paths[0].name == "config.toml"
 
 
 @posix_only
@@ -208,7 +208,7 @@ def test_dotenv_extra_path_includes_user_env(tmp_path: Path) -> None:
         platform="linux",
     )
     paths = list(resolver.dotenv())
-    assert str(sandbox.roots["user"] / ".env") in paths
+    assert sandbox.roots["user"] / ".env" in paths
 
 
 def _windows_context(tmp_path: Path):
@@ -304,7 +304,7 @@ def _make_context(
 def test_windows_resolver_app_path_points_to_programdata(tmp_path: Path) -> None:
     resolver, _ = _windows_context(tmp_path)
     app_paths = list(resolver.app())
-    assert app_paths[0].endswith("config.toml")
+    assert app_paths[0].name == "config.toml"
 
 
 @windows_only
@@ -319,7 +319,7 @@ def test_windows_resolver_host_path_uses_hosts_folder(tmp_path: Path) -> None:
 def test_windows_resolver_user_paths_cover_roaming_appdata(tmp_path: Path) -> None:
     resolver, _ = _windows_context(tmp_path)
     user_paths = list(resolver.user())
-    expectation = any("AppData" in path for path in user_paths)
+    expectation = any("AppData" in str(path) for path in user_paths)
     assert expectation is True
 
 
@@ -330,7 +330,7 @@ def test_an_unknown_platform_offers_the_linux_paths(tmp_path: Path) -> None:
         sandbox.write(layer, "config.toml", content="a = 1\n")
     sandbox.write("host", "penguin.toml", content="a = 1\n")
 
-    def paths(platform: str) -> tuple[list[str], list[str], list[str]]:
+    def paths(platform: str) -> tuple[list[Path], list[Path], list[Path]]:
         resolver = DefaultPathResolver(
             vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, env=sandbox.env, platform=platform, hostname="penguin"
         )
@@ -389,7 +389,7 @@ def test_windows_user_paths_fall_back_to_localappdata(tmp_path: Path) -> None:
     ctx = PlatformContext(vendor="Acme", app="Demo", slug="demo", cwd=tmp_path, env=env, host_file_name="HOST.toml")
     strategy = WindowsStrategy(ctx)
     user_paths = list(strategy.user_paths())
-    assert str(target) in user_paths
+    assert target in user_paths
 
 
 @os_agnostic
@@ -408,7 +408,7 @@ def test_mac_host_paths_return_file_when_present(tmp_path: Path) -> None:
     target.write_text("[host]\nvalue=2\n", encoding="utf-8")
     strategy = MacOSStrategy(ctx)
     host_paths = list(strategy.host_paths())
-    assert host_paths == [str(target)]
+    assert host_paths == [target]
 
 
 @os_agnostic
@@ -419,7 +419,7 @@ def test_mac_user_paths_collect_config_directory(tmp_path: Path) -> None:
     config.write_text("[user]\nvalue=3\n", encoding="utf-8")
     strategy = MacOSStrategy(ctx)
     user_paths = list(strategy.user_paths())
-    assert user_paths == [str(config)]
+    assert user_paths == [config]
 
 
 @os_agnostic
@@ -429,7 +429,7 @@ def test_platform_paths_route_to_mac_helpers(tmp_path: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[app]\nvalue=1\n", encoding="utf-8")
     paths = resolver.app()
-    assert str(target) in paths
+    assert target in paths
 
 
 @os_agnostic
@@ -439,7 +439,7 @@ def test_platform_paths_route_to_windows_helpers(tmp_path: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("[windows]\nvalue=1\n", encoding="utf-8")
     paths = resolver.app()
-    assert str(target) in paths
+    assert target in paths
 
 
 @os_agnostic
@@ -450,7 +450,7 @@ def test_mac_app_paths_collect_layer_entries(tmp_path: Path) -> None:
     target.write_text("[app]\nvalue=1\n", encoding="utf-8")
     strategy = MacOSStrategy(ctx)
     app_paths = list(strategy.app_paths())
-    assert app_paths == [str(target)]
+    assert app_paths == [target]
 
 
 @os_agnostic
@@ -461,7 +461,7 @@ def test_windows_app_paths_collect_layer_entries(tmp_path: Path) -> None:
     target.write_text("[app]\nvalue=1\n", encoding="utf-8")
     strategy = WindowsStrategy(ctx)
     app_paths = list(strategy.app_paths())
-    assert app_paths == [str(target)]
+    assert app_paths == [target]
 
 
 @os_agnostic
@@ -494,7 +494,7 @@ def test_windows_user_paths_fall_back_to_local_when_roaming_absent(tmp_path: Pat
     config.write_text("[user]\nvalue=7\n", encoding="utf-8")
     strategy = WindowsStrategy(ctx)
     user_paths = list(strategy.user_paths())
-    assert user_paths == [str(config)]
+    assert user_paths == [config]
 
 
 @os_agnostic
@@ -506,7 +506,7 @@ def test_windows_user_paths_return_roaming_when_present(tmp_path: Path) -> None:
     config.write_text("[user]\nvalue=9\n", encoding="utf-8")
     strategy = WindowsStrategy(ctx)
     user_paths = list(strategy.user_paths())
-    assert user_paths == [str(config)]
+    assert user_paths == [config]
 
 
 @os_agnostic
@@ -617,7 +617,7 @@ def test_windows_user_paths_use_localappdata_when_roaming_empty(tmp_path: Path) 
     )
 
     user_paths = list(resolver.user())
-    assert str(target) in user_paths
+    assert target in user_paths
 
 
 @windows_only
@@ -715,7 +715,7 @@ def test_collect_layer_yields_config_toml_when_config_d_exists(tmp_path: Path) -
     # config.toml is yielded because config.d exists; filtering of .txt happens in expand_dot_d
     paths = list(collect_layer(base))
     assert len(paths) == 1
-    assert paths[0].endswith("config.toml")
+    assert paths[0].name == "config.toml"
 
 
 # ---------------------------------------------------------------------------
@@ -761,7 +761,7 @@ def test_linux_profile_app_path_includes_profile_segment(tmp_path: Path) -> None
 
     strategy = LinuxStrategy(ctx)
     app_paths = list(strategy.app_paths())
-    assert str(config) in app_paths
+    assert config in app_paths
 
 
 @os_agnostic
@@ -775,7 +775,7 @@ def test_linux_profile_host_path_includes_profile_segment(tmp_path: Path) -> Non
 
     strategy = LinuxStrategy(ctx)
     host_paths = list(strategy.host_paths())
-    assert str(host_config) in host_paths
+    assert host_config in host_paths
 
 
 @os_agnostic
@@ -789,7 +789,7 @@ def test_linux_profile_user_path_includes_profile_segment(tmp_path: Path) -> Non
 
     strategy = LinuxStrategy(ctx)
     user_paths = list(strategy.user_paths())
-    assert str(config) in user_paths
+    assert config in user_paths
 
 
 @os_agnostic
@@ -812,7 +812,7 @@ def test_linux_no_profile_paths_unchanged(tmp_path: Path) -> None:
     strategy = LinuxStrategy(ctx)
     app_paths = list(strategy.app_paths())
     # Without profile, the config.toml should be directly in the slug dir, not in profile/<name>/
-    assert str(config) in app_paths
+    assert config in app_paths
     # Verify the config path ends with /<slug>/config.toml (not profile/<name>/config.toml)
     assert str(config).replace("\\", "/").endswith(f"/{ctx.slug}/config.toml")
 
@@ -828,7 +828,7 @@ def test_macos_profile_app_path_includes_profile_segment(tmp_path: Path) -> None
 
     strategy = MacOSStrategy(ctx)
     app_paths = list(strategy.app_paths())
-    assert str(config) in app_paths
+    assert config in app_paths
 
 
 @os_agnostic
@@ -842,7 +842,7 @@ def test_macos_profile_host_path_includes_profile_segment(tmp_path: Path) -> Non
 
     strategy = MacOSStrategy(ctx)
     host_paths = list(strategy.host_paths())
-    assert str(host_config) in host_paths
+    assert host_config in host_paths
 
 
 @os_agnostic
@@ -856,7 +856,7 @@ def test_macos_profile_user_path_includes_profile_segment(tmp_path: Path) -> Non
 
     strategy = MacOSStrategy(ctx)
     user_paths = list(strategy.user_paths())
-    assert str(config) in user_paths
+    assert config in user_paths
 
 
 @os_agnostic
@@ -879,7 +879,7 @@ def test_windows_profile_app_path_includes_profile_segment(tmp_path: Path) -> No
 
     strategy = WindowsStrategy(ctx)
     app_paths = list(strategy.app_paths())
-    assert str(config) in app_paths
+    assert config in app_paths
 
 
 @os_agnostic
@@ -893,7 +893,7 @@ def test_windows_profile_host_path_includes_profile_segment(tmp_path: Path) -> N
 
     strategy = WindowsStrategy(ctx)
     host_paths = list(strategy.host_paths())
-    assert str(host_config) in host_paths
+    assert host_config in host_paths
 
 
 @os_agnostic
@@ -907,7 +907,7 @@ def test_windows_profile_user_path_includes_profile_segment(tmp_path: Path) -> N
 
     strategy = WindowsStrategy(ctx)
     user_paths = list(strategy.user_paths())
-    assert str(config) in user_paths
+    assert config in user_paths
 
 
 @os_agnostic
@@ -965,7 +965,7 @@ def test_windows_app_paths_find_programdata_whatever_its_case(tmp_path: Path, na
 
     strategy = WindowsStrategy(_bare_windows_context(tmp_path, {name: str(root)}))
 
-    assert list(strategy.app_paths()) == [str(target)]
+    assert list(strategy.app_paths()) == [target]
 
 
 @os_agnostic

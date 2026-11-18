@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 def test_a_load_names_the_file_it_read(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text("DB__HOST=localhost\n", encoding="utf-8")
 
-    loaded = DefaultDotEnvLoader().load(str(tmp_path))
+    loaded = DefaultDotEnvLoader().load(tmp_path)
 
     assert loaded == DotEnvLoad({"db": {"host": "localhost"}}, tmp_path / ".env")
 
@@ -40,16 +40,16 @@ def test_the_loader_keeps_no_state_between_loads(tmp_path: Path) -> None:
     bad.write_text("NOT A LINE\n", encoding="utf-8")
     loader = DefaultDotEnvLoader()
 
-    loader.load(dotenv_path=str(good))
+    loader.load(dotenv_path=good)
     with pytest.raises(InvalidFormatError):
-        loader.load(dotenv_path=str(bad))
+        loader.load(dotenv_path=bad)
 
     assert vars(loader).keys() == {"_extras", "_not_sensitive"}
 
 
 @os_agnostic
 def test_a_load_result_cannot_be_changed(tmp_path: Path) -> None:
-    loaded = DefaultDotEnvLoader().load(str(tmp_path))
+    loaded = DefaultDotEnvLoader().load(tmp_path)
     with pytest.raises(dataclasses.FrozenInstanceError):
         cast("Any", loaded).path = tmp_path
 

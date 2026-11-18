@@ -172,13 +172,13 @@ class DefaultPathResolver:
             return WindowsStrategy(self._ctx)
         return LinuxStrategy(self._ctx)
 
-    def app(self) -> Iterable[str]:
+    def app(self) -> Iterable[Path]:
         """Return candidate system-wide configuration paths.
 
         Provide the lowest-precedence defaults shared across machines.
 
         Returns:
-            Ordered path strings for the application defaults layer.
+            Ordered paths for the application defaults layer.
 
         Examples:
             >>> import os
@@ -192,13 +192,13 @@ class DefaultPathResolver:
             >>> resolver = DefaultPathResolver(
             ...     vendor='Acme', app='Demo', slug='demo', env={'LIB_LAYERED_CONFIG_ETC': str(root)}, platform='linux'
             ... )
-            >>> [Path(p).name for p in resolver.app()]
+            >>> [p.name for p in resolver.app()]
             ['config.toml']
             >>> tmp.cleanup()
         """
         return self._record_candidates(Layer.APP, self._strategy.app_paths())
 
-    def host(self) -> Iterable[str]:
+    def host(self) -> Iterable[Path]:
         """Return host-specific overrides.
 
         Allow operators to tailor configuration to individual hosts (e.g.
@@ -209,7 +209,7 @@ class DefaultPathResolver:
         """
         return self._record_candidates(Layer.HOST, self._strategy.host_paths())
 
-    def user(self) -> Iterable[str]:
+    def user(self) -> Iterable[Path]:
         """Return user-level configuration locations.
 
         Capture per-user preferences stored in XDG/macOS/Windows user config
@@ -226,19 +226,19 @@ class DefaultPathResolver:
             log_warn("user_layer_skipped_no_home", layer=Layer.USER.value, path=None)
             return []
 
-    def dotenv(self) -> Iterable[str]:
+    def dotenv(self) -> Iterable[Path]:
         """Return candidate ``.env`` locations discovered during path resolution.
 
         `.env` files often live near the project root; this helper provides the
         ordered search list for the dotenv adapter.
 
         Returns:
-            Ordered `.env` path strings.
+            Ordered `.env` paths.
         """
         return list(self._dotenv_finder.find_paths())
 
     @staticmethod
-    def _record_candidates(layer: Layer, candidates: Iterable[str]) -> list[str]:
+    def _record_candidates(layer: Layer, candidates: Iterable[Path]) -> list[Path]:
         """Materialise *candidates* for *layer* and log how many were found."""
         paths = list(candidates)
         if paths:

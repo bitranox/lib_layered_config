@@ -37,7 +37,7 @@ def _refusal(tmp_path: Path, text: str) -> tuple[str, str]:
     path = tmp_path / "config.yaml"
     path.write_text(text, encoding="utf-8")
     with pytest.raises(InvalidFormatError) as caught:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
     return str(path), str(caught.value)
 
 

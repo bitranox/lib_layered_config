@@ -32,6 +32,8 @@ from ..domain.identifiers import Layer
 from ..observability import log_warn
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ..domain.config import SourceInfo
 
 #: Maximum configuration nesting depth. A crafted or corrupt config could otherwise
@@ -104,7 +106,7 @@ class LayerSnapshot:
 
     name: Layer
     payload: Mapping[str, object]
-    origin: str | None
+    origin: Path | None
 
     def __post_init__(self) -> None:
         """Refuse a name that is not a :class:`Layer`, here rather than deep in the merge.
@@ -115,7 +117,7 @@ class LayerSnapshot:
         _refuse_a_non_layer(self.name)
 
     @classmethod
-    def of(cls, name: Layer | str, payload: Mapping[str, object], origin: str | None) -> LayerSnapshot:
+    def of(cls, name: Layer | str, payload: Mapping[str, object], origin: Path | None) -> LayerSnapshot:
         """Build a snapshot from a layer member or its plain name.
 
         ``Config.origin(...)["layer"]`` hands callers the plain string, so a caller rebuilding
@@ -266,11 +268,20 @@ def _too_deep(snapshot: LayerSnapshot, segments: Sequence[str]) -> str:
     Examples:
         >>> _too_deep(LayerSnapshot(Layer.ENV, {}, None), ["k0", "k1"])
         'environment: configuration nesting exceeds the maximum depth of 100 at k0.k1'
-        >>> _too_deep(LayerSnapshot(Layer.APP, {}, "/etc/demo/config.toml"), ["a" * 100])[-12:]
+        >>> from pathlib import Path
+        >>> _too_deep(LayerSnapshot(Layer.APP, {}, Path("/etc/demo/config.toml")), ["a" * 100])[-12:]
         'aaaaaaaa ...'
     """
-    source = snapshot.origin or ("environment" if snapshot.name is Layer.ENV else snapshot.name.value)
+    source = _origin_text(snapshot) or ("environment" if snapshot.name is Layer.ENV else snapshot.name.value)
     return f"{source}: {nesting_too_deep(segments)}"
+
+
+def _origin_text(snapshot: LayerSnapshot) -> str | None:
+    """Return the file *snapshot* came from as text, for provenance and log records; ``None`` for none.
+
+    Provenance (``SourceInfo.path``) and log fields carry text; a snapshot carries a ``Path``.
+    """
+    return None if snapshot.origin is None else str(snapshot.origin)
 
 
 def nesting_too_deep(segments: Sequence[str]) -> str:
@@ -602,7 +613,7 @@ def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfo:
     """
     return {
         "layer": snapshot.name.value,
-        "path": snapshot.origin,
+        "path": _origin_text(snapshot),
         "key": dotted,
     }
 
@@ -900,7 +911,7 @@ def _warn_type_conflict(dotted: str, snapshot: LayerSnapshot, old_type: ValueKin
         "type_conflict",
         key=dotted,
         layer=snapshot.name,
-        path=snapshot.origin,
+        path=_origin_text(snapshot),
         old_type=old_type,
         new_type=new_type,
     )
@@ -915,7 +926,7 @@ def _warn_case_folded_key_ambiguous(dotted: str, snapshot: LayerSnapshot, stored
         "case_folded_key_ambiguous",
         key=dotted,
         layer=snapshot.name,
-        path=snapshot.origin,
+        path=_origin_text(snapshot),
         stored=list(stored),
     )
 
@@ -930,7 +941,7 @@ def _warn_list_index_out_of_range(dotted: str, snapshot: LayerSnapshot, index: i
         "list_index_out_of_range",
         key=dotted,
         layer=snapshot.name,
-        path=snapshot.origin,
+        path=_origin_text(snapshot),
         index=index,
     )
 

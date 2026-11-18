@@ -6,6 +6,7 @@ import logging
 import sys
 import tracemalloc
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
@@ -18,7 +19,6 @@ from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 # Check installation with find_spec, not `structured_module.yaml`. That module global is
 # populated lazily on first use (_load_yaml_module), so at test-collection time it is
@@ -66,7 +66,7 @@ class _FakeYAML:
 @os_agnostic
 def test_toml_loader_recites_the_port_number(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.toml", "[db]\nport = 5432\n")
-    port = _section(TOMLFileLoader().load(str(path)), "db")["port"]
+    port = _section(TOMLFileLoader().load(path), "db")["port"]
     assert port == 5432
 
 
@@ -74,21 +74,21 @@ def test_toml_loader_recites_the_port_number(tmp_path: Path) -> None:
 def test_toml_loader_laments_when_the_file_is_missing(tmp_path: Path) -> None:
     missing = tmp_path / "missing.toml"
     with pytest.raises(NotFoundError):
-        TOMLFileLoader().load(str(missing))
+        TOMLFileLoader().load(missing)
 
 
 @os_agnostic
 def test_json_loader_rejects_broken_braces(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.json", "{invalid}")
     with pytest.raises(InvalidFormatError):
-        JSONFileLoader().load(str(path))
+        JSONFileLoader().load(path)
 
 
 @os_agnostic
 def test_json_loader_affirms_boolean_truth(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     json.dump({"feature": True}, path.open("w", encoding="utf-8"))
-    feature_flag = JSONFileLoader().load(str(path))["feature"]
+    feature_flag = JSONFileLoader().load(path)["feature"]
     assert feature_flag is True
 
 
@@ -99,21 +99,21 @@ def test_loader_rejects_file_over_size_cap(tmp_path: Path) -> None:
     path = tmp_path / "big.toml"
     path.write_bytes(prefix + b"#" * (cap + 1 - len(prefix)))
     with pytest.raises(InvalidFormatError, match="-byte limit"):
-        TOMLFileLoader().load(str(path))
+        TOMLFileLoader().load(path)
 
 
 @os_agnostic
 def test_toml_loader_refuses_unfinished_lists(tmp_path: Path) -> None:
     path = _write(tmp_path / "broken.toml", "not = ['valid'", encoding="utf-8")
     with pytest.raises(InvalidFormatError):
-        TOMLFileLoader().load(str(path))
+        TOMLFileLoader().load(path)
 
 
 @pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML not available")
 @os_agnostic
 def test_yaml_loader_whispers_only_silence_for_empty_files(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.yaml", "# empty file\n")
-    yaml_payload = YAMLFileLoader().load(str(path))
+    yaml_payload = YAMLFileLoader().load(path)
     assert yaml_payload == {}
 
 
@@ -128,7 +128,7 @@ def test_yaml_loader_explains_when_dependency_is_missing(tmp_path: Path, monkeyp
     # A refusal, not NotFoundError: a layer read skips NotFoundError, which silently dropped the
     # file's settings (R5-F1).
     with pytest.raises(InvalidFormatError) as caught:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
 
     assert (
         str(caught.value)
@@ -144,13 +144,13 @@ def test_yaml_loader_without_pyyaml_still_reports_a_missing_file_as_not_found(
     monkeypatch.setattr(structured_module, "yaml", None)
 
     with pytest.raises(NotFoundError):
-        YAMLFileLoader().load(str(tmp_path / "gone.yaml"))
+        YAMLFileLoader().load(tmp_path / "gone.yaml")
 
 
 @os_agnostic
 def test_loader_mapping_guard_rejects_naked_scalars() -> None:
     with pytest.raises(InvalidFormatError):
-        structured_module.BaseFileLoader._ensure_mapping(7, path="demo.toml")  # pyright: ignore[reportPrivateUsage] - unit test of the mapping guard on a bare scalar
+        structured_module.BaseFileLoader._ensure_mapping(7, path=Path("demo.toml"))  # pyright: ignore[reportPrivateUsage] - unit test of the mapping guard on a bare scalar
 
 
 @pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML not available")
@@ -158,7 +158,7 @@ def test_loader_mapping_guard_rejects_naked_scalars() -> None:
 def test_yaml_loader_cries_out_on_illegal_syntax(tmp_path: Path) -> None:
     path = _write(tmp_path / "config.yaml", "key: : :\n", encoding="utf-8")
     with pytest.raises(InvalidFormatError):
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
 
 
 @os_agnostic
@@ -167,7 +167,7 @@ def test_yaml_parser_returns_empty_dict_when_document_is_none(monkeypatch: pytes
         return None
 
     fake_yaml = _FakeYAML(compose=load_nothing, yaml_error=Exception)
-    empty_mapping = structured_module._parse_yaml_text("", fake_yaml, "memory.yaml").data  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
+    empty_mapping = structured_module._parse_yaml_text("", fake_yaml, Path("memory.yaml")).data  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert empty_mapping == {}
 
 
@@ -181,7 +181,7 @@ def test_yaml_parser_wraps_yaml_errors_with_context(monkeypatch: pytest.MonkeyPa
 
     fake_yaml = _FakeYAML(compose=explode, yaml_error=BoomError)
     with pytest.raises(InvalidFormatError) as exc:
-        structured_module._parse_yaml_text("", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
+        structured_module._parse_yaml_text("", fake_yaml, Path("memory.yaml"))  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert "memory.yaml" in str(exc.value)
 
 
@@ -199,7 +199,7 @@ def test_yaml_parser_wraps_a_bare_value_error_as_invalid_format() -> None:
 
     fake_yaml = _FakeYAML(compose=explode, yaml_error=YAMLError)
     with pytest.raises(InvalidFormatError) as exc:
-        structured_module._parse_yaml_text("a: 2020-13-01", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
+        structured_module._parse_yaml_text("a: 2020-13-01", fake_yaml, Path("memory.yaml"))  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     message = str(exc.value)
     assert message == "memory.yaml is not valid YAML"
     assert "13" not in message
@@ -218,7 +218,7 @@ def test_yaml_parser_reports_a_recursion_error_as_too_deep() -> None:
 
     fake_yaml = _FakeYAML(compose=explode, yaml_error=YAMLError)
     with pytest.raises(InvalidFormatError) as exc:
-        structured_module._parse_yaml_text("[[[[[[", fake_yaml, "memory.yaml")  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
+        structured_module._parse_yaml_text("[[[[[[", fake_yaml, Path("memory.yaml"))  # pyright: ignore[reportPrivateUsage] - drives the parser with a fake module
     assert str(exc.value) == "memory.yaml nests deeper than the YAML parser allows"
 
 
@@ -231,7 +231,7 @@ def test_yaml_loader_refuses_an_out_of_range_calendar_date_without_leaking_the_c
     ``2020-13-01``; the loader must still refuse it as ``InvalidFormatError`` naming the file."""
     path = _write(tmp_path / "config.yaml", "a: 2020-13-01\n")
     with caplog.at_level(logging.DEBUG, logger="lib_layered_config"), pytest.raises(InvalidFormatError) as exc:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
     message = str(exc.value)
     assert str(path) in message
     # pytest's own tmp_path can legitimately contain "13" (e.g. "pytest-13"), so check
@@ -253,7 +253,7 @@ def test_toml_loader_logs_the_format_as_its_plain_name(tmp_path: Path, caplog: p
     """The ``format`` field is the plain string ``"toml"``, never the enum member, whose text differs by version."""
     path = _write(tmp_path / "config.toml", "a = 1\n")
     with caplog.at_level(logging.DEBUG, logger="lib_layered_config"):
-        TOMLFileLoader().load(str(path))
+        TOMLFileLoader().load(path)
     logged = [_context(record) for record in caplog.records if record.getMessage() == "config_file_loaded"]
     assert [(type(context["format"]), context["format"]) for context in logged] == [(str, "toml")]
 
@@ -264,7 +264,7 @@ def test_json_loader_names_the_format_upper_cased_and_logs_it_plain(
 ) -> None:
     path = _write(tmp_path / "config.json", '{\n  "a": }\n')
     with caplog.at_level(logging.DEBUG, logger="lib_layered_config"), pytest.raises(InvalidFormatError) as exc:
-        JSONFileLoader().load(str(path))
+        JSONFileLoader().load(path)
     message = str(exc.value)
     assert message.startswith(f"{path} is not valid JSON (line 2, column ")
     logged = [_context(record) for record in caplog.records if record.getMessage() == "config_file_invalid"]

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 def _load(tmp_path: Path, line: str) -> object:
     path = tmp_path / ".env"
     path.write_text(f"{line}\n", encoding="utf-8")
-    return DefaultDotEnvLoader().load(dotenv_path=str(path)).data
+    return DefaultDotEnvLoader().load(dotenv_path=path).data
 
 
 @os_agnostic

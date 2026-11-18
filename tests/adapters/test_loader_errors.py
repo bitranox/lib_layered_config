@@ -134,7 +134,7 @@ def test_the_dotenv_loader_raises_its_documented_error(tmp_path: Path) -> None:
     path = tmp_path / ".env"
     path.write_bytes(NOT_UTF8[".env"])
     with pytest.raises(InvalidFormatError, match=r"is not valid UTF-8 \(line 2, byte offset 28\)$"):
-        DefaultDotEnvLoader().load(dotenv_path=str(path))
+        DefaultDotEnvLoader().load(dotenv_path=path)
 
 
 @os_agnostic

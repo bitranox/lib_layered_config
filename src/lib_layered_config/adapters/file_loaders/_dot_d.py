@@ -64,7 +64,7 @@ Tuple of lowercase extensions.
 """
 
 
-def expand_dot_d(path: str) -> Iterable[str]:
+def expand_dot_d(path: Path) -> Iterable[Path]:
     """Expand a configuration file path to include .d directory entries.
 
     For a file ``foo.toml``, checks for ``foo.d/`` directory (without extension)
@@ -87,16 +87,16 @@ def expand_dot_d(path: str) -> Iterable[str]:
         >>> tmp = TemporaryDirectory()
         >>> base = Path(tmp.name) / "config.toml"
         >>> _ = base.write_text("[app]\\nname = 'test'", encoding="utf-8")
-        >>> list(expand_dot_d(str(base)))  # doctest: +ELLIPSIS
-        ['...config.toml']
+        >>> [p.name for p in expand_dot_d(base)]
+        ['config.toml']
         >>> tmp.cleanup()
     """
-    base_path = Path(path)
+    base_path = path
     dot_d_dir = base_path.with_suffix(".d")
 
     base_kind = checked_kind(base_path)
     if base_kind is PathKind.FILE:
-        yield str(base_path)
+        yield base_path
     elif base_kind is PathKind.DIRECTORY:
         # A configured file path that is a directory on disk (never the `<name>.d/` companion,
         # which is dot_d_dir, a distinct path) would otherwise drop the layer's file without a
@@ -106,7 +106,7 @@ def expand_dot_d(path: str) -> Iterable[str]:
     yield from _collect_dot_d_files(dot_d_dir)
 
 
-def _collect_dot_d_files(dot_d_dir: Path) -> Iterable[str]:
+def _collect_dot_d_files(dot_d_dir: Path) -> Iterable[Path]:
     """Yield config files from a .d directory in lexicographical order.
 
     Args:
@@ -141,4 +141,4 @@ def _collect_dot_d_files(dot_d_dir: Path) -> Iterable[str]:
     # The extension is tested first so a README the directory also holds is never probed.
     for file_path in entries:
         if file_path.suffix.lower() in _ALLOWED_EXTENSIONS and checked_kind(file_path) is PathKind.FILE:
-            yield str(file_path)
+            yield file_path

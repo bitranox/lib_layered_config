@@ -12,6 +12,7 @@ The ``type_conflict`` warning names the kinds involved: a list is a ``list``, ne
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -26,15 +27,15 @@ def _merge(*snapshots: LayerSnapshot) -> tuple[object, dict[str, str]]:
     return result.data["ds"], {key: entry["layer"] for key, entry in result.provenance.items()}
 
 
-_APP_TABLE_ELEMENT = LayerSnapshot(Layer.APP, {"ds": [{"a": 1}]}, "/etc/app.toml")
-_APP_VALUE_ELEMENT = LayerSnapshot(Layer.APP, {"ds": [1]}, "/etc/app.toml")
+_APP_TABLE_ELEMENT = LayerSnapshot(Layer.APP, {"ds": [{"a": 1}]}, Path("/etc/app.toml"))
+_APP_VALUE_ELEMENT = LayerSnapshot(Layer.APP, {"ds": [1]}, Path("/etc/app.toml"))
 
 
 @os_agnostic
 def test_an_element_table_replaced_by_a_value_forgets_the_leaves_it_held() -> None:
     data, layers = _merge(
         _APP_TABLE_ELEMENT,
-        LayerSnapshot(Layer.DOTENV, {"ds": {"0": {"a": "2"}}}, "/opt/app/.env"),
+        LayerSnapshot(Layer.DOTENV, {"ds": {"0": {"a": "2"}}}, Path("/opt/app/.env")),
         LayerSnapshot(Layer.ENV, {"ds": {"0": "x"}}, None),
     )
 
@@ -46,7 +47,7 @@ def test_an_element_table_replaced_by_a_value_forgets_the_leaves_it_held() -> No
 def test_an_element_value_replaced_by_a_table_leaves_no_entry_for_the_table() -> None:
     data, layers = _merge(
         _APP_VALUE_ELEMENT,
-        LayerSnapshot(Layer.DOTENV, {"ds": {"0": "2"}}, "/opt/app/.env"),
+        LayerSnapshot(Layer.DOTENV, {"ds": {"0": "2"}}, Path("/opt/app/.env")),
         LayerSnapshot(Layer.ENV, {"ds": {"0": {"b": "3"}}}, None),
     )
 
@@ -58,7 +59,7 @@ def test_an_element_value_replaced_by_a_table_leaves_no_entry_for_the_table() ->
 def test_an_element_value_replaced_by_an_empty_table_names_the_layer_that_emptied_it() -> None:
     data, layers = _merge(
         _APP_VALUE_ELEMENT,
-        LayerSnapshot(Layer.DOTENV, {"ds": {"0": "2"}}, "/opt/app/.env"),
+        LayerSnapshot(Layer.DOTENV, {"ds": {"0": "2"}}, Path("/opt/app/.env")),
         LayerSnapshot(Layer.ENV, {"ds": {"0": {}}}, None),
     )
 
@@ -70,7 +71,7 @@ def test_an_element_value_replaced_by_an_empty_table_names_the_layer_that_emptie
 def test_an_empty_element_table_filled_later_has_no_entry_of_its_own() -> None:
     data, layers = _merge(
         _APP_VALUE_ELEMENT,
-        LayerSnapshot(Layer.DOTENV, {"ds": {"0": {}}}, "/opt/app/.env"),
+        LayerSnapshot(Layer.DOTENV, {"ds": {"0": {}}}, Path("/opt/app/.env")),
         LayerSnapshot(Layer.ENV, {"ds": {"0": {"c": "4"}}}, None),
     )
 
@@ -105,8 +106,8 @@ def test_a_type_conflict_names_the_real_kinds(
     with caplog.at_level(logging.WARNING, logger="lib_layered_config"):
         merge_layers(
             [
-                LayerSnapshot(Layer.APP, {"ds": lower}, "/etc/app.toml"),
-                LayerSnapshot(Layer.USER, {"ds": higher}, "/opt/user.toml"),
+                LayerSnapshot(Layer.APP, {"ds": lower}, Path("/etc/app.toml")),
+                LayerSnapshot(Layer.USER, {"ds": higher}, Path("/opt/user.toml")),
             ]
         )
 
@@ -141,13 +142,19 @@ def test_an_element_changing_between_table_and_anything_else_warns_as_a_key_does
     with caplog.at_level(logging.WARNING, logger="lib_layered_config"):
         merge_layers(
             [
-                LayerSnapshot(Layer.APP, {"ds": [element]}, "/etc/app.toml"),
-                LayerSnapshot(Layer.DOTENV, {"ds": {"0": override}}, "/opt/app/.env"),
+                LayerSnapshot(Layer.APP, {"ds": [element]}, Path("/etc/app.toml")),
+                LayerSnapshot(Layer.DOTENV, {"ds": {"0": override}}, Path("/opt/app/.env")),
             ]
         )
 
     assert _type_conflicts(caplog) == [
-        {"key": "ds.0", "layer": "dotenv", "path": "/opt/app/.env", "old_type": expected[0], "new_type": expected[1]}
+        {
+            "key": "ds.0",
+            "layer": "dotenv",
+            "path": str(Path("/opt/app/.env")),
+            "old_type": expected[0],
+            "new_type": expected[1],
+        }
     ]
 
 
@@ -163,7 +170,7 @@ def test_an_element_keeping_its_table_or_non_table_kind_does_not_warn(
     with caplog.at_level(logging.WARNING, logger="lib_layered_config"):
         merge_layers(
             [
-                LayerSnapshot(Layer.APP, {"ds": [element]}, "/etc/app.toml"),
+                LayerSnapshot(Layer.APP, {"ds": [element]}, Path("/etc/app.toml")),
                 LayerSnapshot(Layer.ENV, {"ds": {"0": override}}, None),
             ]
         )
@@ -174,8 +181,8 @@ def test_an_element_keeping_its_table_or_non_table_kind_does_not_warn(
 @os_agnostic
 def test_a_leading_zero_index_records_provenance_under_the_index_a_later_override_replaces() -> None:
     data, layers = _merge(
-        LayerSnapshot(Layer.DEFAULTS, {"ds": [{"k": 1}]}, "/opt/defaults.toml"),
-        LayerSnapshot(Layer.DOTENV, {"ds": {"00": {"k": "x"}}}, "/opt/app/.env"),
+        LayerSnapshot(Layer.DEFAULTS, {"ds": [{"k": 1}]}, Path("/opt/defaults.toml")),
+        LayerSnapshot(Layer.DOTENV, {"ds": {"00": {"k": "x"}}}, Path("/opt/app/.env")),
         LayerSnapshot(Layer.ENV, {"ds": {"0": "y"}}, None),
     )
 
@@ -186,8 +193,8 @@ def test_a_leading_zero_index_records_provenance_under_the_index_a_later_overrid
 @os_agnostic
 def test_a_leading_zero_index_names_the_element_by_its_plain_index() -> None:
     data, layers = _merge(
-        LayerSnapshot(Layer.DEFAULTS, {"ds": [{"k": 1}]}, "/opt/defaults.toml"),
-        LayerSnapshot(Layer.DOTENV, {"ds": {"00": {"k": "x"}, "001": "z"}}, "/opt/app/.env"),
+        LayerSnapshot(Layer.DEFAULTS, {"ds": [{"k": 1}]}, Path("/opt/defaults.toml")),
+        LayerSnapshot(Layer.DOTENV, {"ds": {"00": {"k": "x"}, "001": "z"}}, Path("/opt/app/.env")),
     )
 
     assert data == [{"k": "x"}, "z"]

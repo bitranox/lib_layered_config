@@ -82,8 +82,8 @@ def test_an_empty_or_relative_xdg_config_home_falls_back_to_home_config(work: Pa
     home_dotenv = _plant(Path.home() / ".config" / _SLUG / ".env", "K=home\n")
     resolver = _resolver({"XDG_CONFIG_HOME": value}, platform="linux", cwd=work)
 
-    assert [Path(p).resolve() for p in resolver.user()] == [home_config.resolve()]
-    assert [Path(p).resolve() for p in resolver.dotenv()] == [home_dotenv.resolve()]
+    assert [p.resolve() for p in resolver.user()] == [home_config.resolve()]
+    assert [p.resolve() for p in resolver.dotenv()] == [home_dotenv.resolve()]
 
 
 @os_agnostic

@@ -34,7 +34,7 @@ def _refusal(tmp_path: Path, text: str) -> tuple[str, str]:
     path = tmp_path / "config.yaml"
     path.write_text(text, encoding="utf-8")
     with pytest.raises(InvalidFormatError) as caught:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
     return str(path), str(caught.value)
 
 
@@ -67,7 +67,7 @@ def test_a_file_with_only_string_keys_loads(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("'1': quoted\nservice:\n  timeout: 5\nlist:\n  - a: 1\n", encoding="utf-8")
 
-    assert YAMLFileLoader().load(str(path)) == {"1": "quoted", "service": {"timeout": 5}, "list": [{"a": 1}]}
+    assert YAMLFileLoader().load(path) == {"1": "quoted", "service": {"timeout": 5}, "list": [{"a": 1}]}
 
 
 @os_agnostic

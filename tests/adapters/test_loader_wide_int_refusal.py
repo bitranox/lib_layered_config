@@ -37,7 +37,7 @@ def _toml_refusal(tmp_path: Path, text: str) -> tuple[str, str]:
     path = tmp_path / "config.toml"
     path.write_text(text, encoding="utf-8")
     with pytest.raises(InvalidFormatError) as caught:
-        TOMLFileLoader().load(str(path))
+        TOMLFileLoader().load(path)
     return str(path), str(caught.value)
 
 
@@ -47,7 +47,7 @@ def test_a_toml_integer_json_can_write_still_loads(tmp_path: Path, value: int) -
     path = tmp_path / "config.toml"
     path.write_text(f"[db]\nport = {value}\n", encoding="utf-8")
 
-    assert TOMLFileLoader().load(str(path)) == {"db": {"port": value}}
+    assert TOMLFileLoader().load(path) == {"db": {"port": value}}
 
 
 @os_agnostic
@@ -74,7 +74,7 @@ def test_a_wide_yaml_hex_literal_refuses_the_file_without_its_digits(tmp_path: P
     path.write_text("history:\n  path: 0x" + "F" * 4000 + "\n  small: 42\n", encoding="utf-8")
 
     with pytest.raises(InvalidFormatError) as caught:
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)
     message = str(caught.value)
 
     assert str(path) in message
@@ -88,7 +88,7 @@ def test_a_yaml_integer_json_can_write_still_loads(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text(f"db:\n  port: {_LARGEST}\n  low: {_SMALLEST}\n  flag: true\n", encoding="utf-8")
 
-    assert YAMLFileLoader().load(str(path)) == {"db": {"port": _LARGEST, "low": _SMALLEST, "flag": True}}
+    assert YAMLFileLoader().load(path) == {"db": {"port": _LARGEST, "low": _SMALLEST, "flag": True}}
 
 
 @os_agnostic

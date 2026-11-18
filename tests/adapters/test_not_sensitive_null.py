@@ -43,7 +43,7 @@ def test_dotenv_reads_a_declared_keys_none_as_none_and_keeps_a_secrets(tmp_path:
     env_file.write_text("PERFORMANCE__MAX_TOKEN_BYTES=none\nDB__PASSWORD=none\n", encoding="utf-8")
     loader = DefaultDotEnvLoader(not_sensitive=_DECLARED)
 
-    data = loader.load(dotenv_path=str(env_file)).data
+    data = loader.load(dotenv_path=env_file).data
 
     assert data == {"performance": {"max_token_bytes": None}, "db": {"password": "none"}}
 
@@ -53,7 +53,7 @@ def test_dotenv_discovery_from_a_start_dir_honours_the_declaration(tmp_path: Pat
     (tmp_path / ".env").write_text("PERFORMANCE__MAX_TOKEN_BYTES=null\nDB__PASSWORD=null\n", encoding="utf-8")
     loader = DefaultDotEnvLoader(not_sensitive=_DECLARED)
 
-    loaded = loader.load(start_dir=str(tmp_path))
+    loaded = loader.load(start_dir=tmp_path)
 
     assert loaded.path == tmp_path / ".env"
     assert loaded.data == {"performance": {"max_token_bytes": None}, "db": {"password": "null"}}

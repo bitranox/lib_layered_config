@@ -143,9 +143,9 @@ def read_config(
         slug=slug,
         profile=profile,
         start_dir=start_dir,
-        default_file=_stringify_path(default_file),
+        default_file=default_file,
         max_profile_length=max_profile_length,
-        dotenv_path=_stringify_path(dotenv_path),
+        dotenv_path=dotenv_path,
         not_sensitive=declared,
     )
     return _compose_config(result.data, result.provenance, not_sensitive=declared)
@@ -218,10 +218,10 @@ def read_config_json(
         app=app,
         slug=slug,
         profile=profile,
-        start_dir=_stringify_path(start_dir),
-        default_file=_stringify_path(default_file),
+        start_dir=start_dir,
+        default_file=default_file,
         max_profile_length=max_profile_length,
-        dotenv_path=_stringify_path(dotenv_path),
+        dotenv_path=dotenv_path,
         not_sensitive=declared,
     )
     data = result.data
@@ -287,13 +287,15 @@ def read_config_raw(
     """
     _take_deprecated_prefer(prefer)
     declared = NotSensitiveKeys.of(not_sensitive)
-    start_dir_text = _stringify_path(start_dir)
+    # An empty start_dir or default_file string means not given, as before 9.0.0; an empty
+    # dotenv_path is a path (the current directory) and is refused as a directory by the loader.
+    start = _as_path(start_dir or None)
     resolver = _build_resolver(
         vendor=vendor,
         app=app,
         slug=slug,
         profile=profile,
-        start_dir=start_dir_text,
+        start_dir=start,
         max_profile_length=max_profile_length,
     )
 
@@ -307,12 +309,12 @@ def read_config_raw(
         raise LayerLoadError(str(exc)) from exc
     layers = collect_layers(
         resolver=resolver,
-        default_file=_stringify_path(default_file),
+        default_file=_as_path(default_file or None),
         dotenv_loader=dotenv_loader,
         env_loader=env_loader,
         slug=slug,
-        start_dir=start_dir_text,
-        dotenv_path=_stringify_path(dotenv_path),
+        start_dir=start,
+        dotenv_path=_as_path(dotenv_path),
     )
     # The layers are read lazily inside the merge's loop, so this one wrap covers a file that does
     # not load and the merge's own refusal (nesting past its depth) alike.
@@ -363,7 +365,7 @@ def read_config_for_deploy(
     """
     try:
         layers = collect_deploy_layers(
-            resolver=resolver, default_file=str(default_file), env_loader=DefaultEnvLoader(), skip=skip
+            resolver=resolver, default_file=default_file, env_loader=DefaultEnvLoader(), skip=skip
         )
         result = merge_or_empty(layers)
     except InvalidFormatError as exc:
@@ -442,7 +444,7 @@ def _build_resolver(
     app: str,
     slug: str,
     profile: str | None,
-    start_dir: str | None,
+    start_dir: Path | None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
 ) -> DefaultPathResolver:
     """Create a path resolver configured with optional ``start_dir`` context.
@@ -471,7 +473,7 @@ def _build_resolver(
         app=app,
         slug=slug,
         profile=profile,
-        cwd=Path(start_dir) if start_dir else None,
+        cwd=start_dir,
         max_profile_length=max_profile_length,
     )
 
@@ -493,34 +495,31 @@ def _build_loaders(
     Returns:
         Pair of loader instances ready for layer collection.
     """
-    extras: list[str] = list(resolver.dotenv()) if searches_dotenv else []
+    extras: list[Path] = list(resolver.dotenv()) if searches_dotenv else []
     return (
         DefaultDotEnvLoader(extras=extras, not_sensitive=not_sensitive),
         DefaultEnvLoader(not_sensitive=not_sensitive),
     )
 
 
-def _stringify_path(value: str | Path | None) -> str | None:
-    """Convert ``Path`` or string inputs into plain string values for adapters.
+def _as_path(value: str | Path | None) -> Path | None:
+    """Return *value* as a :class:`Path`, the type the adapters take; ``None`` stays ``None``.
 
-    Adapters expect plain strings while public APIs accept :class:`Path` objects
-    for user convenience. Centralising the conversion avoids duplicate logic.
+    The public functions accept a string or a ``Path``; this is the one place it is converted.
 
     Args:
         value: Optional path expressed as either a string or :class:`pathlib.Path`.
 
     Returns:
-        Stringified path or ``None`` when *value* is ``None``.
+        The path, or ``None`` when *value* is ``None``.
 
     Examples:
-        >>> _stringify_path(Path('config.toml'))
-        'config.toml'
-        >>> _stringify_path(None) is None
+        >>> _as_path('config.toml') == Path('config.toml')
+        True
+        >>> _as_path(None) is None
         True
     """
-    if isinstance(value, Path):
-        return str(value)
-    return value
+    return None if value is None else Path(value)
 
 
 def _dump_json(payload: object, indent: int | None) -> str:

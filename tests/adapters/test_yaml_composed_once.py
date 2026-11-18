@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.skipif(importlib.util.find_spec("yaml") is None, reason="PyYAML not available")
 
 
-def _compositions_while(action: object, path: str) -> int:
+def _compositions_while(action: object, path: Path) -> int:
     """Run ``YAMLFileLoader().load(path)`` and count PyYAML's whole-document compositions."""
     # Imported here: PyYAML is an optional extra, and the module skips without it.
     import yaml.composer
@@ -54,7 +54,7 @@ def test_a_valid_yaml_file_is_composed_once(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("base: &b {host: h, port: 1}\ndb:\n  <<: *b\n  port: 2\nlist: [1, 2]\n", encoding="utf-8")
 
-    assert _compositions_while("loaded", str(path)) == 1
+    assert _compositions_while("loaded", path) == 1
 
 
 @os_agnostic
@@ -62,6 +62,6 @@ def test_a_file_with_a_repeated_key_is_composed_once_and_still_refused(tmp_path:
     path = tmp_path / "config.yaml"
     path.write_text("a: 1\nb: {c: 1, c: 2}\n", encoding="utf-8")
 
-    assert _compositions_while("refused", str(path)) == 1
+    assert _compositions_while("refused", path) == 1
     with pytest.raises(InvalidFormatError, match=r"repeats a key, and only its last value would load: b\.c \(line 2"):
-        YAMLFileLoader().load(str(path))
+        YAMLFileLoader().load(path)

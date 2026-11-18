@@ -42,7 +42,7 @@ def _write_sample_dotenv(tmp_path: Path) -> tuple[DotEnvLoad, Mapping[str, objec
         "DB__HOST=localhost\nDB__PASSWORD='s3cret'\nFEATURE=true # comment\n",
         encoding="utf-8",
     )
-    loaded = DefaultDotEnvLoader().load(str(tmp_path))
+    loaded = DefaultDotEnvLoader().load(tmp_path)
     return loaded, loaded.data, env_file
 
 
@@ -72,7 +72,7 @@ def test_dotenv_loader_reports_the_file_it_loaded(tmp_path: Path) -> None:
 
 @os_agnostic
 def test_dotenv_loader_returns_empty_mapping_when_missing(tmp_path: Path) -> None:
-    payload = DefaultDotEnvLoader().load(str(tmp_path)).data
+    payload = DefaultDotEnvLoader().load(tmp_path).data
     assert payload == {}
 
 
@@ -105,7 +105,7 @@ def test_dotenv_loader_handles_random_namespace(entries: dict[str, str], tmp_pat
     lines = [f"{key}={value}" for key, value in entries.items()]
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    data = DefaultDotEnvLoader().load(str(tmp_path)).data
+    data = DefaultDotEnvLoader().load(tmp_path).data
 
     def lookup(root: Mapping[str, object], raw_key: str) -> object:
         cursor: object = root
@@ -124,7 +124,7 @@ def test_dotenv_loader_reports_invalid_line(tmp_path: Path, caplog: pytest.LogCa
     env_file.write_text("INVALID", encoding="utf-8")
     loader = DefaultDotEnvLoader()
     with caplog.at_level(logging.DEBUG, logger="lib_layered_config"), pytest.raises(InvalidFormatError):
-        loader.load(str(tmp_path))
+        loader.load(tmp_path)
     assert any(record.message == "dotenv_invalid_line" for record in caplog.records)
 
 
@@ -141,7 +141,7 @@ def test_dotenv_loader_loads_explicit_path(tmp_path: Path) -> None:
     custom_env = tmp_path / "custom.env"
     custom_env.write_text("APP__MODE=staging\n", encoding="utf-8")
     loader = DefaultDotEnvLoader()
-    loaded = loader.load(dotenv_path=str(custom_env))
+    loaded = loader.load(dotenv_path=custom_env)
     assert _section(loaded.data, "app")["mode"] == "staging"
     assert loaded.path == custom_env
 
@@ -153,7 +153,7 @@ def test_dotenv_loader_explicit_path_skips_directory_search(tmp_path: Path) -> N
     custom_env = tmp_path / "other.env"
     custom_env.write_text("USED__KEY=loaded\n", encoding="utf-8")
     loader = DefaultDotEnvLoader()
-    loaded = loader.load(str(tmp_path), dotenv_path=str(custom_env))
+    loaded = loader.load(tmp_path, dotenv_path=custom_env)
     assert "used" in loaded.data
     assert "ignored" not in loaded.data
     assert loaded.path == custom_env
@@ -163,7 +163,7 @@ def test_dotenv_loader_explicit_path_skips_directory_search(tmp_path: Path) -> N
 def test_dotenv_loader_explicit_path_missing_returns_empty(tmp_path: Path) -> None:
     missing = tmp_path / "nonexistent.env"
     loader = DefaultDotEnvLoader()
-    assert loader.load(dotenv_path=str(missing)) == DotEnvLoad({}, None)
+    assert loader.load(dotenv_path=missing) == DotEnvLoad({}, None)
 
 
 @os_agnostic
@@ -176,7 +176,7 @@ def test_dotenv_loader_rejects_file_over_size_cap(tmp_path: Path) -> None:
     assert env_file.stat().st_size == cap + 1
     loader = DefaultDotEnvLoader()
     with pytest.raises(InvalidFormatError):
-        loader.load(str(tmp_path))
+        loader.load(tmp_path)
 
 
 @os_agnostic
@@ -188,7 +188,7 @@ def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path) -> None:
     env_file.write_bytes(prefix + b"#" * (cap - len(prefix)))
     assert env_file.stat().st_size == cap
     loader = DefaultDotEnvLoader()
-    data = loader.load(str(tmp_path)).data
+    data = loader.load(tmp_path).data
     assert data["a"] == 1
 
 
@@ -199,7 +199,7 @@ def test_dotenv_loader_explicit_path_that_is_a_directory_is_refused(tmp_path: Pa
     loader = DefaultDotEnvLoader()
 
     with pytest.raises(InvalidFormatError, match="is a directory, not a configuration file") as caught:
-        loader.load(dotenv_path=str(directory))
+        loader.load(dotenv_path=directory)
 
     assert str(directory) in str(caught.value)
 
@@ -213,7 +213,7 @@ def test_dotenv_upward_search_skips_a_directory_named_dot_env(tmp_path: Path) ->
     (start / ".env").mkdir()
 
     loader = DefaultDotEnvLoader()
-    assert loader.load(start_dir=str(start)) == DotEnvLoad({}, None)
+    assert loader.load(start_dir=start) == DotEnvLoad({}, None)
 
 
 #: What Notepad's "UTF-8 with BOM" and PowerShell 5 ``Out-File -Encoding utf8`` write before the text.
@@ -224,7 +224,7 @@ _UTF8_BOM_BYTES = b"\xef\xbb\xbf"
 def test_a_dotenv_saved_with_a_utf8_bom_keeps_its_first_key(tmp_path: Path) -> None:
     (tmp_path / ".env").write_bytes(_UTF8_BOM_BYTES + b"DB__HOST=db.example\nMODE=prod\n")
 
-    data = DefaultDotEnvLoader().load(str(tmp_path)).data
+    data = DefaultDotEnvLoader().load(tmp_path).data
 
     assert data == {"db": {"host": "db.example"}, "mode": "prod"}
 
@@ -234,6 +234,6 @@ def test_an_explicit_dotenv_path_with_a_utf8_bom_keeps_its_first_key(tmp_path: P
     custom_env = tmp_path / "custom.env"
     custom_env.write_bytes(_UTF8_BOM_BYTES + b"MODE=prod\n")
 
-    data = DefaultDotEnvLoader().load(dotenv_path=str(custom_env)).data
+    data = DefaultDotEnvLoader().load(dotenv_path=custom_env).data
 
     assert data == {"mode": "prod"}

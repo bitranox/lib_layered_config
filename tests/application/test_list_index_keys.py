@@ -10,7 +10,7 @@ after leading zeros, or out of range.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
@@ -19,14 +19,11 @@ from lib_layered_config.application.merge import LayerSnapshot, merge_layers
 from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 _HOSTS = ["a", "b"]
 
 
 def _merge_hosts(key: str) -> object:
-    base = LayerSnapshot(Layer.APP, {"hosts": list(_HOSTS)}, "app.toml")
+    base = LayerSnapshot(Layer.APP, {"hosts": list(_HOSTS)}, Path("app.toml"))
     override = LayerSnapshot(Layer.ENV, {"hosts": {key: "z"}}, None)
     return merge_layers([base, override]).data["hosts"]
 

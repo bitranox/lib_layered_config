@@ -24,6 +24,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   when no file was loaded, in place of the bare mapping plus a `last_loaded_path` attribute each call
   overwrote. The loader keeps no state between calls, so a load that raises cannot leave an earlier
   call's path behind.
+- Paths travel as `pathlib.Path` through the ports and adapters, where they were `str`: the `PathResolver` port
+  and `DefaultPathResolver.app()`, `.host()`, `.user()` and `.dotenv()` return `Path` values; the `FileLoader`
+  port and `TOMLFileLoader`, `JSONFileLoader`, `YAMLFileLoader.load` take a `Path`; `DefaultDotEnvLoader` takes
+  `extras`, `start_dir` and `dotenv_path` as `Path`; `LayerSnapshot.origin` is a `Path` or `None`. Provenance
+  (`SourceInfo["path"]`, `Config.origin(...)`) and log fields stay text, and `read_config`, `read_config_raw`,
+  `read_config_json` and the deploy functions still accept a `str` or a `Path`. Code that builds a
+  `LayerSnapshot` from provenance text passes `Path(origin["path"])`, `None` staying `None`.
+  Provenance and log text is the origin's `str()`, so on Windows a POSIX-style origin such as `/etc/app.toml`
+  now reads `\etc\app.toml`; a loader called with a `str` fails with Python's own `AttributeError`.
 
 ### Removed (breaking)
 - The deprecated `lib_layered_config.examples` package, with `lib_layered_config.examples.deploy` and

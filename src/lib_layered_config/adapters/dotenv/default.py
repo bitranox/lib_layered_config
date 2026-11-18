@@ -24,7 +24,6 @@ from __future__ import annotations
 import io
 import os
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from ...application.ports import DotEnvLoad
@@ -39,6 +38,7 @@ from ..file_loaders.structured import directory_not_config_file, read_capped_byt
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from pathlib import Path
 
 __all__ = [
     "DOTENV_LAYER",
@@ -80,13 +80,13 @@ class DefaultDotEnvLoader:
     """
 
     def __init__(
-        self, *, extras: Iterable[str] | None = None, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE
+        self, *, extras: Iterable[Path] | None = None, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE
     ) -> None:
         """Initialise with optional extra search paths and the application's not-sensitive paths."""
-        self._extras = [Path(p) for p in extras or []]
+        self._extras = list(extras or [])
         self._not_sensitive = not_sensitive
 
-    def load(self, start_dir: str | None = None, *, dotenv_path: str | None = None) -> DotEnvLoad:
+    def load(self, start_dir: Path | None = None, *, dotenv_path: Path | None = None) -> DotEnvLoad:
         """Return the first dotenv file discovered in the search order, parsed, with its path.
 
         When *dotenv_path* is given, loads that file directly instead of
@@ -102,7 +102,7 @@ class DefaultDotEnvLoader:
             The parsed data and the file it came from; ``DotEnvLoad({}, None)`` when none was found.
         """
         if dotenv_path is not None:
-            return self._load_explicit(Path(dotenv_path))
+            return self._load_explicit(dotenv_path)
 
         candidates = _build_search_list(start_dir, self._extras)
         for candidate in candidates:
@@ -141,7 +141,7 @@ class DefaultDotEnvLoader:
         return DotEnvLoad(data, path)
 
 
-def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Path]:
+def _build_search_list(start_dir: Path | None, extras: Iterable[Path]) -> list[Path]:
     """Combine upward-search candidates with the extras, each path once, in first-seen order.
 
     The extras repeat the walk: the resolver's search list walks upward from the same start
@@ -151,8 +151,9 @@ def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Pa
     symlink, and the owner check judges the link and its target separately.
 
     Examples:
-        >>> [p.as_posix() for p in _build_search_list("/opt/app", [Path("/opt/app/.env"), Path("/srv/.env")])]
-        ['/opt/app/.env', '/opt/.env', '/.env', '/srv/.env']
+        >>> from pathlib import Path
+        >>> [p.as_posix() for p in _build_search_list(Path("/opt/app"), [Path("/opt/app/.env"), Path("/var/.env")])]
+        ['/opt/app/.env', '/opt/.env', '/.env', '/var/.env']
     """
     unique: dict[str, Path] = {}
     for candidate in [*_iter_candidates(start_dir), *extras]:
@@ -160,13 +161,13 @@ def _build_search_list(start_dir: str | None, extras: Iterable[Path]) -> list[Pa
     return list(unique.values())
 
 
-def _iter_candidates(start_dir: str | None) -> Iterable[Path]:
+def _iter_candidates(start_dir: Path | None) -> Iterable[Path]:
     """Yield `.env` paths from start_dir upward to the filesystem root.
 
     Without a start_dir the search starts in the current directory; it yields nothing only when
     the current directory cannot be resolved.
     """
-    base = Path(start_dir) if start_dir else current_directory()
+    base = start_dir if start_dir is not None else current_directory()
     if base is None:
         return
     for directory in [base, *base.parents]:

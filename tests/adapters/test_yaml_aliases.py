@@ -13,7 +13,7 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
@@ -21,9 +21,6 @@ from lib_layered_config import LayerLoadError, read_config
 from lib_layered_config.adapters.file_loaders.structured import YAMLFileLoader, refuse_yaml_alias_blowup
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import os_agnostic
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _YAML_INSTALLED = importlib.util.find_spec("yaml") is not None
 _needs_yaml = pytest.mark.skipif(not _YAML_INSTALLED, reason="PyYAML is not installed on this interpreter")
@@ -34,10 +31,11 @@ _CHILD_TIMEOUT = 60
 
 _LOAD_IN_CHILD = """
 import sys
+from pathlib import Path
 from lib_layered_config.adapters.file_loaders.structured import YAMLFileLoader
 from lib_layered_config.domain.errors import InvalidFormatError
 try:
-    YAMLFileLoader().load(sys.argv[1])
+    YAMLFileLoader().load(Path(sys.argv[1]))
 except InvalidFormatError as exc:
     print("REFUSED:", exc)
 else:
@@ -122,7 +120,7 @@ def test_read_config_refuses_a_yaml_alias_cycle_as_a_layer_error(tmp_path: Path)
 def test_a_shared_alias_without_a_cycle_still_loads(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("base: &b {host: db.example.test, ports: [1, 2]}\nprod: *b\nstage: *b\n", encoding="utf-8")
-    loaded = YAMLFileLoader().load(str(path))
+    loaded = YAMLFileLoader().load(path)
     expected = {"host": "db.example.test", "ports": [1, 2]}
     assert loaded == {"base": expected, "prod": expected, "stage": expected}
 
@@ -132,14 +130,14 @@ def test_a_shared_alias_without_a_cycle_still_loads(tmp_path: Path) -> None:
 def test_aliases_that_expand_below_the_bound_still_load(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text(_alias_bomb(levels=5), encoding="utf-8")
-    loaded = YAMLFileLoader().load(str(path))
+    loaded = YAMLFileLoader().load(path)
     assert len(loaded) == 5
 
 
 @os_agnostic
 def test_a_large_document_without_aliases_is_never_refused_for_its_size() -> None:
     """The bound limits what aliases ADD; a plain document of more values than the bound loads."""
-    refuse_yaml_alias_blowup({"items": list(range(1_000_001))}, path="big.yaml")
+    refuse_yaml_alias_blowup({"items": list(range(1_000_001))}, path=Path("big.yaml"))
 
 
 @os_agnostic
@@ -147,7 +145,7 @@ def test_the_refusal_names_no_value(tmp_path: Path) -> None:
     secret: list[object] = ["s3cret-value"]
     secret.append(secret)
     with pytest.raises(InvalidFormatError) as caught:
-        refuse_yaml_alias_blowup({"password": secret}, path="secret.yaml")
+        refuse_yaml_alias_blowup({"password": secret}, path=Path("secret.yaml"))
     assert "s3cret" not in str(caught.value)
 
 

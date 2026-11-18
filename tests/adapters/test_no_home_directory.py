@@ -77,7 +77,7 @@ def test_a_set_appdata_needs_no_home_on_windows(work: Path, tmp_path: Path, vari
     roaming = _plant(tmp_path / "roaming" / "Acme" / "Demo" / "config.toml", 'k = "user"\n')
     env = {**_app_roots(tmp_path), variable: str(tmp_path / "roaming")}
     resolver = DefaultPathResolver(vendor="Acme", app="Demo", slug="demo", env=env, platform="win32", cwd=work)
-    assert [Path(p) for p in resolver.user()] == [roaming]
+    assert list(resolver.user()) == [roaming]
 
 
 @os_agnostic

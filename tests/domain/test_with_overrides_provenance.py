@@ -10,6 +10,7 @@ that carry an entry.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lib_layered_config import OVERRIDE_LAYER, Config
@@ -23,13 +24,16 @@ if TYPE_CHECKING:
 
 def _config_from(payload: Mapping[str, object]) -> Config:
     """A ``Config`` built the way ``read_config`` builds one, from a single app layer."""
-    result = merge_layers([LayerSnapshot(Layer.APP, payload, "/etc/app.toml")])
+    result = merge_layers([LayerSnapshot(Layer.APP, payload, Path("/etc/app.toml"))])
     return Config(result.data, result.provenance)
 
 
 def _keys_merged_as_a_layer(base: Mapping[str, object], change: Mapping[str, object]) -> set[str]:
     """The provenance keys when *change* arrives as a later merge layer over *base*."""
-    snapshots = [LayerSnapshot(Layer.APP, base, "/etc/app.toml"), LayerSnapshot(Layer.USER, change, "/opt/user.toml")]
+    snapshots = [
+        LayerSnapshot(Layer.APP, base, Path("/etc/app.toml")),
+        LayerSnapshot(Layer.USER, change, Path("/opt/user.toml")),
+    ]
     return set(merge_layers(snapshots).provenance)
 
 
@@ -58,7 +62,7 @@ def test_a_nested_empty_table_filled_by_an_override_drops_only_its_own_entry() -
 
     candidates = {"a", "a.b", "a.b.c", "a.keep"}
     assert _keys_with_an_origin(config, candidates) == _keys_merged_as_a_layer(base, change)
-    assert config.origin("a.keep") == {"layer": "app", "path": "/etc/app.toml", "key": "a.keep"}
+    assert config.origin("a.keep") == {"layer": "app", "path": str(Path("/etc/app.toml")), "key": "a.keep"}
 
 
 @os_agnostic

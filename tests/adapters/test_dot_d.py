@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,6 +14,9 @@ from lib_layered_config.adapters.file_loaders._dot_d import (
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import os_agnostic
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 @os_agnostic
 def test_expand_dot_d_returns_base_only_when_no_dot_d_dir(tmp_path: Path) -> None:
@@ -21,9 +24,9 @@ def test_expand_dot_d_returns_base_only_when_no_dot_d_dir(tmp_path: Path) -> Non
     base = tmp_path / "config.toml"
     base.write_text("[app]\nname = 'test'\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert result == [str(base)]
+    assert result == [base]
 
 
 @os_agnostic
@@ -31,7 +34,7 @@ def test_expand_dot_d_returns_empty_when_neither_exists(tmp_path: Path) -> None:
     """When neither base file nor .d directory exists, yield nothing."""
     missing = tmp_path / "missing.toml"
 
-    result = list(expand_dot_d(str(missing)))
+    result = list(expand_dot_d(missing))
 
     assert result == []
 
@@ -44,9 +47,9 @@ def test_expand_dot_d_returns_dot_d_only_when_base_missing(tmp_path: Path) -> No
     dot_d.mkdir()
     (dot_d / "10-db.toml").write_text("[db]\nhost = 'localhost'\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert result == [str(dot_d / "10-db.toml")]
+    assert result == [dot_d / "10-db.toml"]
 
 
 @os_agnostic
@@ -60,12 +63,12 @@ def test_expand_dot_d_merges_base_and_dot_d_in_order(tmp_path: Path) -> None:
     (dot_d / "20-cache.toml").write_text("[cache]\nenabled = true\n", encoding="utf-8")
     (dot_d / "10-db.toml").write_text("[db]\nport = 5432\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
     assert result == [
-        str(base),
-        str(dot_d / "10-db.toml"),
-        str(dot_d / "20-cache.toml"),
+        base,
+        dot_d / "10-db.toml",
+        dot_d / "20-cache.toml",
     ]
 
 
@@ -80,9 +83,9 @@ def test_expand_dot_d_sorts_lexicographically(tmp_path: Path) -> None:
     (dot_d / "a-first.toml").write_text("a = 1\n", encoding="utf-8")
     (dot_d / "m-middle.toml").write_text("m = 1\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert [Path(p).name for p in result] == ["a-first.toml", "m-middle.toml", "z-last.toml"]
+    assert [p.name for p in result] == ["a-first.toml", "m-middle.toml", "z-last.toml"]
 
 
 @os_agnostic
@@ -97,9 +100,9 @@ def test_expand_dot_d_filters_unsupported_extensions(tmp_path: Path) -> None:
     (dot_d / "notes.txt").write_text("Ignore me too\n", encoding="utf-8")
     (dot_d / ".hidden.toml").write_text("[hidden]\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert [Path(p).name for p in result] == [".hidden.toml", "10-valid.toml"]
+    assert [p.name for p in result] == [".hidden.toml", "10-valid.toml"]
 
 
 @os_agnostic
@@ -114,9 +117,9 @@ def test_expand_dot_d_handles_mixed_formats_in_dot_d(tmp_path: Path) -> None:
     (dot_d / "30-json.json").write_text('{"json": {"z": 3}}\n', encoding="utf-8")
     (dot_d / "40-yml.yml").write_text("yml:\n  w: 4\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert [Path(p).name for p in result] == [
+    assert [p.name for p in result] == [
         "10-toml.toml",
         "20-yaml.yaml",
         "30-json.json",
@@ -136,9 +139,9 @@ def test_expand_dot_d_ignores_subdirectories(tmp_path: Path) -> None:
     subdir.mkdir()
     (subdir / "should-ignore.toml").write_text("[nested]\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert [Path(p).name for p in result] == ["10-valid.toml"]
+    assert [p.name for p in result] == ["10-valid.toml"]
 
 
 @os_agnostic
@@ -148,7 +151,7 @@ def test_expand_dot_d_empty_dot_d_directory(tmp_path: Path) -> None:
     dot_d = tmp_path / "config.d"
     dot_d.mkdir()
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
     assert result == []
 
@@ -175,7 +178,7 @@ def test_collect_dot_d_files_sorts_and_filters(tmp_path: Path) -> None:
 
     result = list(_collect_dot_d_files(dot_d))
 
-    assert [Path(p).name for p in result] == ["a.yaml", "b.toml"]
+    assert [p.name for p in result] == ["a.yaml", "b.toml"]
 
 
 @os_agnostic
@@ -188,9 +191,9 @@ def test_expand_dot_d_with_yaml_base_file(tmp_path: Path) -> None:
     dot_d.mkdir()
     (dot_d / "10-extra.yaml").write_text("extra:\n  key: value\n", encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert result == [str(base), str(dot_d / "10-extra.yaml")]
+    assert result == [base, dot_d / "10-extra.yaml"]
 
 
 @os_agnostic
@@ -203,9 +206,9 @@ def test_expand_dot_d_with_json_base_file(tmp_path: Path) -> None:
     dot_d.mkdir()
     (dot_d / "10-extra.json").write_text('{"extra": true}\n', encoding="utf-8")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert result == [str(base), str(dot_d / "10-extra.json")]
+    assert result == [base, dot_d / "10-extra.json"]
 
 
 @os_agnostic
@@ -215,7 +218,7 @@ def test_expand_dot_d_refuses_a_base_path_that_is_a_directory(tmp_path: Path) ->
     base.mkdir()
 
     with pytest.raises(InvalidFormatError, match="is a directory, not a configuration file") as caught:
-        list(expand_dot_d(str(base)))
+        list(expand_dot_d(base))
 
     assert str(base) in str(caught.value)
 
@@ -231,9 +234,9 @@ def test_expand_dot_d_reads_the_legitimate_dot_d_companion_directory_silently(
     (dot_d / "10-extra.toml").write_text("[extra]\nx = 1\n", encoding="utf-8")
     caplog.set_level(logging.WARNING, logger="lib_layered_config")
 
-    result = list(expand_dot_d(str(base)))
+    result = list(expand_dot_d(base))
 
-    assert result == [str(dot_d / "10-extra.toml")]
+    assert result == [dot_d / "10-extra.toml"]
     assert caplog.records == []
 
 
@@ -248,9 +251,9 @@ def test_expand_dot_d_shared_directory_for_all_formats(tmp_path: Path) -> None:
 
     for ext in [".toml", ".yaml", ".json"]:
         base = tmp_path / f"config{ext}"
-        result = list(expand_dot_d(str(base)))
+        result = list(expand_dot_d(base))
         assert len(result) == 1
-        assert Path(result[0]).name == "10-shared.toml"
+        assert result[0].name == "10-shared.toml"
 
 
 @os_agnostic

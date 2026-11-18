@@ -92,8 +92,8 @@ _FORMS: dict[str, Callable[[int], str]] = {
 
 def _load_and_merge(parser: TomlParser, path: Path) -> dict[str, object]:
     """Read *path* the way ``read_config`` does: load it, then merge it as a layer."""
-    data = TOMLFileLoader(parser).load(str(path))
-    return merge_layers([LayerSnapshot(Layer.APP, data, str(path))]).data
+    data = TOMLFileLoader(parser).load(path)
+    return merge_layers([LayerSnapshot(Layer.APP, data, path)]).data
 
 
 def _nested_tables(levels: int) -> dict[str, object]:
@@ -199,7 +199,7 @@ def test_a_leading_byte_order_mark_is_skipped(parser: TomlParser, tmp_path: Path
     path.write_bytes(b"\xef\xbb\xbfa = 1\n")
 
     assert parser.loads(chr(0xFEFF) + "a = 1\n") == {"a": 1}
-    assert TOMLFileLoader(parser).load(str(path)) == {"a": 1}
+    assert TOMLFileLoader(parser).load(path) == {"a": 1}
 
 
 @os_agnostic
@@ -247,7 +247,7 @@ def test_an_integer_past_the_json_range_is_refused_by_the_loader(parser: TomlPar
     path.write_text(f"n = {2**127}\n", encoding="utf-8")
 
     with pytest.raises(InvalidFormatError, match="holds an integer JSON cannot write"):
-        TOMLFileLoader(parser).load(str(path))
+        TOMLFileLoader(parser).load(path)
 
 
 #: TOML 1.1 additions rtoml reads: the ``\e`` escape, a newline inside an inline table, and a time

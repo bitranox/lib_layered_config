@@ -27,7 +27,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from importlib import import_module
-from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ...domain.errors import InvalidFormatError, NotFoundError
@@ -50,6 +49,7 @@ from ._yaml_facade import as_yaml_module, safe_loader
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
+    from pathlib import Path
     from typing import BinaryIO
 
     from ._yaml_facade import YAMLModule, YAMLNode
@@ -118,7 +118,7 @@ class FileFormat(str, Enum):
     YAML = "yaml"
 
 
-def _log_file_read(path: str, size: int) -> None:
+def _log_file_read(path: Path, size: int) -> None:
     """Record that *path* was read with *size* bytes.
 
     Provide insight into which files were accessed and their size for
@@ -128,10 +128,10 @@ def _log_file_read(path: str, size: int) -> None:
         path: Absolute path read from disk.
         size: Number of bytes read.
     """
-    log_debug("config_file_read", layer=FILE_LAYER, path=path, size=size)
+    log_debug("config_file_read", layer=FILE_LAYER, path=str(path), size=size)
 
 
-def _log_file_loaded(path: str, file_format: FileFormat) -> None:
+def _log_file_loaded(path: Path, file_format: FileFormat) -> None:
     """Record a successful parse for *path* and *file_format*.
 
     Trace successful parsing events and note which parser handled the file.
@@ -140,7 +140,7 @@ def _log_file_loaded(path: str, file_format: FileFormat) -> None:
         path: Absolute file path.
         file_format: The format the file was parsed as; logged by its value (``"toml"``).
     """
-    log_debug("config_file_loaded", layer=FILE_LAYER, path=path, format=file_format.value)
+    log_debug("config_file_loaded", layer=FILE_LAYER, path=str(path), format=file_format.value)
 
 
 @dataclass(frozen=True)
@@ -156,7 +156,7 @@ class _ParseFailure:
     too_deep: bool = False
 
 
-def _log_file_invalid(path: str, file_format: FileFormat, message: str) -> None:
+def _log_file_invalid(path: Path, file_format: FileFormat, message: str) -> None:
     """Log a parse failure at DEBUG with the content-free message the caller will see.
 
     A refusal is always raised after it is logged, and the exception is the report: the caller
@@ -169,7 +169,7 @@ def _log_file_invalid(path: str, file_format: FileFormat, message: str) -> None:
         file_format: The format the file was parsed as; logged by its value.
         message: The content-free message the caller will also see.
     """
-    log_debug("config_file_invalid", layer=FILE_LAYER, path=path, format=file_format.value, error=message)
+    log_debug("config_file_invalid", layer=FILE_LAYER, path=str(path), format=file_format.value, error=message)
 
 
 def directory_not_config_file(path: Path) -> InvalidFormatError:
@@ -185,6 +185,7 @@ def directory_not_config_file(path: Path) -> InvalidFormatError:
         The error to raise.
 
     Examples:
+        >>> from pathlib import Path
         >>> str(directory_not_config_file(Path("config.toml")))
         'config.toml is a directory, not a configuration file'
     """
@@ -216,6 +217,7 @@ def special_file_not_config_file(path: Path) -> InvalidFormatError:
         The error to raise.
 
     Examples:
+        >>> from pathlib import Path
         >>> str(special_file_not_config_file(Path("nonexistent-lib-layered-config-probe")))
         'nonexistent-lib-layered-config-probe is a special file, not a configuration file'
     """
@@ -241,6 +243,7 @@ def unsupported_config_format(path: Path, suffixes: tuple[str, ...]) -> InvalidF
         The error to raise.
 
     Examples:
+        >>> from pathlib import Path
         >>> str(unsupported_config_format(Path("defaults.conf"), (".toml", ".json")))
         'defaults.conf has no supported format (.toml, .json)'
     """
@@ -249,7 +252,7 @@ def unsupported_config_format(path: Path, suffixes: tuple[str, ...]) -> InvalidF
     return InvalidFormatError(message)
 
 
-def _build_invalid_format_message(path: str, file_format: FileFormat, failure: _ParseFailure | None) -> str:
+def _build_invalid_format_message(path: Path, file_format: FileFormat, failure: _ParseFailure | None) -> str:
     """Build the caller-facing message: path, format, why and, when known, line and column.
 
     A refusal at the parser's nesting limit says so rather than calling a well-formed file
@@ -265,12 +268,13 @@ def _build_invalid_format_message(path: str, file_format: FileFormat, failure: _
         The message text.
 
     Examples:
-        >>> print(_build_invalid_format_message("a.toml", FileFormat.TOML, _ParseFailure(SourcePosition(2, 5))))
+        >>> from pathlib import Path
+        >>> print(_build_invalid_format_message(Path("a.toml"), FileFormat.TOML, _ParseFailure(SourcePosition(2, 5))))
         a.toml is not valid TOML (line 2, column 5)
-        >>> print(_build_invalid_format_message("a.yaml", FileFormat.YAML, None))
+        >>> print(_build_invalid_format_message(Path("a.yaml"), FileFormat.YAML, None))
         a.yaml is not valid YAML
         >>> too_deep = _ParseFailure(SourcePosition(1, 85), too_deep=True)
-        >>> print(_build_invalid_format_message("a.toml", FileFormat.TOML, too_deep))
+        >>> print(_build_invalid_format_message(Path("a.toml"), FileFormat.TOML, too_deep))
         a.toml nests deeper than the TOML parser allows (line 1, column 85)
     """
     position = failure.position if failure is not None else None
@@ -282,7 +286,7 @@ def _build_invalid_format_message(path: str, file_format: FileFormat, failure: _
 
 
 def _log_and_build_invalid_format(
-    path: str, file_format: FileFormat, failure: _ParseFailure | None
+    path: Path, file_format: FileFormat, failure: _ParseFailure | None
 ) -> InvalidFormatError:
     """Log the parse failure, then build the error for it: path, format and, when known, line/column.
 
@@ -388,7 +392,7 @@ def _run_parser(
         return _ParseOutcome(None, describe(exc))
 
 
-def _require_yaml_module(path: str) -> YAMLModule:
+def _require_yaml_module(path: Path) -> YAMLModule:
     """Fetch the PyYAML module, or refuse the YAML file at *path* naming the extra that reads it.
 
     PyYAML ships only in the ``yaml`` extra. A refusal rather than :class:`NotFoundError`, which
@@ -431,7 +435,7 @@ def _load_yaml_module() -> YAMLModule | None:
     return yaml
 
 
-def ensure_within_size_cap(path: str, size: int) -> None:
+def ensure_within_size_cap(path: Path, size: int) -> None:
     """Raise :class:`InvalidFormatError` when *size* exceeds :data:`MAX_CONFIG_FILE_BYTES`.
 
     Shared by every adapter that reads a whole configuration file into memory (the
@@ -470,6 +474,7 @@ def read_capped_bytes(path: Path) -> bytes:
         OSError: When *path* cannot be opened or read.
 
     Examples:
+        >>> from pathlib import Path
         >>> from tempfile import TemporaryDirectory
         >>> with TemporaryDirectory() as tmp:
         ...     target = Path(tmp) / "a.env"
@@ -480,12 +485,12 @@ def read_capped_bytes(path: Path) -> bytes:
     with path.open("rb") as stream:
         opened = os.fstat(stream.fileno())
         regular = stat.S_ISREG(opened.st_mode)
-        ensure_within_size_cap(str(path), opened.st_size if regular else 0)
+        ensure_within_size_cap(path, opened.st_size if regular else 0)
         # A regular file is asked for its size plus one byte, which ends at EOF in one read; a file
         # that grew since the fstat, and every stream, go on a chunk at a time up to the cap plus one.
         first = opened.st_size + 1 if regular else _READ_CHUNK_BYTES
         payload = _read_at_most(stream, MAX_CONFIG_FILE_BYTES + 1, first=first)
-    ensure_within_size_cap(str(path), len(payload))
+    ensure_within_size_cap(path, len(payload))
     return payload
 
 
@@ -513,7 +518,7 @@ class BaseFileLoader:
     Provides reusable helpers for reading files and asserting parser outputs.
     """
 
-    def _read(self, path: str) -> bytes:
+    def _read(self, path: Path) -> bytes:
         """Read *path* as bytes, raising :class:`NotFoundError` when the file is missing.
 
         Centralise file existence checks and logging so all loaders behave
@@ -533,15 +538,16 @@ class BaseFileLoader:
             Emits ``config_file_read`` debug events.
 
         Examples:
+            >>> from pathlib import Path
             >>> from tempfile import NamedTemporaryFile
             >>> tmp = NamedTemporaryFile(delete=False)
             >>> _ = tmp.write(b"key = 'value'")
             >>> tmp.close()
-            >>> BaseFileLoader()._read(tmp.name)[:3]
+            >>> BaseFileLoader()._read(Path(tmp.name))[:3]
             b'key'
             >>> Path(tmp.name).unlink()
         """
-        file_path = Path(path)
+        file_path = path
         if checked_kind(file_path) is not PathKind.FILE:
             raise NotFoundError(f"Configuration file not found: {path}")
         try:
@@ -554,7 +560,7 @@ class BaseFileLoader:
         return payload
 
     @staticmethod
-    def _ensure_mapping(data: object, *, path: str) -> Mapping[str, object]:
+    def _ensure_mapping(data: object, *, path: Path) -> Mapping[str, object]:
         """Ensure *data* behaves like a mapping, otherwise raise ``InvalidFormatError``.
 
         Merging logic expects mapping-like structures; other types indicate a
@@ -568,9 +574,10 @@ class BaseFileLoader:
             The validated mapping.
 
         Examples:
-            >>> BaseFileLoader._ensure_mapping({"key": 1}, path="demo")
+            >>> from pathlib import Path
+            >>> BaseFileLoader._ensure_mapping({"key": 1}, path=Path("demo"))
             {'key': 1}
-            >>> BaseFileLoader._ensure_mapping(42, path="demo")
+            >>> BaseFileLoader._ensure_mapping(42, path=Path("demo"))
             Traceback (most recent call last):
             ...
             lib_layered_config.domain.errors.InvalidFormatError: File demo did not produce a mapping
@@ -591,7 +598,7 @@ class TOMLFileLoader(BaseFileLoader):
         """Parse with *parser*; the default is the parser this interpreter chose at import."""
         self._parser = parser
 
-    def load(self, path: str) -> Mapping[str, object]:
+    def load(self, path: Path) -> Mapping[str, object]:
         """Return mapping extracted from TOML file at *path*.
 
         TOML is the primary structured format in the documentation; this loader
@@ -607,11 +614,12 @@ class TOMLFileLoader(BaseFileLoader):
             Emits ``config_file_loaded`` debug events.
 
         Examples:
+            >>> from pathlib import Path
             >>> from tempfile import NamedTemporaryFile
             >>> tmp = NamedTemporaryFile('w', delete=False, encoding='utf-8')
             >>> _ = tmp.write('key = "value"')
             >>> tmp.close()
-            >>> TOMLFileLoader().load(tmp.name)["key"]
+            >>> TOMLFileLoader().load(Path(tmp.name))["key"]
             'value'
             >>> Path(tmp.name).unlink()
         """
@@ -645,7 +653,7 @@ class JSONFileLoader(BaseFileLoader):
         """Parse with *codec*; the default is the codec this interpreter chose at import."""
         self._codec = codec
 
-    def load(self, path: str) -> Mapping[str, object]:
+    def load(self, path: Path) -> Mapping[str, object]:
         """Return mapping extracted from JSON file at *path*.
 
         Provide parity with TOML for teams that prefer JSON configuration.
@@ -660,11 +668,12 @@ class JSONFileLoader(BaseFileLoader):
             Emits ``config_file_loaded`` debug events.
 
         Examples:
+            >>> from pathlib import Path
             >>> from tempfile import NamedTemporaryFile
             >>> tmp = NamedTemporaryFile('w', delete=False, encoding='utf-8')
             >>> _ = tmp.write('{"enabled": true}')
             >>> tmp.close()
-            >>> JSONFileLoader().load(tmp.name)["enabled"]
+            >>> JSONFileLoader().load(Path(tmp.name))["enabled"]
             True
             >>> Path(tmp.name).unlink()
         """
@@ -693,7 +702,7 @@ class YAMLFileLoader(BaseFileLoader):
     Guards on PyYAML availability before composing and constructing with its pure-Python ``SafeLoader``.
     """
 
-    def load(self, path: str) -> Mapping[str, object]:
+    def load(self, path: Path) -> Mapping[str, object]:
         """Return mapping extracted from YAML file at *path*.
 
         Some teams rely on YAML for configuration; this loader keeps behaviour
@@ -715,11 +724,12 @@ class YAMLFileLoader(BaseFileLoader):
 
         Examples:
             >>> if _load_yaml_module() is not None:  # doctest: +SKIP
+            ...     from pathlib import Path
             ...     from tempfile import NamedTemporaryFile
             ...     tmp = NamedTemporaryFile('w', delete=False, encoding='utf-8')
             ...     _ = tmp.write('key: 1')
             ...     tmp.close()
-            ...     YAMLFileLoader().load(tmp.name)["key"]
+            ...     YAMLFileLoader().load(Path(tmp.name))["key"]
             ...     Path(tmp.name).unlink()
         """
         # Read first: a file that is gone stays "not found" (a layer read skips it) whether or not
@@ -759,7 +769,7 @@ class _ParsedYAML(NamedTuple):
     repeated_keys: list[str]
 
 
-def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> _ParsedYAML:
+def _parse_yaml_text(document: str, module: YAMLModule, path: Path) -> _ParsedYAML:
     """Turn a decoded YAML document into a Python shape that mirrors the file.
 
     The document is composed once with the safe loader: the repeated keys are read from that node
@@ -785,7 +795,8 @@ def _parse_yaml_text(document: str, module: YAMLModule, path: str) -> _ParsedYAM
 
     Examples:
         >>> module = _load_yaml_module()
-        >>> module is None or _parse_yaml_text("a: 1\\na: 2\\n", module, "memory.yaml") == (
+        >>> from pathlib import Path
+        >>> module is None or _parse_yaml_text("a: 1\\na: 2\\n", module, Path("memory.yaml")) == (
         ...     {"a": 2}, ["a (line 2, column 1)"])
         True
     """
@@ -824,7 +835,7 @@ class _AliasGraphSize(NamedTuple):
     cyclic: bool
 
 
-def refuse_yaml_alias_blowup(data: object, *, path: str) -> None:
+def refuse_yaml_alias_blowup(data: object, *, path: Path) -> None:
     """Refuse a parsed YAML document whose aliases form a cycle or expand past a bound.
 
     PyYAML builds an alias as a shared reference, so ``a: &x [*x]`` parses into a list that holds
@@ -844,10 +855,11 @@ def refuse_yaml_alias_blowup(data: object, *, path: str) -> None:
 
     Examples:
         >>> shared = [1, 2]
-        >>> refuse_yaml_alias_blowup({"a": shared, "b": shared}, path="demo.yaml")
+        >>> from pathlib import Path
+        >>> refuse_yaml_alias_blowup({"a": shared, "b": shared}, path=Path("demo.yaml"))
         >>> looped: list[object] = []
         >>> looped.append(looped)
-        >>> refuse_yaml_alias_blowup({"a": looped}, path="demo.yaml")
+        >>> refuse_yaml_alias_blowup({"a": looped}, path=Path("demo.yaml"))
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: demo.yaml aliases a node into itself
@@ -912,7 +924,7 @@ def _container_children(node: object) -> list[object]:
     return []
 
 
-def _refuse_repeated_keys(positions: list[str], *, path: str, file_format: FileFormat) -> None:
+def _refuse_repeated_keys(positions: list[str], *, path: Path, file_format: FileFormat) -> None:
     """Refuse a file that repeats a key within one table, naming every repeat's position.
 
     JSON and YAML parsers keep the last value of a repeated key without a word, so a copy-pasted
@@ -920,8 +932,10 @@ def _refuse_repeated_keys(positions: list[str], *, path: str, file_format: FileF
     message names positions only, never a value, which may be a secret.
 
     Examples:
-        >>> _refuse_repeated_keys([], path="demo.json", file_format=FileFormat.JSON)
-        >>> _refuse_repeated_keys(["db.host"], path="demo.json", file_format=FileFormat.JSON)  # doctest: +ELLIPSIS
+        >>> from pathlib import Path
+        >>> _refuse_repeated_keys([], path=Path("demo.json"), file_format=FileFormat.JSON)
+        >>> demo = Path("demo.json")
+        >>> _refuse_repeated_keys(["db.host"], path=demo, file_format=FileFormat.JSON)  # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: demo.json repeats a key, ...: db.host
@@ -985,7 +999,7 @@ def _repeats_in_mapping(
     return repeats
 
 
-def _refuse_non_string_keys(data: object, *, path: str) -> None:
+def _refuse_non_string_keys(data: object, *, path: Path) -> None:
     """Refuse a document holding a mapping key that is not a string.
 
     YAML reads ``1:`` as an int key and ``true:`` as a bool key, while everything downstream
@@ -1002,8 +1016,9 @@ def _refuse_non_string_keys(data: object, *, path: str) -> None:
         InvalidFormatError: When any mapping in *data* has a key that is not a string.
 
     Examples:
-        >>> _refuse_non_string_keys({"service": {"timeout": 5}}, path="demo.yaml")
-        >>> _refuse_non_string_keys({"db": {5: "x"}}, path="demo.yaml")  # doctest: +ELLIPSIS
+        >>> from pathlib import Path
+        >>> _refuse_non_string_keys({"service": {"timeout": 5}}, path=Path("demo.yaml"))
+        >>> _refuse_non_string_keys({"db": {5: "x"}}, path=Path("demo.yaml"))  # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: demo.yaml has keys ... db: 5 (int)
@@ -1042,7 +1057,7 @@ def _non_string_keys(data: object) -> list[str]:
     return sorted(found)
 
 
-def _refuse_ordered_map_tags(data: object, *, path: str) -> None:
+def _refuse_ordered_map_tags(data: object, *, path: Path) -> None:
     """Refuse a document holding a ``!!omap`` or ``!!pairs`` value.
 
     PyYAML's safe loader builds both tags as a list of ``(key, value)`` tuples, and it builds a
@@ -1060,8 +1075,9 @@ def _refuse_ordered_map_tags(data: object, *, path: str) -> None:
         InvalidFormatError: When any value in *data* came from ``!!omap`` or ``!!pairs``.
 
     Examples:
-        >>> _refuse_ordered_map_tags({"items": [{"a": 1}]}, path="demo.yaml")
-        >>> _refuse_ordered_map_tags({"creds": [("password", "x")]}, path="demo.yaml")  # doctest: +ELLIPSIS
+        >>> from pathlib import Path
+        >>> _refuse_ordered_map_tags({"items": [{"a": 1}]}, path=Path("demo.yaml"))
+        >>> _refuse_ordered_map_tags({"creds": [("password", "x")]}, path=Path("demo.yaml"))  # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: demo.yaml uses !!omap or !!pairs ...: creds
@@ -1106,7 +1122,7 @@ def _ordered_map_positions(data: object) -> list[str]:
 _TAG_OF_UNSERIALISABLE: dict[type, str] = {set: "!!set", bytes: "!!binary"}
 
 
-def _refuse_values_json_cannot_carry(data: object, *, path: str) -> None:
+def _refuse_values_json_cannot_carry(data: object, *, path: Path) -> None:
     """Refuse a document holding a ``!!set`` or ``!!binary`` value.
 
     PyYAML's safe loader builds them as ``set`` and ``bytes``, and neither has a JSON form: such a
@@ -1123,8 +1139,9 @@ def _refuse_values_json_cannot_carry(data: object, *, path: str) -> None:
         InvalidFormatError: When any value in *data* came from ``!!set`` or ``!!binary``.
 
     Examples:
-        >>> _refuse_values_json_cannot_carry({"tags": ["x"]}, path="demo.yaml")
-        >>> _refuse_values_json_cannot_carry({"tags": {"x"}}, path="demo.yaml")  # doctest: +ELLIPSIS
+        >>> from pathlib import Path
+        >>> _refuse_values_json_cannot_carry({"tags": ["x"]}, path=Path("demo.yaml"))
+        >>> _refuse_values_json_cannot_carry({"tags": {"x"}}, path=Path("demo.yaml"))  # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: demo.yaml uses !!set or !!binary, ...: tags (set)
@@ -1150,7 +1167,7 @@ def _unserialisable_positions(data: object) -> list[str]:
     return _positions_of(data, lambda node: type(node).__name__ if type(node) in _TAG_OF_UNSERIALISABLE else None)
 
 
-def _refuse_integers_json_cannot_carry(data: object, *, path: str, file_format: FileFormat) -> None:
+def _refuse_integers_json_cannot_carry(data: object, *, path: Path, file_format: FileFormat) -> None:
     """Refuse a document holding an integer outside ``-2**63 .. 2**64-1``.
 
     orjson writes no integer outside that range, and rtoml reads up to 128 bits while PyYAML reads
@@ -1167,9 +1184,11 @@ def _refuse_integers_json_cannot_carry(data: object, *, path: str, file_format: 
         InvalidFormatError: When any integer in *data* is outside the range.
 
     Examples:
-        >>> _refuse_integers_json_cannot_carry({"port": 2**64 - 1}, path="a.toml", file_format=FileFormat.TOML)
+        >>> from pathlib import Path
+        >>> _refuse_integers_json_cannot_carry({"port": 2**64 - 1}, path=Path("a.toml"), file_format=FileFormat.TOML)
         >>> toml = FileFormat.TOML
-        >>> _refuse_integers_json_cannot_carry({"port": 2**64}, path="a.toml", file_format=toml)  # doctest: +ELLIPSIS
+        >>> a_toml = Path("a.toml")
+        >>> _refuse_integers_json_cannot_carry({"port": 2**64}, path=a_toml, file_format=toml)  # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: a.toml holds an integer JSON ...: port (int, 65 bits)
@@ -1185,7 +1204,7 @@ def _refuse_integers_json_cannot_carry(data: object, *, path: str, file_format: 
     raise InvalidFormatError(message)
 
 
-def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, file_format: FileFormat) -> None:
+def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: Path, file_format: FileFormat) -> None:
     """Refuse a document nesting deeper than JSON output can write.
 
     orjson writes at most 254 levels and ``read_config_json`` wraps the config in one more, so a
@@ -1206,8 +1225,9 @@ def _refuse_nesting_json_cannot_write(data: Mapping[str, object], *, path: str, 
         ...     for _ in range(depth):
         ...         value = [value]
         ...     return value
-        >>> _refuse_nesting_json_cannot_write({"deep": nested(252)}, path="a.json", file_format=FileFormat.JSON)
-        >>> _refuse_nesting_json_cannot_write({"deep": nested(253)}, path="a.json", file_format=FileFormat.JSON)
+        >>> from pathlib import Path
+        >>> _refuse_nesting_json_cannot_write({"deep": nested(252)}, path=Path("a.json"), file_format=FileFormat.JSON)
+        >>> _refuse_nesting_json_cannot_write({"deep": nested(253)}, path=Path("a.json"), file_format=FileFormat.JSON)
         Traceback (most recent call last):
         ...
         lib_layered_config.domain.errors.InvalidFormatError: a.json nests deep 254 levels deep; JSON ... 253, ...
