@@ -59,7 +59,7 @@ from .domain.deploy_permissions import (
     parse_deploy_permissions,
 )
 from .domain.errors import ConfigError, DeployDestinationError, ValidationError
-from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, DEPLOY_LAYERS, Layer
+from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, DEPLOY_LAYERS, Layer, deploy_layer
 from .domain.printable import escape_controls
 from .observability import log_warn
 
@@ -394,11 +394,7 @@ def _same_content(first: Path, second: Path) -> bool:
 
 def _validate_target(target: Layer | str) -> Layer:
     """Return the layer a caller-spelled *target* names (any case), refusing any other name."""
-    name = _target_text(target)
-    layer = _TARGET_LAYERS.get(name.lower())
-    if layer is None:
-        raise ValidationError(f"Unsupported deployment target: {name}")
-    return layer
+    return deploy_layer(target)
 
 
 def _target_text(target: Layer | str) -> str:

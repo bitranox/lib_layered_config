@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+import lib_layered_config
+from lib_layered_config.domain.config import Config, SourceInfo
 from tests.support.os_markers import os_agnostic
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2] / "src" / "lib_layered_config"
@@ -128,3 +130,11 @@ def test_a_module_defining_public_names_lists_them_in_all(path: Path) -> None:
 def test_the_scan_sees_the_modules() -> None:
     """A wrong root would pass every case above by collecting none."""
     assert len(_modules()) > 40
+
+
+@os_agnostic
+def test_source_info_is_importable_from_the_package_root() -> None:
+    # Config.origin returns it, and the 9.0.0 changelog tells SourceInfoPayload importers to take it from here.
+    assert "SourceInfo" in lib_layered_config.__all__
+    assert lib_layered_config.SourceInfo is SourceInfo
+    assert "SourceInfo" in str(Config.origin.__annotations__["return"])

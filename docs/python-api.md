@@ -50,6 +50,7 @@ from lib_layered_config import (
     bind_trace_id,
     # Redaction and provenance
     NotSensitiveKeys,
+    SourceInfo,
     is_sensitive,
     is_sensitive_at,
     redact_mapping,
@@ -176,7 +177,7 @@ Return provenance metadata for a dotted key when available.
 **Parameters:**
 - `key` (str, required): Dotted key in the metadata map (e.g., `"service.timeout"`).
 
-**Returns:** Dictionary with keys `layer` (str), `path` (str | None), and `key` (str), or `None` if the key was never observed. A table that holds values has no entry of its own (its values carry theirs), so `origin()` returns `None` for it; an empty table reports where it was last declared. `layer` is always text: an entry built with an enum member (`Layer.USER`, or a caller's own str-valued enum) is stored as its value (`"user"`). Besides the six layer names it can be `"override"` (`OVERRIDE_LAYER`) or a source a caller names itself (`"cli"`); `Layer(...)` and `LayerSnapshot.of(...)` refuse those two with a `ValueError`.
+**Returns:** A `SourceInfo` (a `TypedDict`, importable from `lib_layered_config` for annotations) with keys `layer` (str), `path` (str | None), and `key` (str), or `None` if the key was never observed. A table that holds values has no entry of its own (its values carry theirs), so `origin()` returns `None` for it; an empty table reports where it was last declared. `layer` is always text: an entry built with an enum member (`Layer.USER`, or a caller's own str-valued enum) is stored as its value (`"user"`). Besides the six layer names it can be `"override"` (`OVERRIDE_LAYER`) or a source a caller names itself (`"cli"`); `Layer(...)` and `LayerSnapshot.of(...)` refuse those two with a `ValueError`.
 
 **Examples:**
 

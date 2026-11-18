@@ -26,6 +26,7 @@ from ...domain.identifiers import (
     DEFAULT_MAX_PROFILE_LENGTH,
     Layer,
     PlatformFamily,
+    deploy_layer,
     platform_family,
     validate_hostname,
     validate_profile,
@@ -141,17 +142,18 @@ class DefaultPathResolver:
         """Return the file a deploy writes for *layer*, in the layout the reads of this resolver use.
 
         Args:
-            layer: ``Layer.APP``, ``Layer.HOST`` or ``Layer.USER``.
+            layer: ``Layer.APP``, ``Layer.HOST`` or ``Layer.USER``; an untyped caller may pass the
+                name (``"app"``, any case), as ``deploy_config`` takes it.
 
         Returns:
             ``config.toml`` in the layer's directory, or ``hosts/<hostname>.toml``.
 
         Raises:
-            ValidationError: *layer* is the host layer and the machine's hostname cannot name a file.
-            KeyError: *layer* is not one a deploy writes.
+            ValidationError: *layer* is not one a deploy writes (``Unsupported deployment target: env``),
+                or it is the host layer and the machine's hostname cannot name a file.
             LayerRootNotAbsoluteError, HomeDirectoryUnknownError: The layer's root cannot be used.
         """
-        return deploy_destination(self._strategy, layer, host_file_name=self.require_host_file_name)
+        return deploy_destination(self._strategy, deploy_layer(layer), host_file_name=self.require_host_file_name)
 
     @property
     def strategy(self) -> PlatformStrategy:

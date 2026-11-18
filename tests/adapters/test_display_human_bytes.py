@@ -2,8 +2,9 @@
 
 The human view used to call ``Console.print`` once per line (three calls per leaf), and Rich's
 per-call pipeline made it 75-90x slower than the JSON view. It now prints once per call. This test
-keeps the per-line printer as the oracle (``_PerLineOracle``, the renderer as it stood before that
-change, built from the same public helpers) and requires byte-identical output from both under every
+keeps the per-line printer as the oracle (``_PerLineOracle``, one ``print`` per line with the same
+``soft_wrap`` the view uses, built from the same public helpers) and requires byte-identical output
+from both under every
 console setting a caller can pass: highlighting on and off, no colour, forced truecolor, forced
 standard colour, widths 40, 80 and 200, for the whole configuration and for a section. Both arms run
 in one process against the same Rich, so a Rich upgrade cannot fail it by itself.
@@ -76,7 +77,7 @@ def _config() -> Config:
 
 @dataclass(frozen=True)
 class _PerLineOracle:
-    """The human renderer as it was: one ``Console.print`` per line."""
+    """The human renderer printed with one ``Console.print`` per line, never wrapping, as the view does."""
 
     config: Config
     console: Console
@@ -84,8 +85,8 @@ class _PerLineOracle:
 
     def render(self, section: str | None) -> None:
         value = self.config.get_redacted(section, _ABSENT) if section else _ABSENT
-        self.console.print(_NOTE, style="bright_red")
-        self.console.print()
+        self.console.print(_NOTE, style="bright_red", soft_wrap=True)
+        self.console.print(soft_wrap=True)
         if not section:
             self._table(self.config.as_dict(redact=True), ())
         elif is_table(value):
@@ -112,19 +113,19 @@ class _PerLineOracle:
                 self._table(value, (*path, key))
 
     def _header(self, path: tuple[str, ...], *, empty: bool) -> None:
-        self.console.print()
+        self.console.print(soft_wrap=True)
         info = self.config.origin(".".join(path)) if empty else None
         if info is not None:
-            self.console.print(self._source_line(info))
+            self.console.print(self._source_line(info), soft_wrap=True)
         header = Text("[" + toml_path(path) + "]")
         header.stylize("bold cyan")
-        self.console.print(header)
+        self.console.print(header, soft_wrap=True)
 
     def _entry(self, *, label: str, key_path: tuple[str, ...], value: object, indent: bool) -> None:
         prefix = "    " if indent else ""
         info = self.config.origin(".".join(key_path))
         if info is not None:
-            self.console.print(self._source_line(info, prefix))
+            self.console.print(self._source_line(info, prefix), soft_wrap=True)
         if is_array(value):
             own = self.config.origin(".".join(key_path))
             for element in _element_paths(value, key_path):
@@ -134,14 +135,14 @@ class _PerLineOracle:
                 ):
                     line = self._source_line(other, prefix)
                     line.append(f" for {toml_path(element)}")
-                    self.console.print(line)
+                    self.console.print(line, soft_wrap=True)
         value_str = toml_value(value)
         text = Text(prefix)
         text.append(label, style="orange3")
         text.append(" = ", style="white")
         text.append(value_str, style="dim red" if REDACTED_PLACEHOLDER in value_str else "green")
-        self.console.print(text)
-        self.console.print()
+        self.console.print(text, soft_wrap=True)
+        self.console.print(soft_wrap=True)
 
 
 def _element_paths(value: object, path: tuple[str, ...]) -> Iterator[tuple[str, ...]]:

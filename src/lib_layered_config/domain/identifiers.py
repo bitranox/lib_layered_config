@@ -39,10 +39,14 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
 
 from .errors import ValidationError
 from .printable import escape_controls
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 #: Default maximum length for profile names (characters).
 #: Profile names are used as path segments, so reasonable limits prevent
@@ -246,6 +250,41 @@ class Layer(str, Enum):
 #: The layers a deploy writes, in this order: the deploy targets, the CLI's ``--target`` choices and
 #: the layers ``DeployPermissions`` holds modes for.
 DEPLOY_LAYERS: Final[tuple[Layer, ...]] = (Layer.APP, Layer.HOST, Layer.USER)
+
+#: The deploy layers by the name a caller spells, matched case-insensitively.
+_DEPLOY_LAYER_NAMES: Final[Mapping[str, Layer]] = MappingProxyType({layer.value: layer for layer in DEPLOY_LAYERS})
+
+
+def deploy_layer(target: Layer | str) -> Layer:
+    """Return the deploy layer *target* names: a member, or its name in any case.
+
+    ``Layer`` is a ``str`` enum, so ``"app"`` and ``Layer.APP`` compare equal; every function that
+    takes a deploy layer (``deploy_config``, ``deploy_config_paths``, ``destination_for``) accepts
+    both through this one rule, instead of some comparing by identity and refusing the name.
+
+    Args:
+        target: ``Layer.APP``, ``Layer.HOST``, ``Layer.USER``, or ``"app"``, ``"host"``, ``"user"``.
+
+    Returns:
+        The member.
+
+    Raises:
+        ValidationError: *target* names no layer a deploy writes (``Layer.ENV``, ``"nope"``).
+
+    Examples:
+        >>> deploy_layer("User") is Layer.USER
+        True
+        >>> deploy_layer(Layer.ENV)
+        Traceback (most recent call last):
+            ...
+        lib_layered_config.domain.errors.ValidationError: Unsupported deployment target: env
+    """
+    # A member's value, not the member: an f-string over a (str, Enum) member reads Layer.ENV on 3.11+.
+    name = target.value if isinstance(target, Layer) else target
+    layer = _DEPLOY_LAYER_NAMES.get(name.lower())
+    if layer is None:
+        raise ValidationError(f"Unsupported deployment target: {name}")
+    return layer
 
 
 class PlatformFamily(str, Enum):
@@ -653,6 +692,7 @@ __all__ = [
     "ExamplePlatform",
     "Layer",
     "PlatformFamily",
+    "deploy_layer",
     "is_valid_profile_name",
     "platform_family",
     "validate_hostname",

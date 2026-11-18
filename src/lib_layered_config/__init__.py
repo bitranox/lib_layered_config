@@ -51,7 +51,7 @@ from .deploy import (
     deployed_before_failure,
     read_deploy_config,
 )
-from .domain.config import OVERRIDE_LAYER
+from .domain.config import OVERRIDE_LAYER, SourceInfo
 from .domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from .domain.deploy_permissions import (
     DeployPermissions,
@@ -136,6 +136,7 @@ __all__ = [
     "NotSensitiveKeys",
     "OutputFormat",
     "PermissionProblem",
+    "SourceInfo",
     "ValidationError",
     "bind_trace_id",
     "default_env_prefix",

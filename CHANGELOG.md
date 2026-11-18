@@ -6,6 +6,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `SourceInfo`, the type `Config.origin()` returns, is exported from `lib_layered_config`, where the 9.0.0
+  entry for the removed `SourceInfoPayload` already told importers to take it from.
+
+### Fixed
+
+- `DefaultPathResolver(...).destination_for` takes a layer by name again (`"app"`, `"host"`, `"user"`, any
+  case), as `deploy_config` and `deploy_config_paths` do and as the deploy strategies before 8.1.0 did; since
+  8.1.0 the name raised `KeyError`. A layer a deploy does not write (`Layer.ENV`, `"nope"`) raises
+  `ValidationError` (`Unsupported deployment target: env`) instead of `KeyError`.
+- `display_config`'s human format no longer breaks long lines. Off a terminal Rich wrapped every line at 80
+  columns (or `COLUMNS`), so a long `# layer:` comment or string value continued on a line without `#` or
+  quotes and the output stopped reading back as TOML; a console a caller passes in is printed to the same way.
+
 ### Documentation
 
 - A Windows SMB share that grants Change but not Full: the first deploy of a
