@@ -17,6 +17,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   relative `XDG_CONFIG_HOME`; `read` prints `debug = false`; `deploy` takes `--force` / `--no-force`; the
   `dot_d_*` result lists, the stored-spelling rule for an environment `null`, and the refusal of a slug ending
   in `_` or `-` are described where a reader looks for them.
+- `--help` names every accepted `--platform` value (`deploy`, `generate-examples`), gives `read-json`'s
+  `--vendor`, `--app`, `--slug`, `--start-dir` and `--default-file` a help line, and gives `--json` the
+  failure envelope's shape; `DeployMode`, `LayerModes`, `DeployPermissions`, `DeployPermissionsError` and
+  `PermissionProblem` document their fields.
 
 ## [9.0.1] - 2026-11-18
 
@@ -87,9 +91,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - `read --json`, `read-json --json` and `read --no-provenance --json` print the failure envelope
-  (`TypeError`, "Recursion limit reached", exit 22 on POSIX and 87 on Windows, as without `--json`) for a
-  configuration nested as deep as the plain JSON
-  output allows. They printed nothing on stdout: the envelope nests the data one level deeper, and its final
+  (`TypeError`, "Recursion limit reached", exit 22 on POSIX and 87 on Windows) for a configuration nested as
+  deep as the plain JSON output allows, which still prints without `--json`. They printed nothing on stdout: the envelope nests the data one level deeper, and its final
   serialisation ran outside the command's failure handler.
 - `Config` stores a provenance `layer` given as an enum member (a `Layer`, or a caller's own str-valued enum)
   as its value, so `origin()`, `display_config` and every other view show `user`, not `Layer.USER`.

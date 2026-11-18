@@ -69,7 +69,12 @@ _APP_AND_HOST_MODE_FIELDS: Final[frozenset[str]] = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class LayerModes:
-    """The directory mode and the file mode one layer is deployed with."""
+    """The directory mode and the file mode one layer is deployed with.
+
+    Attributes:
+        directory: Mode of every directory the deploy creates, a ``ModeKind.DIRECTORY`` mode.
+        file: Mode of every file the deploy writes, a ``ModeKind.FILE`` mode.
+    """
 
     directory: DeployMode
     file: DeployMode
@@ -96,7 +101,13 @@ class LayerModes:
 
 @dataclass(frozen=True, slots=True)
 class PermissionProblem:
-    """One refused setting: its dotted key, why, and where it was set when known."""
+    """One refused setting: its dotted key, why, and where it was set when known.
+
+    Attributes:
+        key: Dotted key of the setting (``lib_layered_config.default_permissions.user_file``).
+        reason: Why it was refused.
+        source: Where the value came from (a file path, ``override``), or ``None`` when unknown.
+    """
 
     key: str
     reason: str
@@ -109,7 +120,12 @@ class PermissionProblem:
 
 
 class DeployPermissionsError(ValidationError):
-    """The permission settings cannot be used; one line per problem, then an optional hint."""
+    """The permission settings cannot be used; one line per problem, then an optional hint.
+
+    Attributes:
+        problems: Every refused setting, in the order found.
+        hint: A line telling the caller what to do, or ``None``.
+    """
 
     def __init__(self, problems: Sequence[PermissionProblem], *, hint: str | None = None) -> None:
         """Store the problems and build the message from them."""
@@ -148,7 +164,14 @@ def _built_in(layer: Layer) -> LayerModes:
 
 @dataclass(frozen=True, slots=True)
 class DeployPermissions:
-    """Directory and file modes per deployment layer, plus whether to set them at all."""
+    """Directory and file modes per deployment layer, plus whether to set them at all.
+
+    Attributes:
+        app: Modes for the app layer.
+        host: Modes for the host layer.
+        user: Modes for the user layer.
+        enabled: Whether a deploy sets the modes at all (``False`` leaves them to the umask).
+    """
 
     app: LayerModes
     host: LayerModes

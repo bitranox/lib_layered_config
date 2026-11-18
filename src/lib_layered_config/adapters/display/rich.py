@@ -265,8 +265,8 @@ def display_config(
 def _known_format(output_format: OutputFormat) -> OutputFormat:
     """Return *output_format* as an :class:`OutputFormat`, refusing any other value.
 
-    An untyped caller can pass the format's text; a value that names no format used to fall
-    through to the human view, so a typo printed the wrong format instead of failing.
+    An untyped caller can pass the format's text. A value that names no format is refused so a
+    typo fails instead of falling through to the human view.
     """
     try:
         return OutputFormat(output_format)

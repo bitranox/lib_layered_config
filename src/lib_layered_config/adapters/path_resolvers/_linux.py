@@ -55,7 +55,7 @@ class LinuxStrategy(PlatformStrategy):
 
     Path Layouts:
         - App: ``/etc/xdg/<slug>`` then ``/etc/<slug>``
-        - Host: ``<etc>/<slug>/hosts/<hostname>.toml``
+        - Host: ``hosts/<hostname>.toml`` under each app directory; deploy writes the first
         - User: ``$XDG_CONFIG_HOME/<slug>`` or ``~/.config/<slug>``
         - Dotenv: ``$XDG_CONFIG_HOME/<slug>/.env``
     """

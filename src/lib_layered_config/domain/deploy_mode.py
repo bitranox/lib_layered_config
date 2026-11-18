@@ -174,6 +174,10 @@ class DeployMode:
     Widening READ access beyond the layer defaults is allowed; a special bit, group or world
     write, an execute bit on a file, or locking the owner out is not.
 
+    Attributes:
+        value: The mode bits, ``0`` to ``0o7777``.
+        kind: Whether the mode is for a directory or a file; the safety rules differ.
+
     Examples:
         >>> str(DeployMode(0o750, ModeKind.DIRECTORY))
         '0o750'

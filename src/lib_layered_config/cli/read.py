@@ -178,20 +178,22 @@ def read_command(
 
 
 @click.command("read-json", cls=EnvelopeCommand, context_settings=CLICK_CONTEXT_SETTINGS)
-@option("--vendor", required=True)
-@option("--app", required=True)
-@option("--slug", required=True)
+@option("--vendor", required=True, help="Vendor namespace")
+@option("--app", required=True, help="Application name")
+@option("--slug", required=True, help="Slug identifying the configuration set")
 @option("--profile", default=None, help="Configuration profile name")
 @option("--prefer", multiple=True, help=_PREFER_HELP)
 @option(
     "--start-dir",
     type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True, readable=True),
     default=None,
+    help="Starting directory for .env upward search",
 )
 @option(
     "--default-file",
     type=click.Path(path_type=Path, exists=True, file_okay=True, dir_okay=False, readable=True),
     default=None,
+    help="Optional lowest-precedence defaults file",
 )
 @option(
     "--env-file",

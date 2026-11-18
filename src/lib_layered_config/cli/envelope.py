@@ -45,7 +45,7 @@ json_envelope_option = option(
     "json_envelope",
     is_flag=True,
     default=False,
-    help="Print one JSON envelope {ok, command, data, skipped} instead, also when the command fails",
+    help="Print one JSON envelope {ok, command, data, skipped} instead; on failure {ok, command, error}",
 )
 
 

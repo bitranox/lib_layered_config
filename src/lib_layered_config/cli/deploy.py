@@ -204,7 +204,7 @@ def _skipped_in(report: dict[str, list[str]]) -> list[str]:
 @option(
     "--platform",
     default=None,
-    help="Override auto-detected platform (linux, darwin, windows)",
+    help="Override auto-detected platform: linux, posix; darwin, macos, mac; windows, win, win32, wine",
 )
 @option(
     "--force/--no-force",

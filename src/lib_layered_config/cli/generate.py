@@ -34,7 +34,7 @@ __all__ = [
 @option(
     "--platform",
     default=None,
-    help="Override platform layout (posix/windows)",
+    help="Override platform layout: posix, linux, darwin, macos, mac (POSIX); windows, win, win32, wine",
 )
 @option(
     "--force/--no-force",
