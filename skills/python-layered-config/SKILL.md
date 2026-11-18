@@ -494,7 +494,12 @@ file in the source's `.d` may be any supported format; one that does not parse, 
 without the `yaml` extra, raises `LayerLoadError` too, so no file of the deploy is written, and a
 non-config file (a `README.md`) is copied unparsed. A missing source raises `FileNotFoundError`; a
 source or a file in its `.d` directory behind a permission wall raises `PermissionError` on every
-Python, before anything is written.
+Python, before anything is written. Targets are written one after another, in the order `targets`
+lists them, so a deploy that fails part-way (a permission wall at the second target, a full disk)
+has written the earlier ones; it
+raises the original exception unchanged, and `deployed_before_failure(error)` (exported from
+`lib_layered_config`) returns the `DeployResult`s already written, in write order (a `.d` copy sits
+in its main file's `.dot_d_results`), or `[]` for an error that carries none.
 
 **What a deploy sees, before it runs.** `deploy_config_paths(source, vendor=...,
 app=..., slug=..., targets=[...])` returns every file that deploy writes, resolved, as a frozenset:
