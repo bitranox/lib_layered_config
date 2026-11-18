@@ -23,6 +23,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   They answered with their own OS's layout whatever the wrapped resolver's platform was. Use
   `DefaultPathResolver(vendor=..., app=..., slug=..., platform=...).destination_for(layer)`, which gives the same
   path: `platform="linux"` for what `LinuxDeployment(resolver)` returned, `"darwin"` and `"win32"` for the others.
+- `apply_mode` and `modes_apply` from `lib_layered_config.domain.permissions`: a chmod and a platform check are I/O,
+  which the domain layer does not do. They are in `lib_layered_config.adapters._file_mode` now, an internal
+  module; `modes_apply()` is `os.name == "posix"`, which a caller can test directly.
 
 ## [8.1.0] - 2026-11-18
 

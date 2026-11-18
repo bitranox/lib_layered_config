@@ -9,13 +9,13 @@ files based on their target layer:
 - **User layer**: Private to user (700/600)
   Personal configuration that should not be accessible by other users.
 
-On Windows, modes are skipped since Windows uses ACLs rather than Unix-style
-permission bits; a refused mode is refused on every platform.
+Setting a mode on a file (``apply_mode``) is filesystem I/O and lives in
+``adapters._file_mode``; on Windows it is skipped, since Windows uses ACLs. A refused mode
+(``DeployMode``) is refused on every platform.
 """
 
 from __future__ import annotations
 
-import os
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
@@ -23,9 +23,6 @@ from .identifiers import Layer
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
-
-    from .deploy_mode import DeployMode
 
 __all__ = [
     "DEFAULT_APP_DIR_MODE",
@@ -34,8 +31,6 @@ __all__ = [
     "DEFAULT_USER_FILE_MODE",
     "LAYER_PERMISSIONS",
     "DefaultLayerModes",
-    "apply_mode",
-    "modes_apply",
 ]
 
 # App/Host layer defaults (world-readable, admin-writable)
@@ -64,18 +59,3 @@ LAYER_PERMISSIONS: Final[Mapping[Layer, DefaultLayerModes]] = MappingProxyType(
         Layer.USER: DefaultLayerModes(directory=DEFAULT_USER_DIR_MODE, file=DEFAULT_USER_FILE_MODE),
     }
 )
-
-
-def modes_apply() -> bool:
-    """Return whether this platform applies Unix permission modes (POSIX); Windows uses ACLs."""
-    return os.name == "posix"
-
-
-def apply_mode(path: Path, mode: DeployMode) -> None:
-    """Set *mode* on *path* where the platform applies modes; a no-op on Windows.
-
-    Taking a :class:`DeployMode` rather than an int is the guard: an unsafe mode cannot be
-    constructed, so it cannot reach ``chmod``.
-    """
-    if modes_apply():
-        path.chmod(mode.value)

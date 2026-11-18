@@ -6,18 +6,12 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from lib_layered_config.domain.deploy_mode import DeployMode, DeployModeError, ModeKind
 from lib_layered_config.domain.identifiers import Layer
-from lib_layered_config.domain.permissions import (
-    LAYER_PERMISSIONS,
-    DefaultLayerModes,
-    apply_mode,
-)
-from tests.support.os_markers import os_agnostic, posix_only
+from lib_layered_config.domain.permissions import LAYER_PERMISSIONS, DefaultLayerModes
+from tests.support.os_markers import os_agnostic
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, MutableMapping
-    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Permission constant values
@@ -51,37 +45,6 @@ class TestPermissionConstants:
         table = cast("MutableMapping[Layer, DefaultLayerModes]", LAYER_PERMISSIONS)
         with pytest.raises(TypeError):
             table[Layer.USER] = DefaultLayerModes(directory=0o777, file=0o666)
-
-
-# ---------------------------------------------------------------------------
-# apply_mode: Guarded chmod sink
-# ---------------------------------------------------------------------------
-
-
-@os_agnostic
-def test_apply_mode_refuses_a_negative_mode_on_every_platform(tmp_path: Path) -> None:
-    target = tmp_path / "config.toml"
-    target.write_text("x", encoding="utf-8")
-    with pytest.raises(DeployModeError, match=r"mode -1 is outside 0\.\.0o7777"):
-        apply_mode(target, DeployMode(-1, ModeKind.FILE))
-
-
-@posix_only
-def test_apply_mode_leaves_the_mode_alone_when_it_refuses(tmp_path: Path) -> None:
-    target = tmp_path / "conf"
-    target.mkdir()
-    target.chmod(0o700)
-    with pytest.raises(DeployModeError, match=r"world write \(0o002\)"):
-        apply_mode(target, DeployMode(0o777, ModeKind.DIRECTORY))
-    assert (target.stat().st_mode & 0o7777) == 0o700
-
-
-@posix_only
-def test_apply_mode_sets_the_mode(tmp_path: Path) -> None:
-    target = tmp_path / "config.toml"
-    target.write_text("x", encoding="utf-8")
-    apply_mode(target, DeployMode(0o640, ModeKind.FILE))
-    assert (target.stat().st_mode & 0o7777) == 0o640
 
 
 # ---------------------------------------------------------------------------

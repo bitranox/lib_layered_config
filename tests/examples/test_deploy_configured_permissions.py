@@ -16,10 +16,10 @@ from lib_layered_config import (
     LayerModes,
     read_config,
 )
+from lib_layered_config.adapters._file_mode import modes_apply
 from lib_layered_config.deploy import DeployAction, DeployResult, deploy_config
 from lib_layered_config.domain.deploy_mode import DeployMode, ModeKind
 from lib_layered_config.domain.deploy_permissions import SECTION_KEY
-from lib_layered_config.domain.permissions import modes_apply
 from lib_layered_config.observability import TRACE_ID, bind_trace_id
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.exception_chain import chain

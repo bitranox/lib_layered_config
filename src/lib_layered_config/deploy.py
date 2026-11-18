@@ -34,6 +34,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ._platform import normalise_resolver_platform
+from .adapters._file_mode import apply_mode, modes_apply
 from .adapters._file_write import write_file
 from .adapters._path_probe import (
     PathKind,
@@ -58,7 +59,6 @@ from .domain.deploy_permissions import (
 )
 from .domain.errors import ConfigError, DeployDestinationError, ValidationError
 from .domain.identifiers import DEFAULT_MAX_PROFILE_LENGTH, DEPLOY_LAYERS, Layer
-from .domain.permissions import apply_mode, modes_apply
 from .domain.printable import escape_controls
 from .observability import log_warn
 
