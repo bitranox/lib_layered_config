@@ -10,6 +10,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `slug` is a required argument of `deploy_config`, `deploy_config_paths` and `read_deploy_config`, as it is of
   `read_config` and `generate_examples`. Leaving it out raises `TypeError`; it no longer falls back to the app
   name, which deployed to `<root>/<App>/` while every read looked in `<root>/<slug>/`.
+- A slug ending in `_` or `-` (`myapp_`, `myapp-`) is refused with `ValidationError`
+  (`slug cannot end in '_' or '-': myapp_`) by every function that takes a slug, the CLI's `--slug` included.
+  Its environment prefix `MYAPP____` starts with `MYAPP___`, so an app with slug `myapp` read the other's
+  variables as a stray `_`-named section. The check is `validate_slug` in `lib_layered_config.domain.identifiers`.
 
 ### Removed (breaking)
 - The deprecated `lib_layered_config.examples` package, with `lib_layered_config.examples.deploy` and

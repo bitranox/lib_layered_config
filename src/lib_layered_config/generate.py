@@ -35,7 +35,7 @@ from .adapters._file_write import write_data
 from .adapters._path_probe import PathKind, is_symlink_or_raise, kind_or_raise, uncreatable_reason
 from .adapters.env.default import default_env_prefix
 from .domain.errors import GenerateDestinationError
-from .domain.identifiers import ExamplePlatform, validate_identifier, validate_vendor_app
+from .domain.identifiers import ExamplePlatform, validate_slug, validate_vendor_app
 from .domain.printable import escape_controls
 
 if TYPE_CHECKING:
@@ -277,7 +277,7 @@ def _build_example_plan(
     dest = Path(destination)
     return ExamplePlan(
         destination=dest,
-        slug=validate_identifier(slug, "slug"),
+        slug=validate_slug(slug),
         vendor=validate_vendor_app(vendor, "vendor"),
         app=validate_vendor_app(app, "app"),
         force=force,

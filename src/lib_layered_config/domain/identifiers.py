@@ -356,6 +356,38 @@ def validate_identifier(value: str, name: str) -> str:
     return validate_path_segment(value, name)
 
 
+def validate_slug(value: str) -> str:
+    """Validate a slug: a strict identifier that does not end in ``_`` or ``-``.
+
+    The environment prefix is the slug upper-cased with ``-`` as ``_``, then ``___``. A slug ending
+    in ``_`` or ``-`` (``app_``) gets ``APP____``, which starts with ``APP___``, the prefix of the
+    slug without it, so an app with that shorter slug would read the other's variables as a stray
+    ``_``-named section (user decision 2026-11-17, "Refuse slugs ending in _ or -").
+
+    Args:
+        value: The slug to validate.
+
+    Returns:
+        The validated slug (unchanged if valid).
+
+    Raises:
+        ValidationError: Everything :func:`validate_identifier` refuses, checked first, or a slug
+            ending in ``_`` or ``-``.
+
+    Examples:
+        >>> validate_slug("my-app_v2")
+        'my-app_v2'
+        >>> validate_slug("app_")
+        Traceback (most recent call last):
+            ...
+        lib_layered_config.domain.errors.ValidationError: slug cannot end in '_' or '-': app_
+    """
+    validate_identifier(value, "slug")
+    if value.endswith(("_", "-")):
+        raise _refused("slug", "cannot end in '_' or '-'", value)
+    return value
+
+
 def validate_vendor_app(value: str, name: str) -> str:
     """Validate vendor or app identifier for filesystem safety (allows spaces).
 
@@ -628,5 +660,6 @@ __all__ = [
     "validate_path_segment",
     "validate_profile",
     "validate_profile_name",
+    "validate_slug",
     "validate_vendor_app",
 ]

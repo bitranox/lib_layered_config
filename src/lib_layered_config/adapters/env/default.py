@@ -19,7 +19,7 @@ import os
 from typing import TYPE_CHECKING, Final
 
 from ...domain.errors import InvalidFormatError
-from ...domain.identifiers import validate_identifier
+from ...domain.identifiers import validate_slug
 from ...domain.json_codec import escape_lone_surrogates
 from ...domain.redaction import NotSensitiveKeys
 from ...observability import log_debug
@@ -64,7 +64,7 @@ def default_env_prefix(slug: str) -> str:
             ...
         lib_layered_config.domain.errors.ValidationError: slug contains invalid characters: ../x
     """
-    validate_identifier(slug, "slug")
+    validate_slug(slug)
     return slug.replace("-", "_").upper() + "___"
 
 

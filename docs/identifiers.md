@@ -116,6 +116,8 @@ config = read_config(vendor="Acme", app="My App", slug="myapp")
 - Mix naming conventions across your codebase
 - Use path separators (`/` or `\`): `"../etc"` will raise `ValueError`
 - Start with a dot: `".hidden"` will raise `ValueError`
+- End with `_` or `-`: `"myapp_"` raises `ValidationError` (since 9.0.0). Its environment prefix `MYAPP____`
+  would start with `MYAPP___`, the prefix of slug `myapp`, so that app would read the other's variables
 
 ---
 

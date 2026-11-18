@@ -28,8 +28,8 @@ from ...domain.identifiers import (
     PlatformFamily,
     platform_family,
     validate_hostname,
-    validate_identifier,
     validate_profile,
+    validate_slug,
     validate_vendor_app,
 )
 from ...observability import log_debug, log_warn
@@ -101,7 +101,7 @@ class DefaultPathResolver:
         """
         self.vendor = validate_vendor_app(vendor, "vendor")
         self.application = validate_vendor_app(app, "app")
-        self.slug = validate_identifier(slug, "slug")
+        self.slug = validate_slug(slug)
         self.profile = validate_profile(profile, max_length=max_profile_length)
         self.cwd = cwd if cwd is not None else current_directory()
         self.env = {**os.environ, **(env or {})}
