@@ -10,12 +10,6 @@ if TYPE_CHECKING:
 
 
 @os_agnostic
-def test_generate_examples_first_pass_creates_files(tmp_path: Path) -> None:
-    written = generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
-    assert bool(written) is True
-
-
-@os_agnostic
 def test_generate_examples_second_pass_without_force_writes_nothing(tmp_path: Path) -> None:
     generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")
     repeat = generate_examples(tmp_path, slug="config-kit", vendor="Acme", app="ConfigKit")

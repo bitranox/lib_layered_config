@@ -164,6 +164,25 @@ def test_a_dotenv_path_behind_a_wall_refuses_naming_the_path(sandbox: LayeredSan
 
 @posix_only
 @needs_wall
+@pytest.mark.parametrize("entry", ["dotenv_path", "search"])
+def test_an_unreadable_dotenv_file_refuses_naming_the_path(sandbox: LayeredSandbox, tmp_path: Path, entry: str) -> None:
+    # The wall is on the FILE in a directory the reader can enter, so the open itself fails;
+    # the directory-wall test above fails earlier, before the file is ever opened.
+    folder = tmp_path / "dotenv-unreadable"
+    folder.mkdir()
+    dotenv = folder / ".env"
+    dotenv.write_text("SERVICE__NAME=dotenv\n", encoding="utf-8")
+    named = str(dotenv) if entry == "dotenv_path" else None
+
+    with walled(dotenv), pytest.raises(LayerLoadError, match="cannot be read") as caught:
+        _read(start_dir=str(folder), dotenv_path=named)
+
+    assert str(dotenv) in str(caught.value)
+    assert carries(caught.value, PermissionError)
+
+
+@posix_only
+@needs_wall
 def test_an_unreadable_config_file_refuses_naming_the_path(sandbox: LayeredSandbox) -> None:
     config = sandbox.roots["app"] / "config.toml"
 
