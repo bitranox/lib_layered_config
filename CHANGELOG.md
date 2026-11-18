@@ -14,12 +14,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   (`slug cannot end in '_' or '-': myapp_`) by every function that takes a slug, the CLI's `--slug` included.
   Its environment prefix `MYAPP____` starts with `MYAPP___`, so an app with slug `myapp` read the other's
   variables as a stray `_`-named section. The check is `validate_slug` in `lib_layered_config.domain.identifiers`.
-
 - `DeployResult` is frozen: assigning a field raises `FrozenInstanceError`, and `dot_d_results` is a tuple (any
   sequence given is stored as one). Building one refuses a state no deploy produces with `ValidationError`: an
   `action` that is not a `DeployAction`, `backup_path` beside any action but `OVERWRITTEN`, `ucf_path` beside any
   action but `KEPT`. Results from `deployed_before_failure` are frozen too, and still hold exactly the `.d` copies
   written before the error.
+- The dotenv loader returns what it found as one record: `DefaultDotEnvLoader.load` (and the `DotEnvLoader`
+  port in `lib_layered_config.application.ports`) returns `DotEnvLoad(data, path)`, `path` a `Path` or `None`
+  when no file was loaded, in place of the bare mapping plus a `last_loaded_path` attribute each call
+  overwrote. The loader keeps no state between calls, so a load that raises cannot leave an earlier
+  call's path behind.
 
 ### Removed (breaking)
 - The deprecated `lib_layered_config.examples` package, with `lib_layered_config.examples.deploy` and
@@ -32,6 +36,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `apply_mode` and `modes_apply` from `lib_layered_config.domain.permissions`: a chmod and a platform check are I/O,
   which the domain layer does not do. They are in `lib_layered_config.adapters._file_mode` now, an internal
   module; `modes_apply()` is `os.name == "posix"`, which a caller can test directly.
+- `SourceInfoPayload` from `lib_layered_config.application.ports`, another name for `SourceInfo` whose
+  docstring announced its removal in 9.0.0. Import `SourceInfo` from `lib_layered_config` instead.
 
 ## [8.1.0] - 2026-11-18
 

@@ -61,7 +61,7 @@ def test_well_formed_nested_keys_still_nest(tmp_path: Path) -> None:
     dotenv.write_text("DB__PORT=1\n", encoding="utf-8")
 
     assert DefaultEnvLoader(environ={"APP___DB__HOST": "h"}).load("APP") == {"db": {"host": "h"}}
-    assert DefaultDotEnvLoader().load(dotenv_path=str(dotenv)) == {"db": {"port": 1}}
+    assert DefaultDotEnvLoader().load(dotenv_path=str(dotenv)).data == {"db": {"port": 1}}
 
 
 @os_agnostic
@@ -102,4 +102,4 @@ def test_other_control_characters_and_a_nul_in_a_comment_stay_accepted(tmp_path:
     dotenv = tmp_path / ".env"
     dotenv.write_text("# note\x00\nA=x\x01y\n", encoding="utf-8")
 
-    assert DefaultDotEnvLoader().load(dotenv_path=str(dotenv)) == {"a": "x\x01y"}
+    assert DefaultDotEnvLoader().load(dotenv_path=str(dotenv)).data == {"a": "x\x01y"}

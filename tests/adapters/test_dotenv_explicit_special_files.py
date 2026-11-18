@@ -73,10 +73,10 @@ def _finish_writer(path: Path, writer: threading.Thread, *, grace: float = 5.0) 
 def test_the_loader_reads_a_fifo_named_as_the_dotenv_path(fifo: Path) -> None:
     loader = DefaultDotEnvLoader()
 
-    data = loader.load(dotenv_path=str(fifo))
+    loaded = loader.load(dotenv_path=str(fifo))
 
-    assert data == {"ssh": {"key": "/opt/keys/id"}}
-    assert loader.last_loaded_path == str(fifo)
+    assert loaded.data == {"ssh": {"key": "/opt/keys/id"}}
+    assert loaded.path == fifo
 
 
 @posix_only

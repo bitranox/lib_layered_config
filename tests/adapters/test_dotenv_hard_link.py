@@ -44,8 +44,10 @@ def test_the_search_skips_a_hard_linked_dotenv_and_goes_on_upward(tmp_path: Path
 
     loader = DefaultDotEnvLoader()
 
-    assert loader.load(str(start)) == {"key": "parent"}
-    assert loader.last_loaded_path == str(tmp_path / ".env")
+    loaded = loader.load(str(start))
+
+    assert loaded.data == {"key": "parent"}
+    assert loaded.path == tmp_path / ".env"
 
 
 @os_agnostic
@@ -55,7 +57,7 @@ def test_a_skipped_hard_link_is_logged_as_a_warning_naming_file_and_link_count(
     linked = _linked_dotenv(tmp_path)
 
     with caplog.at_level(logging.DEBUG, logger="lib_layered_config"):
-        assert DefaultDotEnvLoader().load(str(tmp_path)) == {}
+        assert DefaultDotEnvLoader().load(str(tmp_path)).data == {}
 
     skipped = [record for record in caplog.records if record.message == "dotenv_skipped_hard_link"]
     assert [record.levelno for record in skipped] == [logging.WARNING]
@@ -67,14 +69,14 @@ def test_a_skipped_hard_link_is_logged_as_a_warning_naming_file_and_link_count(
 def test_a_dotenv_with_one_link_still_loads(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text("KEY=single\n", encoding="utf-8")
 
-    assert DefaultDotEnvLoader().load(str(tmp_path)) == {"key": "single"}
+    assert DefaultDotEnvLoader().load(str(tmp_path)).data == {"key": "single"}
 
 
 @os_agnostic
 def test_a_named_dotenv_path_loads_although_it_has_two_links(tmp_path: Path) -> None:
     linked = _linked_dotenv(tmp_path)
 
-    assert DefaultDotEnvLoader().load(dotenv_path=str(linked)) == {"key": "linked"}
+    assert DefaultDotEnvLoader().load(dotenv_path=str(linked)).data == {"key": "linked"}
 
 
 @posix_only
@@ -87,7 +89,7 @@ def test_a_symlink_to_a_hard_linked_file_is_skipped_too(tmp_path: Path) -> None:
     start.mkdir()
     (start / ".env").symlink_to(target)
 
-    assert DefaultDotEnvLoader().load(str(start)) == {}
+    assert DefaultDotEnvLoader().load(str(start)).data == {}
 
 
 @os_agnostic

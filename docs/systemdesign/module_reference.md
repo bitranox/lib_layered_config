@@ -69,7 +69,7 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 | Module     | Responsibility                                                                                                                                                                                 |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `merge.py` | Deterministic deep-merge with provenance: `merge_layers`, `LayerSnapshot`, `MergeResult`; scalar/mapping/list rules, numeric-index array-element override, `ValueKind`, recursion-depth guard. |
-| `ports.py` | Port `Protocol`s the adapters implement (`PathResolver`, `FileLoader`, `DotEnvLoader`, `EnvLoader`), `OutputFormat`, and `SourceInfoPayload`.                                                  |
+| `ports.py` | Port `Protocol`s the adapters implement (`PathResolver`, `FileLoader`, `DotEnvLoader`, `EnvLoader`), `OutputFormat`, and `DotEnvLoad`.                                                         |
 
 ### adapters/ - infrastructure
 

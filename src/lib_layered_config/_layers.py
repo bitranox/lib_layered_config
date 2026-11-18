@@ -311,11 +311,12 @@ def _dotenv_snapshots(
     Yields:
         LayerSnapshot: Snapshot representing the ``dotenv`` layer when a file exists.
     """
-    data = loader.load(start_dir, dotenv_path=dotenv_path)
-    if not data:
+    loaded = loader.load(start_dir, dotenv_path=dotenv_path)
+    if not loaded.data or loaded.path is None:
         return
-    _note_layer_loaded(Layer.DOTENV, loader.last_loaded_path, {"keys": len(data)})
-    yield LayerSnapshot(Layer.DOTENV, data, loader.last_loaded_path)
+    origin = str(loaded.path)
+    _note_layer_loaded(Layer.DOTENV, origin, {"keys": len(loaded.data)})
+    yield LayerSnapshot(Layer.DOTENV, loaded.data, origin)
 
 
 def _env_snapshots(loader: DefaultEnvLoader, slug: str) -> Iterator[LayerSnapshot]:

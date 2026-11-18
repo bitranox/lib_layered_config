@@ -16,6 +16,7 @@ from lib_layered_config.adapters.dotenv.default import (
     _parse_dotenv as parse,  # pyright: ignore[reportPrivateUsage] - unit test of the dotenv line parser itself
 )
 from lib_layered_config.adapters.file_loaders import structured as structured_module
+from lib_layered_config.application.ports import DotEnvLoad
 from lib_layered_config.domain.errors import InvalidFormatError
 from tests.support.os_markers import os_agnostic
 
@@ -35,14 +36,14 @@ def _section(payload: Mapping[str, object], key: str) -> Mapping[str, object]:
     return value
 
 
-def _write_sample_dotenv(tmp_path: Path) -> tuple[DefaultDotEnvLoader, Mapping[str, object], Path]:
+def _write_sample_dotenv(tmp_path: Path) -> tuple[DotEnvLoad, Mapping[str, object], Path]:
     env_file = tmp_path / ".env"
     env_file.write_text(
         "DB__HOST=localhost\nDB__PASSWORD='s3cret'\nFEATURE=true # comment\n",
         encoding="utf-8",
     )
-    loader = DefaultDotEnvLoader()
-    return loader, loader.load(str(tmp_path)), env_file
+    loaded = DefaultDotEnvLoader().load(str(tmp_path))
+    return loaded, loaded.data, env_file
 
 
 @os_agnostic
@@ -64,14 +65,14 @@ def test_dotenv_loader_converts_an_unquoted_boolean(tmp_path: Path) -> None:
 
 
 @os_agnostic
-def test_dotenv_loader_records_last_loaded_path(tmp_path: Path) -> None:
-    loader, _, env_file = _write_sample_dotenv(tmp_path)
-    assert loader.last_loaded_path == str(env_file)
+def test_dotenv_loader_reports_the_file_it_loaded(tmp_path: Path) -> None:
+    loaded, _, env_file = _write_sample_dotenv(tmp_path)
+    assert loaded.path == env_file
 
 
 @os_agnostic
 def test_dotenv_loader_returns_empty_mapping_when_missing(tmp_path: Path) -> None:
-    payload = DefaultDotEnvLoader().load(str(tmp_path))
+    payload = DefaultDotEnvLoader().load(str(tmp_path)).data
     assert payload == {}
 
 
@@ -104,8 +105,7 @@ def test_dotenv_loader_handles_random_namespace(entries: dict[str, str], tmp_pat
     lines = [f"{key}={value}" for key, value in entries.items()]
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    loader = DefaultDotEnvLoader()
-    data = loader.load(str(tmp_path))
+    data = DefaultDotEnvLoader().load(str(tmp_path)).data
 
     def lookup(root: Mapping[str, object], raw_key: str) -> object:
         cursor: object = root
@@ -141,9 +141,9 @@ def test_dotenv_loader_loads_explicit_path(tmp_path: Path) -> None:
     custom_env = tmp_path / "custom.env"
     custom_env.write_text("APP__MODE=staging\n", encoding="utf-8")
     loader = DefaultDotEnvLoader()
-    data = loader.load(dotenv_path=str(custom_env))
-    assert _section(data, "app")["mode"] == "staging"
-    assert loader.last_loaded_path == str(custom_env)
+    loaded = loader.load(dotenv_path=str(custom_env))
+    assert _section(loaded.data, "app")["mode"] == "staging"
+    assert loaded.path == custom_env
 
 
 @os_agnostic
@@ -153,19 +153,17 @@ def test_dotenv_loader_explicit_path_skips_directory_search(tmp_path: Path) -> N
     custom_env = tmp_path / "other.env"
     custom_env.write_text("USED__KEY=loaded\n", encoding="utf-8")
     loader = DefaultDotEnvLoader()
-    data = loader.load(str(tmp_path), dotenv_path=str(custom_env))
-    assert "used" in data
-    assert "ignored" not in data
-    assert loader.last_loaded_path == str(custom_env)
+    loaded = loader.load(str(tmp_path), dotenv_path=str(custom_env))
+    assert "used" in loaded.data
+    assert "ignored" not in loaded.data
+    assert loaded.path == custom_env
 
 
 @os_agnostic
 def test_dotenv_loader_explicit_path_missing_returns_empty(tmp_path: Path) -> None:
     missing = tmp_path / "nonexistent.env"
     loader = DefaultDotEnvLoader()
-    data = loader.load(dotenv_path=str(missing))
-    assert data == {}
-    assert loader.last_loaded_path is None
+    assert loader.load(dotenv_path=str(missing)) == DotEnvLoad({}, None)
 
 
 @os_agnostic
@@ -190,7 +188,7 @@ def test_dotenv_loader_accepts_file_at_size_cap(tmp_path: Path) -> None:
     env_file.write_bytes(prefix + b"#" * (cap - len(prefix)))
     assert env_file.stat().st_size == cap
     loader = DefaultDotEnvLoader()
-    data = loader.load(str(tmp_path))
+    data = loader.load(str(tmp_path)).data
     assert data["a"] == 1
 
 
@@ -204,7 +202,6 @@ def test_dotenv_loader_explicit_path_that_is_a_directory_is_refused(tmp_path: Pa
         loader.load(dotenv_path=str(directory))
 
     assert str(directory) in str(caught.value)
-    assert loader.last_loaded_path is None
 
 
 @os_agnostic
@@ -216,9 +213,7 @@ def test_dotenv_upward_search_skips_a_directory_named_dot_env(tmp_path: Path) ->
     (start / ".env").mkdir()
 
     loader = DefaultDotEnvLoader()
-    loader.load(start_dir=str(start))
-
-    assert loader.last_loaded_path not in {str(start / ".env"), str(tmp_path / ".env")}
+    assert loader.load(start_dir=str(start)) == DotEnvLoad({}, None)
 
 
 #: What Notepad's "UTF-8 with BOM" and PowerShell 5 ``Out-File -Encoding utf8`` write before the text.
@@ -229,7 +224,7 @@ _UTF8_BOM_BYTES = b"\xef\xbb\xbf"
 def test_a_dotenv_saved_with_a_utf8_bom_keeps_its_first_key(tmp_path: Path) -> None:
     (tmp_path / ".env").write_bytes(_UTF8_BOM_BYTES + b"DB__HOST=db.example\nMODE=prod\n")
 
-    data = DefaultDotEnvLoader().load(str(tmp_path))
+    data = DefaultDotEnvLoader().load(str(tmp_path)).data
 
     assert data == {"db": {"host": "db.example"}, "mode": "prod"}
 
@@ -239,6 +234,6 @@ def test_an_explicit_dotenv_path_with_a_utf8_bom_keeps_its_first_key(tmp_path: P
     custom_env = tmp_path / "custom.env"
     custom_env.write_bytes(_UTF8_BOM_BYTES + b"MODE=prod\n")
 
-    data = DefaultDotEnvLoader().load(dotenv_path=str(custom_env))
+    data = DefaultDotEnvLoader().load(dotenv_path=str(custom_env)).data
 
     assert data == {"mode": "prod"}

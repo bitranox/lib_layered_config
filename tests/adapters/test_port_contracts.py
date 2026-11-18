@@ -147,7 +147,7 @@ def test_default_dotenv_loader_implements_protocol(sandbox: LayeredSandbox) -> N
 @os_agnostic
 def test_default_dotenv_loader_reads_first_file(sandbox: LayeredSandbox) -> None:
     sandbox.write("user", ".env", content="SERVICE__TIMEOUT=15\n")
-    payload = DefaultDotEnvLoader().load(str(sandbox.roots["user"]))
+    payload = DefaultDotEnvLoader().load(str(sandbox.roots["user"])).data
     assert _section(payload, "service")["timeout"] == 15
 
 

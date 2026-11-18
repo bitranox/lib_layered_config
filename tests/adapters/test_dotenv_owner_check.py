@@ -20,6 +20,7 @@ from lib_layered_config.adapters.dotenv.default import (
     DefaultDotEnvLoader,
     _owner_is_trusted,  # pyright: ignore[reportPrivateUsage] - unit test of the owner trust rule over a uid table
 )
+from lib_layered_config.application.ports import DotEnvLoad
 from tests.support.os_markers import os_agnostic, posix_only
 
 
@@ -48,8 +49,7 @@ def test_upward_search_skips_a_dotenv_another_user_owns(tmp_path: Path, monkeypa
 
     loader = DefaultDotEnvLoader()
 
-    assert loader.load(str(start)) == {}
-    assert loader.last_loaded_path is None
+    assert loader.load(str(start)) == DotEnvLoad({}, None)
 
 
 @posix_only
@@ -90,7 +90,7 @@ def test_explicit_dotenv_path_loads_whoever_owns_it(tmp_path: Path, monkeypatch:
     planted, _start = _plant_dotenv(tmp_path)
     _become_another_user(monkeypatch, planted.stat().st_uid)
 
-    assert DefaultDotEnvLoader().load(dotenv_path=str(planted)) == {"key": "planted"}
+    assert DefaultDotEnvLoader().load(dotenv_path=str(planted)).data == {"key": "planted"}
 
 
 @posix_only
@@ -114,15 +114,14 @@ def test_a_symlink_the_user_does_not_own_is_passed_over_even_when_its_target_is_
 
     loader = DefaultDotEnvLoader()
 
-    assert loader.load(str(start)) == {}
-    assert loader.last_loaded_path is None
+    assert loader.load(str(start)) == DotEnvLoad({}, None)
 
 
 @posix_only
 def test_upward_search_loads_a_dotenv_the_current_user_owns(tmp_path: Path) -> None:
     _planted, start = _plant_dotenv(tmp_path)
 
-    assert DefaultDotEnvLoader().load(str(start)) == {"key": "planted"}
+    assert DefaultDotEnvLoader().load(str(start)).data == {"key": "planted"}
 
 
 @os_agnostic
