@@ -9,8 +9,6 @@ Contents:
     - ``deploy_config``: public entry point that resolves destinations and deploys each.
     - ``deploy_config_paths`` / ``read_deploy_config``: the files a deploy writes and the
       configuration it reads for its modes, for a caller that must see what the deploy sees.
-    - ``DeploymentStrategy`` and its ``Linux`` / ``Mac`` / ``Windows`` subclasses: one platform's
-      destination paths, asked of that platform's path resolver strategy, whose layout the reads use.
     - Conflict handling (``_handle_conflict`` / ``_execute_action``): backup-and-overwrite
       (``force``), keep-and-write-``.ucf`` (``batch``), or an interactive resolver, with
       identical-content smart-skip.
@@ -45,10 +43,6 @@ from .adapters._path_probe import (
     uncreatable_reason,
 )
 from .adapters.file_loaders._dot_d import in_dot_d_order
-from .adapters.path_resolvers._base import PlatformStrategy, deploy_destination
-from .adapters.path_resolvers._linux import LinuxStrategy
-from .adapters.path_resolvers._macos import MacOSStrategy
-from .adapters.path_resolvers._windows import WindowsStrategy
 from .adapters.path_resolvers.default import DefaultPathResolver
 from .core import read_config_for_deploy, refuse_an_unusable_deploy_source
 from .domain.deploy_mode import DeployMode, DeployModeError, ModeKind
@@ -75,10 +69,6 @@ __all__ = [
     "ConflictResolver",
     "DeployAction",
     "DeployResult",
-    "DeploymentStrategy",
-    "LinuxDeployment",
-    "MacDeployment",
-    "WindowsDeployment",
     "deploy_config",
     "deploy_config_paths",
     "deployed_before_failure",
@@ -577,48 +567,6 @@ def _load_configured_permissions(
         except DeployPermissionsError as exc:
             problems = list(exc.problems)
     raise DeployPermissionsError(problems, hint=_DEPLOY_ANYWAY_HINT)
-
-
-class DeploymentStrategy:
-    """Where a deploy writes each layer in one platform's layout.
-
-    The layout lives in the path resolvers (``adapters/path_resolvers``), the same one the reads
-    use, so a file deployed here is a file ``read_config`` reads; these classes only pick which
-    platform's layout to ask. ``deploy_config`` itself asks the resolver for its own platform
-    (:meth:`DefaultPathResolver.destination_for`).
-    """
-
-    def __init__(self, resolver: DefaultPathResolver) -> None:
-        """Initialise strategy with a path resolver providing identifiers."""
-        self.resolver = resolver
-
-    def _layout(self) -> PlatformStrategy:  # pragma: no cover - abstract
-        raise NotImplementedError
-
-    def destination_for(self, target: Layer) -> Path:
-        """Return the destination path for *target*, one of the deploy layers app, host and user."""
-        return deploy_destination(self._layout(), target, host_file_name=self.resolver.require_host_file_name)
-
-
-class LinuxDeployment(DeploymentStrategy):
-    """Linux deployment using XDG Base Directory paths, whatever the resolver's platform."""
-
-    def _layout(self) -> PlatformStrategy:
-        return LinuxStrategy(self.resolver.context)
-
-
-class MacDeployment(DeploymentStrategy):
-    """macOS deployment using Application Support paths, whatever the resolver's platform."""
-
-    def _layout(self) -> PlatformStrategy:
-        return MacOSStrategy(self.resolver.context)
-
-
-class WindowsDeployment(DeploymentStrategy):
-    """Windows deployment using ProgramData and AppData paths, whatever the resolver's platform."""
-
-    def _layout(self) -> PlatformStrategy:
-        return WindowsStrategy(self.resolver.context)
 
 
 def _deploy_to_destination(

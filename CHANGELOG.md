@@ -10,6 +10,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The deprecated `lib_layered_config.examples` package, with `lib_layered_config.examples.deploy` and
   `lib_layered_config.examples.generate`. Import from `lib_layered_config` (`deploy_config`, `DeployAction`,
   `DeployResult`, `generate_examples`, ...) or from `lib_layered_config.deploy` / `lib_layered_config.generate`.
+- `DeploymentStrategy`, `LinuxDeployment`, `MacDeployment` and `WindowsDeployment` from `lib_layered_config.deploy`.
+  They answered with their own OS's layout whatever the wrapped resolver's platform was. Use
+  `DefaultPathResolver(vendor=..., app=..., slug=..., platform=...).destination_for(layer)`, which gives the same
+  path: `platform="linux"` for what `LinuxDeployment(resolver)` returned, `"darwin"` and `"win32"` for the others.
 
 ## [8.1.0] - 2026-11-18
 

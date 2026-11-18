@@ -12,11 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from lib_layered_config.adapters.path_resolvers._linux import LinuxStrategy
-from lib_layered_config.adapters.path_resolvers._macos import MacOSStrategy
-from lib_layered_config.adapters.path_resolvers._windows import WindowsStrategy
 from lib_layered_config.adapters.path_resolvers.default import DefaultPathResolver
-from lib_layered_config.deploy import LinuxDeployment, MacDeployment, WindowsDeployment
 from lib_layered_config.domain.identifiers import Layer
 from tests.support.os_markers import os_agnostic
 
@@ -25,11 +21,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _DEPLOY_LAYERS = (Layer.APP, Layer.HOST, Layer.USER)
-_NATIVE_PLATFORM: dict[type[LinuxStrategy | MacOSStrategy | WindowsStrategy], str] = {
-    LinuxStrategy: "linux",
-    MacOSStrategy: "darwin",
-    WindowsStrategy: "win32",
-}
 
 
 def _roots(tmp_path: Path) -> dict[str, str]:
@@ -101,24 +92,3 @@ def test_a_windows_user_file_deployed_without_appdata_is_read_back(tmp_path: Pat
     _plant(destination)
 
     assert list(resolver.user()) == [str(destination)]
-
-
-@os_agnostic
-@pytest.mark.parametrize(
-    ("deployment", "layout"),
-    [(LinuxDeployment, LinuxStrategy), (MacDeployment, MacOSStrategy), (WindowsDeployment, WindowsStrategy)],
-)
-@pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
-def test_a_deployment_class_gives_its_own_layout_whatever_the_resolver_platform(
-    tmp_path: Path,
-    deployment: type[LinuxDeployment | MacDeployment | WindowsDeployment],
-    layout: type[LinuxStrategy | MacOSStrategy | WindowsStrategy],
-    platform: str,
-) -> None:
-    (tmp_path / "appdata").mkdir()
-    resolver = _resolver(tmp_path, platform=platform, profile=None, env=_roots(tmp_path))
-    native = _resolver(tmp_path, platform=_NATIVE_PLATFORM[layout], profile=None, env=_roots(tmp_path))
-    assert type(native.strategy) is layout
-
-    for layer in _DEPLOY_LAYERS:
-        assert deployment(resolver).destination_for(layer) == native.destination_for(layer)
