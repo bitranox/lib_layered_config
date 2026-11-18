@@ -1312,7 +1312,10 @@ permissions. Use `dir_mode` and `file_mode` to override them for special require
 configs); an unsafe mode is refused. Use `set_permissions=False` when permissions should be inherited from
 umask. Use `permission_overrides` for a runtime value (such as a `--set` option) laid over deploy's own read,
 rather than building a `permissions=` object from `read_config(...)`, which includes `.env`, the deployed
-files and a user file's `app_*`/`host_*` modes. On Windows, permission setting is automatically skipped.
+files and a user file's `app_*`/`host_*` modes. On Windows, permission setting is automatically skipped;
+a deploy that replaces a file copies that file's access list onto the new file and its `.bak` instead, and
+where it cannot (an SMB share granting Change but not Full) it raises `PermissionError` naming the temporary
+file before the destination changes. The CLI reference's File Permissions section has the details.
 
 ---
 

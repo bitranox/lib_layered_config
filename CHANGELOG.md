@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+
+- A Windows SMB share that grants Change but not Full: the first deploy of a
+  file works, a `--force` overwrite stops with `cannot set the access list of` the temporary file and
+  leaves the destination unchanged; docs/cli-reference.md and docs/python-api.md say so and name the
+  remedy (Full on the share, or delete and deploy again).
+
 ## [9.0.1] - 2026-11-18
 
 ### Fixed
