@@ -66,7 +66,8 @@ config.origin("service.timeout")  # -> which layer + file set it (provenance)
   Windows paths.
 - `slug` (lowercase-with-hyphens by convention) is the Linux directory name AND the
   environment-variable prefix. It may hold ASCII letters of either case, digits, `.`, `-` and `_`
-  and must start with a letter or digit; anything else is refused (`ValidationError`).
+  and must start with a letter or digit and must not end in `.`, `-` or `_`; anything else is
+  refused (`ValidationError`).
 - `default_file` seeds the `defaults` layer. It is the ONLY way to supply that layer - omit it
   and there are no defaults at all, whatever the precedence chain says.
 - `read_config` returns a frozen `Config`; `read_config_raw(...)` returns `.data` plus
@@ -465,34 +466,35 @@ in every output mode, with and without redaction.
 `is_valid_profile_name(name)` answers `True`/`False` instead. Both take `max_length=` (default `DEFAULT_MAX_PROFILE_LENGTH`, 64).
 
 **Deploying and scaffolding.** `deploy_config("app.toml", vendor=..., app=..., slug=..., targets=["user"])`
-is the `deploy` command in Python (`source` is the path of the file to copy). It returns a list
-with one `DeployResult` per destination: `.destination`, `.backup_path`, `.ucf_path`, and `.action`,
-an enum - compare `.action.value == "created"` (or `"overwritten"`, `"kept"`, `"skipped"`,
-`"conflict"`), since `.action == "created"` is always `False`. `"skipped"` means the file was
-already byte-identical; `"conflict"` means it differs and was left unchanged because no
-`force`, `batch` or `conflict_resolver=` decided, so key a missed update on `"conflict"`. A
-`conflict_resolver(destination)` must return `DeployAction.OVERWRITTEN` or `DeployAction.KEPT`;
-any other answer raises `ValidationError`. `force` (overwrite) and `batch` (keep) decide first:
-with either set, the resolver is never called, so read what a deploy did from the returned
-`DeployResult`s, not from the resolver's calls. Otherwise it is asked once per differing
-destination, each differing `.d` copy included. Permission keywords: `set_permissions`, `dir_mode`,
-`file_mode`, `permissions=` (a whole `DeployPermissions`) and `permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
+is the `deploy` command in Python (`source` is the path of the file to copy). It returns a list with
+one frozen `DeployResult` per destination: `.destination`, `.backup_path`, `.ucf_path`,
+`.dot_d_results` (a tuple, one `DeployResult` per `.d` copy) and `.action`, an enum; assigning a
+field raises `dataclasses.FrozenInstanceError`. Compare `.action.value == "created"` (or
+`"overwritten"`, `"kept"`, `"skipped"`, `"conflict"`), since `.action == "created"` is always
+`False`. `"skipped"` means the file was already byte-identical; `"conflict"` means it differs and
+was left unchanged because no `force`, `batch` or `conflict_resolver=` decided, so key a missed
+update on `"conflict"`. A `conflict_resolver(destination)` must return `DeployAction.OVERWRITTEN` or
+`DeployAction.KEPT`; any other answer raises `ValidationError`. `force` (overwrite) and `batch`
+(keep) decide first: with either set, the resolver is never called, so read what a deploy did from
+the returned `DeployResult`s, not from the resolver's calls. Otherwise it is asked once per
+differing destination, each differing `.d` copy included. Permission keywords: `set_permissions`,
+`dir_mode`, `file_mode`, `permissions=` (a whole `DeployPermissions`) and
+`permission_overrides={"user_file": "0o640"}`. `deploy_permissions_from_config(config)` builds a
 `DeployPermissions` from a merged config's `[lib_layered_config.default_permissions]`.
 `DeployMode(value, kind)` checks one mode by itself, `value` an int such as `0o750` and `kind`
-`ModeKind.DIRECTORY` or `ModeKind.FILE` (a file mode also refuses any execute bit). A refused mode raises
-`DeployModeError`, which carries no kind field: its message names the kind and every offending
-bit (`unsafe file mode 0o777: group write (0o020); world write (0o002); an execute bit on a file
-(0o111)`), and a caller that needs the kind already knows which one it passed.
-`force=True` backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`;
-both at once raise `ValidationError` (`--force --batch` is a usage error, exit 2), before anything
-is written.
+`ModeKind.DIRECTORY` or `ModeKind.FILE` (a file mode also refuses any execute bit). A refused mode
+raises `DeployModeError`, which carries no kind field: its message names the kind and every
+offending bit (`unsafe file mode 0o777: group write (0o020); world write (0o002); an execute bit on
+a file (0o111)`), and a caller that needs the kind already knows which one it passed. `force=True`
+backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`; both at once
+raise `ValidationError` (`--force --batch` is a usage error, exit 2), before anything is written.
 The source must be a `.toml` file (destinations are `config.toml` / `<hostname>.toml`, read only as
-TOML): a `.json`, `.yaml` or `.conf` source raises `LayerLoadError` before anything is written.
-A file in the source's `.d` may be any supported format; one that does not parse, or a `.yaml` file
+TOML): a `.json`, `.yaml` or `.conf` source raises `LayerLoadError` before anything is written. A
+file in the source's `.d` may be any supported format; one that does not parse, or a `.yaml` file
 without the `yaml` extra, raises `LayerLoadError` too, so no file of the deploy is written, and a
-non-config file (a `README.md`) is copied unparsed.
-A missing source raises `FileNotFoundError`; a source or a file in its `.d` directory behind a
-permission wall raises `PermissionError` on every Python, before anything is written.
+non-config file (a `README.md`) is copied unparsed. A missing source raises `FileNotFoundError`; a
+source or a file in its `.d` directory behind a permission wall raises `PermissionError` on every
+Python, before anything is written.
 
 **What a deploy sees, before it runs.** `deploy_config_paths(source, vendor=...,
 app=..., slug=..., targets=[...])` returns every file that deploy writes, resolved, as a frozenset:
@@ -516,11 +518,12 @@ built-in modes are exported as `DEFAULT_APP_DIR_MODE`/`DEFAULT_APP_FILE_MODE` (`
 and host) and `DEFAULT_USER_DIR_MODE`/`DEFAULT_USER_FILE_MODE` (`0o700`/`0o600`, user). Modes
 are never applied on Windows, and a deploy there never reads the configured ones (see "Probing and
 testing an app built on it"). Use these instead of importing anything from
-`lib_layered_config.core`; import from `lib_layered_config.deploy` only for one layer's
-destination without a deploy: `LinuxDeployment(resolver)` (also `MacDeployment`,
-`WindowsDeployment`; `resolver` is `DefaultPathResolver(vendor=..., app=..., slug=...)` from
-`lib_layered_config.adapters.path_resolvers.default`, with optional `profile=`, `platform=`,
-`hostname=` and `env=`) has `.destination_for(Layer.APP)`. It takes the `Layer` enum (`Layer.APP`,
+`lib_layered_config.core`. For one layer's destination without a deploy, build
+`DefaultPathResolver(vendor=..., app=..., slug=...)` from
+`lib_layered_config.adapters.path_resolvers.default` (optional `profile=`, `hostname=`, `env=`, and
+`platform=` for another OS's layout: `"linux"`, `"darwin"` or `"win32"`, the Windows one needing an
+absolute ProgramData root, see "Probing and testing an app built on it") and call
+`.destination_for(Layer.APP)` on it. It takes the `Layer` enum (`Layer.APP`,
 `Layer.HOST`, `Layer.USER`; the string `"app"` works at runtime but fails pyright strict, and
 `Layer.ENV` raises `KeyError`) and returns a `Path`, never `None`, so an `is None` guard fails
 pyright strict too.
