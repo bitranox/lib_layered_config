@@ -12,12 +12,12 @@ from types import MappingProxyType
 import pytest
 
 from lib_layered_config import _layers, _platform, deploy
-from lib_layered_config.domain import deploy_permissions
+from lib_layered_config.domain import deploy_permissions, identifiers
 from lib_layered_config.domain.deploy_mode import ModeKind
 from tests.support.os_markers import os_agnostic
 
 _TABLES: dict[str, object] = {
-    "deploy._TARGET_LAYERS": deploy._TARGET_LAYERS,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
+    "identifiers._DEPLOY_LAYER_NAMES": identifiers._DEPLOY_LAYER_NAMES,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
     "deploy._MODE_PARAMETERS": deploy._MODE_PARAMETERS,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
     "deploy._SOURCE_REFUSALS": deploy._SOURCE_REFUSALS,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
     "deploy_permissions._MODE_FIELDS": deploy_permissions._MODE_FIELDS,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject

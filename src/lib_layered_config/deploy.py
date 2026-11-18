@@ -82,9 +82,6 @@ _WRITTEN_BEFORE_FAILURE: Final = "_lib_layered_config_deployed_before_failure"
 #: The attribute a failed overwrite sets on its error: the result naming the backup it had to keep.
 _PARTIAL_RESULT: Final = "_lib_layered_config_failed_overwrite"
 
-#: The layers a deploy writes, by the target name a caller spells (case-insensitively).
-_TARGET_LAYERS: Final[Mapping[str, Layer]] = MappingProxyType({layer.value: layer for layer in DEPLOY_LAYERS})
-
 #: The deploy_config parameter each kind of explicit mode comes from, named in its refusal.
 _MODE_PARAMETERS: Final[Mapping[ModeKind, str]] = MappingProxyType(
     {ModeKind.DIRECTORY: "dir_mode", ModeKind.FILE: "file_mode"}
@@ -1316,9 +1313,11 @@ def _str_targets_remedy(targets: str) -> str:
         >>> _str_targets_remedy("")
         'write a list of app, host and user'
     """
-    if targets.lower() in _TARGET_LAYERS:
+    # Ask the rule deploy_config applies next, so the hint never suggests a list it would refuse.
+    with contextlib.suppress(ValidationError):
+        deploy_layer(targets)
         return f"write [{targets!r}]"
-    *first, last = _TARGET_LAYERS
+    *first, last = (layer.value for layer in DEPLOY_LAYERS)
     return f"write a list of {', '.join(first)} and {last}"
 
 
