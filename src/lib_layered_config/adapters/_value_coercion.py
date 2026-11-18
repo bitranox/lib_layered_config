@@ -2,9 +2,8 @@
 
 Contents:
     - ``coerce_value``: the conversion both layers apply to an unquoted value - a JSON container,
-      ``true``/``false``, ``null``/``none`` (kept as text for a sensitive key unless the
-      application declared it not sensitive), a lossless number,
-      otherwise the text unchanged.
+      ``true``/``false``, ``null``/``none`` (None, text for a sensitive key, or a ``NullLiteral``
+      the merge settles on the stored spelling), a lossless number, otherwise the text unchanged.
     - ``parse_json_container``: a value that opens like a JSON array or object is parsed as one.
     - ``parse_number``: a value becomes an int or float only when the number reads back as the
       same text, so leading zeros, signs, separators and non-ASCII digits are never lost.
@@ -18,6 +17,7 @@ from typing import Final, cast
 
 from ..domain import json_codec
 from ..domain.json_codec import CONFIG_MAX_DEPTH, JSON_INT_MIN, nesting_depth
+from ..domain.null_literal import NullLiteral
 from ..domain.redaction import NotSensitiveKeys, is_sensitive_at
 from ._nested_keys import NESTED_KEY_DELIMITER
 
@@ -37,13 +37,15 @@ _MAX_FLOAT_TEXT: Final[int] = 32
 def coerce_value(raw_key: str, value: str, *, not_sensitive: NotSensitiveKeys = NotSensitiveKeys.NONE) -> object:
     """Convert an unquoted *value* the way the environment and dotenv layers read it.
 
-    A JSON array or object is parsed, ``true``/``false`` become a bool, ``null``/``none`` become
-    None, and a number becomes an int or float only when it reads back as the same text; anything
-    else stays the text it is. A key whose own last segment is sensitive (``SMTP__PASSWORD``) keeps
-    ``null``/``none`` as text: None would mean "no credential", and a consumer would then proceed without one
-    instead of failing to log in. Only that last segment is looked at: a key below a sensitive table
-    (``API_KEY__PRIMARY``) reads them as None, although ``redact=True`` masks it with its table. A key
-    the application declared not sensitive reads them as None like any other key.
+    A JSON array or object is parsed, ``true``/``false`` become a bool, and a number becomes an int
+    or float only when it reads back as the same text; anything else stays the text it is. A key
+    whose own last segment is sensitive (``SMTP__PASSWORD``) keeps ``null``/``none`` as text: None
+    would mean "no credential", and a consumer would then proceed without one instead of failing to
+    log in. A key the application declared not sensitive reads them as None. Any other key gets a
+    :class:`~lib_layered_config.domain.null_literal.NullLiteral`: its lowercase name can hide a word
+    boundary the file's spelling has (``dbpassword`` for ``dbPassword``), so the merge settles it
+    once it knows the stored spelling. Only the last segment is looked at: a key below a sensitive
+    table (``API_KEY__PRIMARY``) reads them as None, although ``redact=True`` masks it with its table.
 
     Args:
         raw_key: Variable name with the prefix removed, segments separated by ``__``.
@@ -56,8 +58,8 @@ def coerce_value(raw_key: str, value: str, *, not_sensitive: NotSensitiveKeys = 
     Examples:
         >>> coerce_value("SERVICE__ENABLED", "true"), coerce_value("SERVICE__RETRIES", "10")
         (True, 10)
-        >>> coerce_value("SERVICE__TIMEOUT", "null") is None, coerce_value("ZIP", "007")
-        (True, '007')
+        >>> coerce_value("SERVICE__TIMEOUT", "null"), coerce_value("ZIP", "007")
+        (NullLiteral(text='null'), '007')
         >>> coerce_value("EMAIL__SMTP_PASSWORD", "none")
         'none'
         >>> declared = NotSensitiveKeys.of(["performance.max_token_bytes"])
@@ -71,7 +73,7 @@ def coerce_value(raw_key: str, value: str, *, not_sensitive: NotSensitiveKeys = 
     if lowered in _BOOL_LITERALS:
         return lowered == _BOOL_TRUE
     if lowered in _NULL_LITERALS:
-        return value if _key_is_sensitive(raw_key, not_sensitive) else None
+        return _null_value(raw_key, value, not_sensitive)
     number = parse_number(value)
     return value if number is None else number
 
@@ -89,6 +91,27 @@ def _too_deep_to_write(raw_key: str, container: object) -> bool:
         (False, True)
     """
     return len(raw_key.split(NESTED_KEY_DELIMITER)) + nesting_depth(container) > CONFIG_MAX_DEPTH
+
+
+def _null_value(raw_key: str, value: str, not_sensitive: NotSensitiveKeys) -> object:
+    """The value of a ``null``/``none`` at *raw_key*: None, the text, or a :class:`NullLiteral`.
+
+    A lowercase name the sensitivity rule calls sensitive stays sensitive in any spelling (a case
+    change only adds word boundaries), so the text is final here; one it does not call sensitive
+    may still be, spelled as the file spells it, and goes to the merge.
+
+    Examples:
+        >>> _null_value("EMAIL__SMTP_PASSWORD", "null", NotSensitiveKeys.NONE)
+        'null'
+        >>> _null_value("A__DBPASSWORD", "none", NotSensitiveKeys.NONE)
+        NullLiteral(text='none')
+        >>> _null_value("A__DBPASSWORD", "null", NotSensitiveKeys.of(["a.dbPassword"])) is None
+        True
+    """
+    path = raw_key.lower().split(NESTED_KEY_DELIMITER)
+    if not_sensitive.covers(path):
+        return None
+    return value if _key_is_sensitive(raw_key, not_sensitive) else NullLiteral(value)
 
 
 def _key_is_sensitive(raw_key: str, not_sensitive: NotSensitiveKeys) -> bool:

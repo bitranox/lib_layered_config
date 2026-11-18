@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- An unquoted `null`/`none` from the environment or `.env` is judged on the key's spelling in the file. The
+  variable name arrives in lowercase, so `MYAPP___A__DBPASSWORD=null` cleared a file's `dbPassword` to None
+  while `db_password` kept the text. The env and `.env` loaders now hand such a value to the merge as a
+  `NullLiteral` (`lib_layered_config.domain.null_literal`), and the merge keeps the text once it has matched
+  the key to a sensitive stored spelling, list elements included. A key no lower layer holds keeps the old
+  answer. Code that calls `DefaultEnvLoader.load` or `DefaultDotEnvLoader.load` itself, without
+  `merge_layers`, now sees a `NullLiteral` where it saw None for a key whose lowercase name is not sensitive.
 - A deploy sets the layer's directory mode on every directory it creates, not only on the folder the file is
   written into. A first `deploy --target user --profile <name>` under umask 0002 left the layer directory and
   `profile/` at `775`, group-writable, around a `600` file. A directory above the file's folder that already

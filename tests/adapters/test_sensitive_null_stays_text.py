@@ -3,7 +3,8 @@
 The environment layer reads an unquoted ``null`` or ``none`` as None. For a secret spelled exactly
 that way, None would mean no credential at all, and a consumer such as a mail sender would then
 work without one. A sensitive key (one ``redact=True`` masks) therefore keeps the text, and the
-login fails loudly instead. Every other key still reads ``null``/``none`` as None.
+login fails loudly instead. Any other key reaches the merge as a ``NullLiteral``, which it settles on
+the file's spelling of the key (None unless that spelling is sensitive).
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import pytest
 
 from lib_layered_config import read_config
 from lib_layered_config.adapters.env.default import DefaultEnvLoader
+from lib_layered_config.domain.null_literal import NullLiteral
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 
@@ -42,10 +44,10 @@ def test_the_short_secret_names_keep_null_as_text_too(name: str) -> None:
 
 
 @os_agnostic
-def test_a_non_sensitive_key_spelled_null_becomes_none() -> None:
+def test_a_null_for_a_key_the_loader_cannot_judge_goes_to_the_merge() -> None:
     loader = DefaultEnvLoader(environ={"DEMO___SERVICE__TIMEOUT": "null"})
 
-    assert loader.load("DEMO") == {"service": {"timeout": None}}
+    assert loader.load("DEMO") == {"service": {"timeout": NullLiteral("null")}}
 
 
 @os_agnostic
@@ -53,7 +55,7 @@ def test_only_the_leaf_segment_decides_whether_a_key_is_sensitive() -> None:
     # A sensitive parent such as ``credentials`` holds no secret itself; its ``timeout`` is not one.
     loader = DefaultEnvLoader(environ={"DEMO___CREDENTIALS__TIMEOUT": "none"})
 
-    assert loader.load("DEMO") == {"credentials": {"timeout": None}}
+    assert loader.load("DEMO") == {"credentials": {"timeout": NullLiteral("none")}}
 
 
 @os_agnostic

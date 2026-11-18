@@ -14,6 +14,7 @@ import pytest
 from lib_layered_config import read_config
 from lib_layered_config.adapters.dotenv.default import DefaultDotEnvLoader
 from lib_layered_config.adapters.env.default import DefaultEnvLoader
+from lib_layered_config.domain.null_literal import NullLiteral
 from tests.support import LayeredSandbox, create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 
@@ -35,7 +36,7 @@ def _load(tmp_path: Path, line: str) -> object:
         ("SERVICE__ENABLED=False", {"service": {"enabled": False}}),
         ("SERVICE__PORT=5432", {"service": {"port": 5432}}),
         ("SERVICE__RATIO=3.5", {"service": {"ratio": 3.5}}),
-        ("SERVICE__TIMEOUT=null", {"service": {"timeout": None}}),
+        ("SERVICE__TIMEOUT=null", {"service": {"timeout": NullLiteral("null")}}),
         ("SERVICE__PORT=5432 # the default", {"service": {"port": 5432}}),
         ("SERVICE__ZIP=007", {"service": {"zip": "007"}}),
         ("SERVICE__NAME=demo", {"service": {"name": "demo"}}),

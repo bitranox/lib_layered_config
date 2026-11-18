@@ -475,10 +475,11 @@ value holds a NUL is refused the same way (naming the file and line); other cont
 A sensitive key keeps an unquoted `null` or `none` as text, in the environment and in `.env` alike, so a
 secret spelled that way is never read as "no credential". A key is sensitive when the last segment of its
 path is one `redact=True` masks, such as `password`, `token`, `secret` or a name ending in `_key`. Every other
-key reads `null`/`none` as None. The variable's or `.env` key's own name decides, and it arrives in lowercase:
-`MYAPP___A__DBPASSWORD` names `dbpassword`, one word that is not sensitive, even where the file spells the
-key `dbPassword`; spelled `db_password` in the file and `MYAPP___A__DB_PASSWORD` in the environment, it is. A key the application declared with
-`read_config(not_sensitive=[...])` is not sensitive, so it reads them as None too.
+key reads `null`/`none` as None. A variable's or `.env` key's name arrives in lowercase, so the key is judged
+in the spelling a lower layer stored for it: `MYAPP___A__DBPASSWORD=null` keeps the text where a file spells
+the key `dbPassword` (the case change marks the word boundary), as it does for `db_password`. A key no lower
+layer holds is judged on its lowercase name, so there `dbpassword` is one word and reads `null` as None. A key
+the application declared with `read_config(not_sensitive=[...])` is not sensitive, so it reads them as None too.
 
 ### Deploy permission settings
 

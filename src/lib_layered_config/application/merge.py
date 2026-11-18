@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Final, TypeGuard, cast
 from ..domain.config import OVERRIDE_LAYER
 from ..domain.errors import InvalidFormatError
 from ..domain.identifiers import Layer
+from ..domain.null_literal import settle_null_literal
 from ..observability import log_warn
 
 if TYPE_CHECKING:
@@ -247,9 +248,10 @@ def _descend(
     if len(segments) > MAX_MERGE_DEPTH:
         raise InvalidFormatError(_too_deep(snapshot, segments))
     spellings = _StoredSpellings(target) if snapshot.name in _CASE_FOLDED_LAYERS else None
-    for incoming_key, value in incoming.items():
+    for incoming_key, incoming_value in incoming.items():
         key = incoming_key if spellings is None else spellings.resolve(incoming_key, segments, snapshot)
         dotted = _join_segments(segments, key)
+        value = settle_null_literal(incoming_value, (*segments, key))
         if _looks_like_mapping(value):
             _store_branch(
                 target, provenance=provenance, key=key, value=value, dotted=dotted, snapshot=snapshot, segments=segments
@@ -602,7 +604,7 @@ def _build_new_element(
         _store_branch_provenance(new_element, dotted, provenance, snapshot, parents=segments)
         return new_element
     provenance.record(dotted, _provenance_entry(dotted, snapshot), parents=segments)
-    return _clone_leaf(override)
+    return _clone_leaf(settle_null_literal(override, (*segments, index_key)))
 
 
 def _provenance_entry(dotted: str, snapshot: LayerSnapshot) -> SourceInfo:

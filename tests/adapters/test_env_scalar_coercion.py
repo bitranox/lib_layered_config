@@ -8,6 +8,7 @@ import pytest
 
 from lib_layered_config import read_config
 from lib_layered_config.adapters.env.default import DefaultEnvLoader
+from lib_layered_config.domain.null_literal import NullLiteral
 from tests.support import create_layered_sandbox
 from tests.support.os_markers import os_agnostic
 
@@ -26,8 +27,8 @@ KEPT = [
     ("9999999999999999999", 9999999999999999999),  # nineteen digits, inside 2**64-1
     ("true", True),
     ("FALSE", False),
-    ("null", None),
-    ("none", None),
+    ("null", NullLiteral("null")),
+    ("none", NullLiteral("none")),
 ]
 UNCHANGED = [
     "007123",  # a PIN or zip code: the leading zeros are the value

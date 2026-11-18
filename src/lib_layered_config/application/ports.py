@@ -101,7 +101,7 @@ class DotEnvLoader(Protocol):
         """Load *dotenv_path* when given, else discover and parse a `.env` file upward from *start_dir*.
 
         The result names the file it read, so no loader state outlives the call: a load that
-        raises reports nothing.
+        raises reports nothing. A ``null``/``none`` value is delivered as for :meth:`EnvLoader.load`.
         """
         ...  # pragma: no cover - protocol
 
@@ -111,7 +111,11 @@ class EnvLoader(Protocol):
     """Translate prefixed environment variables into nested mappings."""
 
     def load(self, prefix: str) -> ConfigData:
-        """Load environment variables matching *prefix* into a nested mapping."""
+        """Load environment variables matching *prefix* into a nested mapping.
+
+        A ``null``/``none`` whose key the lowercase name cannot judge arrives as a
+        :class:`~lib_layered_config.domain.null_literal.NullLiteral`, which ``merge_layers`` settles.
+        """
         ...  # pragma: no cover - protocol
 
 

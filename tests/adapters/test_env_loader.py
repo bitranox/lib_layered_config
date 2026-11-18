@@ -19,6 +19,7 @@ from lib_layered_config.adapters.env.default import (
     _normalize_prefix,  # pyright: ignore[reportPrivateUsage] - unit test of the prefix normaliser's idempotence
     default_env_prefix,
 )
+from lib_layered_config.domain.null_literal import NullLiteral
 from tests.support.os_markers import os_agnostic
 
 
@@ -89,7 +90,7 @@ def test_env_loader_handles_random_namespace(entries: dict[str, str]) -> None:
         if lowered == "false":
             return False
         if lowered in {"none", "null"}:
-            return None
+            return NullLiteral(value)
         number = parse_number(value)
         return value if number is None else number
 
