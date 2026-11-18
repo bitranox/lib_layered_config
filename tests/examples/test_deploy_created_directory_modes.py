@@ -43,11 +43,15 @@ def _source(tmp_path: Path) -> Path:
 
 
 def _modes_below(top: Path, file: Path) -> dict[str, str]:
-    """The mode of every directory from *top* down to *file*'s own folder, by relative path."""
+    """The mode of every directory from *top* down to *file*'s own folder, by path relative to *top*.
+
+    Keyed below *top* (``"."`` for *top* itself) because the layer root is named after the slug on Linux
+    (``demo``) and after the app on macOS (``Demo``).
+    """
     found: dict[str, str] = {}
     directory = file.parent
     while True:
-        found[directory.relative_to(top.parent).as_posix()] = oct(stat.S_IMODE(directory.stat().st_mode))
+        found[directory.relative_to(top).as_posix()] = oct(stat.S_IMODE(directory.stat().st_mode))
         if directory == top:
             return found
         directory = directory.parent
@@ -68,9 +72,9 @@ def test_a_profile_deploy_gives_every_directory_it_creates_the_user_mode(
     assert [r.action for r in results] == [DeployAction.CREATED]
     destination = results[0].destination
     assert _modes_below(user_root, destination) == {
-        "demo": "0o700",
-        "demo/profile": "0o700",
-        "demo/profile/staging": "0o700",
+        ".": "0o700",
+        "profile": "0o700",
+        "profile/staging": "0o700",
     }
 
 
@@ -89,7 +93,7 @@ def test_a_host_deploy_gives_the_directories_it_creates_the_app_mode_under_a_tig
 
     destination = results[0].destination
     assert destination.parent.name == "hosts"
-    assert _modes_below(app_root, destination) == {"demo": "0o755", "demo/hosts": "0o755"}
+    assert _modes_below(app_root, destination) == {".": "0o755", "hosts": "0o755"}
 
 
 @posix_only
@@ -107,9 +111,9 @@ def test_a_deploy_leaves_an_existing_parent_directory_s_mode_alone(
         results = deploy_config(source, vendor="Acme", app="Demo", slug="demo", targets=["user"], profile="staging")
 
     assert _modes_below(sandbox.roots["user"], results[0].destination) == {
-        "demo": "0o751",
-        "demo/profile": "0o750",
-        "demo/profile/staging": "0o700",
+        ".": "0o751",
+        "profile": "0o750",
+        "profile/staging": "0o700",
     }
 
 
