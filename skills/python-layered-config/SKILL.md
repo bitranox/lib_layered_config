@@ -77,7 +77,8 @@ config.origin("service.timeout")  # -> which layer + file set it (provenance)
 
 The whole point of the library. To answer "why is this value what it is":
 
-- **Python:** `config.origin("database.host")` returns the layer and file path. Or
+- **Python:** `config.origin("database.host")` returns the layer and file path, a `SourceInfo`
+  (exported from `lib_layered_config`, for annotations). Or
   `read_config_raw(...).provenance["database.host"]` -> `{"layer": ..., "path": ..., "key": ...}`.
 - **CLI:** `lib_layered_config read-json --vendor "Acme Corp" --app "My App" --slug my-app`
   prints the merged config **and** the provenance map. `read --format json` does the same;
@@ -99,12 +100,14 @@ cfg.with_overrides({"db": {"host": "b"}}).origin("db.host")
 
 To label the layer `cli` instead, rebuild provenance for exactly
 the keys the override supplied - layer `cli`, path `None` - and leave every other key's source
-alone. Three details decide whether that lands:
+alone. Four details decide whether that lands:
 
 - the dotted key is the SECTION plus the key path, because a parsed override's key path EXCLUDES
   its section; joining only the key path matches nothing and silently changes no entry.
 - overriding a key that no file defined must still record a source, or the key appears with a
   value and no origin at all.
+- each provenance entry needs exactly `layer`, `path` and `key`, `key` being its own dotted key
+  (`"db.host"`); `Config(...)` refuses anything else with `ValidationError` naming the entry.
 - a `Config` you rebuild yourself takes a THIRD argument:
   `Config(data, provenance, NotSensitiveKeys.of(NOT_SENSITIVE))`, built from the same set your
   loader passes to `read_config(not_sensitive=...)`. It defaults to `NotSensitiveKeys.NONE`, so
@@ -245,7 +248,8 @@ way.
   overrides follow the same rule: an empty or relative `LIB_LAYERED_CONFIG_ETC`,
   `LIB_LAYERED_CONFIG_MAC_APP_ROOT` or `LIB_LAYERED_CONFIG_MAC_HOME_ROOT` raises
   `LayerRootNotAbsoluteError` (a `ValidationError`) naming the variable, on a read and a deploy
-  alike, before anything is read or written, while a relative `XDG_CONFIG_HOME` is ignored, as
+  alike (each on the platform whose layout uses it), before anything is read or written, while a
+  relative `XDG_CONFIG_HOME` is ignored, as
   the XDG spec says, and the user layer stays under `~/.config`.
 - **A Windows user-layer deploy whose `%APPDATA%` directory does not exist writes under
   `%LOCALAPPDATA%` instead.** `deploy --target user` (and `deploy_config(..., targets=["user"])`)
@@ -315,13 +319,16 @@ Same engine as the library. Run any command with `-h` for full flags.
 
 Flags are PER-SUBCOMMAND, not CLI-wide - run `<cmd> -h` before composing a call:
 
-| Flag                                                   | read | read-json | deploy | generate-examples | env-prefix | info |
-|--------------------------------------------------------|------|-----------|--------|-------------------|------------|------|
-| `--vendor` / `--app` / `--slug`                        | yes  | yes       | yes    | yes               | no         | no   |
-| `--profile`                                            | yes  | yes       | yes    | no                | no         | no   |
-| `--env-file <path>` (load an explicit `.env`)          | yes  | yes       | no     | no                | no         | no   |
-| `--redact` / `--no-redact` (secrets masked by default) | yes  | yes       | no     | no                | no         | no   |
-| `--json` (one JSON envelope `{ok, command, data}`)     | yes  | yes       | yes    | yes               | yes        | yes  |
+| Flag                                                                                           | read | read-json | deploy | generate-examples | env-prefix | info |
+|------------------------------------------------------------------------------------------------|------|-----------|--------|-------------------|------------|------|
+| `--vendor` / `--app` / `--slug`                                                                | yes  | yes       | yes    | yes               | no         | no   |
+| `--profile`                                                                                    | yes  | yes       | yes    | no                | no         | no   |
+| `--env-file <path>` (load an explicit `.env`)                                                  | yes  | yes       | no     | no                | no         | no   |
+| `--default-file <file>` (defaults layer)                                                       | yes  | yes       | no     | no                | no         | no   |
+| `--start-dir <dir>` (.env search start)                                                        | yes  | yes       | no     | no                | no         | no   |
+| `--format human\|json`, `--provenance` / `--no-provenance`                                     | yes  | no        | no     | no                | no         | no   |
+| `--redact` / `--no-redact` (secrets masked by default)                                         | yes  | yes       | no     | no                | no         | no   |
+| `--json` (one JSON envelope `{ok, command, data, skipped}`; on failure `{ok, command, error}`) | yes  | yes       | yes    | yes               | yes        | yes  |
 
 `env-prefix`, `info` and `fail` accept only `--json` and `--help` (`env-prefix` takes a positional
 SLUG). Passing one of the others raises `NoSuchOption`.
@@ -428,8 +435,9 @@ plurals and trailing digits: `db_pwd`, `smtpPass`, `client-secret`, `apiKey2` an
 sensitive, and a table under such a name is masked whole. A name that only looks secret
 (`pass_through`, `token_url`) is masked too; keep it visible by its dotted path with
 `read_config(not_sensitive=["features.pass_through"])`, a Python-only declaration (no CLI flag or
-config key can unmask a value). A declared path shows its whole value, a URL password in it
-included, so declare only a path that holds no secret.
+config key can unmask a value). A declared path shows its own value, a URL password in it
+included, so declare only a path that holds no secret; keys below a declared table are still
+judged by name (`token` under it stays masked).
 `str(config)` and `repr(config)` print the redacted view, so `logger.debug("loaded %s", config)`
 shows no secret.
 `is_sensitive_at(("performance", "max_token_bytes"), not_sensitive=NotSensitiveKeys.of([...]))`
@@ -438,7 +446,9 @@ checks a key PATH and honours a declaration; pass a tuple of segments, never a d
 themselves (`not_sensitive=["performance.max_token_bytes"]`), as `redact_mapping` does; a single
 `str` there is refused with `TypeError` too.
 `redact_mapping(data, not_sensitive=["performance.max_token_bytes"])` returns a masked deep copy
-of a plain dict; `not_sensitive` takes dotted paths or a `NotSensitiveKeys`. Use it on
+of any Mapping (a dict, a `Config`); `not_sensitive` takes dotted paths or a `NotSensitiveKeys`.
+It does not read a `Config`'s own declaration, so pass `not_sensitive` again, or use
+`config.as_dict(redact=True)`, which honours it. Use it on
 `read_config_raw(...).data`, which does not carry the declaration. `config.get_redacted("db.password")`
 returns one value as `as_dict(redact=True)` shows it (a key below a masked section is masked too, a
 declared not-sensitive path stays visible), redacting only that key's path rather than copying the
@@ -523,7 +533,11 @@ overrides=<what you pass as permission_overrides>)`: `perms.enabled` says whethe
 and `perms.for_layer(Layer.APP)` (the `Layer` enum from `lib_layered_config`; `Layer.HOST`,
 `Layer.USER` likewise) gives a `LayerModes` whose `.directory` and `.file` (each a `DeployMode` that
 prints in octal, such as `0o600`, the user layer's default file mode, and whose `.value` is the `int`
-mode) are that layer's modes, unless you pass an explicit `dir_mode`/`file_mode`, which wins. The
+mode) are that layer's modes, unless you pass an explicit `dir_mode`/`file_mode`, which wins.
+A deploy sets the directory mode on the directory each file goes into, even one that already
+existed, and on every parent it creates; a parent that already existed keeps its mode, and a
+directory reached through a symbolic link is left as it is (logged
+`deploy_directory_mode_skipped`). The
 built-in modes are exported as `DEFAULT_APP_DIR_MODE`/`DEFAULT_APP_FILE_MODE` (`0o755`/`0o644`, app
 and host) and `DEFAULT_USER_DIR_MODE`/`DEFAULT_USER_FILE_MODE` (`0o700`/`0o600`, user). Modes
 are never applied on Windows, and a deploy there never reads the configured ones (see "Probing and
@@ -536,9 +550,10 @@ testing an app built on it"). Use these instead of importing anything from
 case, so `"Darwin"` and `"Windows"` work too), the Windows one needing an absolute ProgramData
 root, see "Probing and testing an app built on it") and call
 `.destination_for(Layer.APP)` on it. It takes the `Layer` enum (`Layer.APP`,
-`Layer.HOST`, `Layer.USER`; the string `"app"` works at runtime but fails pyright strict, and
-`Layer.ENV` raises `KeyError`) and returns a `Path`, never `None`, so an `is None` guard fails
-pyright strict too.
+`Layer.HOST`, `Layer.USER`); the name works too in any case, as in `deploy_config` (`"app"`,
+which pyright strict flags), and `Layer.ENV` or an unknown name raises `ValidationError`
+(`Unsupported deployment target: env`). It returns a
+`Path`, never `None`, so an `is None` guard fails pyright strict too.
 `generate_examples(destination, slug=..., vendor=..., app=...)` is `generate-examples` and returns
 the list of written paths; an example file that already exists is left unchanged and not listed,
 unless `force=True` overwrites it. `generate_examples_report(...)` from `lib_layered_config.generate`
@@ -553,6 +568,7 @@ section by section, each key under a `# layer:<layer> profile:<profile> (<path>)
 TOML-quoted where it needs it (`OutputFormat.JSON` for plain JSON). The `read` command has its own
 renderer, `# source: layer=<layer>, path=<path>` above each key, so one parser does not fit both;
 both quote keys, headers and strings the same way, so a key named `"a.b"` reads back as one key.
+`display_config` never wraps a line, so its human output parses as TOML at any width, piped or not.
 `get_logger()` returns the stdlib `logging.Logger` named `lib_layered_config`; attach handlers to
 it. Each record carries a `context` dict: always `record.context["trace_id"]`, plus the event's
 own fields (often `layer` and `path`). `bind_trace_id("abc123")` sets that trace id for the current
