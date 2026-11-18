@@ -138,11 +138,13 @@ So for `slug="my-app"`, the key `database.host` is set by **`MY_APP___DATABASE__
 
 - Values coerce: `true`/`false` -> bool, `null`/`none` -> None, ints/floats, else string. A sensitive key
   (one `redact=True` masks: `password`, `token`, `secret`, `*_key`) keeps `null`/`none` as text
-  unless declared with `read_config(not_sensitive=[...])`; a number under a sensitive key still converts.
-  The variable's own name decides, lowercased, never the key's spelling in a file:
-  `MY_APP___DB__DBPASSWORD=null` overrides a file's `dbPassword` (case does not matter) but reads as
-  the one word `dbpassword`, which is not sensitive, so the key becomes None. A snake_case key keeps
-  the text: `MY_APP___DB__DB_PASSWORD=null` sets `db_password` to `"null"`.
+  unless declared with `read_config(not_sensitive=[...])` (a path matches in any case, so
+  `"db.dbPassword"` covers `db.dbpassword`); a number under a sensitive key still converts.
+  A variable's or `.env` key's name arrives lowercased, so the key is judged in the spelling a lower
+  layer stored for it: `MY_APP___DB__DBPASSWORD=null` overrides a file's `dbPassword` (case does not
+  matter) and sets it to `"null"`, since the case change splits it into `db` + `password`, just
+  as `MY_APP___DB__DB_PASSWORD=null` sets `db_password` to `"null"`. A key no lower layer holds is
+  judged on its lowercase name and stored under it: `db.dbpassword` is one word, so None.
 - A value starting with `[` or `{` is parsed as JSON, in the environment AND unquoted in `.env`
   (`REPLICAS='["a","b"]'` in a shell, `REPLICAS=["a","b"]` in `.env`); a quoted `.env` value is always literal
   text; a comma list is never split.
@@ -485,7 +487,10 @@ differing destination, each differing `.d` copy included. Permission keywords: `
 `ModeKind.DIRECTORY` or `ModeKind.FILE` (a file mode also refuses any execute bit). A refused mode
 raises `DeployModeError`, which carries no kind field: its message names the kind and every
 offending bit (`unsafe file mode 0o777: group write (0o020); world write (0o002); an execute bit on
-a file (0o111)`), and a caller that needs the kind already knows which one it passed. `force=True`
+a file (0o111)`), and a caller that needs the kind already knows which one it passed. `dir_mode`
+and `file_mode` each take an int or a `DeployMode` of the matching kind; one of the other kind
+raises `DeployModeError` naming both, before anything is written:
+`dir_mode: got a file mode (0o640); dir_mode takes a directory mode`. `force=True`
 backs up and overwrites an existing file, `batch=True` keeps it and writes a `.ucf`; both at once
 raise `ValidationError` (`--force --batch` is a usage error, exit 2), before anything is written.
 The source must be a `.toml` file (destinations are `config.toml` / `<hostname>.toml`, read only as
@@ -526,8 +531,10 @@ testing an app built on it"). Use these instead of importing anything from
 `lib_layered_config.core`. For one layer's destination without a deploy, build
 `DefaultPathResolver(vendor=..., app=..., slug=...)` from
 `lib_layered_config.adapters.path_resolvers.default` (optional `profile=`, `hostname=`, `env=`, and
-`platform=` for another OS's layout: `"linux"`, `"darwin"` or `"win32"`, the Windows one needing an
-absolute ProgramData root, see "Probing and testing an app built on it") and call
+`platform=` for another OS's layout: `"linux"`, `"darwin"` or `"win32"`, or any alias
+`deploy_config` takes (`"posix"`, `"macos"`, `"mac"`, `"windows"`, `"win"`, `"wine"`, in any
+case, so `"Darwin"` and `"Windows"` work too), the Windows one needing an absolute ProgramData
+root, see "Probing and testing an app built on it") and call
 `.destination_for(Layer.APP)` on it. It takes the `Layer` enum (`Layer.APP`,
 `Layer.HOST`, `Layer.USER`; the string `"app"` works at runtime but fails pyright strict, and
 `Layer.ENV` raises `KeyError`) and returns a `Path`, never `None`, so an `is None` guard fails
