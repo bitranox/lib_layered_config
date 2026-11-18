@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.0.0] - 2026-11-18
+
 ### Changed (breaking)
 - `slug` is a required argument of `deploy_config`, `deploy_config_paths` and `read_deploy_config`, as it is of
   `read_config` and `generate_examples`. Leaving it out raises `TypeError`; it no longer falls back to the app
@@ -47,6 +49,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   module; `modes_apply()` is `os.name == "posix"`, which a caller can test directly.
 - `SourceInfoPayload` from `lib_layered_config.application.ports`, another name for `SourceInfo` whose
   docstring announced its removal in 9.0.0. Import `SourceInfo` from `lib_layered_config` instead.
+
+### Changed
+- The `python-layered-config` skill follows 9.0.0: one layer's destination comes from
+  `DefaultPathResolver(...).destination_for(Layer.APP)` with `platform="linux"`, `"darwin"` or `"win32"`, a
+  slug must not end in `.`, `-` or `_`, and `DeployResult` is frozen with `dot_d_results` a tuple. It also names
+  `deployed_before_failure(error)`, public since 8.1.0, for what a deploy that failed part-way had written.
 
 ## [8.1.0] - 2026-11-18
 
