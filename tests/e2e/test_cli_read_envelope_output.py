@@ -11,6 +11,7 @@ import json
 from typing import TYPE_CHECKING
 
 import pytest
+from lib_cli_exit_tools import get_system_exit_code
 
 from lib_layered_config import cli
 from lib_layered_config.domain import json_codec
@@ -155,9 +156,11 @@ def test_a_config_too_deep_for_the_envelope_prints_the_failure_envelope(
 
     code, out = _stdout(capsys, command, *IDENTITY, "--start-dir", str(sandbox.start_dir), *flags)
 
-    assert code == 22
+    # lib_cli_exit_tools maps TypeError per OS: 22 (EINVAL) on POSIX, 87 on Windows.
+    expected = get_system_exit_code(TypeError())
+    assert code == expected
     assert json.loads(out) == {
         "ok": False,
         "command": command,
-        "error": {"type": "TypeError", "message": "Recursion limit reached", "exit_code": 22},
+        "error": {"type": "TypeError", "message": "Recursion limit reached", "exit_code": expected},
     }

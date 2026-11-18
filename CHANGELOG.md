@@ -10,7 +10,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - `read --json`, `read-json --json` and `read --no-provenance --json` print the failure envelope
-  (`TypeError`, "Recursion limit reached", exit 22) for a configuration nested as deep as the plain JSON
+  (`TypeError`, "Recursion limit reached", exit 22 on POSIX and 87 on Windows, as without `--json`) for a
+  configuration nested as deep as the plain JSON
   output allows. They printed nothing on stdout: the envelope nests the data one level deeper, and its final
   serialisation ran outside the command's failure handler.
 - `Config` stores a provenance `layer` given as an enum member (a `Layer`, or a caller's own str-valued enum)
