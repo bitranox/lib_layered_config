@@ -48,12 +48,21 @@ from lib_layered_config import (
     OutputFormat,
     get_logger,
     bind_trace_id,
+    # Redaction and provenance
+    NotSensitiveKeys,
+    is_sensitive,
+    is_sensitive_at,
+    redact_mapping,
+    REDACTED_PLACEHOLDER,
+    OVERRIDE_LAYER,
     # Errors
     ConfigError,
     LayerLoadError,
     InvalidFormatError,
     NotFoundError,
+    HomeDirectoryUnknownError,
     ValidationError,
+    LayerRootNotAbsoluteError,
 )
 ```
 
@@ -210,7 +219,7 @@ for key in keys_to_check:
         print(f"{key}: Not configured")
 
 # Output example:
-# database.host: localhost [from user] /home/alice/.config/demo/config.toml
+# database.host: localhost [from user] ~/.config/demo/config.toml
 # database.port: 5432 [from app] /etc/demo/config.toml
 # service.timeout: 30 [from env] (ephemeral)
 ```
@@ -447,7 +456,7 @@ Load and merge all configuration layers into an immutable `Config` object with p
 - `slug` (str, required): Configuration slug used for file paths and environment variable prefix (e.g., `"config-kit"`).
 - `profile` (str | None, optional): Configuration profile name (e.g., `"test"`, `"production"`). When specified, adds a `profile/<name>/` segment to all configuration paths. Default: `None` (no profile).
 - `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 255, or `0` or negative, uses the absolute maximum of 255 characters (the longest file name), so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
-- `prefer` (Sequence[str] | None, optional): Deprecated, no effect: each layer reads only `config.toml` and its `config.d/` directory, so there is no second main file for a suffix ranking to choose; put JSON or YAML files in `config.d/`. Passing it emits a `DeprecationWarning`; it will be removed in a future major release. A single `str` is still refused with `TypeError`. Default: `None`.
+- `prefer` (Sequence[str] | None, optional): Deprecated, no effect: each layer reads only `config.toml` and its `config.d/` directory, so there is no second main file for a suffix ranking to choose; put JSON or YAML files in `config.d/`. Passing it emits a `DeprecationWarning`; it will be removed in a future major release. A single `str` is refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for upward `.env` file search; a directory the search cannot enter is skipped, and so is a `.env` that neither the current user nor root owns (POSIX; logged as the warning `dotenv_skipped_foreign_owner`) or that has more than one hard link (logged as `dotenv_skipped_hard_link`; name such a file with `dotenv_path` to load it). Default: `None` (uses current working directory; when the operating system cannot name it - a removed directory, or on macOS one the user cannot enter - no project `.env` is searched).
 - `default_file` (str | Path | None, optional): Path to a file injected as the lowest-precedence layer (loaded before app/host/user layers). Default: `None` (no defaults layer).
 - `dotenv_path` (str | Path | None, optional): Explicit path to a `.env` file. When set, this file is loaded directly instead of searching upward from `start_dir`. A FIFO (a shell's `<(...)`) or a device is read like a file, up to the same 10 MiB cap; like `cat`, the read waits for a FIFO's writer and for it to close. A path that does not exist loads nothing; a socket raises the unreadable-file error. Default: `None` (use directory search).
@@ -455,7 +464,14 @@ Load and merge all configuration layers into an immutable `Config` object with p
 
 **Returns:** Immutable `Config` object with merged configuration and provenance tracking.
 
-**Raises:** `LayerLoadError` (a `ConfigError`) when a layer file cannot be decoded or parsed: `"<path> is not
+An unquoted `null` or `none` (any case) from the environment or a `.env` file reads as `None`, except for a key
+whose name is sensitive: that value stays the text. The name is judged as a lower layer spells the key, so
+`MYAPP___A__DBPASSWORD=null` over a file's `[a] dbPassword` keeps `"null"`, as it does for `db_password`; a
+key no lower layer holds is judged on the variable's lowercase name. A key declared in `not_sensitive` always
+reads as `None`.
+
+**Raises:** `ValidationError` for an invalid `vendor`, `app`, `slug` or `profile` (see
+[`default_env_prefix`](#default_env_prefix) for the slug rules). `LayerLoadError` (a `ConfigError`) when a layer file cannot be decoded or parsed: `"<path> is not
 valid <FORMAT>"`, or `"<path> nests deeper than the <FORMAT> parser allows"` when the parser stopped at its
 nesting limit (TOML 80 levels, JSON 1024, YAML Python's recursion limit), plus `" (line N, column M)"` when the
 parser reports a position; `"<path> is not valid UTF-8
@@ -604,7 +620,7 @@ Load configuration and return it as JSON with provenance metadata.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
 - `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 255, or `0` or negative, uses the absolute maximum of 255 characters (the longest file name), so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
-- `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is still refused with `TypeError`. Default: `None`.
+- `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
@@ -701,7 +717,7 @@ Return raw data and provenance mappings for advanced tooling.
 - `slug` (str, required): Configuration slug.
 - `profile` (str | None, optional): Configuration profile name. Adds `profile/<name>/` to paths. Default: `None`.
 - `max_profile_length` (int, optional): Longest `profile` name accepted. A longer one raises `ValidationError` (`"profile exceeds maximum length of N: M characters"`). A value above 255, or `0` or negative, uses the absolute maximum of 255 characters (the longest file name), so length is always checked. Default: `64` (`DEFAULT_MAX_PROFILE_LENGTH`).
-- `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is still refused with `TypeError`. Default: `None`.
+- `prefer` (Sequence[str] | None, optional): Deprecated, no effect; see `read_config`. Passing it emits a `DeprecationWarning`; a single `str` is refused with `TypeError`. Default: `None`.
 - `start_dir` (str | Path | None, optional): Starting directory for `.env` search. Default: `None`.
 - `default_file` (str | Path | None, optional): Path to lowest-precedence defaults file. Default: `None`.
 - `dotenv_path` (str | Path | None, optional): Explicit `.env` file path (skips upward search). Default: `None`.
@@ -797,7 +813,7 @@ print(f"Final configuration: {data}")
 
 ### Redaction helpers
 
-`is_sensitive(name)` decides by key name alone, so a size such as `max_token_bytes` is masked like a token.
+`is_sensitive(key)` decides by key name alone, so a size such as `max_token_bytes` is masked like a token.
 The names it masks include `password`, `passwd`, `passphrase`, `pwd`, `pass`, `secret`, `token`, `credential`,
 `apikey`, `privatekey`, `privkey`, `bearer`, `cookie`, `jwt`, `signature`, `session_id`, `authorization` and any
 `_key` suffix, as whole words, also when digits follow (`password2`, `api_key1`); a word continuing `_keys`
@@ -862,7 +878,7 @@ Return whether the key at `path` is masked: its own name looks secret and nothin
 Return a deep copy of `data` with the values of sensitive keys replaced by `REDACTED_PLACEHOLDER` (`"***REDACTED***"`), and the password of every URL in a string value masked whatever its key (`scheme://user:pw@host`), unless its path is declared not sensitive.
 
 **Parameters:**
-- `data` (dict[str, Any], required): Configuration mapping to redact.
+- `data` (Mapping[str, Any], required): Configuration mapping to redact (a `dict`, a `Config`, a `MappingProxyType`).
 - `not_sensitive` (Iterable[str] | None, optional): Dotted paths declared not sensitive; same validation as `NotSensitiveKeys.of`. Default: `None`.
 
 **Example:**
@@ -888,7 +904,9 @@ environment.
 
 **Raises:** `ValidationError` for a `slug` that `read_config`, `deploy_config` and `generate_examples` refuse
 too: empty (`"slug cannot be empty"`), holding a path separator or whitespace (`"slug contains invalid
-characters: ../x"`), starting with a dot (`"slug cannot start with a dot: .x"`), or non-ASCII.
+characters: ../x"`), starting with a dot (`"slug cannot start with a dot: .x"`), ending in `_` or `-`
+(`"slug cannot end in '_' or '-': myapp_"`: its prefix `MYAPP____` would start with the prefix of `myapp`), or
+non-ASCII.
 
 **Examples:**
 
@@ -993,7 +1011,7 @@ Copy a source configuration file into one or more layer directories with conflic
 
 Building one by hand (a test double, say) refuses a state no deploy produces with `ValidationError`: an `action` that is not a `DeployAction`, a `backup_path` beside any action but `OVERWRITTEN`, or a `ucf_path` beside any action but `KEPT`.
 
-**`.d` Directory Support:** If the source file has a companion `.d` directory (e.g., `defaults.toml` → `defaults.d/`), those files are also deployed to the corresponding `.d` directory at each destination. User-added files in the destination `.d` directory are preserved.
+**`.d` Directory Support:** If the source file has a companion `.d` directory (e.g., `defaults.toml` -> `defaults.d/`), those files are also deployed to the corresponding `.d` directory at each destination. User-added files in the destination `.d` directory are preserved.
 
 **Smart Skipping:** If the source content is byte-identical to the existing destination file, the file is skipped without creating backups (regardless of `force` or `batch` flags). This applies to both base files and `.d` directory files.
 
@@ -1142,7 +1160,7 @@ results = deploy_config(
 
 print(f"Deployed to {len(results)} locations:")
 for result in results:
-    status = "✓" if result.action in (DeployAction.CREATED, DeployAction.OVERWRITTEN) else "○"
+    status = "+" if result.action in (DeployAction.CREATED, DeployAction.OVERWRITTEN) else "-"
     print(f"  {status} {result.destination} ({result.action.value})")
 ```
 **Explanation:** Deploy to multiple layers simultaneously. Useful for setting up consistent defaults across system and user levels. The `force=True` parameter allows overwriting existing files.
@@ -1169,11 +1187,11 @@ try:
 
     for result in results:
         if result.action == DeployAction.CREATED:
-            print(f"✓ Created: {result.destination}")
+            print(f"+ Created: {result.destination}")
         elif result.action == DeployAction.KEPT:
-            print(f"○ Kept existing, review new config at: {result.ucf_path}")
+            print(f"- Kept existing, review new config at: {result.ucf_path}")
         elif result.action == DeployAction.SKIPPED:
-            print(f"○ Skipped (identical content): {result.destination}")
+            print(f"- Skipped (identical content): {result.destination}")
 
 except FileNotFoundError:
     print(f"Error: Source file '{source_config}' not found")
@@ -1243,11 +1261,11 @@ for env in environments:
 
     for result in results:
         if result.action == DeployAction.CREATED:
-            print(f"✓ {env}: created {result.destination}")
+            print(f"+ {env}: created {result.destination}")
         elif result.action == DeployAction.OVERWRITTEN:
-            print(f"✓ {env}: updated {result.destination} (backup: {result.backup_path})")
+            print(f"+ {env}: updated {result.destination} (backup: {result.backup_path})")
         elif result.action == DeployAction.SKIPPED:
-            print(f"○ {env}: unchanged {result.destination}")
+            print(f"- {env}: unchanged {result.destination}")
 ```
 **Explanation:** Profiles are ideal for CI/CD pipelines where you need to deploy different configurations for each environment. Each profile is isolated, so you can safely deploy all environments to the same system. With `force=True`, backups are created before overwriting.
 
@@ -1315,7 +1333,7 @@ rather than building a `permissions=` object from `read_config(...)`, which incl
 files and a user file's `app_*`/`host_*` modes. On Windows, permission setting is automatically skipped;
 a deploy that replaces a file copies that file's access list onto the new file and its `.bak` instead, and
 where it cannot (an SMB share granting Change but not Full) it raises `PermissionError` naming the temporary
-file before the destination changes. The CLI reference's File Permissions section has the details.
+file before the destination changes (grant Full on the share, or delete the file and deploy again). The CLI reference's File Permissions section has the details.
 
 ---
 
@@ -1328,7 +1346,7 @@ def deploy_config_paths(
     vendor: str,
     app: str,
     slug: str,
-    targets: Sequence[str],
+    targets: Sequence[Layer | str],
     profile: str | None = None,
     platform: str | None = None,
     max_profile_length: int = DEFAULT_MAX_PROFILE_LENGTH,
@@ -1411,7 +1429,7 @@ arguments and returns an `ExamplesReport` with `.created` and `.kept`.
 **Raises:** `ValidationError` before anything is written when `slug`, `vendor` or `app` is not a
 safe path segment (`../x`, an absolute path, a control character, empty), checked like
 `read_config` checks them, or when `platform` is not one of the names above. `vendor` and `app`
-may contain spaces; `slug` may not. `GenerateDestinationError`, also before anything is written and one
+may contain spaces; `slug` may not, nor end in `_` or `-`. `GenerateDestinationError`, also before anything is written and one
 line per path: with `force=True`, an example path that is a symbolic link (dangling or not) or not a
 regular file (a directory, FIFO, device or socket); without it, an example path that is a link
 resolving to nothing, which a create would write through; in both modes, a missing example path that
@@ -1616,7 +1634,8 @@ in JSON, which parses back to the same value, and a Python backslash escape (`\u
 the human format. Characters stdout can encode, umlauts on cp1252 included, print as they are.
 
 **Raises:** `ValueError` for a `section` the configuration does not have (`"Section 'nope' not found"`) or an
-`output_format` that is not an `OutputFormat`.
+`output_format` that is neither an `OutputFormat` nor one of its values (`"human"`, `"json"`):
+`"output_format must be one of 'human', 'json', not 'xml'"`.
 
 ```python
 from lib_layered_config import OutputFormat, display_config, read_config
@@ -1714,7 +1733,7 @@ Exception
   set `XDG_CONFIG_HOME`, `LIB_LAYERED_CONFIG_MAC_HOME_ROOT` or `APPDATA` needs no home directory.
 - A refusal that names a vendor, app, slug or hostname, or a layer root that is not absolute, writes each
   control character in it as `\uXXXX` (`slug contains invalid characters: demo\u000a`); a backslash is
-  kept as it is. The profile refusal names its value with `repr`, as before.
+  kept as it is. The profile refusal names its value with `repr` (`profile contains control characters: 'a\nb'`).
 - `LayerLoadError` is what the read functions and `read_deploy_config` raise for a file that does not decode or
   parse; its `__cause__` is the loader's `InvalidFormatError`. `deploy_config` raises it for its own source
   file. A broken file in one of the layers deploy reads its modes from makes it raise `DeployPermissionsError`
@@ -1797,7 +1816,7 @@ Validate a profile name for safe use in filesystem paths.
 
 **Returns:** The validated profile name (unchanged if valid).
 
-**Raises:** `ValueError` when the profile name fails validation.
+**Raises:** `ValidationError` (a `ValueError`) when the profile name fails validation.
 
 **Security Checks:**
 - Length limit (default 64 chars, absolute max 255 chars for filesystem safety)
@@ -1906,7 +1925,7 @@ def get_valid_profile():
             return None
         if is_valid_profile_name(profile):
             return profile
-        print("Invalid profile name. Use lowercase letters, numbers, hyphens, underscores.")
+        print("Invalid profile name. Use letters, numbers, hyphens, underscores.")
         print("Cannot contain spaces, path separators, or special characters.")
 ```
 

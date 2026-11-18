@@ -87,7 +87,8 @@ usage error Click finds while reading the arguments (a missing required option, 
 does not exist, an unknown option) prints the envelope too, with `error.type` set to Click's
 exception (`MissingParameter`, `BadParameter`, `NoSuchOption`) and exit code 2. `--json` is
 recognised as written among the command's arguments, so an option value spelled `--json` counts as
-well. Two cases keep Click's usage text on stderr: an unknown command
+well; an error found after the arguments are read (a refused `--profile --json`) is printed as without
+`--json`. Two cases keep Click's usage text on stderr: an unknown command
 (`lib_layered_config nosuch --json`), which fails before any command is chosen, and the same errors
 without `--json`. An interrupt (Ctrl-C) exits with the signal's code and prints no envelope.
 
@@ -140,7 +141,7 @@ lib_layered_config read --vendor Acme --app ConfigKit --slug config-kit \
 | `--app`                            | string | Yes      | -              | Application name used to compute filesystem paths                                                                                                                                                                                                                      |
 | `--slug`                           | string | Yes      | -              | Configuration slug for file paths and environment prefix                                                                                                                                                                                                               |
 | `--profile`                        | string | No       | -              | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories                                                                                                    |
-| `--prefer`                         | string | No       | None           | Deprecated, no effect: each layer reads `config.toml` and `config.d/`. Prints a warning on stderr; removed in a future major release                                                                                                                                   |
+| `--prefer`                         | string | No       | None           | Deprecated, no effect, repeatable: each layer reads `config.toml` and `config.d/`. Prints a warning on stderr; removed in a future major release                                                                                                                       |
 | `--start-dir`                      | path   | No       | current dir    | Starting directory for upward `.env` file search. Must be an existing directory                                                                                                                                                                                        |
 | `--default-file`                   | path   | No       | None           | Path to lowest-precedence defaults file. Must be an existing file ending in `.toml`, `.json`, `.yaml` or `.yml`                                                                                                                                                        |
 | `--env-file`                       | path   | No       | None           | Explicit `.env` file path. Skips upward directory search when set. Must exist; a FIFO such as `<(...)` is read too, waiting for its writer like `cat`                                                                                                                  |
@@ -208,8 +209,8 @@ cat config-audit.json
       "endpoint": "https://api.example.com"
     },
     "database": {
-      "host": "localhost",
-      "port": 5432
+      "port": 5432,
+      "host": "localhost"
     }
   },
   "provenance": {
@@ -217,6 +218,11 @@ cat config-audit.json
       "layer": "app",
       "path": "/etc/xdg/myapp/config.toml",
       "key": "service.timeout"
+    },
+    "database.port": {
+      "layer": "app",
+      "path": "/etc/xdg/myapp/config.toml",
+      "key": "database.port"
     },
     "service.endpoint": {
       "layer": "user",
@@ -233,6 +239,12 @@ cat config-audit.json
 ```
 
 **Explanation:** This gives you complete audit information - both the final configuration values and where each one came from.
+
+A file nested deeper than the JSON output can print is refused when it loads (`LayerLoadError`, exit code 1,
+`... nests a 255 levels deep; JSON output takes 253, counted from the top-level table`). The `--json` envelope
+nests the data one level deeper, so a configuration at exactly that limit prints with `--format json` but fails
+under `--json` with the failure envelope `{"type": "TypeError", "message": "Recursion limit reached"}`, exit
+code 22 on Linux and macOS, 87 on Windows.
 
 **Example 4: Settings split across TOML, JSON and YAML**
 ```bash
@@ -307,7 +319,7 @@ lib_layered_config read-json --vendor Acme --app ConfigKit --slug config-kit \
 | `--app`                    | string | Yes      | -           | Application name                                                                                                                                                                                                          |
 | `--slug`                   | string | Yes      | -           | Configuration slug                                                                                                                                                                                                        |
 | `--profile`                | string | No       | -           | Configuration profile name (e.g., `test`, `production`). Reads the app, host and user files (and the user `.env` fallback) from their `profile/<name>/` directories                                                       |
-| `--prefer`                 | string | No       | None        | Deprecated, no effect; prints a warning on stderr                                                                                                                                                                         |
+| `--prefer`                 | string | No       | None        | Deprecated, no effect, repeatable; prints a warning on stderr                                                                                                                                                             |
 | `--start-dir`              | path   | No       | current dir | Starting directory for `.env` search                                                                                                                                                                                      |
 | `--default-file`           | path   | No       | None        | Path to defaults file                                                                                                                                                                                                     |
 | `--env-file`               | path   | No       | None        | Explicit `.env` file (skips search)                                                                                                                                                                                       |
@@ -332,7 +344,7 @@ lib_layered_config deploy --source ./config/app.toml \
   --target app [--target host] [--target user] \
   [--profile production] \
   [--platform linux|darwin|windows] \
-  [--force] [--batch] \
+  [--force | --no-force] [--batch] \
   [--permissions | --no-permissions] [--dir-mode MODE] [--file-mode MODE]
 ```
 
@@ -347,7 +359,7 @@ lib_layered_config deploy --source ./config/app.toml \
 | `--profile`                          | string | No       | -                             | Configuration profile name (e.g., `test`, `production`). Adds `profile/<name>/` segment to deployment paths                                                                                                          |
 | `--target`                           | choice | Yes      | -                             | Layer targets to deploy to (repeatable flag). Valid values: `app`, `host`, `user`. Can specify multiple: `--target app --target user`                                                                                |
 | `--platform`                         | string | No       | auto-detect                   | Override platform. `linux`, `posix` give the Linux layout; `darwin`, `macos`, `mac` the macOS layout; `windows`, `win`, `win32`, `wine` the Windows layout; any case. Any other value is a usage error (exit code 2) |
-| `--force`                            | flag   | No       | `false`                       | When file exists with different content: backup existing file to `.bak` and overwrite                                                                                                                                |
+| `--force` / `--no-force`             | flag   | No       | `--no-force`                  | When file exists with different content: backup existing file to `.bak` and overwrite                                                                                                                                |
 | `--batch`                            | flag   | No       | `false`                       | Non-interactive mode: keeps existing files and writes new config as `.ucf` for review (CI/CD pipelines). Combined with `--force` it is a usage error (exit code 2)                                                   |
 | `--permissions` / `--no-permissions` | flag   | No       | configured `enabled`, else on | Set Unix file permissions on deployed files. Uses the configured modes, else app/host = 755/644 (world-readable), user = 700/600 (private). Skipped on Windows                                                       |
 | `--dir-mode`                         | string | No       | -                             | Directory mode for every target, octal (`750` or `0o750`). Refused when unsafe (see File Permissions)                                                                                                                |
@@ -361,7 +373,9 @@ lib_layered_config deploy --source ./config/app.toml \
 - `kept`: Array of paths for existing files that were kept
 - `ucf_files`: Array of paths for UCF files created (`.ucf` files with new config)
 
-Only non-empty arrays are included in the output.
+The same lists for the copies of the source's `.d` directory are prefixed `dot_d_` (`dot_d_created`,
+`dot_d_overwritten`, `dot_d_kept`, `dot_d_skipped`, `dot_d_backups`, `dot_d_ucf_files`). Only non-empty arrays
+are included in the output, which is printed indented; the examples below show it on one line.
 
 **Profile Examples:**
 ```bash
@@ -709,13 +723,15 @@ done
 1. **Don't ignore the JSON output keys:**
    ```bash
    # BAD: Assuming array format
-   result=$(lib_layered_config deploy --source config.toml --target user --batch)
-   if [ "$result" = "[]" ]; then  # Wrong! Output is now a JSON object
+   result=$(lib_layered_config deploy --source config.toml \
+     --vendor Acme --app MyApp --slug myapp --target user --batch)
+   if [ "$result" = "[]" ]; then  # Wrong: the output is a JSON object
      echo "Nothing deployed"
    fi
 
    # GOOD: Parse JSON properly
-   result=$(lib_layered_config deploy --source config.toml --target user --batch)
+   result=$(lib_layered_config deploy --source config.toml \
+     --vendor Acme --app MyApp --slug myapp --target user --batch)
    if echo "$result" | jq -e '.created' > /dev/null 2>&1; then
      echo "Files created"
    fi
@@ -1363,7 +1379,9 @@ lib_layered_config env-prefix <slug>
 
 **Returns:** Uppercase environment prefix with dashes converted to underscores. A slug `read` and `deploy`
 refuse (they exit 22) is a usage error here (exit code 2), because the slug is this command's only argument: an empty one (`slug cannot be empty`), one holding a path
-separator or whitespace (`slug contains invalid characters: ../x`), starting with a dot, or non-ASCII.
+separator or whitespace (`slug contains invalid characters: ../x`), starting with a dot, ending in `_` or `-`
+(`slug cannot end in '_' or '-': myapp_`, whose prefix `MYAPP____` would start with `MYAPP___`), ending with a
+dot or space, or non-ASCII.
 A refusal names the value it refused with each control character written as `\uXXXX` (`demo\u000a` for a
 slug ending in a newline), so a trailing newline is visible and an ESC never reaches the terminal raw; a
 backslash prints as it is. The same holds for the vendor, app and hostname refusals and for a layer

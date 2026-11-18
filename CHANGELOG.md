@@ -12,6 +12,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   file works, a `--force` overwrite stops with `cannot set the access list of` the temporary file and
   leaves the destination unchanged; docs/cli-reference.md and docs/python-api.md say so and name the
   remedy (Full on the share, or delete and deploy again).
+- The docs follow the code where they did not: a JSON object in an environment variable merges into the
+  table key by key (only an array replaces the value); `~/.config` stands in only for an unset, empty or
+  relative `XDG_CONFIG_HOME`; `read` prints `debug = false`; `deploy` takes `--force` / `--no-force`; the
+  `dot_d_*` result lists, the stored-spelling rule for an environment `null`, and the refusal of a slug ending
+  in `_` or `-` are described where a reader looks for them.
 
 ## [9.0.1] - 2026-11-18
 
