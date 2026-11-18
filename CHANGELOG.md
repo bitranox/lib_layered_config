@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.0.2] - 2026-11-19
+
 ### Added
 
 - `SourceInfo`, the type `Config.origin()` returns, is exported from `lib_layered_config`, where the 9.0.0
