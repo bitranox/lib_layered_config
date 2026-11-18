@@ -25,9 +25,10 @@ System Role:
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import shutil
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -179,20 +180,58 @@ class _ExplicitModes(NamedTuple):
     file: DeployMode | None
 
 
-def _empty_deploy_results() -> list[DeployResult]:
-    """Return an empty list of DeployResult for default_factory."""
-    return []
+def _require_deploy_action(action: object) -> None:
+    """Refuse an *action* that is not a :class:`DeployAction` (a caller passing ``"created"``).
+
+    The parameter is typed ``object`` on purpose: the field is annotated ``DeployAction``, so a check
+    on the field itself reads as always true to the type checker, while at run time a caller can pass
+    anything.
+    """
+    if not isinstance(action, DeployAction):
+        raise ValidationError(f"action must be a DeployAction, got {type(action).__name__}")
 
 
-@dataclass
+@dataclass(frozen=True)
 class DeployResult:
-    """Result of a single file deployment."""
+    """Result of a single file deployment, frozen.
+
+    Attributes:
+        destination: The file written, skipped or left in conflict.
+        action: What was done.
+        backup_path: The ``.bak`` copy of the replaced file; only for ``OVERWRITTEN``.
+        ucf_path: The ``.ucf`` file holding the new content beside the kept one; only for ``KEPT``.
+        dot_d_results: The results of the destination's ``.d`` copies, in the order written,
+            stored as a tuple whatever sequence is passed.
+
+    Raises:
+        ValidationError: *action* is not a :class:`DeployAction`, or a path is set for an action
+            it does not belong to.
+
+    Examples:
+        >>> result = DeployResult(destination=Path("/opt/acme/config.toml"), action=DeployAction.CREATED)
+        >>> result.dot_d_results
+        ()
+        >>> DeployResult(destination=Path("/opt/acme/config.toml"), action=DeployAction.CREATED, ucf_path=Path("x"))
+        Traceback (most recent call last):
+            ...
+        lib_layered_config.domain.errors.ValidationError: ucf_path is set only for a KEPT result, not CREATED
+    """
 
     destination: Path
     action: DeployAction
-    backup_path: Path | None = None  # Set if action is OVERWRITTEN
-    ucf_path: Path | None = None  # Set if action is KEPT
-    dot_d_results: list[DeployResult] = field(default_factory=_empty_deploy_results)
+    backup_path: Path | None = None
+    ucf_path: Path | None = None
+    dot_d_results: Sequence[DeployResult] = ()
+
+    def __post_init__(self) -> None:
+        """Refuse a state no deploy produces and store ``dot_d_results`` as a tuple."""
+        _require_deploy_action(self.action)
+        if self.backup_path is not None and self.action is not DeployAction.OVERWRITTEN:
+            raise ValidationError(f"backup_path is set only for an OVERWRITTEN result, not {self.action.name}")
+        if self.ucf_path is not None and self.action is not DeployAction.KEPT:
+            raise ValidationError(f"ucf_path is set only for a KEPT result, not {self.action.name}")
+        # frozen: the one sanctioned write, normalising the caller's sequence before anyone reads it.
+        object.__setattr__(self, "dot_d_results", tuple(self.dot_d_results))
 
 
 # Type alias for conflict resolution callback
@@ -582,9 +621,10 @@ def _deploy_to_destination(
 ) -> None:
     """Deploy to a single destination with optional .d directory handling.
 
-    The destination's result is appended to *written* as soon as its file is written, and its
-    ``.d`` copies to that result's ``dot_d_results`` one by one, so a failure part-way leaves
-    *written* holding exactly what was written before it (see :func:`deployed_before_failure`).
+    The destination's result is appended to *written* as soon as its file is written; its ``.d``
+    copies then replace that entry with one whose ``dot_d_results`` holds them (the record is
+    frozen), so a failure part-way leaves *written* holding exactly what was written before it
+    (see :func:`deployed_before_failure`).
 
     Args:
         destination: Target file path.
@@ -609,7 +649,14 @@ def _deploy_to_destination(
         modes=modes,
     )
 
-    if dot_d_files:
+    if not dot_d_files:
+        return
+    # The result is frozen, so the .d copies collect in a list and the result in *written* is
+    # replaced by one holding them, on success and on failure alike: deployed_before_failure then
+    # reports exactly the copies made before the error.
+    position = len(written) - 1
+    dot_d_written: list[DeployResult] = []
+    try:
         _deploy_dot_d_files(
             dot_d_files=dot_d_files,
             dest_dot_d=_get_dot_d_dir(destination),
@@ -617,8 +664,10 @@ def _deploy_to_destination(
             batch=batch,
             conflict_resolver=conflict_resolver,
             modes=modes,
-            written=result.dot_d_results,
+            written=dot_d_written,
         )
+    finally:
+        written[position] = dataclasses.replace(result, dot_d_results=tuple(dot_d_written))
 
 
 def deploy_config(

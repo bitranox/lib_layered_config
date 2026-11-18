@@ -984,12 +984,14 @@ Copy a source configuration file into one or more layer directories with conflic
 - `permissions` (DeployPermissions | None, optional): A complete settings object to use instead of reading the configuration, for a caller that builds one on purpose. One built with `deploy_permissions_from_config(read_config(...))` includes `.env`, the deployed files and a user file's `app_*`/`host_*` modes, which the deploy's own read leaves out; use `permission_overrides` for runtime overrides. Default: `None`.
 - `permission_overrides` (Mapping[str, object] | None, optional): Runtime values for keys of `[lib_layered_config.default_permissions]`, by setting name (`{"user_file": "0o640"}`), laid over the deploy's own read and validated like configured values; a refusal names `(source: override)`. Validated on every call. `{"enabled": False}` with `set_permissions=None` and no mode turns permission setting off without reading the configuration. Cannot be combined with `permissions`. Default: `None`.
 
-**Returns:** `list[DeployResult]` - Each result contains:
+**Returns:** `list[DeployResult]` - Each result is a frozen record (assigning a field raises `FrozenInstanceError`) holding:
 - `destination`: Path to the target file
 - `action`: `DeployAction` enum: `CREATED`, `OVERWRITTEN`, `KEPT`, `SKIPPED` (byte-identical, nothing written) or `CONFLICT` (content differs and no `force`, `batch` or `conflict_resolver` decided; the file is left unchanged and nothing else is written for it)
 - `backup_path`: Path to `.bak` file (if action was `OVERWRITTEN`)
 - `ucf_path`: Path to `.ucf` file (if action was `KEPT`)
-- `dot_d_results`: List of `DeployResult` for companion `.d` directory files (if any)
+- `dot_d_results`: Tuple of `DeployResult` for companion `.d` directory files, in the order written; `()` when there are none
+
+Building one by hand (a test double, say) refuses a state no deploy produces with `ValidationError`: an `action` that is not a `DeployAction`, a `backup_path` beside any action but `OVERWRITTEN`, or a `ucf_path` beside any action but `KEPT`.
 
 **`.d` Directory Support:** If the source file has a companion `.d` directory (e.g., `defaults.toml` → `defaults.d/`), those files are also deployed to the corresponding `.d` directory at each destination. User-added files in the destination `.d` directory are preserved.
 

@@ -120,7 +120,7 @@ def test_a_failure_in_the_dot_d_copy_names_the_config_written_before_it(
 
     written = deployed_before_failure(caught.value)
     assert [(result.destination.resolve(), result.action, result.dot_d_results) for result in written] == [
-        (_config(sandbox, "user").resolve(), DeployAction.CREATED, [])
+        (_config(sandbox, "user").resolve(), DeployAction.CREATED, ())
     ]
 
 

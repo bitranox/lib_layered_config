@@ -15,6 +15,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   Its environment prefix `MYAPP____` starts with `MYAPP___`, so an app with slug `myapp` read the other's
   variables as a stray `_`-named section. The check is `validate_slug` in `lib_layered_config.domain.identifiers`.
 
+- `DeployResult` is frozen: assigning a field raises `FrozenInstanceError`, and `dot_d_results` is a tuple (any
+  sequence given is stored as one). Building one refuses a state no deploy produces with `ValidationError`: an
+  `action` that is not a `DeployAction`, `backup_path` beside any action but `OVERWRITTEN`, `ucf_path` beside any
+  action but `KEPT`. Results from `deployed_before_failure` are frozen too, and still hold exactly the `.d` copies
+  written before the error.
+
 ### Removed (breaking)
 - The deprecated `lib_layered_config.examples` package, with `lib_layered_config.examples.deploy` and
   `lib_layered_config.examples.generate`. Import from `lib_layered_config` (`deploy_config`, `DeployAction`,
