@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [8.1.0] - 2026-11-18
+
 ### Fixed
 - `read --json`, `read-json --json` and `read --no-provenance --json` print the failure envelope
   (`TypeError`, "Recursion limit reached", exit 22) for a configuration nested as deep as the plain JSON
