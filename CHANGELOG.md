@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.0.1] - 2026-11-18
+
 ### Fixed
 - An unquoted `null`/`none` from the environment or `.env` is judged on the key's spelling in the file. The
   variable name arrives in lowercase, so `MYAPP___A__DBPASSWORD=null` cleared a file's `dbPassword` to None
