@@ -36,6 +36,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `--vendor`, `--app`, `--slug`, `--start-dir` and `--default-file` a help line, and gives `--json` the
   failure envelope's shape; `DeployMode`, `LayerModes`, `DeployPermissions`, `DeployPermissionsError` and
   `PermissionProblem` document their fields.
+- The `python-layered-config` skill follows the code: `destination_for` names, the `--json` failure
+  envelope, the `read` flags, masking below a declared table, the provenance entry shape, `redact_mapping`
+  on a `Config`, deploy directory modes, which platform checks each root override, and `SourceInfo`.
 
 ## [9.0.1] - 2026-11-18
 
