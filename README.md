@@ -280,7 +280,7 @@ Solaris, Cygwin and other `sys.platform` values that are neither macOS nor Windo
 
 Environment overrides: `LIB_LAYERED_CONFIG_ETC`, `LIB_LAYERED_CONFIG_PROGRAMDATA`, `LIB_LAYERED_CONFIG_APPDATA`, `LIB_LAYERED_CONFIG_LOCALAPPDATA`, `LIB_LAYERED_CONFIG_MAC_APP_ROOT`, `LIB_LAYERED_CONFIG_MAC_HOME_ROOT`. Both the runtime readers and the `deploy` helper honour these variables so generated files land in the same directories that `read_config` inspects. Each must be an absolute path: an empty or relative value makes a read, and a deploy to that layer, raise `LayerRootNotAbsoluteError` (a `ValidationError`) before anything is read or written, so no layer resolves under the current directory. A deploy to another target still runs: when it reads its permission settings, a layer with no usable root holds none. `$XDG_CONFIG_HOME` follows the XDG Base Directory specification instead: empty or relative, it is ignored and `~/.config` is used.
 
-**Fallback note:** Whenever a path is marked as a fallback, the resolver first consults the documented environment overrides (`LIB_LAYERED_CONFIG_*`, `$XDG_CONFIG_HOME`, `%APPDATA%`, etc.). If those variables are unset or the computed directory does not exist, it switches to the stated fallback location (`~/.config`, `%LOCALAPPDATA%`, ...). This keeps local installs working without additional environment configuration while still allowing operators to steer resolution explicitly.
+**Fallback note:** `~/.config` stands in when `$XDG_CONFIG_HOME` is unset, empty or relative; an absolute value is used even when that directory does not exist. On Windows the user layer reads `%APPDATA%\<Vendor>\<App>` when it holds a configuration file and `%LOCALAPPDATA%\<Vendor>\<App>` otherwise, and a deploy writes under `%LOCALAPPDATA%` only when the `%APPDATA%` directory does not exist and `LIB_LAYERED_CONFIG_APPDATA` is not set. This keeps local installs working without additional environment configuration while still allowing operators to steer resolution explicitly.
 
 ### The `.d` Directory Pattern
 
@@ -377,7 +377,7 @@ config = read_config(
     vendor="Acme",
     app="MyApp",
     slug="myapp",
-    default_file="./defaults.toml",  # Also checks ./defaults.d/*.{toml,yaml,json}
+    default_file="./defaults.toml",  # Also checks ./defaults.d/*.{toml,json,yaml,yml}
 )
 ```
 
@@ -469,6 +469,7 @@ lib_layered_config deploy --source ./myapp/config.toml --vendor Acme --app MyApp
 The JSON output includes separate fields for `.d` file results:
 - `dot_d_created`: Paths of `.d` files created
 - `dot_d_overwritten`: Paths of `.d` files overwritten (with `dot_d_backups`)
+- `dot_d_kept`: Paths of `.d` files kept unchanged, the new content saved beside them (with `dot_d_ucf_files`)
 - `dot_d_skipped`: Paths of `.d` files skipped (identical content)
 
 **Note:** Deployment copies ALL files from the `.d` directory (including README.md, notes.txt, etc.) to preserve documentation and supporting files. Only config file parsing filters by extension.
@@ -597,12 +598,11 @@ make targets and the release checklist.
 
 The GitHub Actions workflow executes three jobs:
 
-- **Test matrix** (Linux/macOS/Windows, Python 3.10-3.15, plus the free-threaded builds 3.14t and 3.15t on Linux and Windows) running the same pipeline as `make test`.
+- **Test matrix** (Linux and Windows on Python 3.10-3.15 plus the free-threaded builds 3.14t and 3.15t, macOS on the newest declared Python) running the same pipeline as `make test`.
 - **pipx / uv verification** to prove the built wheel installs cleanly with the common Python app launchers.
 - **Notebook smoke test** that executes `notebooks/Quickstart.ipynb` to keep the tutorial in sync using the native nbformat workflow (no compatibility shims required).
-- CLI jobs run through `lib_cli_exit_tools.cli_session`, ensuring the `--traceback` flag behaves the same locally and in automation.
 
-Packaging-specific jobs (conda, Nix, Homebrew sync) were retired; the Python packaging metadata in `pyproject.toml` remains the single source of truth.
+The CLI runs through `lib_cli_exit_tools.cli_session`, so the `--traceback` flag behaves the same locally and in automation. The Python packaging metadata in `pyproject.toml` is the single source of truth.
 
 ## License
 

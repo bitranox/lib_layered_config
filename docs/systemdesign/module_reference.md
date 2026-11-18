@@ -14,9 +14,8 @@ The library follows Clean Architecture: dependencies point inward only. Two impo
 contracts in `pyproject.toml` (run by `lint-imports`, and in CI) fail the build if either is
 violated:
 
-- **Layered:** `cli` -> `examples` -> `deploy` | `generate` -> `adapters` -> `application` ->
-  `domain`. A layer may import only from the layers below it; `deploy` and `generate` share one
-  layer and may not import each other.
+- **Layered:** `cli` -> `deploy` | `generate` -> `adapters` -> `application` -> `domain`. A layer may import only from the
+  layers below it; `deploy` and `generate` share one layer and may not import each other.
 - **Domain is pure:** `domain` may not import `adapters`, `application`, or `core`.
 
 The root modules (`core.py`, `_layers.py`, `_platform.py`, `observability.py`, `testing.py`,
@@ -63,6 +62,7 @@ Every merged value records which layer and file produced it; `Config.origin(key)
 | `deploy_permissions.py` | `DeployPermissions`/`LayerModes`: per-layer modes and `enabled`, read from `[lib_layered_config.default_permissions]` in one pass with one-line problems, runtime overrides laid over it; `drop_app_and_host_modes` strips what a user-layer file may not decide.                                                                                                                                                                                                                                                                                                                                                                             |
 | `json_codec.py`         | JSON reading and writing for every JSON view and the JSON loader: `OrjsonCodec` below Python 3.14, `StdlibCodec` on 3.14+ and free-threaded builds (chosen once as `CODEC`); the stdlib codec refuses what orjson refuses (depth past 1024 to read and 254 to write, NaN/Infinity, lone surrogates on read, ints outside 64 bits on write) and reads a wide int as a float; on write both codecs escape a lone surrogate (`escape_lone_surrogates`: a POSIX byte that is not UTF-8 as `\xNN`); `JsonLoadError` carries the position and whether the input nests too deep.                                                                     |
 | `source_position.py`    | `SourcePosition`: the 1-based line and column where a TOML, JSON or YAML parser stopped, a `NamedTuple` so it unpacks and compares like a plain tuple.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `null_literal.py`       | `NullLiteral`: an unquoted `null`/`none` from the environment or `.env`, kept as written until the merge knows the key's stored spelling; `settle_null_literal` turns it into the text for a sensitive key and None for any other.                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ### application/ - use cases and ports
 

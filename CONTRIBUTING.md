@@ -19,9 +19,9 @@ Thanks for helping improve **lib_layered_config**. This document summarises the 
 ## 3. Coding Standards
 
 - Apply the repository's Clean Architecture / SOLID rules (see `CLAUDE.md`).
-- Domain layer (`lib_layered_config.domain`) remains pure Python (stdlib only), free of I/O and logging.
+- Domain layer (`lib_layered_config.domain`) remains free of I/O and logging; its one third-party use is `json_codec`, which uses orjson where it is installed and can run.
 - Application layer orchestrates use cases and depends only on domain abstractions.
-- Adapters contain all boundary I/O (filesystem, env vars, logging) and are the only place structured logs are emitted.
+- Adapters contain all boundary I/O (filesystem, env vars). Structured logs come from the adapters, the composition root, and the application merge's warnings, all through `lib_layered_config.observability`.
 - The public surface is what `lib_layered_config.__all__` lists; anything else is internal. Add to it only on purpose, and document the addition in `docs/python-api.md`.
 
 ## 4. Tests & Tooling

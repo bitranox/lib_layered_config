@@ -1,4 +1,4 @@
-Here is the concept for **lib_layered_config** - translated to English, aligned with the current architecture, and ready to evolve with the codebase.
+Here is the concept for **lib_layered_config**, aligned with the current architecture and ready to evolve with the codebase.
 
 ---
 
@@ -11,7 +11,7 @@ Build a configurable layering library for applications.
 * Built-in support for TOML and JSON, optional support for YAML.
 * `.env` files and process environment variables behave as first-class layers.
 * Every setting exposes provenance (originating layer and file path).
-* Keep the core pure-stdlib Python so it runs on Linux, macOS, and Windows.
+* Keep the core portable Python so it runs on Linux, macOS, and Windows.
 * Offer generators for example configuration trees so developers can bootstrap projects quickly.
 * Provide a typed, immutable public API backed by a well-defined error taxonomy.
 * Ship a Rich Click CLI mirroring the library orchestration.
@@ -25,9 +25,9 @@ Use this checklist as a living reference; extend it as the solution grows.
 1. **Primary Goals** *(current status)*
 
 * [x] Deterministic precedence order `defaults → app → host → user → dotenv → env` implemented in `_layers.collect_layers` and enforced by tests.
-* [x] Structured file loaders (TOML/JSON core via `rtoml`/`orjson` below Python 3.14 and stdlib `tomllib`/`json` on 3.14+ and on free-threaded builds, with the same results; YAML behind optional extra).
+* [x] Structured file loaders (TOML/JSON core via `rtoml`/`orjson` below Python 3.14 and `tomli` (3.14) or stdlib `tomllib` (3.15+) plus stdlib `json` on 3.14+ and on free-threaded builds, with the same results; YAML behind optional extra).
 * [x] Immutable `Config` value object exposing `get`, `origin`, `as_dict`, `to_json`, `with_overrides`.
-* [x] Clean Architecture boundaries reflected in module layout and enforced by import-linter contracts (layer order `cli` -> `examples` (deprecated shim) -> `deploy` / `generate` -> `adapters` -> `application` -> `domain`; the composition root sits outside the hierarchy).
+* [x] Clean Architecture boundaries reflected in module layout and enforced by import-linter contracts (layer order `cli` -> `deploy` / `generate` -> `adapters` -> `application` -> `domain`; the composition root sits outside the hierarchy).
 * [x] Trace-aware structured logging provided by `observability` helpers, consumed by adapters/composition.
 * [x] Rich Click CLI (`lib_layered_config`) with commands for read/read-json, deploy, generate-examples, env-prefix, info, fail.
 * [x] Example tree generator and deployment helpers for docs/onboarding (`generate`, `deploy`).
@@ -90,7 +90,7 @@ Use this checklist as a living reference; extend it as the solution grows.
 * README highlights precedence, OS-specific search paths, CLI usage, doctest-powered API snippets, and provenance examples.
 * System design docs (`docs/systemdesign/*.md`) track module responsibilities, test matrix, and this concept.
 * Notebook `notebooks/Quickstart.ipynb` demonstrates prefix calculation, example generation, and `read_config` end-to-end.
-* Example generator outputs layered trees (`etc/<slug>`, host overrides, user config, `.env.example`).
+* Example generator outputs layered trees (`xdg/<slug>` on Linux, `ProgramData/<Vendor>/<App>` on Windows, host overrides, user config, `.env.example`).
 
 ## F) Follow-up / Backlog
 

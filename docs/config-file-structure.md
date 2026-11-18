@@ -6,7 +6,7 @@ overview see the [README](../README.md).
 
 ## Configuration File Structure
 
-Configuration files use TOML, JSON, or YAML format. Here's a comprehensive example showing how to structure your configuration:
+Configuration files use TOML, JSON, or YAML format (a layer's base `config.toml` is always TOML; its `config.d/` takes all three). Here's a comprehensive example showing how to structure your configuration:
 
 ### Example Configuration File (TOML)
 
@@ -17,7 +17,7 @@ Configuration files use TOML, JSON, or YAML format. Here's a comprehensive examp
 # TOP-LEVEL KEYS (Simple Values)
 # ============================================================================
 # Access in Python: config.get("debug")
-# Access in CLI: config["debug"]
+# In `lib_layered_config read` output: debug = false
 # Environment variable: MYAPP___DEBUG=true
 
 debug = false
@@ -229,7 +229,7 @@ environment = "production"
 ```
 **Access:**
 - Python: `config.get("debug")` or `config["debug"]`
-- CLI: Value appears as `debug: false`
+- CLI: `lib_layered_config read` prints `debug = false`
 - Environment: `MYAPP___DEBUG=true`
 
 ---
@@ -393,8 +393,9 @@ MYAPP___EMAIL__SMTP__PASSWORD=secret123
 MYAPP___FEATURES__ANALYTICS__SAMPLING_RATE=0.5
 
 # Complex types (JSON): a value opening with [ or { is parsed as JSON.
-# A whole array or object replaces the value at that key (to override a single
-# array element instead, see "Overriding one element of an array" below).
+# An array replaces the value at that key (to override a single array element
+# instead, see "Overriding one element of an array" below); an object merges into
+# the table there key by key, like any higher layer, so keys it does not name stay.
 MYAPP___DATABASE__REPLICAS='["replica1", "replica2"]'
 MYAPP___DATABASE__POOL='{"size": 20, "timeout": 5}'
 ```
