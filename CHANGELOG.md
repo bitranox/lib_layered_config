@@ -318,6 +318,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   dots pass without it. Nothing passed it; the function now always applies the strict pattern.
 - `lib_layered_config.adapters._nested_keys.ensure_child_mapping`, a private helper nothing called
   since nested-key placement moved to its case index.
+- `lib_layered_config.application.ports.Merger`, a protocol for the merge step that nothing implemented
+  and no contract test checked; `merge_layers` is called directly. It was in that module's `__all__`,
+  never in the package root's.
 
 ### Fixed
 - `is_sensitive_at(path, not_sensitive=["db.password"])` raised `AttributeError: 'list' object has no attribute
