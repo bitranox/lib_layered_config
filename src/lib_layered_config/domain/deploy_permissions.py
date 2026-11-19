@@ -23,7 +23,7 @@ System Role:
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Final, NamedTuple, cast
 
@@ -53,17 +53,23 @@ SECTION_KEY: Final[str] = f"{_NAMESPACE_KEY}.{_SECTION_NAME}"
 #: override (such as an application's ``--set``).
 OVERRIDE_SOURCE: Final[str] = "override"
 _ENABLED: Final[str] = "enabled"
-_MODE_FIELDS: Final[Mapping[str, ModeKind]] = MappingProxyType(
-    {
-        f"{layer.value}_{suffix}": kind
-        for layer in DEPLOY_LAYERS
-        for suffix, kind in (("directory", ModeKind.DIRECTORY), ("file", ModeKind.FILE))
-    }
+
+
+class _ModeField(NamedTuple):
+    """The layer and the kind of mode one setting of the section decides."""
+
+    layer: Layer
+    kind: ModeKind
+
+
+#: The section's mode settings by their key (``user_file``), each naming what it decides.
+_MODE_FIELDS: Final[Mapping[str, _ModeField]] = MappingProxyType(
+    {f"{layer.value}_{kind.value}": _ModeField(layer, kind) for layer in DEPLOY_LAYERS for kind in ModeKind}
 )
 _KNOWN_KEYS: Final[str] = ", ".join(sorted({*_MODE_FIELDS, _ENABLED}))
 #: The settings a user-layer file may not decide: the modes of the system-wide layers.
 _APP_AND_HOST_MODE_FIELDS: Final[frozenset[str]] = frozenset(
-    name for name in _MODE_FIELDS if not name.startswith(f"{Layer.USER.value}_")
+    name for name, field in _MODE_FIELDS.items() if field.layer is not Layer.USER
 )
 
 
@@ -242,17 +248,11 @@ def _unknown_setting(name: str) -> str | None:
     return f"unknown setting {brief_repr(name)}; expected one of {_KNOWN_KEYS}"
 
 
-def _assemble(modes: Mapping[str, DeployMode], *, enabled: bool) -> DeployPermissions:
-    defaults = DeployPermissions.defaults()
-
-    def pick(layer: Layer) -> LayerModes:
-        fallback = defaults.for_layer(layer)
-        return LayerModes(
-            modes.get(f"{layer.value}_directory", fallback.directory),
-            modes.get(f"{layer.value}_file", fallback.file),
-        )
-
-    return DeployPermissions(app=pick(Layer.APP), host=pick(Layer.HOST), user=pick(Layer.USER), enabled=enabled)
+def _with_mode(modes: LayerModes, mode: DeployMode) -> LayerModes:
+    """Return *modes* with the one of its two modes that has *mode*'s kind replaced by *mode*."""
+    if mode.kind is ModeKind.DIRECTORY:
+        return replace(modes, directory=mode)
+    return replace(modes, file=mode)
 
 
 def parse_deploy_permissions(
@@ -280,7 +280,8 @@ def parse_deploy_permissions(
         )
         raise DeployPermissionsError([problem])
     table = cast("Mapping[object, object]", section)
-    modes: dict[str, DeployMode] = {}
+    defaults = DeployPermissions.defaults()
+    chosen = {layer: defaults.for_layer(layer) for layer in DEPLOY_LAYERS}
     enabled = True
     problems: list[PermissionProblem] = []
     for raw_key, value in table.items():
@@ -294,12 +295,13 @@ def parse_deploy_permissions(
             if name == _ENABLED:
                 enabled = _read_enabled(value)
             else:
-                modes[name] = DeployMode.from_config_value(value, _MODE_FIELDS[name])
+                field = _MODE_FIELDS[name]
+                chosen[field.layer] = _with_mode(chosen[field.layer], DeployMode.from_config_value(value, field.kind))
         except ValidationError as exc:
             problems.append(PermissionProblem(key, str(exc), source_of(key)))
     if problems:
         raise DeployPermissionsError(problems)
-    return _assemble(modes, enabled=enabled)
+    return DeployPermissions(app=chosen[Layer.APP], host=chosen[Layer.HOST], user=chosen[Layer.USER], enabled=enabled)
 
 
 def _source(config: Config, key: str) -> str | None:

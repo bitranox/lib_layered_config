@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Internal data records, no behaviour change. The `[lib_layered_config.default_permissions]` parse
+  now updates each layer's `LayerModes` record directly, where it collected the modes in a dict keyed
+  by strings such as `user_file`. Deploy keeps one table of the layer names instead of two. The read
+  builds its two loaders as a named pair. The YAML tag lookup table is read-only, and a test pins
+  which kinds of source path a deploy refuses.
+
 ## [9.0.2] - 2026-11-19
 
 ### Added

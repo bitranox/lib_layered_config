@@ -27,6 +27,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from importlib import import_module
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from ...domain.errors import InvalidFormatError, NotFoundError
@@ -1119,7 +1120,7 @@ def _ordered_map_positions(data: object) -> list[str]:
 
 
 #: The tag a YAML author wrote for each Python type PyYAML's safe loader builds with no JSON form.
-_TAG_OF_UNSERIALISABLE: dict[type, str] = {set: "!!set", bytes: "!!binary"}
+_TAG_OF_UNSERIALISABLE: Final[Mapping[type, str]] = MappingProxyType({set: "!!set", bytes: "!!binary"})
 
 
 def _refuse_values_json_cannot_carry(data: object, *, path: Path) -> None:

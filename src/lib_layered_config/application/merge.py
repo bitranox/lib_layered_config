@@ -175,8 +175,9 @@ def merge_layers(layers: Iterable[LayerSnapshot]) -> MergeResult:
         mapping keyed by dotted path.
 
     Examples:
+        >>> from pathlib import Path
         >>> from lib_layered_config.domain.identifiers import Layer
-        >>> base = LayerSnapshot(Layer.APP, {"db": {"host": "localhost"}}, "/etc/app.toml")
+        >>> base = LayerSnapshot(Layer.APP, {"db": {"host": "localhost"}}, Path("/etc/app.toml"))
         >>> override = LayerSnapshot(Layer.ENV, {"db": {"host": "prod"}}, None)
         >>> result = merge_layers([base, override])
         >>> result.data["db"]["host"], result.provenance["db.host"]["layer"]

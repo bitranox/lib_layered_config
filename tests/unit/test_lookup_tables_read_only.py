@@ -12,6 +12,8 @@ from types import MappingProxyType
 import pytest
 
 from lib_layered_config import _layers, _platform, deploy
+from lib_layered_config.adapters._path_probe import PathKind
+from lib_layered_config.adapters.file_loaders import structured
 from lib_layered_config.domain import deploy_permissions, identifiers
 from lib_layered_config.domain.deploy_mode import ModeKind
 from tests.support.os_markers import os_agnostic
@@ -24,6 +26,7 @@ _TABLES: dict[str, object] = {
     "_platform._CANONICAL_RESOLVER": _platform._CANONICAL_RESOLVER,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
     "_platform._CANONICAL_EXAMPLES": _platform._CANONICAL_EXAMPLES,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
     "_layers._FILE_LOADERS": _layers._FILE_LOADERS,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
+    "structured._TAG_OF_UNSERIALISABLE": structured._TAG_OF_UNSERIALISABLE,  # pyright: ignore[reportPrivateUsage] - the module table itself is the subject
 }
 
 
@@ -39,3 +42,12 @@ def test_the_table_is_read_only(name: str) -> None:
 @os_agnostic
 def test_every_mode_kind_names_its_deploy_parameter() -> None:
     assert set(deploy._MODE_PARAMETERS) == set(ModeKind)  # pyright: ignore[reportPrivateUsage] - pins the table to its Enum
+
+
+@os_agnostic
+def test_a_source_refusal_exists_for_every_kind_that_is_refused() -> None:
+    # kind_or_raise never returns CANNOT_CHECK (it raises), and FILE is the one kind a deploy accepts,
+    # so a new PathKind member fails here until someone decides what a deploy says of it.
+    refused = set(PathKind) - {PathKind.FILE, PathKind.CANNOT_CHECK}
+
+    assert set(deploy._SOURCE_REFUSALS) == refused  # pyright: ignore[reportPrivateUsage] - pins the table to its Enum

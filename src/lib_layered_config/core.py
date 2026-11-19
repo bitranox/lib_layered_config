@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from ._layers import collect_deploy_layers, collect_layers, merge_or_empty, parse_with_dot_d
 from .adapters.dotenv.default import DefaultDotEnvLoader
@@ -302,16 +302,14 @@ def read_config_raw(
     try:
         # Inside the try: building the loaders probes the platform .env location, and a path it
         # cannot read must surface as LayerLoadError like every other layer.
-        dotenv_loader, env_loader = _build_loaders(
-            resolver, not_sensitive=declared, searches_dotenv=dotenv_path is None
-        )
+        loaders = _build_loaders(resolver, not_sensitive=declared, searches_dotenv=dotenv_path is None)
     except InvalidFormatError as exc:
         raise LayerLoadError(str(exc)) from exc
     layers = collect_layers(
         resolver=resolver,
         default_file=_as_path(default_file or None),
-        dotenv_loader=dotenv_loader,
-        env_loader=env_loader,
+        dotenv_loader=loaders.dotenv,
+        env_loader=loaders.env,
         slug=slug,
         start_dir=start,
         dotenv_path=_as_path(dotenv_path),
@@ -478,9 +476,16 @@ def _build_resolver(
     )
 
 
+class _Loaders(NamedTuple):
+    """The two loaders a read builds: the ``.env`` loader and the environment-variable loader."""
+
+    dotenv: DefaultDotEnvLoader
+    env: DefaultEnvLoader
+
+
 def _build_loaders(
     resolver: DefaultPathResolver, *, not_sensitive: NotSensitiveKeys, searches_dotenv: bool
-) -> tuple[DefaultDotEnvLoader, DefaultEnvLoader]:
+) -> _Loaders:
     """Instantiate dotenv and environment loaders sharing resolver context and the declaration.
 
     Keeps loader construction aligned with the resolver extras (e.g., additional
@@ -493,12 +498,12 @@ def _build_loaders(
             locations are never probed (one the user cannot read must not refuse a read that skips it).
 
     Returns:
-        Pair of loader instances ready for layer collection.
+        Both loaders, ready for layer collection.
     """
     extras: list[Path] = list(resolver.dotenv()) if searches_dotenv else []
-    return (
-        DefaultDotEnvLoader(extras=extras, not_sensitive=not_sensitive),
-        DefaultEnvLoader(not_sensitive=not_sensitive),
+    return _Loaders(
+        dotenv=DefaultDotEnvLoader(extras=extras, not_sensitive=not_sensitive),
+        env=DefaultEnvLoader(not_sensitive=not_sensitive),
     )
 
 
