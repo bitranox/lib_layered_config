@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.0.3] - 2026-11-20
+
 ### Changed
 
 - Internal data records, no behaviour change. The `[lib_layered_config.default_permissions]` parse
